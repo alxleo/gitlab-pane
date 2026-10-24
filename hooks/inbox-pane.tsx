@@ -52,13 +52,12 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const itemLine = (item: InboxItem) => {
     const what = item.activity.map(one => `@${one.actor} ${KIND_WORD[one.kind] ?? one.kind} ${ago(one.at, now)}`)
     const who = `@${item.author}${item.isDraft ? ' · draft' : ''}${item.state === 'opened' ? '' : ` · ${item.state}`}`
-    // The repo goes to the second line: in a narrow pane a long repo name leaves no room for the title.
+    // Title first, as the MR cards have it; the ref and repo go to the second line, where a long repo name costs nothing.
     const bang = item.ref.lastIndexOf('!')
     const repo = bang > 0 ? item.ref.slice(0, bang) : ''
     return (
       <Box key={`ib-${hashOf(item.key)}`} flexDirection="column" paddingLeft={2}>
         <Box flexDirection="row" gap={1}>
-          <Link href={item.url}>{`🔀 ${item.ref.slice(bang)}`}</Link>
           <Box flexGrow={1} flexShrink={1}>
             <Text wrap="truncate-end">{shortTitle(item.title)}</Text>
           </Box>
@@ -70,10 +69,15 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             onPress={() => markSeen($, { key: item.key }).catch(() => undefined)}
           />
         </Box>
-        <Box paddingLeft={3}>
-          <Text dimColor wrap="truncate-end">
-            {[repo, who, ...what].filter(Boolean).join(' · ')}
-          </Text>
+        <Box flexDirection="row" gap={1}>
+          <Box flexShrink={0}>
+            <Link href={item.url}>{`🔀 ${item.ref.slice(bang)}`}</Link>
+          </Box>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text dimColor wrap="truncate-end">
+              {[repo, who, ...what].filter(Boolean).join(' · ')}
+            </Text>
+          </Box>
         </Box>
       </Box>
     )
