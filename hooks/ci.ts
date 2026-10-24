@@ -1,0 +1,334 @@
+import type { MrCard, Person, Pinned, Stage, Usual } from '../types'
+
+/** A pipeline in one of these waits for nothing but a person. */
+const SETTLED = ['success', 'failed', 'canceled', 'skipped', 'manual']
+
+/** The results worth waking the session for; `manual` comes with every push here. */
+const WAKES = ['success', 'failed']
+
+export const isSettled = (status: string): boolean => SETTLED.includes(status)
+
+const MR_URL = /^https:\/\/gitlab\.com\/(.+?)\/-\/merge_requests\/(\d+)/
+
+export const MR_URLS = /https:\/\/gitlab\.com\/[\w.\-/]+?\/-\/merge_requests\/\d+/g
+
+export function parseMrUrl(url: string): Pinned | null {
+  const match = MR_URL.exec(url.trim())
+  if (!match?.[1] || !match[2]) {
+    return null
+  }
+  const iid = Number(match[2])
+  return { url: `https://gitlab.com/${match[1]}/-/merge_requests/${iid}`, project: match[1], iid }
+}
+
+export const pinKey = (pin: Pinned): string => `${pin.project}!${pin.iid}`
+
+/**
+ * Once per pipeline: its first hard failure while it runs, then a success or failure it ends on.
+ * A pipeline that runs again (a manual job pressed) may announce its next result.
+ */
+export function advance(
+  announced: readonly string[],
+  pipeline: { id: number; status: string; failed: readonly unknown[] }
+): { announced: string[]; due: string | null } {
+  const mine = announced.filter(key => key.startsWith(`${pipeline.id}:`))
+  const failKey = `${pipeline.id}:failed-job`
+  if (!isSettled(pipeline.status)) {
+    const kept = mine.filter(key => key === failKey)
+    return pipeline.failed.length > 0 && kept.length === 0
+      ? { announced: [failKey], due: failKey }
+      : { announced: kept, due: null }
+  }
+  const key = `${pipeline.id}:${pipeline.status}`
+  if (!WAKES.includes(pipeline.status) || mine.includes(key)) {
+    return { announced: mine, due: null }
+  }
+  return { announced: [...mine, key], due: key }
+}
+
+/** 0 needs Alex now, 1 is moving, 2 waits on others, 3 is ready. */
+export function rank(card: MrCard): number {
+  const status = card.pipeline?.status
+  if (
+    status === 'failed' ||
+    card.hasConflicts ||
+    card.needsRebase ||
+    card.changesRequestedBy.length > 0 ||
+    card.openThreads.length > 0
+  ) {
+    return 0
+  }
+  if (status && !isSettled(status)) {
+    return 1
+  }
+  const botsHold = card.bots.threads.length + card.bots.changesBy.length > 0
+  return card.approvalsLeft > 0 || status === 'manual' || botsHold ? 2 : 3
+}
+
+/** `project_123_bot_<hash>` is GitLab's name for a project or group access token; say which. */
+export const botName = (username: string): string => /^(project|group)_\d+_bot_/.exec(username)?.[1]?.concat(' bot') ?? username
+
+export const byAttention = (a: MrCard, b: MrCard): number =>
+  rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt)
+
+export type Tone = 'success' | 'error' | 'warning' | 'subtle' | 'suggestion'
+
+export function statusMark(status: string | undefined): { glyph: string; tone: Tone } {
+  switch (status) {
+    case 'success':
+      return { glyph: '✓', tone: 'success' }
+    case 'failed':
+      return { glyph: '✗', tone: 'error' }
+    case 'manual':
+      return { glyph: '⏸', tone: 'warning' }
+    case 'canceled':
+    case 'skipped':
+      return { glyph: '⊘', tone: 'subtle' }
+    case undefined:
+      return { glyph: '○', tone: 'subtle' }
+    default:
+      return { glyph: '●', tone: 'suggestion' }
+  }
+}
+
+export const STAGE_COLOURS: Record<Tone, string> = {
+  success: '#2da44e',
+  error: '#cf222e',
+  warning: '#bf8700',
+  suggestion: '#0969da',
+  subtle: '#8c959f',
+}
+
+export const stageTone = (status: string): Tone =>
+  status === 'success'
+    ? 'success'
+    : status === 'failed'
+      ? 'error'
+      : status === 'manual'
+        ? 'warning'
+        : isSettled(status) || status === 'created'
+          ? 'subtle'
+          : 'suggestion'
+
+export type BadgeKind =
+  | 'failed'
+  | 'conflicts'
+  | 'changes'
+  | 'threads'
+  | 'rebase'
+  | 'manual'
+  | 'amber'
+  | 'bots'
+  | 'approvals'
+  | 'ready'
+
+/** One marker on a row's second line: a glyph and a count, its detail on hover; `words` is what a model reads. */
+export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string; words: string }
+
+export const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count} ${count === 1 ? one : many}`
+
+/** What stands between the MR and a merge, each from its own field, worst first. */
+export function badges(card: MrCard): Badge[] {
+  const pipeline = card.pipeline
+  const list: Badge[] = []
+  const add = (kind: BadgeKind, glyph: string, tone: Tone, count: string, words: string) =>
+    list.push({ kind, glyph, tone, count, words })
+  if (pipeline && pipeline.failed.length > 0) {
+    add('failed', '✗', 'error', String(pipeline.failed.length), plural(pipeline.failed.length, 'job failed', 'jobs failed'))
+  }
+  if (card.hasConflicts) {
+    add('conflicts', '⇄', 'error', '', 'conflicts')
+  }
+  if (card.changesRequestedBy.length > 0) {
+    add('changes', '✋', 'error', String(card.changesRequestedBy.length), `changes requested by ${card.changesRequestedBy.join(', ')}`)
+  }
+  if (card.openThreads.length > 0) {
+    add('threads', '💬', 'warning', String(card.openThreads.length), plural(card.openThreads.length, 'open thread'))
+  }
+  if (card.needsRebase) {
+    add('rebase', '↻', 'warning', '', 'needs rebase')
+  }
+  if (pipeline && pipeline.blockedOn.length > 0) {
+    add('manual', '⏸', 'warning', '', `waiting on ${pipeline.blockedOn.join(', ')}`)
+  }
+  if (pipeline && pipeline.amber.length > 0) {
+    add('amber', '⚠', 'warning', String(pipeline.amber.length), `amber: ${pipeline.amber.map(job => job.name).join(', ')}`)
+  }
+  const { threads, changesBy } = card.bots
+  if (threads.length + changesBy.length > 0) {
+    const held = [
+      threads.length > 0 ? plural(threads.length, 'open thread') : '',
+      changesBy.length > 0 ? `${changesBy.map(botName).join(', ')} requested changes` : '',
+    ]
+    add('bots', '🤖', 'subtle', String(threads.length + changesBy.length), `bots hold the merge: ${held.filter(Boolean).join(', ')}`)
+  }
+  if (card.approvalsRequired > 0) {
+    const given = Math.max(0, card.approvalsRequired - card.approvalsLeft)
+    add(
+      'approvals',
+      '👤',
+      card.approvalsLeft > 0 ? 'subtle' : 'success',
+      `${given}/${card.approvalsRequired}`,
+      card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'approved'
+    )
+  }
+  const blocks = list.some(badge => badge.kind !== 'approvals') || card.approvalsLeft > 0
+  if (!blocks && pipeline?.status === 'success' && !card.isDraft) {
+    add('ready', '⤵', 'success', '', 'ready to merge')
+  }
+  return list
+}
+
+/** The row's markers: each person's icon speaks for their change request and threads, so 💬 keeps only threads no icon holds. */
+export function rowBadges(card: MrCard): Badge[] {
+  const held = new Set(card.people.map(person => person.username))
+  const loose = card.openThreads.filter(note => !held.has(note.author)).length
+  return badges(card).flatMap(badge => {
+    if (badge.kind === 'changes') {
+      return []
+    }
+    if (badge.kind === 'threads') {
+      return loose > 0 ? [{ ...badge, count: String(loose), words: plural(loose, 'open thread') }] : []
+    }
+    return [badge]
+  })
+}
+
+/** A person's icon colour: asked for changes, open threads, approved, or nothing pending. */
+export const personTone = (person: Person): Tone =>
+  person.state === 'requested_changes' ? 'error' : person.openThreads > 0 ? 'warning' : person.state === 'approved' ? 'success' : 'subtle'
+
+/** The same avatar at `px` pixels: GitLab resizes its uploads by `width`, Gravatar by `s`. */
+export function sizedAvatar(url: string, px: number): string {
+  const [base = url, query = ''] = url.split('?')
+  if (!/gravatar\.com\//.test(base)) {
+    return `${base}?width=${px}`
+  }
+  return `${base}?${[`s=${px}`, ...query.split('&').filter(pair => pair && !pair.startsWith('s='))].join('&')}`
+}
+
+const PICTURE_TYPES: [string, string][] = [
+  ['iVBOR', 'image/png'],
+  ['/9j/', 'image/jpeg'],
+  ['R0lGOD', 'image/gif'],
+  ['UklGR', 'image/webp'],
+]
+
+/** A picture's base64 as a `data:` URI typed by its first bytes; null for anything else, or past `most` characters. */
+export function pictureUri(base64: string, most: number): string | null {
+  const bytes = base64.replace(/\s+/g, '')
+  const type = PICTURE_TYPES.find(([magic]) => bytes.startsWith(magic))?.[1]
+  return type && bytes.length <= most ? `data:${type};base64,${bytes}` : null
+}
+
+/** The first line worth reading, without its Markdown marks. */
+export function excerpt(body: string, room = 160): string {
+  const line = body.split('\n').find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
+  const plain = line.replace(/^[#>\s]+|[*_`]/g, '').trim()
+  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+}
+
+/** The first paragraph under the headings, as one plain line. */
+export function lead(body: string, room = 240): string {
+  const paragraph =
+    body
+      .replace(/^#.*$/gm, '')
+      .split(/\n\s*\n/)
+      .map(text => text.trim())
+      .find(Boolean) ?? ''
+  const plain = paragraph
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^[>\-*\s]+/gm, '')
+    .replace(/[*_`]/g, '')
+    .replace(/\s*\n\s*/g, ' ')
+  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+}
+
+export const duration = (seconds: number): string => {
+  const minutes = Math.round(seconds / 60)
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`
+  }
+  if (minutes < 60) {
+    return `${minutes}m`
+  }
+  const hours = Math.floor(minutes / 60)
+  return hours < 24 ? `${hours}h ${minutes % 60}m` : `${Math.floor(hours / 24)}d ${hours % 24}h`
+}
+
+export const ago = (iso: string, now: number): string => {
+  const minutes = Math.floor((now - Date.parse(iso)) / 60_000)
+  if (minutes < 1) {
+    return 'now'
+  }
+  if (minutes < 60) {
+    return `${minutes}m`
+  }
+  return minutes < 1440 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / 1440)}d`
+}
+
+/** Seconds any of these jobs ran, overlaps counted once, as GitLab counts a pipeline's duration. */
+export function ranFor(stages: readonly Stage[], now: number): number {
+  const spans = stages
+    .flatMap(stage => stage.jobs)
+    .flatMap(job => (job.startedAt ? [[Date.parse(job.startedAt), job.finishedAt ? Date.parse(job.finishedAt) : now] as const] : []))
+    .sort((a, b) => a[0] - b[0])
+  let total = 0
+  let reach = -Infinity
+  spans.forEach(([start, end]) => {
+    total += Math.max(0, end - Math.max(start, reach))
+    reach = Math.max(reach, end)
+  })
+  return Math.round(total / 1000)
+}
+
+const minutes = (seconds: number) => Math.max(1, Math.round(seconds / 60))
+
+/** `10–15m`, the middle half of recent runs. */
+export const usualRange = (usual: Usual): string =>
+  minutes(usual.low) === minutes(usual.high) ? `${minutes(usual.low)}m` : `${minutes(usual.low)}–${minutes(usual.high)}m`
+
+/** How long the pipeline took, or has run so far against how long one usually takes. */
+export function pipelineTime(card: MrCard, now: number, usual?: Usual): string {
+  const pipeline = card.pipeline
+  if (!pipeline) {
+    return 'no pipeline'
+  }
+  if (pipeline.duration !== null && isSettled(pipeline.status)) {
+    return duration(pipeline.duration)
+  }
+  const ran = ranFor(pipeline.stages, now) || (pipeline.startedAt ? (now - Date.parse(pipeline.startedAt)) / 1000 : null)
+  if (ran === null) {
+    return pipeline.status
+  }
+  return usual ? `${duration(ran)} · usually ${usualRange(usual)}` : `${duration(ran)} so far`
+}
+
+const TICKET = /\[([A-Z]+-\d+)\]/
+
+export const ticketOf = (title: string): string | null => TICKET.exec(title)?.[1] ?? null
+
+/** The title without its `type(scope):` lead and ticket, which the row draws apart. */
+export const shortTitle = (title: string): string =>
+  title
+    .replace(/^Draft:\s*/i, '')
+    .replace(/^\w+(\([^)]*\))?!?:\s*/, '')
+    .replace(/\[([A-Z]+-\d+|NO-JIRA)\]\s*/, '')
+
+/** One line a model or a toast reads; never another person's words, only who and where. */
+export function describe(card: MrCard, now: number): string {
+  const { glyph } = statusMark(card.pipeline?.status)
+  const ticket = ticketOf(card.title)
+  const failed = card.pipeline?.failed.map(job => job.name) ?? []
+  return [
+    `!${card.iid}${ticket ? ` (${ticket})` : ''} ${glyph} ${card.pipeline?.status ?? 'no pipeline'} ${pipelineTime(card, now)}`,
+    ...badges(card)
+      .filter(badge => badge.kind !== 'failed' && badge.words !== 'approved')
+      .map(badge => badge.words),
+    failed.length > 0 ? `failed: ${failed.join(', ')}` : '',
+    card.pipeline?.url ?? card.url,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}

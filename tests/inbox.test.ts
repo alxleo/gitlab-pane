@@ -1,0 +1,244 @@
+import { expect, mock, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
+
+import { AVATAR_BASE64, NOW, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
+
+const PANE = {
+  plugin: 'gitlab-ci',
+  component: 'Pane',
+  requestId: 'gitlab-ci',
+  props: {
+    title: 'GitLab',
+    isFocused: false,
+    bodyColumns: 60,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 40 },
+    view: {},
+  },
+} as const
+
+const REMOTE = 'git@gitlab.com:g/p.git'
+const MINUTES_AGO = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
+
+const ran = (stdout: string, exitCode = 0, stderr = '') => ({
+  value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
+})
+
+const item = (iid: number, unseen: number) => ({
+  key: `g/p!${iid}`,
+  ref: `p!${iid}`,
+  project: 'g/p',
+  iid,
+  title: `feat: [ABC-${iid}] thing ${iid}`,
+  url: `https://gitlab.com/g/p/-/merge_requests/${iid}`,
+  author: { username: 'ines', name: 'Ines' },
+  state: 'opened',
+  draft: false,
+  unseen,
+  activity: [{ kind: 'approved', actor: 'dan', at: MINUTES_AGO(120), url: null, excerpt: '' }],
+})
+
+/** mr-inbox as the test sets it: the inbox it prints, and every call it was asked. */
+type Inbox = { sections: unknown[]; sync: Record<string, unknown>; exitCode?: number; stderr?: string }
+
+function engine(on: On, inbox: Inbox) {
+  const calls: string[][] = []
+  on('process.run', (_, e) => {
+    const at = e.argv.indexOf('mr-inbox')
+    if (at < 0) {
+      // The pane's own GitLab read: no open MRs of Alex's.
+      return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: [] } } } }))
+    }
+    const args = e.argv.slice(at + 1)
+    calls.push(args)
+    if (inbox.exitCode) {
+      return ran('', inbox.exitCode, inbox.stderr ?? '')
+    }
+    if (args[0] === 'inbox') {
+      return ran(JSON.stringify({ sync: inbox.sync, sections: inbox.sections }))
+    }
+    if (args[0] === 'brief') {
+      return ran('# MR briefing: 2 MRs\n\n## p!1 — thing\n\n## p!2 — thing\n')
+    }
+    return ran('{"ok": true}')
+  })
+  on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
+  on('command.register', () => ({ value: { command: 'gitlab' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  return calls
+}
+
+/** The inbox's first sync waits this long after the session starts. */
+const FIRST_SYNC_MS = 2_000
+
+const typed = (args: string) => ({
+  command: 'mrs',
+  args,
+  origin: { kind: 'composer' as const },
+  presentation: { isFullscreen: false, columns: 100 },
+})
+
+const sections = () => [
+  { rule: 'people', title: 'Reviews on work of people I follow', note: null, items: [item(1, 3), item(2, 0)] },
+  { rule: 'to-review', title: 'Waiting on my review', note: null, items: [] },
+]
+
+test('the inbox syncs once the pane shows it, folds each rule, and opens one to its MRs', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const calls = engine(on, { sections: sections(), sync: { ok: true, finished_at: MINUTES_AGO(2) } })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await clock.advance(FIRST_SYNC_MS)
+    expect(calls.some(args => args[0] === 'sync' && args.includes('--if-older-than') && args.includes(REMOTE))).toBe(true)
+    expect(await ui.find({ type: 'Text', text: 'synced 2m ago' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Nothing in: Waiting on my review' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
+
+    await ui.press({ key: 'inbox-rule-people' })
+    expect((await ui.find({ type: 'Text', text: /thing 1$/ }))?.text).toBe('thing 1')
+    expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '@ines · @dan approved 2h' })).toBeDefined()
+    await ui.press({ key: 'inbox-rule-people' })
+    await ui.unmount()
+  }
+})
+
+test('✓ marks one MR seen and reads the inbox again', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const inbox: Inbox = { sections: sections(), sync: { ok: true, finished_at: MINUTES_AGO(1) } }
+  const calls = engine(on, inbox)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'inbox-rule-people' })
+  inbox.sections = [{ ...sections()[0], items: [item(2, 0)] }, sections()[1]]
+  const before = calls.length
+  await ui.press({ key: `inbox-seen-${hashOf('g/p!1')}` })
+  expect(calls.slice(before)).toEqual([['seen', 'g/p!1'], ['inbox', '--json', '--repo', REMOTE]])
+  expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a failed sync says why and keeps the rules it last read', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { sections: sections(), sync: { ok: false, error: 'glab is not signed in to gitlab.com', finished_at: MINUTES_AGO(5) } })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toBe('sync failed: glab is not signed in to gitlab.com')
+  await ui.press({ key: 'inbox-rule-people' })
+  expect((await ui.find({ type: 'Text', text: /thing 2$/ }))?.text).toBe('thing 2')
+  await ui.unmount()
+})
+
+test('without mr-inbox installed the pane says so once and draws the rest', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { sections: [], sync: {}, exitCode: 127, stderr: 'zsh:1: command not found: mr-inbox' })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect((await ui.find({ type: 'Text', text: /not installed/ }))?.text).toBe('mr-inbox is not installed (see ~/work/mr-inbox)')
+  expect(await ui.find({ type: 'Text', text: /^Mine/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('/mrs hands the briefing to the model, out of the transcript', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const calls = engine(on, { sections: sections(), sync: { ok: true, finished_at: MINUTES_AGO(1) } })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const answer = await $.command.run(typed('p!1 p!2'))
+  expect(calls.at(-1)).toEqual(['brief', 'p!1', 'p!2', '--repo', REMOTE])
+  expect(answer.text).toMatch(/^Briefed 2 MRs \(/)
+  expect(answer.context).toEqual(['# MR briefing: 2 MRs\n\n## p!1 — thing\n\n## p!2 — thing\n'])
+
+  const usage = await $.command.run(typed(''))
+  expect(usage.text).toMatch(/^Usage: \/mrs/)
+  expect(usage.context).toBeUndefined()
+})
+
+test('a full inbox, every rule open, beside fifty busy MRs stays inside the 100,000 characters a drawing holds', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const long = (name: string) => `${name}-${'x'.repeat(30)}`
+  const busy = (status: string) =>
+    pipe(status, {
+      stages: {
+        nodes: Array.from({ length: 9 }, (_, s) =>
+          stage(long(`stage${s}`), status, Array.from({ length: 20 }, (_, j) => job(long(`job${s}-${j}`), status)))
+        ),
+      },
+    })
+  const mrs = Array.from({ length: 50 }, (_, i) =>
+    rawMr(1000 + i, {
+      project: project(`acme-corp/platform/some-group/another-group/${i % 3 === 0 ? 'repo-one' : 'repo-two'}`),
+      headPipeline: busy(i % 2 === 0 ? 'RUNNING' : 'FAILED'),
+      reviewers: { nodes: [reviewer('first.reviewer', 'REQUESTED_CHANGES'), reviewer('second.reviewer', 'APPROVED')] },
+      discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 ? 'first.reviewer' : 'second.reviewer')) },
+    })
+  )
+  const rules = ['mine', 'to-review', 'people', 'repos', 'here']
+  const wide = (iid: number) => ({
+    ...item(iid, 9),
+    ref: `some-group/another-group/repo-${'x'.repeat(20)}!${iid}`,
+    title: `feat(XY-${iid}): ${'a very long title that keeps going '.repeat(4)}`,
+    activity: Array.from({ length: 3 }, (_, k) => ({ kind: 'changes_requested', actor: `reviewer.${'y'.repeat(20)}${k}`, at: MINUTES_AGO(30), url: null, excerpt: 'x'.repeat(160) })),
+  })
+  const inboxSections = rules.map((rule, r) => ({
+    rule,
+    title: `Rule ${rule} with a fairly long title to fill the line`,
+    note: null,
+    items: Array.from({ length: 30 }, (_, i) => wide(r * 100 + i)),
+  }))
+  on('process.run', (_, e) => {
+    if (e.argv.includes('mr-inbox')) {
+      return ran(JSON.stringify({ sync: { ok: true, finished_at: MINUTES_AGO(1) }, sections: inboxSections }))
+    }
+    if (e.argv.includes('glean')) {
+      return ran('[]')
+    }
+    if (e.argv.includes('avatar')) {
+      return ran(AVATAR_BASE64)
+    }
+    const query = e.argv.find(arg => arg.startsWith('query=')) ?? ''
+    if (query.includes('pipelines(source:')) {
+      const aliases = [...query.matchAll(/(h\d+): project/g)].map(match => match[1] ?? '')
+      return ran(JSON.stringify({ data: Object.fromEntries(aliases.map(alias => [alias, { pipelines: { nodes: [{ duration: 600 }] } }])) }))
+    }
+    return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }))
+  })
+  on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
+  on('command.register', () => ({ value: { command: 'gitlab' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  for (const rule of rules) {
+    await ui.press({ key: `inbox-rule-${rule}` })
+  }
+  await ui.press({ key: 'more' })
+  // The desktop app draws nothing for a tree past 100,000 characters serialized.
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeDefined()
+  // The inbox's rows count against the same budget: MRs past it are left out and counted, and so are inbox rows.
+  expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
+  expect(await ui.find({ type: 'Text', text: /^\+\d+ more · \/mrs --rule/ })).toBeDefined()
+  await ui.unmount()
+})
+
+const hashOf = (text: string): string =>
+  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)

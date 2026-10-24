@@ -1,0 +1,18 @@
+# The engine runs the mod's tests and checks its manifest and state contract; neither needs a sign-in.
+# The type-check needs the engine's generated types, which only a signed-in session writes, so it runs locally.
+name: check
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_VERSION: "2.1.308"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - run: claude plugin validate .
+      - run: claude plugin test .
