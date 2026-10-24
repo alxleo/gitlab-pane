@@ -83,8 +83,8 @@ const typed = (args: string) => ({
 })
 
 const sections = () => [
-  { rule: 'people', title: 'Reviews on work of people I follow', note: null, items: [item(1, 3), item(2, 0)] },
-  { rule: 'to-review', title: 'Waiting on my review', note: null, items: [] },
+  { rule: 'people', title: 'Reviews: people I follow', note: null, items: [item(1, 3), item(2, 0)] },
+  { rule: 'to-review', title: 'To review', note: null, items: [] },
 ]
 
 test('the inbox syncs once the pane shows it, folds each rule, and opens one to its MRs', async ($, on) => {
@@ -97,13 +97,20 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     await clock.advance(FIRST_SYNC_MS)
     expect(calls.some(args => args[0] === 'sync' && args.includes('--if-older-than') && args.includes(REMOTE))).toBe(true)
     expect(await ui.find({ type: 'Text', text: 'synced 2m ago' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'Nothing in: Waiting on my review' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Nothing in: To review' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
+    // The inbox is what needs Alex, so it draws above the MR list rather than below it.
+    const drawn = JSON.stringify(await ui.drawn())
+    expect(drawn.indexOf('inbox-sync')).toBeLessThan(drawn.indexOf('Mine · '))
+    // Counts are MRs with news, not the events in them.
+    expect(await ui.find({ type: 'Text', text: 'Inbox · 1 new' })).toBeDefined()
+    expect(drawn).toContain('▸ Reviews: people I follow · 2 · 1 new')
 
     await ui.press({ key: 'inbox-rule-people' })
     expect((await ui.find({ type: 'Text', text: /thing 1$/ }))?.text).toBe('thing 1')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '@ines · @dan approved 2h' })).toBeDefined()
+    expect(JSON.stringify(await ui.drawn())).toContain('🔀 !1')
+    expect(await ui.find({ type: 'Text', text: 'p · @ines · @dan approved 2h' })).toBeDefined()
     await ui.press({ key: 'inbox-rule-people' })
     await ui.unmount()
   }

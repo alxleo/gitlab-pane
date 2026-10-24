@@ -52,10 +52,13 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const itemLine = (item: InboxItem) => {
     const what = item.activity.map(one => `@${one.actor} ${KIND_WORD[one.kind] ?? one.kind} ${ago(one.at, now)}`)
     const who = `@${item.author}${item.isDraft ? ' · draft' : ''}${item.state === 'opened' ? '' : ` · ${item.state}`}`
+    // The repo goes to the second line: in a narrow pane a long repo name leaves no room for the title.
+    const bang = item.ref.lastIndexOf('!')
+    const repo = bang > 0 ? item.ref.slice(0, bang) : ''
     return (
       <Box key={`ib-${hashOf(item.key)}`} flexDirection="column" paddingLeft={2}>
         <Box flexDirection="row" gap={1}>
-          <Link href={item.url}>{`🔀 ${item.ref}`}</Link>
+          <Link href={item.url}>{`🔀 ${item.ref.slice(bang)}`}</Link>
           <Box flexGrow={1} flexShrink={1}>
             <Text wrap="truncate-end">{shortTitle(item.title)}</Text>
           </Box>
@@ -69,7 +72,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
         <Box paddingLeft={3}>
           <Text dimColor wrap="truncate-end">
-            {[who, ...what].join(' · ')}
+            {[repo, who, ...what].filter(Boolean).join(' · ')}
           </Text>
         </Box>
       </Box>
@@ -78,9 +81,11 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
 
   const shown = inbox.sections.filter(section => section.items.length > 0)
   const quiet = inbox.sections.filter(section => section.items.length === 0)
+  const news = new Set(shown.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
   const header = (section: InboxSection) => {
     const isOpen = open.includes(section.rule)
-    const fresh = section.items.reduce((sum, item) => sum + item.unseen, 0)
+    // MRs with news, not events: an MR nobody has marked seen brings a week of comments, which would swamp the count.
+    const fresh = section.items.filter(item => item.unseen > 0).length
     return (
       <Button
         key={`inbox-rule-${section.rule}`}
@@ -125,7 +130,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column">
       <Box flexDirection="row" gap={2}>
-        <Text bold>Inbox</Text>
+        <Text bold>{news > 0 ? `Inbox · ${news} new` : 'Inbox'}</Text>
         <Text color={problem ? 'warning' : undefined} dimColor={!problem} size="footnote">
           {status}
         </Text>

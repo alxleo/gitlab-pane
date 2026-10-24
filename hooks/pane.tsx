@@ -473,6 +473,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           />
         ))}
       </Box>
+      {inbox}
       {session.length > 0 && <Text bold>This session</Text>}
       {session.map(draw)}
       <Text bold>{`Mine · ${mine.length}`}</Text>
@@ -483,7 +484,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       )}
       {drafts.length > 0 && <Button key="drafts" plain label={`${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`} onPress={() => toggle($, 'drafts')} />}
       {showDrafts && drafts.map(draw)}
-      {inbox}
       {left > 0 && <Text dimColor>{`${plural(left, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.`}</Text>}
       <Box flexDirection="row" gap={2}>
         <Text color={poll.error !== null ? 'warning' : undefined} dimColor={poll.error === null} size="footnote">
