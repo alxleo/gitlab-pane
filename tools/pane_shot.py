@@ -15,6 +15,10 @@ The pane is found by reading its title off the window (macOS text recognition), 
 again before every scroll, so a pane that moved or a session that changed is never scrolled
 or cropped by mistake. Scrolling goes through Hammerspoon, which holds the Accessibility
 grant, aimed at the pane: the mouse pointer does not move.
+
+Run it when the person says the pane is in front, never on a timer. Only the pane is
+written: the whole-window frames it reads, which show other sessions, stay in a temporary
+folder that is deleted when it exits.
 """
 
 from __future__ import annotations
@@ -27,8 +31,8 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import Quartz
-import Vision
 import typer
+import Vision
 from Foundation import NSURL
 from pydantic import BaseModel
 
@@ -125,27 +129,16 @@ def find_pane(owner: str, title: str, scratch: Path) -> Found:
     ]
     if not hits:
         raise PaneShotError(f"no pane titled {title!r} is showing in the {owner!r} window")
-    text, x, y, w, h = min(hits, key=lambda line: line[2])
+    _, x, y, w, h = min(hits, key=lambda line: line[2])
     left, top = x / scale - 14, y / scale - 12
     pane = Rect(x=window.bounds.x + left, y=window.bounds.y + top, w=window.bounds.w - left - 4, h=window.bounds.h - top - 4)
     title_at = Rect(x=window.bounds.x + x / scale, y=window.bounds.y + y / scale, w=w / scale, h=h / scale)
     return Found(window=window, pane=pane, title_at=title_at)
 
 
-def wait_for_pane(owner: str, title: str, scratch: Path, wait: int) -> Found:
-    """Looks every few seconds until the pane is showing, for at most `wait` seconds."""
-    deadline = time.monotonic() + wait
-    while True:
-        try:
-            return find_pane(owner, title, scratch)
-        except PaneShotError:
-            if time.monotonic() >= deadline:
-                raise
-            time.sleep(5)
-
-
-def crop(window: Window, pane: Rect, out: Path) -> None:
-    full = out.with_suffix(".window.png")
+def crop(window: Window, pane: Rect, out: Path, scratch: Path) -> None:
+    """Writes only the pane; the whole-window frame it is cut from stays in `scratch`."""
+    full = scratch / "window.png"
     grab(window, full)
     image = load(full)
     scale = Quartz.CGImageGetWidth(image) / window.bounds.w
@@ -160,7 +153,7 @@ def crop(window: Window, pane: Rect, out: Path) -> None:
 
 def hammerspoon(lua: str) -> str:
     try:
-        run = subprocess.run(["hs", "-c", lua], capture_output=True, text=True, timeout=30)
+        run = subprocess.run(["hs", "-c", lua], capture_output=True, text=True, timeout=30, check=False)
     except FileNotFoundError as exc:
         raise PaneShotError("Hammerspoon's `hs` command is not installed") from exc
     except subprocess.TimeoutExpired as exc:
@@ -195,7 +188,6 @@ def guarded_scroll(owner: str, title: str, expected: Found, pixels: int, scratch
 
 Owner = Annotated[str, typer.Option(help="The app whose window holds the pane.")]
 Title = Annotated[str, typer.Option("--pane", help="The pane's title as its header reads.")]
-Wait = Annotated[int, typer.Option(help="Seconds to wait for the pane to come on screen.")]
 
 
 def fail(exc: Exception) -> typer.Exit:
@@ -215,16 +207,15 @@ def capture(
     out: Annotated[Path, typer.Option("-o", "--out", help="PNG to write.")],
     title: Title = "GitLab",
     to: Annotated[Literal["here", "top", "bottom"], typer.Option(help="Scroll the pane first.")] = "here",
-    wait: Wait = 0,
     owner: Owner = "Claude Work",
 ) -> None:
     """The pane as it is now, or after scrolling it to its top or bottom."""
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            found = wait_for_pane(owner, title, Path(tmp), wait)
+            found = find_pane(owner, title, Path(tmp))
             if to != "here":
                 found = guarded_scroll(owner, title, found, 40_000 if to == "top" else -40_000, Path(tmp))
-            crop(found.window, found.pane, out)
+            crop(found.window, found.pane, out, Path(tmp))
         except PaneShotError as exc:
             raise fail(exc) from exc
     typer.echo(Shot(path=str(out), pane=found.pane, window_id=found.window.id).model_dump_json())
@@ -235,7 +226,6 @@ def tour(
     out: Annotated[Path, typer.Option("-o", "--out", help="Folder for page-01.png, page-02.png, …")],
     title: Title = "GitLab",
     pages: Annotated[int, typer.Option(help="Stop after this many pages.")] = 12,
-    wait: Wait = 0,
     owner: Owner = "Claude Work",
 ) -> None:
     """Scrolls the pane to its top, then a page at a time to its end, a screenshot per page, then back to its top."""
@@ -243,11 +233,11 @@ def tour(
     shots: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            found = guarded_scroll(owner, title, wait_for_pane(owner, title, Path(tmp), wait), 40_000, Path(tmp))
+            found = guarded_scroll(owner, title, find_pane(owner, title, Path(tmp)), 40_000, Path(tmp))
             previous = b""
             for page in range(1, pages + 1):
                 path = out / f"page-{page:02d}.png"
-                crop(found.window, found.pane, path)
+                crop(found.window, found.pane, path, Path(tmp))
                 data = path.read_bytes()
                 if data == previous:
                     path.unlink()

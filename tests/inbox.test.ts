@@ -31,11 +31,12 @@ const item = (iid: number, unseen: number) => ({
   iid,
   title: `feat: [ABC-${iid}] thing ${iid}`,
   url: `https://gitlab.com/g/p/-/merge_requests/${iid}`,
-  author: { username: 'ines', name: 'Ines' },
+  author: { username: 'alice', name: 'Alice' },
   state: 'opened',
   draft: false,
   unseen,
-  activity: [{ kind: 'approved', actor: 'dan', at: MINUTES_AGO(120), url: null, excerpt: '' }],
+  counts: { comment: 2, approved: 1 },
+  activity: [{ kind: 'approved', actor: 'bob', at: MINUTES_AGO(120), url: null, excerpt: '' }],
 })
 
 /** mr-inbox as the test sets it: the inbox it prints, and every call it was asked. */
@@ -97,20 +98,22 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     await clock.advance(FIRST_SYNC_MS)
     expect(calls.some(args => args[0] === 'sync' && args.includes('--if-older-than') && args.includes(REMOTE))).toBe(true)
     expect(await ui.find({ type: 'Text', text: 'synced 2m ago' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'Nothing in: To review' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Nothing else in: To review' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
     // The inbox is what needs Alex, so it draws above the MR list rather than below it.
     const drawn = JSON.stringify(await ui.drawn())
     expect(drawn.indexOf('inbox-sync')).toBeLessThan(drawn.indexOf('Mine · '))
     // Counts are MRs with news, not the events in them.
     expect(await ui.find({ type: 'Text', text: 'Inbox · 1 new' })).toBeDefined()
-    expect(drawn).toContain('▸ Reviews: people I follow · 2 · 1 new')
+    expect(await ui.find({ type: 'Text', text: '▸ Reviews: people I follow' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: ' · 2 · 1 new' })).toBeDefined()
 
     await ui.press({ key: 'inbox-rule-people' })
     expect((await ui.find({ type: 'Text', text: /thing 1$/ }))?.text).toBe('thing 1')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
-    expect(JSON.stringify(await ui.drawn())).toContain('🔀 !1')
-    expect(await ui.find({ type: 'Text', text: 'p · @ines · @dan approved 2h' })).toBeDefined()
+    // A count per kind instead of a line of handles, and the ref without the repo, which follows it.
+    expect(await ui.find({ type: 'Text', text: 'p · alice · 1 approved · 2 commented · 2h' })).toBeDefined()
+    expect(JSON.stringify(await ui.drawn())).toContain('"!1"')
     await ui.press({ key: 'inbox-rule-people' })
     await ui.unmount()
   }
@@ -130,6 +133,60 @@ test('✓ marks one MR seen and reads the inbox again', async ($, on) => {
   await ui.press({ key: `inbox-seen-${hashOf('g/p!1')}` })
   expect(calls.slice(before)).toEqual([['seen', 'g/p!1'], ['inbox', '--json', '--repo', REMOTE]])
   expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('an MR under two rules shows once, under the first', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, {
+    sections: [
+      ...sections(),
+      { rule: 'repos', title: 'Reviews: repos I follow', note: null, items: [item(1, 3)] },
+    ],
+    sync: { ok: true, finished_at: MINUTES_AGO(1) },
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await ui.find({ type: 'Button', key: 'inbox-rule-repos' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Nothing else in: To review, Reviews: repos I follow (all above)' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Inbox · 1 new' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('discuss in chat puts /mrs in the prompt box, or copies it where the app draws its own', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { sections: sections(), sync: { ok: true, finished_at: MINUTES_AGO(1) } })
+  const filled: string[] = []
+  const copied: string[] = []
+  const toasts: string[] = []
+  let canFill = true
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: canFill, box: { text: canFill ? e.text : '', cursor: 0 } }
+  })
+  on('ui.copy', (_, e) => {
+    copied.push(e.text)
+    return { value: { isCopied: true } }
+  })
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'inbox-rule-people' })
+  await ui.press({ key: 'inbox-discuss-people' })
+  expect(filled).toEqual(['/mrs --rule people'])
+  expect(copied).toEqual([])
+
+  canFill = false
+  await ui.press({ key: 'inbox-discuss-people' })
+  expect(copied).toEqual(['/mrs --rule people'])
+  expect(toasts).toEqual(['Copied /mrs --rule people: paste it in the prompt'])
   await ui.unmount()
 })
 
@@ -196,7 +253,7 @@ test('a full inbox, every rule open, beside fifty busy MRs stays inside the 100,
   const wide = (iid: number) => ({
     ...item(iid, 9),
     ref: `some-group/another-group/repo-${'x'.repeat(20)}!${iid}`,
-    title: `feat(XY-${iid}): ${'a very long title that keeps going '.repeat(4)}`,
+    title: `feat(ABC-${iid}): ${'a very long title that keeps going '.repeat(4)}`,
     activity: Array.from({ length: 3 }, (_, k) => ({ kind: 'changes_requested', actor: `reviewer.${'y'.repeat(20)}${k}`, at: MINUTES_AGO(30), url: null, excerpt: 'x'.repeat(160) })),
   })
   const inboxSections = rules.map((rule, r) => ({
@@ -243,7 +300,7 @@ test('a full inbox, every rule open, beside fifty busy MRs stays inside the 100,
   expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeDefined()
   // The inbox's rows count against the same budget: MRs past it are left out and counted, and so are inbox rows.
   expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
-  expect(await ui.find({ type: 'Text', text: /^\+\d+ more · \/mrs --rule/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/ })).toBeDefined()
   await ui.unmount()
 })
 

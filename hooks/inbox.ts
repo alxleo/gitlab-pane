@@ -67,6 +67,11 @@ export function readInboxJson(stdout: string): Pick<InboxState, 'sections' | 'sy
         state: text(item.state),
         isDraft: item.draft === true,
         unseen: typeof item.unseen === 'number' ? item.unseen : 0,
+        counts: Object.fromEntries(
+          Object.entries((item.counts as Record<string, unknown> | undefined) ?? {}).filter(
+            (entry): entry is [string, number] => typeof entry[1] === 'number'
+          )
+        ),
         activity: ((item.activity as Record<string, unknown>[] | undefined) ?? []).slice(0, ACTIVITY_KEPT).map(
           (one): InboxActivity => ({
             kind: text(one.kind),
@@ -134,6 +139,17 @@ export function toggleRule($: EngineInterface, rule: string): void {
   update($, inboxOpenAtom, list => (list.includes(rule) ? list.filter(one => one !== rule) : [...list, rule])).catch(
     () => undefined
   )
+}
+
+/** Puts `/mrs --rule <rule>` in the prompt box for Alex to send; where a surface draws its own box, copies it. */
+export async function discussRule($: EngineInterface, rule: string): Promise<void> {
+  const command = `/mrs --rule ${rule}`
+  const filled = await $.prompt.fill({ text: command, mode: 'insert' }).catch(() => ({ isFilled: false }))
+  if (filled.isFilled) {
+    return
+  }
+  const copied = await $.ui.copy({ text: command }).catch(() => ({ isCopied: false }))
+  $.ui.toast(copied.isCopied ? `Copied ${command}: paste it in the prompt` : `Type ${command} in the prompt to discuss these`)
 }
 
 /** Marks one MR, or everything a rule shows, as looked at; the inbox is read again after. */

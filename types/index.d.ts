@@ -135,6 +135,8 @@ export type InboxItem = {
   isDraft: boolean
   /** Human activity since the MR was last marked seen. */
   unseen: number
+  /** The rule's matching activity by kind, such as `{ approved: 2, comment: 3 }`. */
+  counts: Record<string, number>
   activity: InboxActivity[]
 }
 
