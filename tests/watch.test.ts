@@ -162,6 +162,21 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   await ui.unmount()
 })
 
+test('each MR is a card bordered by how much it needs you, its worst blocker in words', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { mrs: [rawMr(12, { headPipeline: pipe('FAILED') }), rawMr(13, { headPipeline: pipe('SUCCESS') })], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle === 'round')
+  expect(cards.map(card => card.props?.borderColor)).toEqual(['error', 'warning'])
+  // The marker shows in words; its hover card still lists every marker.
+  expect(await ui.find({ type: 'Text', text: '👤 needs 1 approval' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '👤 0/1' })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('bots holding the merge are one marker whose card names them, their words left out', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const bot = thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)

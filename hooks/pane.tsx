@@ -13,6 +13,7 @@ import {
   pipelineTime,
   plural,
   ranFor,
+  rank,
   rowBadges,
   shortTitle,
   stageTone,
@@ -66,6 +67,9 @@ const jobMark = (job: Job): { glyph: string; tone: Tone } =>
 const JOBS_SHOWN = 6
 const MINE_SHOWN = 10
 
+/** An MR card's border by `rank`: needs you, moving, waiting on others, ready. */
+const URGENCY: Tone[] = ['error', 'suggestion', 'warning', 'success']
+
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
 const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
 
@@ -113,23 +117,15 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
 
   // The desktop paints no background on a floating Box, so a card opens in the flow under its line instead.
-  const cardWidth = Math.max(24, Math.min(56, (e.props.bodyColumns ?? 56) - 6))
   // A scope groups a trigger with its card, so neither needs a key; keys would only spend the character budget.
   const trigger = (scope: string, child: RenderChildren) => (
     <Box flexDirection="row" alignItems="center" flexShrink={0} hover={{ scope }}>
       {child}
     </Box>
   )
+  // Inside an MR's bordered card a second border would nest, so a reveal is set off by its indent alone.
   const reveal = (scope: string, card: RenderChildren) => (
-    <Box
-      display="none"
-      hover={{ scope, display: 'flex' }}
-      flexDirection="column"
-      width={cardWidth}
-      marginLeft={4}
-      paddingX={1}
-      borderStyle="round"
-    >
+    <Box display="none" hover={{ scope, display: 'flex' }} flexDirection="column" paddingLeft={2} paddingY={1}>
       {card}
     </Box>
   )
@@ -308,25 +304,30 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const blocks = scope('b')
     const list = rowBadges(mr)
     // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
-    // a Link's text and a Button's label, never styled Text inside them.
+    // a Link's text and a Button's label, never styled Text inside them. The title leads, so titles line up.
     const line1 = (
       <Box flexDirection="row" gap={1}>
         <Button key={scope('open')} plain label={isOpen ? '▾' : '▸'} onPress={() => toggle($, mr.key)} />
-        <Box flexDirection="row" gap={1} flexGrow={1} flexShrink={1} hover={{ scope: about }}>
-          {/* A Link takes no flex props, so its box keeps the links whole and the title alone gives way. */}
-          <Box flexDirection="row" gap={1} flexShrink={0}>
-            <Text color={mark.tone} bold>
-              {mark.glyph}
-            </Text>
-            <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
-            {ticket && (ticketLink ? <Link href={ticketLink}>{`${LINK.jira} ${ticket}`}</Link> : <Text dimColor>{ticket}</Text>)}
-            {!repoFilter && mr.project !== homeRepo && <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>}
-          </Box>
-          <Text wrap="truncate-end">{shortTitle(mr.title)}</Text>
+        <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
+          <Text weight="semibold" wrap="truncate-end">
+            {shortTitle(mr.title)}
+          </Text>
         </Box>
-        <Text dimColor>{ago(mr.updatedAt, now)}</Text>
+        <Text dimColor size="footnote">
+          {ago(mr.updatedAt, now)}
+        </Text>
       </Box>
     )
+    // A Link takes no flex props, so this box keeps the links whole when the line wraps.
+    const links = (
+      <Box flexDirection="row" gap={1} flexShrink={0}>
+        <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
+        {ticket && (ticketLink ? <Link href={ticketLink}>{`${LINK.jira} ${ticket}`}</Link> : <Text dimColor>{ticket}</Text>)}
+        {!repoFilter && mr.project !== homeRepo && <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>}
+      </Box>
+    )
+    // What blocks the merge, worst first, in words; the hover lists every marker.
+    const blocker = list[0]
     const under1 = [
       reveal(about, [
         <Text bold>{shortTitle(mr.title)}</Text>,
@@ -352,18 +353,17 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const pictures = mr.people.some(person => person.avatarUrl && avatars[person.avatarUrl])
     // Drawn with and without pictures, so the room the cards leave decides which; each costs about 1,300 characters.
     const line2 = (withPictures: boolean) => (
-      <Box flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={4}>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+        {links}
         {pipeline && pipeline.stages.length > 0 && strip(pipeline.stages)}
         {pipeline ? (
           <Link href={pipeline.url}>{`${LINK.pipeline} ${pipelineTime(mr, now, usual[mr.project])}`}</Link>
         ) : (
           <Text dimColor>no pipeline</Text>
         )}
-        {list.length > 0 && (
-          <Box flexDirection="row" columnGap={2} flexShrink={0} hover={{ scope: blocks }}>
-            {list.map(badge => (
-              <Text color={badge.tone}>{`${badge.glyph}${badge.count ? ` ${badge.count}` : ''}`}</Text>
-            ))}
+        {blocker && (
+          <Box flexShrink={0} hover={{ scope: blocks }}>
+            <Text color={blocker.tone}>{`${blocker.glyph} ${blocker.words}${list.length > 1 ? ` +${list.length - 1}` : ''}`}</Text>
           </Box>
         )}
         {mr.people.map(person =>
@@ -380,7 +380,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Box>
     )
     const detail = focus ? (
-      <Box flexDirection="column" gap={1} paddingLeft={4} paddingTop={1}>
+      <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
         <Text bold>{`${focus.name} · ${REVIEW_STATE[focus.state] ?? focus.state} · ${plural(focus.notes.length, 'comment')}`}</Text>
         {focus.notes.map(note => (
           <Box key={`pn-${note.url}`} flexDirection="column">
@@ -390,7 +390,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ))}
       </Box>
     ) : (
-      <Box flexDirection="column" gap={1} paddingLeft={4} paddingTop={1}>
+      <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
         <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
           {pipeline && <Link href={pipeline.url}>{`${LINK.pipeline} pipeline ${pipeline.id}`}</Link>}
           {pipeline?.failed.map(job => <Link href={job.url}>{`✗ ${job.name}`}</Link>)}
@@ -443,7 +443,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
     const hasCards = withCards.has(part.key)
     return (
-      <Box key={shortHash(part.key)} flexDirection="column">
+      <Box key={shortHash(part.key)} flexDirection="column" borderStyle="round" borderColor={URGENCY[rank(mr)]} paddingX={1}>
         {part.line1}
         {hasCards && part.under1}
         {withFaces.has(part.key) ? part.faces : part.line2}
