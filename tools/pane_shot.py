@@ -13,7 +13,8 @@
 
 The pane is found by reading its title off the window (macOS text recognition), and found
 again before every scroll, so a pane that moved or a session that changed is never scrolled
-or cropped by mistake. Scrolling goes through Hammerspoon, which holds the Accessibility
+or cropped by mistake. Every session's pane sits in the same place, so the result names the
+session the window showed: each session runs the mod as of its own last reload. Scrolling goes through Hammerspoon, which holds the Accessibility
 grant: the pointer is moved over the pane for the scroll, since macOS gives a wheel to what
 is under the pointer, and put back before the capture. A scroll that leaves the pane as it
 was is reported, not passed off as the page asked for.
@@ -61,12 +62,15 @@ class Found(BaseModel):
     window: Window
     pane: Rect
     title_at: Rect
+    #: The session the window shows, as its header reads: every session's pane sits in the same place.
+    session: str
 
 
 class Shot(BaseModel):
     path: str
     pane: Rect
     window_id: int
+    session: str
 
 
 class PaneShotError(Exception):
@@ -123,11 +127,10 @@ def find_pane(owner: str, title: str, scratch: Path) -> Found:
     grab(window, shot)
     image = load(shot)
     scale = Quartz.CGImageGetWidth(image) / window.bounds.w
+    lines = recognise(image)
     # A docked pane's header sits in the window's top band on its right; the same word in a transcript never does.
     hits = [
-        line
-        for line in recognise(image)
-        if line[0].strip() == title and line[1] / scale > window.bounds.w * 0.35 and line[2] / scale < 80
+        line for line in lines if line[0].strip() == title and line[1] / scale > window.bounds.w * 0.35 and line[2] / scale < 80
     ]
     if not hits:
         raise PaneShotError(f"no pane titled {title!r} is showing in the {owner!r} window")
@@ -135,7 +138,10 @@ def find_pane(owner: str, title: str, scratch: Path) -> Found:
     left, top = x / scale - 14, y / scale - 12
     pane = Rect(x=window.bounds.x + left, y=window.bounds.y + top, w=window.bounds.w - left - 4, h=window.bounds.h - top - 4)
     title_at = Rect(x=window.bounds.x + x / scale, y=window.bounds.y + y / scale, w=w / scale, h=h / scale)
-    return Found(window=window, pane=pane, title_at=title_at)
+    # The session's name is the longest line in the window's top band, left of the pane.
+    header = [line[0].strip() for line in lines if line[2] / scale < 35 and line[1] / scale < left]
+    session = max(header, key=len, default="")
+    return Found(window=window, pane=pane, title_at=title_at, session=session)
 
 
 def crop(window: Window, pane: Rect, out: Path, scratch: Path) -> None:
@@ -193,6 +199,8 @@ def guarded_scroll(owner: str, title: str, expected: Found, pixels: int, scratch
     again = find_pane(owner, title, scratch)
     if abs(again.title_at.x - expected.title_at.x) > 4 or abs(again.title_at.y - expected.title_at.y) > 4:
         raise PaneShotError("the pane moved or the window changed; not scrolling")
+    if again.session != expected.session:
+        raise PaneShotError(f"the window now shows another session ({again.session!r}, was {expected.session!r}); not scrolling")
     scroll(again.pane, pixels)
     return again
 
@@ -233,7 +241,7 @@ def capture(
                 typer.echo(f"pane-shot: the pane did not move: it was at its {to} already, or the scroll missed it", err=True)
         except PaneShotError as exc:
             raise fail(exc) from exc
-    typer.echo(Shot(path=str(out), pane=found.pane, window_id=found.window.id).model_dump_json())
+    typer.echo(Shot(path=str(out), pane=found.pane, window_id=found.window.id, session=found.session).model_dump_json())
 
 
 @app.command()
@@ -265,7 +273,7 @@ def tour(
             raise fail(exc) from exc
     if len(shots) == 1:
         typer.echo("pane-shot: one page only: the pane fits on one screen, or the scroll missed it", err=True)
-    typer.echo(json.dumps({"pages": shots}))
+    typer.echo(json.dumps({"session": found.session, "pages": shots}))
 
 
 if __name__ == "__main__":
