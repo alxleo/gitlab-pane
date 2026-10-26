@@ -259,7 +259,7 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
 
 test('opened cards read whole on a Reading tab, which goes once the last card closes', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const description = `## What\n\n${'This change does a careful thing. '.repeat(40)}\n\nThe end of the description.`
+  const description = `## What\n\n${'This change does a careful thing. '.repeat(40)}\n\n- [x] Checked on main\n- [ ] Retest on staging\n\nThe end of the description.`
   const words = `${'Please reconsider this line. '.repeat(70)}The end of the thread.`
   const failing = pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', Array.from({ length: 9 }, (_, j) => job(`suite-${j}`, 'FAILED')))] } })
   const asked = thread(words, 'reviewer')
@@ -283,6 +283,8 @@ test('opened cards read whole on a Reading tab, which goes once the last card cl
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
   const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
   expect(text).toContain('The end of the description.')
+  // The desktop app strikes a ticked task through, which reads as dropped, so ticks are marks instead.
+  expect(text).toContain('- ✓ Checked on main\n- ☐ Retest on staging')
   expect(text).toContain('The end of the thread.')
   expect(text).toContain('Kept it; the comment above says why.')
   const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name ?? ''))

@@ -263,11 +263,16 @@ export function markdownText(text: string): string {
   return text.replace(/([\\`*_[\]()#<>!|~])/g, '\\$1')
 }
 
-/** A description as Markdown worth drawing: template comments and images left out, cut at `room`. */
+/**
+ * A description as Markdown worth drawing: template comments and images left out, cut at `room`. Task boxes become
+ * ✓ and ☐, since the desktop app strikes a ticked task through and it reads as dropped.
+ */
 export function bodyOf(text: string, room = 1_200): string {
   const clean = text
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/^(\s*[-*+]) \[[xX]\] /gm, '$1 ✓ ')
+    .replace(/^(\s*[-*+]) \[ \] /gm, '$1 ☐ ')
     .trim()
   return clean.length > room ? `${clean.slice(0, room - 1)}…` : clean
 }
