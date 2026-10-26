@@ -381,7 +381,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     ]
     const pictures = mr.people.some(person => person.avatarUrl && avatars[person.avatarUrl])
     // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
-    const firstNames = mr.people.map(person => person.name.split(/\s+/)[0] || person.initials)
+    // Some GitLab names are written like handles ("Mel.Northcote"), so a dot or underscore ends a first name too.
+    const firstNames = mr.people.map(person => person.name.split(/[\s._]+/)[0] || person.initials)
     const callName = (person: Person, i: number) => {
       const first = firstNames[i] ?? person.initials
       return !Svg || firstNames.filter(name => name === first).length > 1 ? person.initials : first

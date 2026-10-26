@@ -204,7 +204,8 @@ test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label cou
 test('someone without a picture is their initials on a disc, beside their first name', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const ines = { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }
-  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: [ines] } })], isDown: false })
+  const mel = { ...reviewer('mel.northcote', 'UNREVIEWED'), name: 'Mel.Northcote', avatarUrl: null }
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: [ines, mel] } })], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -212,7 +213,10 @@ test('someone without a picture is their initials on a disc, beside their first 
   const disc = elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === 'Ines Mendel')
   expect(String(disc?.props?.source)).toContain('>IM</text>')
   expect(String(disc?.props?.source)).toContain(`stroke='${STAGE_COLOURS.success}'`)
-  expect((await ui.findAll({ type: 'Button' })).some(button => button.props.label === 'Ines')).toBe(true)
+  const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
+  expect(labels).toContain('Ines')
+  // A name written like a handle still gives a first name.
+  expect(labels).toContain('Mel')
   await ui.unmount()
 })
 
