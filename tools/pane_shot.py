@@ -26,6 +26,7 @@ folder that is deleted when it exits.
 
 from __future__ import annotations
 
+import difflib
 import json
 import subprocess
 import tempfile
@@ -128,10 +129,12 @@ def find_pane(owner: str, title: str, scratch: Path) -> Found:
     image = load(shot)
     scale = Quartz.CGImageGetWidth(image) / window.bounds.w
     lines = recognise(image)
-    # A docked pane's header sits in the window's top band on its right; the same word in a transcript never does.
-    hits = [
-        line for line in lines if line[0].strip() == title and line[1] / scale > window.bounds.w * 0.35 and line[2] / scale < 80
-    ]
+    # A docked pane's header sits in the window's top band on its right; the same word in a transcript never does. The
+    # header may go on past the title ("GitLab • Mine" names the open tab).
+    def is_title(text: str) -> bool:
+        return text.strip() == title or text.strip().startswith(f"{title} ")
+
+    hits = [line for line in lines if is_title(line[0]) and line[1] / scale > window.bounds.w * 0.35 and line[2] / scale < 80]
     if not hits:
         raise PaneShotError(f"no pane titled {title!r} is showing in the {owner!r} window")
     _, x, y, w, h = min(hits, key=lambda line: line[2])
@@ -199,7 +202,8 @@ def guarded_scroll(owner: str, title: str, expected: Found, pixels: int, scratch
     again = find_pane(owner, title, scratch)
     if abs(again.title_at.x - expected.title_at.x) > 4 or abs(again.title_at.y - expected.title_at.y) > 4:
         raise PaneShotError("the pane moved or the window changed; not scrolling")
-    if again.session != expected.session:
+    # Read twice, a header can differ by a glyph (its ▾ came back as "V", then "v"), so near enough is the same session.
+    if difflib.SequenceMatcher(None, again.session.lower(), expected.session.lower()).ratio() < 0.9:
         raise PaneShotError(f"the window now shows another session ({again.session!r}, was {expected.session!r}); not scrolling")
     scroll(again.pane, pixels)
     return again
