@@ -53,28 +53,17 @@ export async function view($: EngineInterface) {
   return { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now }
 }
 
-/** Shows the MR list (`mine`) or the inbox; only the open tab is drawn. */
-export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
+/** Shows the MR list (`mine`), the inbox, or the opened MRs whole (`reading`); only the open tab is drawn. */
+export function openTab($: EngineInterface, tab: 'mine' | 'inbox' | 'reading') {
   quietly(update($, tabAtom, () => tab))
 }
 
-/** The reading pane's id; register.tsx names it again, since the engine reads a hook's matcher from that file alone. */
-export const READING_PANE = 'gitlab-ci-mr'
-
-/** What the reading pane's last open or close came to, so /gitlab can say why it is not on screen. */
-export const readingHealth = { last: 'not opened since load' }
-
-/** Opens the reading pane on the rows opened in the list, titled for them, or closes it once none is. */
-async function syncReading($: EngineInterface) {
+/** Once no MR is open the Reading tab has nothing to show, so the list comes back. */
+async function leaveEmptyReading($: EngineInterface) {
   const [expanded, rows] = await Promise.all([read($, expandedAtom), read($, rowsAtom)])
-  const open = rows.filter(row => expanded.includes(row.key))
-  if (open.length === 0) {
-    await $.ui.close({ id: READING_PANE })
-    readingHealth.last = 'closed'
-    return
+  if (!rows.some(row => expanded.includes(row.key))) {
+    await update($, tabAtom, tab => (tab === 'reading' ? 'mine' : tab))
   }
-  const opened = await $.ui.open({ id: READING_PANE, title: open.length === 1 ? `!${open[0]?.iid}` : `${open.length} MRs` })
-  readingHealth.last = opened.isPlaced ? `opened, placed, for ${open.length}` : `opened, not placed: ${opened.reason}`
 }
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
@@ -83,16 +72,16 @@ export function toggle($: EngineInterface, key: string) {
     Promise.all([
       update($, expandedAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])),
       update($, personAtom, ({ [key]: _, ...rest }) => rest),
-    ]).then(() => syncReading($))
+    ]).then(() => leaveEmptyReading($))
   )
 }
 
-/** Closes every opened row, and with them the reading pane; also what the person closing that pane does. */
+/** Closes every opened row, and the Reading tab with them. */
 export async function closeReading($: EngineInterface) {
   const rows = await read($, rowsAtom)
   await update($, expandedAtom, list => list.filter(key => !rows.some(row => row.key === key)))
   await update($, personAtom, () => ({}))
-  await syncReading($)
+  await leaveEmptyReading($)
 }
 
 /** Opens a row on one person's comments alone; asked again for the same person, closes it. */
@@ -101,12 +90,11 @@ export async function showPerson($: EngineInterface, key: string, username: stri
   if (expanded.includes(key) && people[key] === username) {
     await update($, expandedAtom, list => list.filter(one => one !== key))
     await update($, personAtom, ({ [key]: _, ...rest }) => rest)
-    await syncReading($)
+    await leaveEmptyReading($)
     return
   }
   await update($, personAtom, previous => ({ ...previous, [key]: username }))
   await update($, expandedAtom, list => (list.includes(key) ? list : [...list, key]))
-  await syncReading($)
 }
 
 /** Narrows the list to one repo; the same repo again, or none, shows them all. */

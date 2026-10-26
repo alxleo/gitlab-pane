@@ -187,7 +187,7 @@ declare module 'claude-code' {
       person: Record<string, string>
       /** A project path the list is narrowed to; empty shows every repo. */
       repoFilter: string
-      /** The pane's open tab: `mine` (the MR list) or `inbox`. */
+      /** The pane's open tab: `mine` (the MR list), `inbox`, or `reading` (the opened MRs whole). */
       tab: string
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>

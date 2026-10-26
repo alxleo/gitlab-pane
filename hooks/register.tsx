@@ -4,14 +4,11 @@ import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
 import { drawPane } from './pane'
-import { closeReading, pin, quietly, readingHealth, refresh, tick } from './read'
-import { drawReading } from './reading'
+import { pin, quietly, refresh, tick } from './read'
 
-// The engine reads a hook's matcher from literals and this file's consts only, so the panes' ids live here.
+// The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here.
 const PANE = 'gitlab-ci'
 const TITLE = 'GitLab'
-/** The reading pane; read.ts opens it under the same id (READING_PANE). */
-const READING = 'gitlab-ci-mr'
 const TOOL = 'mcp__gitlab-ci__watch_mr'
 const TICK_MS = 30_000
 /** mr-inbox shares one sync across sessions, so asking every minute costs GitLab at most one pass a minute. */
@@ -20,7 +17,7 @@ const INBOX_TICK_MS = 60_000
 const INBOX_FIRST_MS = 2_000
 
 /** What the pane last did, so /gitlab can say why it is blank; a reload starts it over. */
-const health = { loadedAt: '', draws: 0, last: 'never asked to draw', readingDraws: 0 }
+const health = { loadedAt: '', draws: 0, last: 'never asked to draw' }
 
 export const register: Register = (on, options) => {
   useJiraSite(options.jiraUrl)
@@ -63,12 +60,10 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await $.ui.open({ id: PANE, title: TITLE })
     quietly(refresh($))
-    const reading = (await $.ui.panes()).find(pane => pane.id === READING)
     return {
       text: [
         opened.isPlaced ? 'GitLab pane open' : `GitLab pane not placed: ${opened.reason}`,
         `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
-        `reading pane ${readingHealth.last}${reading ? (reading.isShown ? ', shown' : ', a tab behind') : ', not among the panes'}, ${health.readingDraws} draws`,
       ].join(' · '),
     }
   })
@@ -114,23 +109,5 @@ export const register: Register = (on, options) => {
       const { Text } = $.ui.resolve(e)
       return <Text color="error">{`The GitLab pane failed to draw: ${message}`}</Text>
     }
-  })
-
-  on('ui.render', { component: 'Pane', requestId: READING }, async ($, e) => {
-    health.readingDraws += 1
-    try {
-      return await drawReading($, e)
-    } catch (error) {
-      const { Text } = $.ui.resolve(e)
-      return <Text color="error">{`The reading pane failed to draw: ${error instanceof Error ? error.message : String(error)}`}</Text>
-    }
-  })
-
-  // Closing the reading pane closes the cards it showed, so the list and the pane never disagree.
-  on('ui.close', { id: READING }, async ($, e, next) => {
-    if (e.origin.kind === 'person') {
-      quietly(closeReading($))
-    }
-    return next(e)
   })
 }

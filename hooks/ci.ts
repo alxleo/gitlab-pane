@@ -99,6 +99,35 @@ export const STAGE_COLOURS: Record<Tone, string> = {
   subtle: '#8c959f',
 }
 
+/** An MR card's border by `rank`: needs you, moving, waiting on others (grey: nothing for you to do), ready. */
+export const URGENCY: Tone[] = ['error', 'suggestion', 'subtle', 'success']
+
+/** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
+export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
+
+/**
+ * The desktop app draws nothing for a tree past 100,000 characters serialized (a 381,164-character one left the pane
+ * blank). The engine adds up to about 6,000 of press handles and hover stamps to what this measures, so the app gets
+ * about 91,000 at most: rows, then open detail, then hover cards, then avatars, in order of what needs Alex.
+ */
+export const DRAWING_BUDGET = 85_000
+
+/** What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos. */
+export const CHROME_SIZE = 6_000
+
+/** A tree's size as the app receives it. */
+export const measure = (tree: unknown): number => {
+  try {
+    return JSON.stringify(tree)?.length ?? 0
+  } catch {
+    return DRAWING_BUDGET
+  }
+}
+
+/** Keeps a hover scope or key short whatever the project path or username. */
+export const shortHash = (text: string): string =>
+  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
+
 export const stageTone = (status: string): Tone =>
   status === 'success'
     ? 'success'

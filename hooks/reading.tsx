@@ -1,22 +1,16 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
-import { STAGE_COLOURS, ago, bodyOf, botName, plural, rank, shortTitle } from './ci'
-import { DRAWING_BUDGET, LINK, URGENCY, measure, shortHash } from './pane'
-import { closeReading, quietly, toggle, view } from './read'
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, STAGE_COLOURS, URGENCY, ago, bodyOf, botName, measure, plural, rank, shortHash, shortTitle } from './ci'
+import { closeReading, quietly, toggle } from './read'
 
 import type { MrCard, Note } from '../types'
 
 /**
- * The reading pane: each MR opened in the list, whole, in a drawing of its own, so the list never spends its room on
- * them. MRs are drawn in the order they were opened; one past the room left says so and links to GitLab.
+ * The Reading tab: each MR opened in the list, whole, in the order it was opened. The tab is drawn alone, so it has the
+ * whole of what the app draws; an MR past the room left says so and links to GitLab.
  */
-export async function drawReading($: EngineInterface, e: RenderInput<'Pane'>) {
+export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, open: MrCard[], now: number) {
   const { Box, Text, Button, Link, Markdown } = $.ui.resolve(e)
-  const { rows, expanded, now } = await view($)
-  const open = expanded.flatMap(key => rows.filter(row => row.key === key))
-  if (open.length === 0) {
-    return <Text dimColor>Open a card in the GitLab pane to read it here.</Text>
-  }
 
   const byline = (note: Note) => (
     <Box flexDirection="row" gap={1}>
@@ -93,38 +87,24 @@ export async function drawReading($: EngineInterface, e: RenderInput<'Pane'>) {
     ]
   }
 
-  let room = DRAWING_BUDGET
+  let room = DRAWING_BUDGET - CHROME_SIZE
   const drawn = open.map(mr => {
-    const head = (
-      <Box flexDirection="row" gap={1}>
-        <Box flexGrow={1} flexShrink={1}>
-          <Text weight="semibold">{shortTitle(mr.title)}</Text>
-        </Box>
-        <Button key={`close-${mr.iid}-${shortHash(mr.project)}`} plain label="✕" onPress={() => toggle($, mr.key)} />
-      </Box>
-    )
     const whole = card(mr)
-    const size = measure(whole)
-    room -= size
-    const body = room >= 0 ? whole : [<Link href={mr.url}>{`Too long to draw here with the others; read !${mr.iid} on GitLab`}</Link>]
+    room -= measure(whole)
     return (
-      <Box
-        key={mr.key}
-        flexDirection="column"
-        gap={1}
-        borderStyle="round"
-        borderColor={STAGE_COLOURS[URGENCY[rank(mr)] ?? 'subtle']}
-        paddingX={1}
-      >
-        {head}
-        {body}
+      <Box key={shortHash(mr.key)} flexDirection="column" gap={1} borderStyle="round" borderColor={STAGE_COLOURS[URGENCY[rank(mr)] ?? 'subtle']} paddingX={1}>
+        <Box flexDirection="row" gap={1}>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text weight="semibold">{shortTitle(mr.title)}</Text>
+          </Box>
+          <Button key={`close-${mr.iid}-${shortHash(mr.project)}`} plain label="✕" onPress={() => toggle($, mr.key)} />
+        </Box>
+        {room >= 0 ? whole : <Link href={mr.url}>{`Too long to draw here with the others; read !${mr.iid} on GitLab`}</Link>}
       </Box>
     )
   })
-  return (
-    <Box flexDirection="column" gap={1}>
-      {drawn}
-      {open.length > 1 && <Button key="close-all" plain label="✕ close all" onPress={() => quietly(closeReading($))} />}
-    </Box>
-  )
+  return [
+    ...drawn,
+    ...(open.length > 1 ? [<Button key="close-all" plain label="✕ close all" onPress={() => quietly(closeReading($))} />] : []),
+  ]
 }

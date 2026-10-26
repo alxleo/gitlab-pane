@@ -1,7 +1,11 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import {
+  CHROME_SIZE,
+  DRAWING_BUDGET,
+  LINK,
   STAGE_COLOURS,
+  URGENCY,
   ago,
   bodyOf,
   botName,
@@ -9,6 +13,7 @@ import {
   duration,
   excerpt,
   lead,
+  measure,
   personTone,
   pinKey,
   pipelineTime,
@@ -16,6 +21,7 @@ import {
   ranFor,
   rank,
   rowBadges,
+  shortHash,
   shortTitle,
   stageTone,
   statusMark,
@@ -26,15 +32,12 @@ import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
 import { filterRepo, openTab, quietly, refresh, showPerson, toggle, toggleWake, view } from './read'
+import { drawReading } from './reading'
 
 import type { Badge, Tone } from './ci'
 import type { Job, MrCard, Note, Person, Stage } from '../types'
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
-
-/** Keeps a hover scope inside its 64 characters whatever the project path or username. */
-export const shortHash = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
 const REVIEW_STATE: Record<string, string> = {
   approved: 'approved',
@@ -76,36 +79,11 @@ const jobMark = (job: Job): { glyph: string; tone: Tone } =>
 const JOBS_SHOWN = 6
 const MINE_SHOWN = 10
 
-/** An MR card's border by `rank`: needs you, moving, waiting on others (grey: nothing for you to do), ready. */
-export const URGENCY: Tone[] = ['error', 'suggestion', 'subtle', 'success']
-
-/** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
-export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
-
 const xml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&apos;')
 
-/**
- * The desktop app draws nothing for a tree past 100,000 characters serialized (a 381,164-character one left the pane
- * blank). The engine adds up to about 6,000 of press handles and hover stamps to what this measures, so the app gets
- * about 91,000 at most: rows, then open detail, then hover cards, then avatars, in order of what needs Alex.
- */
-export const DRAWING_BUDGET = 85_000
-
-/** What the repo filter, headings and footer take, with room to spare for a long list of repos. */
-const CHROME_SIZE = 6_000
-
 /** An open thread's words in its card; its 💬 link opens it whole. */
 const THREAD_ROOM = 500
-
-/** A tree's size as the app receives it. */
-export const measure = (tree: unknown): number => {
-  try {
-    return JSON.stringify(tree)?.length ?? 0
-  } catch {
-    return DRAWING_BUDGET
-  }
-}
 
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; read.ts holds the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
@@ -114,8 +92,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
   const { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now } = await view($)
-  // Only the open tab is drawn, so the MR list and the inbox each have the whole of what the app draws.
+  // Only the open tab is drawn, so the MR list, the inbox and the opened MRs each have the whole of what the app draws.
   const isInbox = tab === 'inbox'
+  const reading = expanded.flatMap(key => rows.filter(row => row.key === key))
+  const isReading = tab === 'reading' && reading.length > 0
   const pinnedKeys = new Set(pinned.map(pinKey))
   const repos = [...rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())]
     .sort((a, b) => b[1] - a[1])
@@ -348,7 +328,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
     // a Link's text and a Button's label, never styled Text inside them. The title opens the card, so it is a plain
     // Button with a disclosure arrow, not a link-blue title that reads as leaving for GitLab (🔀 !iid does that).
-    const less = <Button key={scope('less')} plain label="▴ less" onPress={() => toggle($, mr.key)} />
+    // An open card ends on closing it, or on reading it whole on the Reading tab, which has a drawing of its own.
+    const foot = (
+      <Box flexDirection="row" gap={2}>
+        <Button key={scope('less')} plain label="▴ less" onPress={() => toggle($, mr.key)} />
+        <Button key={scope('read')} plain label="read whole ›" onPress={() => openTab($, 'reading')} />
+      </Box>
+    )
     const line1 = (
       <Box flexDirection="row" gap={1}>
         <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
@@ -442,7 +428,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Markdown text={bodyOf(note.body, 1_500)} />
           </Box>
         ))}
-        {less}
+        {foot}
       </Box>
     ) : (
       <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
@@ -466,7 +452,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           </Box>
         ))}
         {mr.people.length > 0 && <Text dimColor>Click a name to read only their comments.</Text>}
-        {less}
+        {foot}
       </Box>
     )
     return {
@@ -483,7 +469,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // Rows come in order of what needs Alex. Rows he opened take the room first, with their detail; then the other rows
   // in that order, then hover cards, then avatars. Rows that do not fit at all are left out and counted.
-  const built = isInbox ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
+  const built = isInbox || isReading ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
   let room = DRAWING_BUDGET - CHROME_SIZE
   /** Takes the room `tree` needs past what `instead` already took. */
   const fits = (tree: unknown, instead?: unknown) => {
@@ -566,15 +552,28 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="row" columnGap={1}>
-        <Button key="tab-mine" label={`Mine · ${openCount}`} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
+        <Button
+          key="tab-mine"
+          label={`Mine · ${openCount}`}
+          variant={isInbox || isReading ? 'secondary' : 'primary'}
+          onPress={() => openTab($, 'mine')}
+        />
         <Button
           key="tab-inbox"
           label={news > 0 ? `Inbox · ${news} new` : 'Inbox'}
           variant={isInbox ? 'primary' : 'secondary'}
           onPress={() => openTab($, 'inbox')}
         />
+        {reading.length > 0 && (
+          <Button
+            key="tab-reading"
+            label={`Reading · ${reading.length}`}
+            variant={isReading ? 'primary' : 'secondary'}
+            onPress={() => openTab($, 'reading')}
+          />
+        )}
       </Box>
-      {isInbox ? await drawInbox($, e) : mineTab}
+      {isInbox ? await drawInbox($, e) : isReading ? drawReading($, e, reading, now) : mineTab}
       <Box flexDirection="row" gap={2}>
         <Text color={poll.error !== null ? 'warning' : undefined} dimColor={poll.error === null} size="footnote">
           {status}
