@@ -4,7 +4,7 @@ import { MR_URLS, byAttention, describe } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
 import { drawPane } from './pane'
-import { closeReading, openRows, pin, quietly, refresh, tick } from './read'
+import { closeReading, openRows, pin, quietly, readingHealth, refresh, tick } from './read'
 import { drawReading } from './reading'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the panes' ids live here.
@@ -20,7 +20,7 @@ const INBOX_TICK_MS = 60_000
 const INBOX_FIRST_MS = 2_000
 
 /** What the pane last did, so /gitlab can say why it is blank; a reload starts it over. */
-const health = { loadedAt: '', draws: 0, last: 'never asked to draw', open: 'not opened since load' }
+const health = { loadedAt: '', draws: 0, last: 'never asked to draw', open: 'not opened since load', readingDraws: 0 }
 
 export const register: Register = (on, options) => {
   useJiraSite(options.jiraUrl)
@@ -63,10 +63,11 @@ export const register: Register = (on, options) => {
     const opened = await $.ui.open({ id: PANE, title: TITLE })
     health.open = opened.isPlaced ? 'a surface draws it' : 'no surface draws it'
     quietly(refresh($))
-    const [rows, now] = await Promise.all([openRows($), $.clock.now()])
+    const [rows, now, panes] = await Promise.all([openRows($), $.clock.now(), $.ui.panes()])
     const pane = `pane: ${health.open}; drawn ${health.draws} times, last ${health.last}; mod loaded ${health.loadedAt} UTC`
+    const reading = `reading pane: ${readingHealth.last}; drawn ${health.readingDraws} times; panes: ${JSON.stringify(panes)}`
     return {
-      text: [pane, ...(rows.length > 0 ? [...rows].sort(byAttention).map(row => describe(row, now)) : ['No open merge request yet; reading GitLab.'])].join('\n'),
+      text: [pane, reading, ...(rows.length > 0 ? [...rows].sort(byAttention).map(row => describe(row, now)) : ['No open merge request yet; reading GitLab.'])].join('\n'),
     }
   })
 
@@ -114,6 +115,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: READING }, async ($, e) => {
+    health.readingDraws += 1
     try {
       return await drawReading($, e)
     } catch (error) {

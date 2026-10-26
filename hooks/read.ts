@@ -61,15 +61,20 @@ export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
 /** The reading pane's id; register.tsx names it again, since the engine reads a hook's matcher from that file alone. */
 export const READING_PANE = 'gitlab-ci-mr'
 
+/** What the reading pane's last open or close came to, so /gitlab can say why it is not on screen. */
+export const readingHealth = { last: 'not opened since load' }
+
 /** Opens the reading pane on the rows opened in the list, titled for them, or closes it once none is. */
 async function syncReading($: EngineInterface) {
   const [expanded, rows] = await Promise.all([read($, expandedAtom), read($, rowsAtom)])
   const open = rows.filter(row => expanded.includes(row.key))
   if (open.length === 0) {
     await $.ui.close({ id: READING_PANE })
+    readingHealth.last = 'closed'
     return
   }
-  await $.ui.open({ id: READING_PANE, title: open.length === 1 ? `!${open[0]?.iid}` : `${open.length} MRs` })
+  const opened = await $.ui.open({ id: READING_PANE, title: open.length === 1 ? `!${open[0]?.iid}` : `${open.length} MRs` })
+  readingHealth.last = opened.isPlaced ? `opened, placed, for ${open.length}` : `opened, not placed: ${opened.reason}`
 }
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
