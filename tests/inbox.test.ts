@@ -125,10 +125,15 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     // The newest event says who did what; the rest wait behind a press on the title.
     expect(await ui.find({ type: 'Text', text: '✓ bob approved' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
-    await ui.press({ key: `inbox-open-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1' } })
+    const opens = { key: `inbox-open-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1' } }
+    await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: '💬 carol commented' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeDefined()
-    await ui.press({ key: `inbox-open-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1' } })
+    // Open, the title is another link under another key, as a second press on one link never closed a card on desktop.
+    await ui.press({ key: `inbox-shut-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1#activity' } })
+    expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
+    await ui.press(opens)
+    await ui.press({ key: `inbox-less-${hashOf('g/p!1')}` })
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
     await ui.press({ key: 'inbox-rule-people' })
     await ui.unmount()

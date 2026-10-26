@@ -1,5 +1,6 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
+import { discSource } from './avatar'
 import { ago, markdownText, shortTitle } from './ci'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
@@ -18,9 +19,6 @@ const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
   merged: { glyph: '◆', tone: 'merged', word: 'merged' },
 }
 
-/** Fills for initials avatars, picked by name so a person keeps one colour in every card. */
-const AVATAR_FILLS = ['#5B8DEF', '#E5734A', '#3FA27B', '#B062D8', '#C9971C', '#E0567A', '#3A9FBF', '#7A8899']
-
 /** What the inbox may take of the pane's drawing; past it, an open rule's rows are counted, not drawn. */
 const INBOX_BUDGET = 20_000
 const ITEMS_SHOWN = 8
@@ -33,18 +31,11 @@ const measure = (tree: unknown): number => {
   }
 }
 
-const hashNumber = (text: string): number =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7)
-const hashOf = (text: string): string => hashNumber(text).toString(36)
+const hashOf = (text: string): string =>
+  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
 /** `Tessa.Ravensworth` is Tessa; a handle with no separator stays whole. */
 const firstName = (username: string): string => username.split(/[._]/)[0] || username
-
-const initialsOf = (username: string): string => {
-  const parts = username.split(/[._\-\s]+/).filter(Boolean)
-  const letters = parts.length > 1 ? `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}` : username.slice(0, 2)
-  return letters.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-}
 
 /** The inbox mr-inbox's rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
@@ -70,12 +61,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const avatar = (username: string) =>
     Svg ? (
       <Box flexShrink={0}>
-        <Svg
-          width={16}
-          height={16}
-          alt={username}
-          source={`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle cx='8' cy='8' r='8' fill='${AVATAR_FILLS[hashNumber(username) % AVATAR_FILLS.length]}'/><text x='8' y='10.6' font-family='-apple-system,Helvetica,sans-serif' font-size='7' font-weight='700' text-anchor='middle' fill='#fff'>${initialsOf(username)}</text></svg>`}
-        />
+        <Svg width={16} height={16} alt={username} source={discSource(username)} />
       </Box>
     ) : null
 
@@ -131,6 +117,11 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     ]
     const canOpen = item.activity.length > 0
     const isOpen = canOpen && cards.includes(item.key)
+    // Seen on desktop: a second press on the link a card opened from never closed it, so the open title is another
+    // link under another key, and "▴ less" closes it whatever the app does with links.
+    const press = isOpen
+      ? { key: `inbox-shut-${hashOf(item.key)}`, href: `${item.url}#activity` }
+      : { key: `inbox-open-${hashOf(item.key)}`, href: item.url }
     return (
       <Box
         key={`ib-${hashOf(item.key)}`}
@@ -144,9 +135,9 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           <Box flexGrow={1} flexShrink={1}>
             {canOpen ? (
               <Markdown
-                key={`inbox-open-${hashOf(item.key)}`}
-                text={`[**${markdownText(shortTitle(item.title))}**](${item.url})`}
-                pressableLinks={[item.url]}
+                key={press.key}
+                text={`[**${markdownText(shortTitle(item.title))}**](${press.href})`}
+                pressableLinks={[press.href]}
                 onLinkPress={() => toggleCard($, item.key)}
               />
             ) : (
@@ -182,6 +173,9 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         {isOpen
           ? item.activity.map(one => event(one, true))
           : item.activity[0] && event(item.activity[0], false)}
+        {isOpen && (
+          <Button key={`inbox-less-${hashOf(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
+        )}
       </Box>
     )
   }
