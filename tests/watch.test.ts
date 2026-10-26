@@ -296,6 +296,19 @@ test('opening a card shows it whole in a reading pane of its own, closed with th
   await ui.unmount()
 })
 
+test('/gitlab opens the pane and answers in one line, never the MR list', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false })
+  on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+
+  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  expect(answer.text?.split('\n').length).toBe(1)
+  expect(answer.text).toContain('GitLab pane open')
+  expect(answer.text).not.toContain('!12')
+})
+
 test('a stage strip draws its passed stages as one run, counted in its title; other stages keep their own', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const names = ['install', 'precheck', 'gate', 'validate', 'build', 'deploy', 'cleanup', 'e2e', 'external']

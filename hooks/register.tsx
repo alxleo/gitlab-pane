@@ -1,10 +1,10 @@
 import type { Register } from 'claude-code'
 
-import { MR_URLS, byAttention, describe } from './ci'
+import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
 import { drawPane } from './pane'
-import { closeReading, openRows, pin, quietly, readingHealth, refresh, tick } from './read'
+import { closeReading, pin, quietly, readingHealth, refresh, tick } from './read'
 import { drawReading } from './reading'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the panes' ids live here.
@@ -20,7 +20,7 @@ const INBOX_TICK_MS = 60_000
 const INBOX_FIRST_MS = 2_000
 
 /** What the pane last did, so /gitlab can say why it is blank; a reload starts it over. */
-const health = { loadedAt: '', draws: 0, last: 'never asked to draw', open: 'not opened since load', readingDraws: 0 }
+const health = { loadedAt: '', draws: 0, last: 'never asked to draw', readingDraws: 0 }
 
 export const register: Register = (on, options) => {
   useJiraSite(options.jiraUrl)
@@ -59,15 +59,17 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'mrs' }, async ($, e) => briefCommand($, e.args))
 
+  // One line: the MRs belong in the pane. It still says enough to explain a pane that is blank or missing.
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await $.ui.open({ id: PANE, title: TITLE })
-    health.open = opened.isPlaced ? 'a surface draws it' : 'no surface draws it'
     quietly(refresh($))
-    const [rows, now, panes] = await Promise.all([openRows($), $.clock.now(), $.ui.panes()])
-    const pane = `pane: ${health.open}; drawn ${health.draws} times, last ${health.last}; mod loaded ${health.loadedAt} UTC`
-    const reading = `reading pane: ${readingHealth.last}; drawn ${health.readingDraws} times; panes: ${JSON.stringify(panes)}`
+    const reading = (await $.ui.panes()).find(pane => pane.id === READING)
     return {
-      text: [pane, reading, ...(rows.length > 0 ? [...rows].sort(byAttention).map(row => describe(row, now)) : ['No open merge request yet; reading GitLab.'])].join('\n'),
+      text: [
+        opened.isPlaced ? 'GitLab pane open' : `GitLab pane not placed: ${opened.reason}`,
+        `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
+        `reading pane ${readingHealth.last}${reading ? (reading.isShown ? ', shown' : ', a tab behind') : ', not among the panes'}, ${health.readingDraws} draws`,
+      ].join(' · '),
     }
   })
 

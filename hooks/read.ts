@@ -118,11 +118,6 @@ export function toggleWake($: EngineInterface) {
   quietly(update($, wakeAtom, value => !value))
 }
 
-/** The open MRs as last read. */
-export async function openRows($: EngineInterface): Promise<MrCard[]> {
-  return read($, rowsAtom)
-}
-
 const TICKETS_EVERY_MS = 15 * 60_000
 const USUAL_EVERY_MS = 30 * 60_000
 
