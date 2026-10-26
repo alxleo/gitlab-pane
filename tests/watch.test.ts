@@ -423,15 +423,16 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeDefined()
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeUndefined()
-    // The whole title is the press that opens a card, and the card opens onto what its lines do not show.
-    const title = (await ui.findAll({ type: 'Markdown' })).find(markdown => /^open-103-\w+$/.test(markdown.key ?? ''))
-    const opens = { key: title?.key ?? '', link: { href: String((title?.props?.pressableLinks as string[] | undefined)?.[0]) } }
+    // The title is a plain button with a disclosure arrow, not a link: it opens the card onto what its lines do not
+    // show, and closes it again.
+    const title = (await ui.findAll({ type: 'Button' })).find(button => /^open-103-\w+$/.test(button.key ?? ''))
+    expect(title?.props.label).toBe('▸ thing 103')
+    const opens = { key: title?.key ?? '' }
     await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
-    // Open, the title is another link under another key, as the desktop app drops a second press on the same one.
-    const shut = (await ui.findAll({ type: 'Markdown' })).find(markdown => /^shut-103-\w+$/.test(markdown.key ?? ''))
-    await ui.press({ key: shut?.key ?? '', link: { href: String((shut?.props?.pressableLinks as string[] | undefined)?.[0]) } })
+    expect((await ui.find({ type: 'Button', key: opens.key }))?.props.label).toBe('▾ thing 103')
+    await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeUndefined()
     // ▴ less at the card's foot closes it as well.
     await ui.press(opens)

@@ -9,7 +9,6 @@ import {
   duration,
   excerpt,
   lead,
-  markdownText,
   personTone,
   pinKey,
   pipelineTime,
@@ -321,21 +320,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const canOpen =
       Boolean(mr.description.trim()) || mr.openThreads.length > 0 || (pipeline?.failed.length ?? 0) > 0 || (pipeline?.amber.length ?? 0) > 0
     // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
-    // a Link's text and a Button's label, never styled Text inside them. A Markdown link keeps the title bold and makes
-    // the whole of it the press that opens the card. The title leads, so titles line up. The desktop app drops a second
-    // press on the same link, so an open card's title is another link under another key, and ▴ less closes it too.
-    const press = isOpen ? { key: scope('shut'), href: `${mr.url}#detail` } : { key: scope('open'), href: mr.url }
+    // a Link's text and a Button's label, never styled Text inside them. The title opens the card, so it is a plain
+    // Button with a disclosure arrow, not a link-blue title that reads as leaving for GitLab (🔀 !iid does that).
     const less = <Button key={scope('less')} plain label="▴ less" onPress={() => toggle($, mr.key)} />
     const line1 = (
       <Box flexDirection="row" gap={1}>
         <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
           {canOpen ? (
-            <Markdown
-              key={press.key}
-              text={`[**${markdownText(shortTitle(mr.title))}**](${press.href})`}
-              pressableLinks={[press.href]}
-              onLinkPress={() => toggle($, mr.key)}
-            />
+            <Button key={scope('open')} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(mr.title)}`} onPress={() => toggle($, mr.key)} />
           ) : (
             <Text weight="semibold" wrap="truncate-end">
               {shortTitle(mr.title)}
