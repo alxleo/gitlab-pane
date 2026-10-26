@@ -27,22 +27,23 @@ const view = (status: string, id = 7, failed: unknown[] = []) => ({ id, status, 
 const marks = (iid: number, over: Parameters<typeof rawMr>[1] = {}) =>
   badges(toCard(rawMr(iid, over))).map(badge => `${badge.glyph}${badge.count}`)
 
-test('a pipeline wakes once for its first hard failure and once for its result, never after a reload', async () => {
-  const first = advance([], view('running', 7, ['test']))
-  expect(first.due).toBe('7:failed-job')
-  expect(advance(first.announced, view('running', 7, ['test'])).due).toBe(null)
-
-  const done = advance(first.announced, view('failed'))
-  expect(done.due).toBe('7:failed')
-  expect(advance(done.announced, view('failed')).due).toBe(null)
+test('a pipeline wakes once for its first hard failure, running or finished, never again after a reload', async () => {
+  const first = advance([], { pipeline: view('running', 7, ['test']), mergeStatus: 'CI_STILL_RUNNING' })
+  expect(first.due).toBe('failed')
+  expect(advance(first.announced, { pipeline: view('running', 7, ['test']), mergeStatus: 'CI_STILL_RUNNING' }).due).toBe(null)
+  expect(advance(first.announced, { pipeline: view('failed', 7, ['test']), mergeStatus: 'CI_MUST_PASS' }).due).toBe(null)
+  // The next pipeline's failure is news again.
+  expect(advance(first.announced, { pipeline: view('failed', 8, ['test']), mergeStatus: 'CI_MUST_PASS' }).due).toBe('failed')
 })
 
-test('manual never wakes; a run a manual job starts may announce its own result', async () => {
-  const blocked = advance([], view('manual'))
-  expect(blocked.due).toBe(null)
+test('a passed pipeline alone never wakes; GitLab newly saying it can merge does, once per pipeline', async () => {
+  const passed = advance([], { pipeline: view('success'), mergeStatus: 'NOT_APPROVED' })
+  expect(passed.due).toBe(null)
+  expect(advance([], { pipeline: view('manual'), mergeStatus: 'CI_MUST_PASS' }).due).toBe(null)
 
-  const pressed = advance(blocked.announced, view('running'))
-  expect(advance(pressed.announced, view('success')).due).toBe('7:success')
+  const approved = advance(passed.announced, { pipeline: view('success'), mergeStatus: 'MERGEABLE' })
+  expect(approved.due).toBe('mergeable')
+  expect(advance(approved.announced, { pipeline: view('success'), mergeStatus: 'MERGEABLE' }).due).toBe(null)
 })
 
 test('MRs sort by what needs Alex: failing, then running, then waiting, then ready', async () => {

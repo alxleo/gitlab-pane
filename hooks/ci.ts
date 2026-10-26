@@ -5,9 +5,6 @@ import type { MrCard, Person, Pinned, Stage, Usual } from '../types'
 /** A pipeline in one of these waits for nothing but a person. */
 const SETTLED = ['success', 'failed', 'canceled', 'skipped', 'manual']
 
-/** The results worth waking the session for; `manual` comes with every push here. */
-const WAKES = ['success', 'failed']
-
 export const isSettled = (status: string): boolean => SETTLED.includes(status)
 
 const MR_URL = /^https:\/\/gitlab\.com\/(.+?)\/-\/merge_requests\/(\d+)/
@@ -25,27 +22,36 @@ export function parseMrUrl(url: string): Pinned | null {
 
 export const pinKey = (pin: Pinned): string => `${pin.project}!${pin.iid}`
 
+/** What a raised MR wakes its session for: a moment it can act on. */
+export type Due = 'failed' | 'mergeable'
+
 /**
- * Once per pipeline: its first hard failure while it runs, then a success or failure it ends on.
- * A pipeline that runs again (a manual job pressed) may announce its next result.
+ * Once per pipeline, the two moments a session can act on: its first hard failure, whether it still runs or has
+ * ended, and GitLab newly saying the MR can merge. A pipeline that passed, or waits on a manual job, says nothing.
  */
 export function advance(
   announced: readonly string[],
-  pipeline: { id: number; status: string; failed: readonly unknown[] }
-): { announced: string[]; due: string | null } {
-  const mine = announced.filter(key => key.startsWith(`${pipeline.id}:`))
-  const failKey = `${pipeline.id}:failed-job`
-  if (!isSettled(pipeline.status)) {
-    const kept = mine.filter(key => key === failKey)
-    return pipeline.failed.length > 0 && kept.length === 0
-      ? { announced: [failKey], due: failKey }
-      : { announced: kept, due: null }
-  }
-  const key = `${pipeline.id}:${pipeline.status}`
-  if (!WAKES.includes(pipeline.status) || mine.includes(key)) {
+  card: { pipeline?: { id: number; status: string; failed: readonly unknown[] }; mergeStatus: string | null }
+): { announced: string[]; due: Due | null } {
+  const id = card.pipeline?.id ?? 0
+  const mine = announced.filter(key => key.startsWith(`${id}:`))
+  const isFailing = card.pipeline !== undefined && (card.pipeline.failed.length > 0 || card.pipeline.status === 'failed')
+  const due = isFailing ? 'failed' : card.mergeStatus === 'MERGEABLE' ? 'mergeable' : null
+  if (due === null || mine.includes(`${id}:${due}`)) {
     return { announced: mine, due: null }
   }
-  return { announced: [...mine, key], due: key }
+  return { announced: [...mine, `${id}:${due}`], due }
+}
+
+/** The one line a wake says: `!1395 can merge: pipeline passed in 17m`; a failure carries the pipeline's link. */
+export function wakeLine(card: MrCard, due: Due, now: number): string {
+  const pipeline = card.pipeline
+  if (due === 'mergeable') {
+    return `!${card.iid} can merge${pipeline?.status === 'success' ? `: pipeline passed in ${pipelineTime(card, now)}` : ''}`
+  }
+  const jobs = pipeline?.failed.map(job => job.name).join(', ') ?? ''
+  const when = pipeline && isSettled(pipeline.status) ? `pipeline failed in ${pipelineTime(card, now)}` : 'a job failed while the pipeline runs'
+  return `!${card.iid} ${when}${jobs ? `: ${jobs}` : ''} · ${pipeline?.url ?? card.url}`
 }
 
 /** 0 needs Alex now, 1 is moving, 2 waits on others, 3 is ready. */

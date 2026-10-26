@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
 
 import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
@@ -99,6 +100,10 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
     return { value: { isPlaced: true } }
   })
   on('ui.close', () => ({ value: undefined }))
+  on('tool.call', { tool: 'Bash' }, () => {
+    const text = `Creating merge request for thing into main in g/p\n\n${PINNED_URL}\n`
+    return { result: { stdout: text, stderr: '', interrupted: false }, text }
+  })
   on('ui.toast', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
@@ -106,7 +111,12 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   return { woken, reads, avatars, jiraReads, opened, titles }
 }
 
-test('only the pinned MR wakes the session, once, with no comment text', async ($, on) => {
+/** Runs `glab mr create` as the session would; the engine fake answers with the new MR's address. */
+const raise = async ($: Engine) => {
+  await $.tool.call({ tool: 'Bash', command: 'glab mr create --fill --yes' })
+}
+
+test('only an MR this session raised wakes it, once, in one short line with no comment text', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = {
     mrs: [rawMr(12, { headPipeline: pipe('RUNNING') }), rawMr(13, { headPipeline: pipe('RUNNING') })],
@@ -115,8 +125,7 @@ test('only the pinned MR wakes the session, once, with no comment text', async (
   const { woken, reads } = engine(on, fake)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  const pinned = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
-  expect(String(pinned.result)).toBe('!12 (ABC-1) ● running 20m so far · needs 1 approval · https://gitlab.com/g/p/-/pipelines/99')
+  await raise($)
 
   const failing = pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } })
   fake.mrs = [
@@ -124,14 +133,46 @@ test('only the pinned MR wakes the session, once, with no comment text', async (
     rawMr(13, { headPipeline: failing }),
   ]
   await clock.advance(60_000)
-  expect(woken).toEqual([
-    'GitLab CI: !12 (ABC-1) ✗ failed 10m · 1 open thread · needs 1 approval · failed: lint · https://gitlab.com/g/p/-/pipelines/99',
-  ])
+  expect(woken).toEqual(['!12 pipeline failed in 10m: lint · https://gitlab.com/g/p/-/pipelines/99'])
 
   await clock.advance(180_000)
   expect(woken).toHaveLength(1)
   // A pinned MR in the authored list costs no query of its own.
   expect(reads.every(query => query.includes('authoredMergeRequests'))).toBe(true)
+})
+
+test('an MR watched with watch_mr is pinned and answered, but never wakes the session', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false }
+  const { woken } = engine(on, fake)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const pinned = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  expect(String(pinned.result)).toBe('!12 (ABC-1) ● running 20m so far · needs 1 approval · https://gitlab.com/g/p/-/pipelines/99')
+  fake.mrs = [rawMr(12, { headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } }) })]
+  await clock.advance(240_000)
+  expect(woken).toEqual([])
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a raised MR wakes when GitLab newly says it can merge, never for a passed pipeline alone', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING'), detailedMergeStatus: 'CI_STILL_RUNNING' })], isDown: false }
+  const { woken } = engine(on, fake)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await raise($)
+  fake.mrs = [rawMr(12, { headPipeline: pipe('SUCCESS'), detailedMergeStatus: 'NOT_APPROVED' })]
+  await clock.advance(180_000)
+  expect(woken).toEqual([])
+
+  fake.mrs = [rawMr(12, { headPipeline: pipe('SUCCESS'), approvalsLeft: 0, detailedMergeStatus: 'MERGEABLE' })]
+  await clock.advance(180_000)
+  expect(woken).toEqual(['!12 can merge: pipeline passed in 10m'])
+  await clock.advance(180_000)
+  expect(woken).toHaveLength(1)
 })
 
 test('an avatar kept by an earlier session is drawn without fetching it again', async ($, on) => {
@@ -466,13 +507,13 @@ test('a pinned MR that merged is read on its own, then unpinned', async ($, on) 
   await ui.unmount()
 })
 
-test('a pinned pipeline left waiting on a manual job never wakes', async ($, on) => {
+test('a raised pipeline left waiting on a manual job never wakes', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false }
   const { woken } = engine(on, fake)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await raise($)
   fake.mrs = [rawMr(12, { headPipeline: pipe('MANUAL') })]
   await clock.advance(240_000)
 

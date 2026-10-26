@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
-import { advance, ago, cardKey, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf } from './ci'
+import { advance, ago, cardKey, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf, wakeLine } from './ci'
 import {
   PINS_PER_QUERY,
   PROJECTS_PER_QUERY,
@@ -332,7 +332,7 @@ async function readOnce($: EngineInterface): Promise<void> {
   }
   const now = await $.clock.now()
   const announced = { ...(await read($, announcedAtom)) }
-  const wakes: string[] = []
+  const news: { text: string; wakes: boolean }[] = []
   const ended = new Set<string>()
   pinned.forEach(one => {
     const row = rows.find(each => each.key === pinKey(one))
@@ -344,15 +344,12 @@ async function readOnce($: EngineInterface): Promise<void> {
       $.ui.toast(`!${row.iid} is closed or merged; unpinned.`)
       return
     }
-    if (!row.pipeline) {
-      return
-    }
     const prior = announced[row.key]
-    const next = advance(prior ?? [], row.pipeline)
+    const next = advance(prior ?? [], row)
     announced[row.key] = next.announced
     // The first sighting only seeds: what it shows was told when it was pinned.
     if (next.due && prior !== undefined) {
-      wakes.push(`GitLab CI: ${describe(row, now)}`)
+      news.push({ text: wakeLine(row, next.due, now), wakes: one.origin !== 'watched' })
     }
   })
   const open = rows.filter(row => row.isOpen)
@@ -380,11 +377,11 @@ async function readOnce($: EngineInterface): Promise<void> {
       .map(row => `${statusMark(row.pipeline?.status).glyph} !${row.iid}`)
       .join('  ') || undefined
   )
-  if (wakes.length > 0) {
-    wakes.forEach(text => $.ui.toast(text))
-    if (await read($, wakeAtom)) {
-      quietly($.prompt.submit({ text: wakes.join('\n') }))
-    }
+  // Every pin's news is a toast; only an MR this session raised wakes it, since that is the work it can act on.
+  news.forEach(({ text }) => $.ui.toast(text))
+  const wakes = news.filter(one => one.wakes).map(one => one.text)
+  if (wakes.length > 0 && (await read($, wakeAtom))) {
+    quietly($.prompt.submit({ text: wakes.join('\n') }))
   }
   quietly(readJira($, open, now))
   quietly(readUsualTimes($, open, now))
@@ -408,12 +405,16 @@ export async function tick($: EngineInterface): Promise<void> {
 }
 
 /** Pins an MR to this session and answers what it looks like now, saying so when that is stale. */
-export async function pin($: EngineInterface, url: string): Promise<string> {
+export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<string> {
   const parsed = parseMrUrl(url)
   if (!parsed) {
     throw new Error(`Not a gitlab.com merge request URL: ${url}`)
   }
-  await update($, pinnedAtom, list => [...list.filter(one => pinKey(one) !== pinKey(parsed)), parsed])
+  // Watching an MR this session raised keeps it raised, so it still wakes.
+  await update($, pinnedAtom, list => {
+    const was = list.find(one => pinKey(one) === pinKey(parsed))
+    return [...list.filter(one => one !== was), { ...parsed, origin: was?.origin === 'raised' ? 'raised' : origin }]
+  })
   await refresh($)
   const [rows, poll, now] = await Promise.all([read($, rowsAtom), read($, pollAtom), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))

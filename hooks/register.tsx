@@ -29,7 +29,7 @@ export const register: Register = (on, options) => {
     await $.tool.register({
       name: 'watch_mr',
       description:
-        'Pin a GitLab merge request to this session: answers its pipeline and merge blockers now, puts it at the top of the GitLab pane, and wakes the session when its pipeline fails or finishes.',
+        'Pin a GitLab merge request to this session: answers its pipeline and merge blockers now and puts it at the top of the GitLab pane. It does not wake the session; an MR this session creates does, when its pipeline fails or it can merge.',
       inputSchema: {
         type: 'object',
         properties: { url: { type: 'string', description: 'https://gitlab.com/<project>/-/merge_requests/<iid>' } },
@@ -76,7 +76,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: TOOL }, async ($, e) => {
     const { url } = e as { url?: unknown }
     try {
-      const result = await pin($, String(url ?? ''))
+      const result = await pin($, String(url ?? ''), 'watched')
       quietly(openPane($))
       return { result }
     } catch (error) {
@@ -84,7 +84,7 @@ export const register: Register = (on, options) => {
     }
   })
 
-  // An MR opened from this session is pinned, as the app picks up a GitHub PR.
+  // An MR opened from this session is pinned as raised here, as the app picks up a GitHub PR; only those wake it.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
     const command = String((e as { command?: unknown }).command ?? '')
@@ -93,7 +93,7 @@ export const register: Register = (on, options) => {
     }
     const urls = new Set(ran.text.match(MR_URLS) ?? [])
     for (const url of urls) {
-      await pin($, url).catch(() => undefined)
+      await pin($, url, 'raised').catch(() => undefined)
     }
     if (urls.size > 0) {
       quietly(openPane($))

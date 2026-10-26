@@ -102,7 +102,16 @@ export type MrCard = {
 /** How long a successful MR pipeline in a project runs, the middle half of the recent ones, in seconds. */
 export type Usual = { low: number; high: number }
 
-export type Pinned = { url: string; project: string; iid: number }
+export type Pinned = {
+  url: string
+  project: string
+  iid: number
+  /**
+   * `raised` when this session created the MR, which alone wakes it; `watched` when pinned with `watch_mr`. A pin kept
+   * from before this was recorded has none, and wakes as every pin then did.
+   */
+  origin?: 'raised' | 'watched'
+}
 
 export type Ticket = { type: string; status: string; summary: string }
 
