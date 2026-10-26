@@ -330,6 +330,32 @@ test('an MR too long for the Reading tab links to GitLab, and the MRs after it s
   await ui.unmount()
 })
 
+test('each view opens under a band of its own colour, icon and name, so it reads at a glance', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { mrs: [rawMr(12)], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const band = async () => {
+    const box = boxesOf(await ui.drawn()).find(one => typeof one.props?.backgroundColor === 'string')
+    return { tint: box?.props?.backgroundColor, title: elementsOf(box).find(element => element.type === 'Text')?.children?.[0] }
+  }
+  expect(await band()).toEqual({ tint: '#0969da1f', title: '🗂 Mine' })
+  await ui.press({ key: 'tab-inbox' })
+  expect(await band()).toEqual({ tint: '#bf87001f', title: '📥 Inbox' })
+  await ui.press({ key: 'tab-mine' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? '' })
+  await ui.press({ key: 'tab-reading' })
+  expect(await band()).toEqual({ tint: '#8250df1f', title: '📖 Reading' })
+  await ui.unmount()
+
+  // The terminal draws no see-through colour, so there the band is its name in colour alone.
+  const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(boxesOf(await terminal.drawn()).some(box => typeof box.props?.backgroundColor === 'string')).toBe(false)
+  expect((await terminal.find({ type: 'Text', text: '📖 Reading' }))?.props.color).toBe('#8250df')
+  await terminal.unmount()
+})
+
 test('/gitlab opens the pane and answers in one line, never the MR list', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false })

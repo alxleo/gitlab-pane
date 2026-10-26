@@ -85,6 +85,13 @@ const xml = (text: string): string =>
 /** An open thread's words in its card; its 💬 link opens it whole. */
 const THREAD_ROOM = 500
 
+/** What each tab opens under: its own colour, icon and name, so which one is open reads at a glance. */
+const VIEWS = {
+  mine: { title: '🗂 Mine', about: 'Your open MRs, the most pressing first', colour: '#0969da' },
+  inbox: { title: '📥 Inbox', about: 'News on the MRs you follow', colour: '#bf8700' },
+  reading: { title: '📖 Reading', about: 'The MRs you opened, whole', colour: '#8250df' },
+} as const
+
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; read.ts holds the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const elements = $.ui.resolve(e)
@@ -523,6 +530,18 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { inbox: inboxState } = await inboxView($)
   const news = new Set(inboxState.sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
   const openCount = rows.filter(row => !row.isDraft || pinnedKeys.has(row.key)).length
+  // A see-through tint where the surface draws one; the terminal gets the name in colour alone.
+  const current = VIEWS[isInbox ? 'inbox' : isReading ? 'reading' : 'mine']
+  const band = (
+    <Box flexDirection="column" paddingX={1} paddingY={1} backgroundColor={e.surface === 'terminal' ? undefined : `${current.colour}1f`}>
+      <Text size="heading" weight="semibold" color={current.colour}>
+        {current.title}
+      </Text>
+      <Text dimColor size="footnote">
+        {current.about}
+      </Text>
+    </Box>
+  )
   const mineTab = [
     <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
       <Button key="repo-all" label={`All ${rows.length}`} variant={repoFilter ? 'secondary' : 'primary'} onPress={() => filterRepo($, repoFilter)} />
@@ -573,6 +592,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           />
         )}
       </Box>
+      {band}
       {isInbox ? await drawInbox($, e) : isReading ? drawReading($, e, reading, folds, now) : mineTab}
       <Box flexDirection="row" gap={2}>
         <Text color={poll.error !== null ? 'warning' : undefined} dimColor={poll.error === null} size="footnote">
