@@ -176,7 +176,8 @@ def scroll(pane: Rect, pixels: int) -> None:
     x, y = pane.x + pane.w / 2, pane.y + pane.h / 2
     count = max(1, abs(pixels) // STEP_PIXELS)
     step = -STEP_PIXELS if pixels < 0 else STEP_PIXELS
-    # macOS gives a wheel event to what is under the pointer, whatever the event's own location says.
+    # Events posted with only a location of their own came back with the pane unmoved; with the pointer over the pane,
+    # the wheel goes where a person's would.
     hammerspoon(
         f"local was = hs.mouse.absolutePosition(); hs.mouse.absolutePosition({{x = {x:.0f}, y = {y:.0f}}}); "
         "hs.timer.usleep(50000); "
