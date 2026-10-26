@@ -33,13 +33,15 @@ export type Reviewer = {
   state: string
 }
 
-/** Someone other than the author and no bot, who reviewed or commented. */
+/** Someone other than the author, a bot included, who reviewed or commented. */
 export type Person = {
   username: string
   name: string
+  /** A bot's threads and request for changes are its icon's, and never make the MR need you now. */
+  isBot: boolean
   /** Two or three letters, told apart from anyone else's on the same MR. */
   initials: string
-  /** Their GitLab avatar's absolute URL, when they have one. */
+  /** Their GitLab avatar's absolute URL, when they have one; a bot's generated identicon is none. */
   avatarUrl: string | null
   /** `requested_changes`, `approved`, `reviewing`, `commented` or `unreviewed`. */
   state: string
@@ -67,7 +69,7 @@ export type MrCard = {
   updatedAt: string
   hasConflicts: boolean
   needsRebase: boolean
-  /** People who requested changes; a bot's request is in `bots`. */
+  /** People who requested changes; a bot's request is on its icon in `people`. */
   changesRequestedBy: string[]
   /** Approvals still needed; a bot's approval never counts. */
   approvalsLeft: number
@@ -93,10 +95,8 @@ export type MrCard = {
     /** Manual jobs the pipeline waits on. */
     blockedOn: string[]
   }
-  /** The opening note of each unresolved thread a person started. */
+  /** The opening note of each unresolved thread a person, not a bot, started. */
   openThreads: Note[]
-  /** What bots hold the merge on; their threads keep who and where, never the body. */
-  bots: { threads: Note[]; changesBy: string[] }
 }
 
 /** How long a successful MR pipeline in a project runs, the middle half of the recent ones, in seconds. */

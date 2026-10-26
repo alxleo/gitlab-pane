@@ -63,12 +63,12 @@ export function rank(card: MrCard): number {
   if (status && !isSettled(status)) {
     return 1
   }
-  const botsHold = card.bots.threads.length + card.bots.changesBy.length > 0
-  return card.approvalsLeft > 0 || status === 'manual' || botsHold ? 2 : 3
+  return card.approvalsLeft > 0 || status === 'manual' || botsHolding(card).length > 0 ? 2 : 3
 }
 
-/** `project_123_bot_<hash>` is GitLab's name for a project or group access token; say which. */
-export const botName = (username: string): string => /^(project|group)_\d+_bot_/.exec(username)?.[1]?.concat(' bot') ?? username
+/** Bots with an open thread or a request for changes, either of which holds the merge. */
+const botsHolding = (card: MrCard): Person[] =>
+  card.people.filter(person => person.isBot && (person.openThreads > 0 || person.state === 'requested_changes'))
 
 export const byAttention = (a: MrCard, b: MrCard): number =>
   rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt)
@@ -198,13 +198,12 @@ export function badges(card: MrCard): Badge[] {
   if (pipeline && pipeline.amber.length > 0) {
     add('amber', '⚠', 'warning', String(pipeline.amber.length), `amber: ${pipeline.amber.map(job => job.name).join(', ')}`)
   }
-  const { threads, changesBy } = card.bots
-  if (threads.length + changesBy.length > 0) {
-    const held = [
-      threads.length > 0 ? plural(threads.length, 'open thread') : '',
-      changesBy.length > 0 ? `${changesBy.map(botName).join(', ')} requested changes` : '',
-    ]
-    add('bots', '🤖', 'subtle', String(threads.length + changesBy.length), `bots hold the merge: ${held.filter(Boolean).join(', ')}`)
+  const holding = botsHolding(card)
+  if (holding.length > 0) {
+    const threads = holding.reduce((sum, bot) => sum + bot.openThreads, 0)
+    const asked = holding.filter(bot => bot.state === 'requested_changes').map(bot => bot.name)
+    const held = [threads > 0 ? plural(threads, 'open thread') : '', asked.length > 0 ? `${asked.join(', ')} requested changes` : '']
+    add('bots', '🤖', 'subtle', String(threads + asked.length), `bots hold the merge: ${held.filter(Boolean).join(', ')}`)
   }
   if (card.approvalsRequired > 0) {
     const given = Math.max(0, card.approvalsRequired - card.approvalsLeft)
@@ -223,12 +222,15 @@ export function badges(card: MrCard): Badge[] {
   return list
 }
 
-/** The row's markers: each person's icon speaks for their change request and threads, so 💬 keeps only threads no icon holds. */
+/**
+ * The row's markers: each person's or bot's icon speaks for their change request and threads, so 💬 keeps only threads
+ * no icon holds.
+ */
 export function rowBadges(card: MrCard): Badge[] {
   const held = new Set(card.people.map(person => person.username))
   const loose = card.openThreads.filter(note => !held.has(note.author)).length
   return badges(card).flatMap(badge => {
-    if (badge.kind === 'changes') {
+    if (badge.kind === 'changes' || badge.kind === 'bots') {
       return []
     }
     if (badge.kind === 'threads') {
@@ -274,15 +276,6 @@ export function verdictOf(card: MrCard): { words: string; tone: Tone; covers: re
   }
   const [said, tone] = words[status] ?? [status.toLowerCase().replace(/_/g, ' '), 'subtle']
   return { words: said, tone, covers: SAID_BY[status] ?? [] }
-}
-
-/** A marker said after GitLab's verdict: short, since the verdict already says whether it blocks. */
-export function trailingWords(card: MrCard, badge: Badge): string {
-  if (badge.kind !== 'bots') {
-    return badge.words
-  }
-  const { threads, changesBy } = card.bots
-  return threads.length > 0 ? `${plural(threads.length, 'bot thread')} open` : `${changesBy.map(botName).join(', ')} asked for changes`
 }
 
 /** A person's icon colour: asked for changes, open threads, approved, or nothing pending. */

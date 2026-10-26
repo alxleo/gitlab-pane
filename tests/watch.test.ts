@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
+import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
 import { STAGE_COLOURS } from '../hooks/ci'
 import type { RawMr } from '../hooks/gitlab'
@@ -210,8 +210,8 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   // GitLab's verdict is the one word on whether it can merge, said once; the pane's own findings trail it, quieter.
   const said = async (words: string) => (await ui.findAll({ type: 'Text', text: words })).length
   expect(await said('✓ mergeable')).toBe(1)
-  expect(await said('· 1 bot thread open')).toBe(1)
-  expect((await ui.findAll({ type: 'Text' })).filter(text => /^🤖 bots hold the merge/.test(text.text ?? ''))).toEqual([])
+  // A bot's open thread is counted on its face, so nothing trails the verdict for it.
+  expect((await ui.findAll({ type: 'Text' })).filter(text => /bot threads? open|bots hold/i.test(text.text ?? ''))).toEqual([])
   expect(await said('CI running')).toBe(1)
   // GitLab says one is no longer open, so it leaves Mine before the next full read.
   expect(JSON.stringify(await ui.drawn())).not.toContain('thing 16')
@@ -419,17 +419,32 @@ test('a face is one small drawing: about 360 characters, 520 with a badge', asyn
   await ui.unmount()
 })
 
-test('bots holding the merge are one marker whose card names them, their words left out', async ($, on) => {
+test("a bot is a face like a person's: its own picture or a robot, ringed for its review, its threads counted; no bots line", async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const bot = thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)
-  engine(on, { mrs: [rawMr(12, { discussions: { nodes: [bot] } })], isDown: false })
+  const identicon = 'https://secure.gravatar.com/avatar/ab12?s=80&d=identicon'
+  const cursor = { ...user('project_1_bot_ab', true), name: 'cursor', avatarUrl: identicon }
+  const bot = { resolvable: true, resolved: false, notes: { nodes: [note('### What the bot wrote', 'project_1_bot_ab', { author: cursor })] } }
+  engine(on, {
+    mrs: [rawMr(12, { reviewers: { nodes: [reviewer('GitLabDuo', 'REQUESTED_CHANGES', true)] }, discussions: { nodes: [bot] } })],
+    isDown: false,
+  })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: '🤖 Bots hold the merge' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'project bot' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /What the bot wrote/ })).toBeUndefined()
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).not.toMatch(/bots hold the merge|asked for changes|🤖/i)
+  const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && /^(GitLabDuo|cursor)/.test(String(element.props?.alt)))
+  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor'])
+  // Without a picture of its own, a bot is a robot rather than a disc of initials.
+  expect(String(faces[1]?.props?.source)).not.toMatch(/<text|<image/)
+  const names = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
+  expect(names).toContain('GitLabDuo')
+  expect(names).toContain('cursor 1')
+
+  // Its name opens its comments, whole, as anyone's does.
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.props.label === 'cursor 1')?.key ?? '' })
+  expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('### What the bot wrote')
   await ui.unmount()
 })
 
@@ -640,8 +655,9 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
   const { avatars } = engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
-  // Each picture is fetched once, small, whoever it appears on.
+  // Each picture is fetched once, small, whoever it appears on; a bot's own picture too.
   expect(avatars.sort()).toEqual([
+    'https://gitlab.com/uploads/-/system/user/avatar/1/project_1_bot_ab.png?width=20',
     'https://gitlab.com/uploads/-/system/user/avatar/1/reviewer.png?width=20',
     'https://gitlab.com/uploads/-/system/user/avatar/1/tim.png?width=20',
   ])

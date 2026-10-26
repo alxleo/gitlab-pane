@@ -199,20 +199,25 @@ export function initials(name: string, longer = false): string {
 
 const STATE_ORDER = ['requested_changes', 'open', 'approved', 'reviewing', 'commented', 'unreviewed']
 
-/** Who to talk to, most pressing first: asked for changes, has open threads, approved, then the rest. */
+/** A bot without a picture of its own gets a generated identicon, which says nothing of what it is. */
+const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=identicon\b/.test(url)
+
+/** Who to talk to, most pressing first: asked for changes, has open threads, approved, then the rest; bots after people. */
 function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes: RawNote[] }[]): Person[] {
   const author = raw.author?.username
   const byName = new Map<
     string,
-    { name: string; avatarUrl: string | null; review: string; isApprover: boolean; openThreads: number; notes: Note[] }
+    { name: string; isBot: boolean; avatarUrl: string | null; review: string; isApprover: boolean; openThreads: number; notes: Note[] }
   >()
   const meet = (user: RawUser | null) => {
-    if (!user || user.bot || user.username === author) {
+    if (!user || user.username === author) {
       return undefined
     }
+    const avatarUrl = absolute(user.avatarUrl)
     const known = byName.get(user.username) ?? {
       name: user.name,
-      avatarUrl: absolute(user.avatarUrl),
+      isBot: user.bot,
+      avatarUrl: user.bot && isIdenticon(avatarUrl) ? null : avatarUrl,
       review: 'unreviewed',
       isApprover: false,
       openThreads: 0,
@@ -257,6 +262,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
     return {
       username,
       name: person.name,
+      isBot: person.isBot,
       initials: initials(person.name),
       avatarUrl: person.avatarUrl,
       state,
@@ -267,9 +273,11 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
   const shared = new Set(people.map(person => person.initials).filter((value, i, all) => all.indexOf(value) !== i))
   const order = (person: Person) =>
     STATE_ORDER.indexOf(person.state === 'requested_changes' || person.openThreads === 0 ? person.state : 'open')
+  // Bots leave a summary on nearly every MR; only one holding the merge, by an open thread or asking for changes, is shown.
   return people
+    .filter(person => !person.isBot || person.state === 'requested_changes' || person.openThreads > 0)
     .map(person => (shared.has(person.initials) ? { ...person, initials: initials(person.name, true) } : person))
-    .sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name))
+    .sort((a, b) => Number(a.isBot) - Number(b.isBot) || order(a) - order(b) || a.name.localeCompare(b.name))
 }
 
 export function toCard(raw: RawMr): MrCard {
@@ -339,10 +347,6 @@ export function toCard(raw: RawMr): MrCard {
     openThreads: open
       .filter(thread => !isBot(thread.first))
       .map(thread => ({ ...toNote(thread.first, project, true), replies: thread.notes.slice(1).map(one => toNote(one, project, true)) })),
-    bots: {
-      threads: open.filter(thread => isBot(thread.first)).map(thread => ({ ...toNote(thread.first, project, true), body: '' })),
-      changesBy: requested.filter(reviewer => reviewer.isBot).map(reviewer => reviewer.username),
-    },
   }
 }
 

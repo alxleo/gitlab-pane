@@ -3,7 +3,6 @@ import { expect, test } from 'claude-code/testing'
 import {
   advance,
   badges,
-  botName,
   byAttention,
   describe,
   excerpt,
@@ -86,7 +85,7 @@ test('failed and manual jobs are read from the stages: amber when allowed to fai
   expect(card.pipeline?.stages.map(one => `${one.name}:${one.jobs.length}`)).toEqual(['test:2', 'e2e:2'])
 })
 
-test('each person who reviewed or commented gets one icon; the author and bots get none', async () => {
+test('each person who reviewed or commented gets one icon; the author gets none, and a bot none unless it holds the merge', async () => {
   const card = toCard(
     rawMr(1, {
       reviewers: { nodes: [reviewer('tim.dunmore', 'REQUESTED_CHANGES'), reviewer('GitLabDuo', 'APPROVED', true)] },
@@ -111,9 +110,9 @@ test('each person who reviewed or commented gets one icon; the author and bots g
       },
     })
   )
-  expect(card.people.map(person => [person.initials, person.state, person.openThreads, person.notes.length])).toEqual([
-    ['TD', 'requested_changes', 1, 2],
-    ['MN', 'approved', 0, 2],
+  expect(card.people.map(person => [person.initials, person.state, person.openThreads, person.notes.length, person.isBot])).toEqual([
+    ['TD', 'requested_changes', 1, 2, false],
+    ['MN', 'approved', 0, 2, false],
   ])
   // Unresolved threads first, then newest first: a reply counts as theirs.
   expect(card.people[0]?.notes.map(one => [one.body, one.isOpen])).toEqual([
@@ -143,28 +142,43 @@ test("an author's own open thread stays a 💬 marker, since no icon holds it", 
   expect(rowBadges(card).map(badge => `${badge.glyph}${badge.count}`)).toEqual(['💬1', '👤0/1'])
 })
 
-test('what bots hold the merge on is one quiet marker, and their words are never kept', async () => {
+test("a bot's request for changes and its open threads are its icon's; only what a model reads still says it in words", async () => {
+  const identicon = 'https://secure.gravatar.com/avatar/ab12?s=80&d=identicon'
   const card = toCard(
     rawMr(1, {
       reviewers: { nodes: [reviewer('GitLabDuo', 'REQUESTED_CHANGES', true)] },
       discussions: {
         nodes: [
-          thread('### Timeout undercuts wait', 'project_1_bot_ab12', false, true, true),
+          {
+            resolvable: true,
+            resolved: false,
+            notes: { nodes: [note('### Timeout undercuts wait', 'project_1_bot_ab12', { author: { ...user('project_1_bot_ab12', true), name: 'cursor', avatarUrl: identicon } })] },
+          },
           thread('Summary of changes', 'GitLabDuo', false, false, true),
           thread('Looks good', 'tim', false, false),
         ],
       },
     })
   )
+  // A bot's thread is not one a person waits on you to answer, and its request for changes is not a reviewer's.
   expect(card.openThreads).toEqual([])
   expect(card.changesRequestedBy).toEqual([])
-  expect(card.people.map(person => person.username)).toEqual(['tim'])
-  expect(card.bots.threads.map(one => [one.author, one.body])).toEqual([['project_1_bot_ab12', '']])
+  expect(card.people.map(person => [person.name, person.isBot, person.state, person.openThreads])).toEqual([
+    ['Tim', false, 'commented', 0],
+    ['GitLabDuo', true, 'requested_changes', 0],
+    ['cursor', true, 'commented', 1],
+  ])
+  // GitLab's own picture for a bot is kept; a generated identicon is not one, so the pane draws a robot instead.
+  expect(card.people.map(person => person.avatarUrl)).toEqual([
+    'https://gitlab.com/uploads/-/system/user/avatar/1/tim.png?v=1',
+    'https://gitlab.com/uploads/-/system/user/avatar/1/GitLabDuo.png?v=1',
+    null,
+  ])
+  expect(card.people[2]?.notes.map(one => one.body)).toEqual(['### Timeout undercuts wait'])
+  expect(rowBadges(card).map(badge => badge.kind)).toEqual(['approvals'])
   expect(badges(card).map(badge => `${badge.glyph}${badge.count}`)).toEqual(['🤖2', '👤0/1'])
   expect(rank(card)).toBe(2)
   expect(describe(card, NOW)).toContain('bots hold the merge: 1 open thread, GitLabDuo requested changes')
-  expect(botName('project_1_bot_ab12')).toBe('project bot')
-  expect(botName('GitLabDuo')).toBe('GitLabDuo')
 })
 
 test('run time counts only while jobs run, not while a manual gate waits', async () => {

@@ -7,7 +7,6 @@ import {
   STAGE_COLOURS,
   ago,
   bodyOf,
-  botName,
   byAttention,
   cardKey,
   duration,
@@ -27,10 +26,9 @@ import {
   stageTone,
   statusMark,
   ticketOf,
-  trailingWords,
   verdictOf,
 } from './ci'
-import { discMarks } from './avatar'
+import { BOT_MARKS, discMarks } from './avatar'
 import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
@@ -87,6 +85,9 @@ const xml = (text: string): string =>
 
 /** An open thread's words in its card; its 💬 link opens it whole. */
 const THREAD_ROOM = 500
+
+/** Letters of a bot's name beside its face. */
+const BOT_NAME_ROOM = 14
 
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; read.ts holds the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
@@ -155,7 +156,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     return [
       <Box flexDirection="row" gap={1}>
         <Text bold>{person.name}</Text>
-        <Text dimColor>{`@${person.username}`}</Text>
+        <Text dimColor>{person.isBot ? 'bot' : `@${person.username}`}</Text>
       </Box>,
       <Text color={personTone(person)}>
         {[REVIEW_STATE[person.state] ?? person.state, person.openThreads > 0 ? plural(person.openThreads, 'open thread') : '']
@@ -215,12 +216,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         const loose = row.openThreads.filter(note => !held.has(note.author))
         return [head(plural(loose.length, 'open thread')), ...loose.slice(0, 3).map(note => noteLine(note))]
       }
-      case 'bots':
-        return [
-          head('Bots hold the merge'),
-          ...row.bots.changesBy.map(name => <Text>{`${botName(name)} requested changes`}</Text>),
-          ...row.bots.threads.map(note => byline(`b-${note.url}`, botName(note.author), note.where ?? ago(note.at, now), note.url)),
-        ]
       case 'failed':
         return [head('Failed jobs'), ...(pipeline?.failed ?? []).map(job => <Link href={job.url}>{job.name}</Link>)]
       case 'amber':
@@ -279,9 +274,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   /**
-   * Their avatar, else their initials on a disc, ringed in the colour of where they stand: heavy once they have a say,
-   * thin while they have none, with a ✓ or ✕ badge for an approval or a request for changes. A coloured mark where the
-   * surface draws no Svg. A disc costs about 340 characters (500 with a badge), a picture about 1,300.
+   * Their avatar, else their initials on a disc (a bot's, a robot), ringed in the colour of where they stand: heavy
+   * once they have a say, thin while they have none, with a ✓ or ✕ badge for an approval or a request for changes. A
+   * coloured mark where the surface draws no Svg. A disc costs about 340 characters (500 with a badge), a picture about
+   * 1,300.
    */
   const face = (person: Person, isFocused: boolean, picture: string | undefined) => {
     const tone = personTone(person)
@@ -292,7 +288,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
     const inner = picture
       ? `<clipPath id='c'><circle cx='8' cy='8' r='8'/></clipPath><image href='${picture}' width='16' height='16' clip-path='url(#c)'/>`
-      : discMarks(person.username, 16, person.initials)
+      : person.isBot
+        ? BOT_MARKS
+        : discMarks(person.username, 16, person.initials)
     const ring =
       tone === 'subtle'
         ? `<circle cx='8' cy='8' r='9' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='1.5'/>`
@@ -392,8 +390,15 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     ]
     const pictures = mr.people.some(person => person.avatarUrl && avatars[person.avatarUrl])
     // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
-    // Some GitLab names are written like handles ("Mel.Northcote"), so a dot or underscore ends a first name too.
-    const firstNames = mr.people.map(person => person.name.split(/[\s._]+/)[0] || person.initials)
+    // Some GitLab names are written like handles ("Mel.Northcote"), so a dot or underscore ends a first name too. A bot
+    // keeps its whole name ("GitLab Duo"), cut short, since its first word alone often names only the vendor.
+    const firstNames = mr.people.map(person =>
+      person.isBot
+        ? person.name.length > BOT_NAME_ROOM
+          ? `${person.name.slice(0, BOT_NAME_ROOM - 1)}…`
+          : person.name
+        : person.name.split(/[\s._]+/)[0] || person.initials
+    )
     const callName = (person: Person, i: number) => {
       const first = firstNames[i] ?? person.initials
       return !Svg || firstNames.filter(name => name === first).length > 1 ? person.initials : first
@@ -414,7 +419,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
               {verdict.words}
             </Text>
             {trailing[0] && (
-              <Text dimColor>{`· ${trailingWords(mr, trailing[0])}${trailing.length > 1 ? ` +${trailing.length - 1}` : ''}`}</Text>
+              <Text dimColor>{`· ${trailing[0].words}${trailing.length > 1 ? ` +${trailing.length - 1}` : ''}`}</Text>
             )}
           </Box>
         ) : (

@@ -1,6 +1,6 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { CHROME_SIZE, DRAWING_BUDGET, LINK, ago, botName, measure, plural, shortHash, verdictOf } from './ci'
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, ago, measure, plural, shortHash, verdictOf } from './ci'
 import { partsOf } from './markdown'
 import { toggleFold } from './read'
 
@@ -11,7 +11,7 @@ import type { MrCard, Note } from '../types'
 const CUT_NOTE_SIZE = 300
 
 /**
- * One MR whole, as a page of its own drawn alone: the threads, jobs and bots that need acting on take the room first,
+ * One MR whole, as a page of its own drawn alone: the jobs, threads and bot comments that need acting on take the room first,
  * then the description what is left, cut where it runs out. `folds` are the `<details>` drawn the other way from how
  * GitLab first shows them.
  */
@@ -87,6 +87,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       ))}
     </Box>
   ))
+  const botNotes = mr.people.filter(person => person.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
   const blocks = [
     ...(jobs.length > 0
       ? [
@@ -102,20 +103,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           </Box>,
         ]
       : []),
-    ...(mr.bots.threads.length + mr.bots.changesBy.length > 0
-      ? [
-          <Box flexDirection="column">
-            <Text bold>Bots hold the merge</Text>
-            {mr.bots.changesBy.map(name => (
-              <Text>{`${botName(name)} requested changes`}</Text>
-            ))}
-            {mr.bots.threads.map(note => (
-              <Link href={note.url}>{`${botName(note.author)}${note.where ? ` · ${note.where}` : ''}`}</Link>
-            ))}
-          </Box>,
-        ]
-      : []),
     ...(threads.length > 0 ? [<Text bold>{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
+    ...(botNotes.length > 0 ? [<Text bold>{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(said)] : []),
   ]
 
   let room = DRAWING_BUDGET - CHROME_SIZE - CUT_NOTE_SIZE - measure(head)
