@@ -133,7 +133,7 @@ test('an avatar kept by an earlier session is drawn without fetching it again', 
   await clock.settle()
   expect(avatars).toEqual([])
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && element.props?.alt === 'Tim')
+  const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && String(element.props?.alt).startsWith('Tim'))
   expect(faces.map(face => String(face.props?.source).includes('data:image/png;base64,KEPT'))).toEqual([true])
   await ui.unmount()
 })
@@ -210,14 +210,46 @@ test('someone without a picture is their initials on a disc, beside their first 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const disc = elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === 'Ines Mendel')
+  const disc = elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && String(element.props?.alt).startsWith('Ines Mendel'))
   expect(String(disc?.props?.source)).toContain('>IM</text>')
-  expect(String(disc?.props?.source)).toContain(`stroke='${STAGE_COLOURS.success}'`)
   const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
   expect(labels).toContain('Ines')
   // A name written like a handle still gives a first name.
   expect(labels).toContain('Mel')
   await ui.unmount()
+})
+
+test('an approval or a request for changes is a heavy ring with a ✓ or ✕ badge; someone yet to review keeps a thin one', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const people = [
+    { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
+    { ...reviewer('tessa.r', 'REQUESTED_CHANGES'), avatarUrl: null },
+    { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null },
+  ]
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people } })], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const faceOf = async (name: string) =>
+    String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt?.toString().startsWith(name))?.props?.source)
+  expect(await faceOf('Ines')).toContain(`stroke='${STAGE_COLOURS.success}' stroke-width='3'`)
+  expect(await faceOf('Ines')).toContain(`fill='${STAGE_COLOURS.success}'`)
+  expect(await faceOf('Tessa')).toContain(`stroke='${STAGE_COLOURS.error}' stroke-width='3'`)
+  expect(await faceOf('Tessa')).toContain(`fill='${STAGE_COLOURS.error}'`)
+  expect(await faceOf('Mel')).not.toContain(`fill='${STAGE_COLOURS.subtle}'`)
+  expect(await faceOf('Mel')).not.toContain("stroke-width='3'")
+  const alts = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg').map(element => element.props?.alt)
+  expect(alts).toContain('Ines Mendel, approved')
+  expect(alts).toContain('Tessa R, requested changes')
+  expect(alts).toContain('Mel Northcote')
+
+  await ui.unmount()
+  const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const marks = (await terminal.findAll({ type: 'Text' })).map(text => text.text)
+  expect(marks).toContain('✓')
+  expect(marks).toContain('✕')
+  await terminal.unmount()
 })
 
 test('bots holding the merge are one marker whose card names them, their words left out', async ($, on) => {

@@ -47,6 +47,12 @@ const REVIEW_STATE: Record<string, string> = {
   unapproved: 'withdrew approval',
 }
 
+/** The corner badge on a reviewer's face, and their mark where no Svg is drawn. */
+const REVIEW_MARK: Record<string, { glyph: string; tone: Tone; path: string }> = {
+  approved: { glyph: '✓', tone: 'success', path: 'M16.1 17.9l1.1 1.1 2.1-2.2' },
+  requested_changes: { glyph: '✕', tone: 'error', path: 'M16.5 16.5l2.5 2.5m0-2.5l-2.5 2.5' },
+}
+
 const STATUS_WORD: Record<string, string> = {
   success: 'passed',
   failed: 'failed',
@@ -278,24 +284,32 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   /**
-   * Their avatar, else their initials on a disc, ringed in the colour of where they stand; a coloured dot where the
-   * surface draws no Svg. A disc costs about 330 characters, a picture about 1,300.
+   * Their avatar, else their initials on a disc, ringed in the colour of where they stand: heavy once they have a say,
+   * thin while they have none, with a ✓ or ✕ badge for an approval or a request for changes. A coloured mark where the
+   * surface draws no Svg. A disc costs about 450 characters, a picture about 1,300.
    */
   const face = (person: Person, isFocused: boolean, picture: string | undefined) => {
+    const tone = personTone(person)
+    const badge = REVIEW_MARK[person.state]
     if (!Svg) {
-      return <Text color={personTone(person)}>{isFocused ? '◉' : '●'}</Text>
+      return <Text color={tone}>{badge?.glyph ?? (isFocused ? '◉' : '●')}</Text>
     }
-    if (!picture) {
-      return (
-        <Svg width={18} height={18} alt={person.name} source={discSource(person.username, 18, STAGE_COLOURS[personTone(person)], person.initials)} />
-      )
-    }
+    const inner = picture
+      ? `<clipPath id='c'><circle cx='11' cy='11' r='8'/></clipPath><image href='${picture}' x='3' y='3' width='16' height='16' clip-path='url(#c)'/>`
+      : `<g transform='translate(3 3)'>${discSource(person.username, 16, undefined, person.initials)}</g>`
+    const ring =
+      tone === 'subtle'
+        ? `<circle cx='11' cy='11' r='9' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='1.5'/>`
+        : `<circle cx='11' cy='11' r='9.5' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='3'/>`
+    const mark = badge
+      ? `<circle cx='17.75' cy='17.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/>`
+      : ''
     return (
       <Svg
-        width={18}
-        height={18}
-        alt={person.name}
-        source={`<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18'><clipPath id='c'><circle cx='9' cy='9' r='7'/></clipPath><image href='${picture}' x='2' y='2' width='14' height='14' clip-path='url(#c)'/><circle cx='9' cy='9' r='8' fill='none' stroke='${STAGE_COLOURS[personTone(person)]}' stroke-width='${isFocused ? 2 : 1.5}'/></svg>`}
+        width={22}
+        height={22}
+        alt={badge ? `${person.name}, ${REVIEW_STATE[person.state]}` : person.name}
+        source={`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'>${inner}${ring}${mark}</svg>`}
       />
     )
   }
