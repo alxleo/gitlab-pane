@@ -19,9 +19,12 @@ const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
   merged: { glyph: '◆', tone: 'merged', word: 'merged' },
 }
 
-/** What the inbox may take of the pane's drawing; past it, an open rule's rows are counted, not drawn. */
-const INBOX_BUDGET = 20_000
-const ITEMS_SHOWN = 8
+/**
+ * What the inbox may take of the pane's drawing, now that it has its own tab and shares the drawing only with the
+ * tabs and the footer; past it, an open rule's cards are counted, not drawn.
+ */
+const INBOX_BUDGET = 70_000
+const ITEMS_SHOWN = 30
 
 const measure = (tree: unknown): number => {
   try {
@@ -196,7 +199,6 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   }))
   const shown = sections.filter(section => section.items.length > 0)
   const quiet = sections.filter(section => section.items.length === 0)
-  const news = shown.reduce((sum, section) => sum + section.items.filter(item => item.unseen > 0).length, 0)
   /** A tab per rule, as the repo filter draws its chips; the open one is filled. */
   const tab = (section: InboxSection) => {
     // MRs with news, not events: an MR nobody has marked seen brings a week of comments, which would swamp the count.
@@ -251,8 +253,6 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="row" gap={2}>
-        <Text bold>Inbox</Text>
-        {news > 0 && <Text color="warning">{`${news} new`}</Text>}
         <Text color={problem ? 'warning' : undefined} dimColor={!problem} size="footnote">
           {status}
         </Text>

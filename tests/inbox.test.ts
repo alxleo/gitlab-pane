@@ -104,15 +104,15 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     const ui = await $.ui.mount({ ...PANE, surface })
     await clock.advance(FIRST_SYNC_MS)
     expect(calls.some(args => args[0] === 'sync' && args.includes('--if-older-than') && args.includes(REMOTE))).toBe(true)
+    // The inbox has a tab of its own, which names how many MRs have news; its body draws only there.
+    expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 1 new"')
+    expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeUndefined()
+    await ui.press({ key: 'tab-inbox' })
     expect(await ui.find({ type: 'Text', text: 'synced 2m ago' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Nothing else in: To review' })).toBeDefined()
     expect(await titleOf(ui, 1)).toBeUndefined()
-    // The inbox is what needs Alex, so it draws above the MR list rather than below it.
-    const drawn = JSON.stringify(await ui.drawn())
-    expect(drawn.indexOf('inbox-sync')).toBeLessThan(drawn.indexOf('Mine · '))
     // Counts are MRs with news, not the events in them; each rule is a tab.
-    expect(await ui.find({ type: 'Text', text: '1 new' })).toBeDefined()
-    expect(drawn).toContain('"Reviews: people I follow · 1 new"')
+    expect(JSON.stringify(await ui.drawn())).toContain('"Reviews: people I follow · 1 new"')
 
     await ui.press({ key: 'inbox-rule-people' })
     expect(await titleOf(ui, 1)).toBe('[**thing 1**](https://gitlab.com/g/p/-/merge_requests/1)')
@@ -136,6 +136,7 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     await ui.press({ key: `inbox-less-${hashOf('g/p!1')}` })
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
     await ui.press({ key: 'inbox-rule-people' })
+    await ui.press({ key: 'tab-mine' })
     await ui.unmount()
   }
 })
@@ -148,6 +149,7 @@ test('✓ marks one MR seen and reads the inbox again', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-people' })
   expect(await titleOf(ui, 1)).toBeDefined()
   inbox.sections = [{ ...sections()[0], items: [item(2, 0)] }, sections()[1]]
@@ -171,9 +173,10 @@ test('an MR under two rules shows once, under the first', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
   expect(await ui.find({ type: 'Button', key: 'inbox-rule-repos' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'Nothing else in: To review, Reviews: repos I follow (all above)' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '1 new' })).toBeDefined()
+  expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 1 new"')
   await ui.unmount()
 })
 
@@ -200,6 +203,7 @@ test('discuss in chat puts /mrs in the prompt box, or copies it where the app dr
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-people' })
   await ui.press({ key: 'inbox-discuss-people' })
   expect(filled).toEqual(['/mrs --rule people'])
@@ -219,6 +223,7 @@ test('a failed sync says why and keeps the rules it last read', async ($, on) =>
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
   expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toBe('sync failed: glab is not signed in to gitlab.com')
   await ui.press({ key: 'inbox-rule-people' })
   expect(await titleOf(ui, 2)).toBeDefined()
@@ -232,8 +237,9 @@ test('without mr-inbox installed the pane says so once and draws the rest', asyn
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
-  expect((await ui.find({ type: 'Text', text: /not installed/ }))?.text).toBe('mr-inbox is not installed (see ~/work/mr-inbox)')
   expect(await ui.find({ type: 'Text', text: /^Mine/ })).toBeDefined()
+  await ui.press({ key: 'tab-inbox' })
+  expect((await ui.find({ type: 'Text', text: /not installed/ }))?.text).toBe('mr-inbox is not installed (see ~/work/mr-inbox)')
   await ui.unmount()
 })
 
@@ -252,7 +258,7 @@ test('/mrs hands the briefing to the model, out of the transcript', async ($, on
   expect(usage.context).toBeUndefined()
 })
 
-test('a full inbox, every rule open, beside fifty busy MRs stays inside the 100,000 characters a drawing holds', async ($, on) => {
+test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside the 100,000 characters a drawing holds', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const long = (name: string) => `${name}-${'x'.repeat(30)}`
   const busy = (status: string) =>
@@ -312,17 +318,28 @@ test('a full inbox, every rule open, beside fifty busy MRs stays inside the 100,
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
+  // The desktop app draws nothing for a tree past 100,000 characters serialized.
+  await ui.press({ key: 'more' })
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  await ui.press({ key: 'tab-inbox' })
   for (const rule of rules) {
     await ui.press({ key: `inbox-rule-${rule}` })
+    const card = await ui.find({ type: 'Markdown', text: /a very long title/ })
+    expect(card?.key).toMatch(/^inbox-open-/)
+    // Every card drawn opened too, so the open rule is at its largest; an opened card pushes the last ones out.
+    for (let opened = 0; opened < 30; opened += 1) {
+      const closed = (await ui.findAll({ type: 'Markdown' })).find(markdown => /^inbox-open-/.test(markdown.key ?? ''))
+      if (!closed) {
+        break
+      }
+      await ui.press({ key: closed.key ?? '', link: { href: String((closed.props?.pressableLinks as string[] | undefined)?.[0]) } })
+    }
+    expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+    // Cards past the inbox's share are counted, not drawn.
+    expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/ })).toBeDefined()
   }
-  await ui.press({ key: 'more' })
-  // The desktop app draws nothing for a tree past 100,000 characters serialized.
-  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
   expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeDefined()
-  // The inbox's rows count against the same budget: MRs past it are left out and counted, and so are inbox rows.
-  expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
-  expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/ })).toBeDefined()
   await ui.unmount()
 })
 
