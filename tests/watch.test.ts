@@ -252,6 +252,42 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   await terminal.unmount()
 })
 
+test('a stage strip draws its passed stages as one run, counted in its title; other stages keep their own', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const names = ['install', 'precheck', 'gate', 'validate', 'build', 'deploy', 'cleanup', 'e2e', 'external']
+  const statuses = ['SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SKIPPED', 'RUNNING', 'SUCCESS']
+  const headPipeline = pipe('RUNNING', { stages: { nodes: names.map((name, s) => stage(name, statuses[s] ?? 'SUCCESS', [job(`${name}-job`, statuses[s] ?? 'SUCCESS')])) } })
+  engine(on, { mrs: [rawMr(12, { headPipeline })], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const strip = String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === '9 stages')?.props?.source)
+  expect(strip).toContain('<title>7 stages passed</title>')
+  expect(strip).toContain('<title>cleanup · skipped')
+  expect(strip).toMatch(/<title>e2e · running[^<]*<\/title>/)
+  expect(strip).not.toContain('install · passed')
+  // A square per stage, each with its own tooltip, came to 840.
+  expect(strip.length).toBeLessThan(640)
+  await ui.unmount()
+})
+
+test('a face is one small drawing: about 360 characters, 520 with a badge', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const people = [{ ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }, { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null }]
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people } })], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const faceOf = async (name: string) =>
+    String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && String(element.props?.alt).startsWith(name))?.props?.source)
+  expect((await faceOf('Mel')).length).toBeLessThan(370)
+  expect((await faceOf('Ines')).length).toBeLessThan(520)
+  expect(await faceOf('Mel')).toContain('>MN</text>')
+  await ui.unmount()
+})
+
 test('bots holding the merge are one marker whose card names them, their words left out', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const bot = thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)
@@ -456,7 +492,8 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     expect(
       surface === 'terminal'
         ? strips.length === 0 && squares !== undefined
-        : strips.some(svg => String(svg.props?.source).includes('build · passed · ran 10m'))
+        : strips.some(svg => String(svg.props?.source).includes('<title>2 stages passed</title>')) &&
+            strips.some(svg => String(svg.props?.source).includes('<title>build · running'))
     ).toBe(true)
     expect(await ui.find({ text: '🚦 20m · usually 11–14m' })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: '🔀 !103' })).toBeDefined()

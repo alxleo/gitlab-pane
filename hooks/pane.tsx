@@ -21,7 +21,7 @@ import {
   statusMark,
   ticketOf,
 } from './ci'
-import { discSource } from './avatar'
+import { discMarks } from './avatar'
 import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
@@ -49,8 +49,8 @@ const REVIEW_STATE: Record<string, string> = {
 
 /** The corner badge on a reviewer's face, and their mark where no Svg is drawn. */
 const REVIEW_MARK: Record<string, { glyph: string; tone: Tone; path: string }> = {
-  approved: { glyph: '✓', tone: 'success', path: 'M16.1 17.9l1.1 1.1 2.1-2.2' },
-  requested_changes: { glyph: '✕', tone: 'error', path: 'M16.5 16.5l2.5 2.5m0-2.5l-2.5 2.5' },
+  approved: { glyph: '✓', tone: 'success', path: 'M13.1 14.9l1.1 1.1 2.1-2.2' },
+  requested_changes: { glyph: '✕', tone: 'error', path: 'M13.5 13.5l2.5 2.5m0-2.5l-2.5 2.5' },
 }
 
 const STATUS_WORD: Record<string, string> = {
@@ -256,8 +256,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
-  // One image per row, each square's name, state and time in its own tooltip, costs far less of the drawing's
-  // 100,000 characters than a hover card per square. A surface without Svg gets one coloured glyph per stage.
+  // One image per row. Passed stages are drawn as runs of a repeating square and counted in the image's tooltip; any
+  // other stage is its own square with its name, state and time. A surface without Svg gets a glyph per stage.
   const strip = (stages: Stage[]) => {
     if (!Svg) {
       return (
@@ -268,12 +268,20 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
       )
     }
-    const squares = stages
-      .map(
-        (stage, i) =>
-          `<use href='#s' x='${i * 12}' fill='${STAGE_COLOURS[stageTone(stage.status)]}'><title>${xml(stageLine(stage))}</title></use>`
-      )
+    const passed = (stage: Stage | undefined) => stage?.status === 'success'
+    const marks = stages
+      .map((stage, i) => {
+        if (!passed(stage)) {
+          return `<use href='#s' x='${i * 12}' fill='${STAGE_COLOURS[stageTone(stage.status)]}'><title>${xml(stageLine(stage))}</title></use>`
+        }
+        if (passed(stages[i - 1])) {
+          return ''
+        }
+        const run = stages.slice(i).findIndex(next => !passed(next))
+        return `<rect x='${i * 12}' width='${(run === -1 ? stages.length - i : run) * 12}' height='10' fill='url(#p)'/>`
+      })
       .join('')
+    const count = stages.filter(passed).length
     const width = stages.length * 12
     return (
       <Svg
@@ -281,7 +289,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         width={width}
         height={10}
         alt={`${stages.length} stages`}
-        source={`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'><defs><rect id='s' width='10' height='10' rx='2'/></defs>${squares}</svg>`}
+        source={`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${count > 0 ? `<title>${plural(count, 'stage')} passed</title>` : ''}<defs><rect id='s' width='10' height='10' rx='2'/><pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' fill='${STAGE_COLOURS.success}'/></pattern></defs>${marks}</svg>`}
       />
     )
   }
@@ -289,7 +297,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   /**
    * Their avatar, else their initials on a disc, ringed in the colour of where they stand: heavy once they have a say,
    * thin while they have none, with a ✓ or ✕ badge for an approval or a request for changes. A coloured mark where the
-   * surface draws no Svg. A disc costs about 450 characters, a picture about 1,300.
+   * surface draws no Svg. A disc costs about 340 characters (500 with a badge), a picture about 1,300.
    */
   const face = (person: Person, isFocused: boolean, picture: string | undefined) => {
     const tone = personTone(person)
@@ -297,22 +305,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     if (!Svg) {
       return <Text color={tone}>{badge?.glyph ?? (isFocused ? '◉' : '●')}</Text>
     }
+    // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
     const inner = picture
-      ? `<clipPath id='c'><circle cx='11' cy='11' r='8'/></clipPath><image href='${picture}' x='3' y='3' width='16' height='16' clip-path='url(#c)'/>`
-      : `<g transform='translate(3 3)'>${discSource(person.username, 16, undefined, person.initials)}</g>`
+      ? `<clipPath id='c'><circle cx='8' cy='8' r='8'/></clipPath><image href='${picture}' width='16' height='16' clip-path='url(#c)'/>`
+      : discMarks(person.username, 16, person.initials)
     const ring =
       tone === 'subtle'
-        ? `<circle cx='11' cy='11' r='9' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='1.5'/>`
-        : `<circle cx='11' cy='11' r='9.5' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='3'/>`
+        ? `<circle cx='8' cy='8' r='9' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='1.5'/>`
+        : `<circle cx='8' cy='8' r='9.5' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='3'/>`
     const mark = badge
-      ? `<circle cx='17.75' cy='17.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/>`
+      ? `<circle cx='14.75' cy='14.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
       : ''
     return (
       <Svg
         width={22}
         height={22}
         alt={badge ? `${person.name}, ${REVIEW_STATE[person.state]}` : person.name}
-        source={`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'>${inner}${ring}${mark}</svg>`}
+        source={`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${inner}${ring}${mark}</svg>`}
       />
     )
   }
