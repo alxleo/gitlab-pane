@@ -16,6 +16,7 @@ const usualAtom = atom({ plugin: 'gitlab-ci', key: 'usual' } as const, {})
 const avatarsAtom = atom({ plugin: 'gitlab-ci', key: 'avatars' } as const, {})
 const expandedAtom = atom({ plugin: 'gitlab-ci', key: 'expanded' } as const, [])
 const personAtom = atom({ plugin: 'gitlab-ci', key: 'person' } as const, {})
+const foldsAtom = atom({ plugin: 'gitlab-ci', key: 'folds' } as const, [])
 const repoFilterAtom = atom({ plugin: 'gitlab-ci', key: 'repoFilter' } as const, '')
 const tabAtom = atom({ plugin: 'gitlab-ci', key: 'tab' } as const, 'mine')
 const announcedAtom = atom({ plugin: 'gitlab-ci', key: 'announced' } as const, {})
@@ -36,7 +37,7 @@ export const quietly = (work: Promise<unknown>): void => {
 
 /** Everything the pane draws, read at once; reading here makes the pane redraw when any of it changes. */
 export async function view($: EngineInterface) {
-  const [pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now] = await Promise.all([
+  const [pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, ticketsAtom),
@@ -44,13 +45,14 @@ export async function view($: EngineInterface) {
     read($, avatarsAtom),
     read($, expandedAtom),
     read($, personAtom),
+    read($, foldsAtom),
     read($, repoFilterAtom),
     read($, tabAtom),
     read($, pollAtom),
     read($, wakeAtom),
     $.clock.now(),
   ])
-  return { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now }
+  return { pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now }
 }
 
 /** Shows the MR list (`mine`), the inbox, or the opened MRs whole (`reading`); only the open tab is drawn. */
@@ -66,14 +68,20 @@ async function leaveEmptyReading($: EngineInterface) {
   }
 }
 
-/** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
+/** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments; closing it closes its folds. */
 export function toggle($: EngineInterface, key: string) {
   quietly(
     Promise.all([
       update($, expandedAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])),
       update($, personAtom, ({ [key]: _, ...rest }) => rest),
+      update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`))),
     ]).then(() => leaveEmptyReading($))
   )
+}
+
+/** Opens or closes one `<details>` fold, named `<row key>#<where>`, against how GitLab first shows it. */
+export function toggleFold($: EngineInterface, id: string) {
+  quietly(update($, foldsAtom, list => (list.includes(id) ? list.filter(one => one !== id) : [...list, id])))
 }
 
 /** Closes every opened row, and the Reading tab with them. */
@@ -81,6 +89,7 @@ export async function closeReading($: EngineInterface) {
   const rows = await read($, rowsAtom)
   await update($, expandedAtom, list => list.filter(key => !rows.some(row => row.key === key)))
   await update($, personAtom, () => ({}))
+  await update($, foldsAtom, () => [])
   await leaveEmptyReading($)
 }
 
@@ -284,6 +293,7 @@ async function readOnce($: EngineInterface): Promise<void> {
   // A row merged or closed since it was opened stays out of what is drawn and saved.
   await update($, expandedAtom, list => list.filter(key => key === 'drafts' || key === 'more' || isShown(key)))
   await update($, personAtom, people => Object.fromEntries(Object.entries(people).filter(([key]) => isShown(key))))
+  await update($, foldsAtom, list => list.filter(id => isShown(id.split('#')[0] ?? '')))
   await update($, announcedAtom, () => announced)
   if (ended.size > 0) {
     await update($, pinnedAtom, list => list.filter(each => !ended.has(pinKey(each))))

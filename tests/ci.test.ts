@@ -19,6 +19,7 @@ import {
 } from '../hooks/ci'
 import { cleanBody, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
 import { readTickets, ticketQuery } from '../hooks/jira'
+import { flatOf } from '../hooks/markdown'
 import { NOW, job, note, pipe, rawMr, reviewer, stage, thread, user } from './fixtures'
 
 const view = (status: string, id = 7, failed: unknown[] = []) => ({ id, status, failed })
@@ -210,9 +211,8 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
     'See ![shot](/uploads/abc/shot.png)',
   ].join('\n')
   const clean = cleanBody(body, 'g/p')
-  expect(clean).toBe(
-    '### Locate test timeout undercuts ready wait\n\nThe locate spec waits up to `ORDER_PAGE_READY_TIMEOUT`.\n\nSee ![shot](https://gitlab.com/g/p/uploads/abc/shot.png)'
-  )
+  expect(clean).toContain('See ![shot](https://gitlab.com/g/p/uploads/abc/shot.png)')
+  expect(flatOf(clean)).toBe('### Locate test timeout undercuts ready wait\n\nThe locate spec waits up to `ORDER_PAGE_READY_TIMEOUT`.\n\nSee')
   expect(excerpt(clean)).toBe('Locate test timeout undercuts ready wait')
   expect(excerpt('## Summary\n\nDoes a thing that is long', 12)).toBe('Summary')
 })

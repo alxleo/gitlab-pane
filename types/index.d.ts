@@ -185,6 +185,8 @@ declare module 'claude-code' {
       expanded: string[]
       /** Per open card key, the one person whose comments it shows. */
       person: Record<string, string>
+      /** `<details>` folds drawn the other way from how GitLab first shows them, as `<card key>#<where>`. */
+      folds: string[]
       /** A project path the list is narrowed to; empty shows every repo. */
       repoFilter: string
       /** The pane's open tab: `mine` (the MR list), `inbox`, or `reading` (the opened MRs whole). */

@@ -1,3 +1,5 @@
+import { flatOf } from './markdown'
+
 import type { MrCard, Person, Pinned, Stage, Usual } from '../types'
 
 /** A pipeline in one of these waits for nothing but a person. */
@@ -253,7 +255,7 @@ export function pictureUri(base64: string, most: number): string | null {
 
 /** The first line worth reading, without its Markdown marks. */
 export function excerpt(body: string, room = 160): string {
-  const line = body.split('\n').find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
+  const line = flatOf(body).split('\n').find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
   const plain = line.replace(/^[#>\s]+|[*_`]/g, '').trim()
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
@@ -263,24 +265,16 @@ export function markdownText(text: string): string {
   return text.replace(/([\\`*_[\]()#<>!|~])/g, '\\$1')
 }
 
-/**
- * A description as Markdown worth drawing: template comments and images left out, cut at `room`. Task boxes become
- * ✓ and ☐, since the desktop app strikes a ticked task through and it reads as dropped.
- */
+/** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
 export function bodyOf(text: string, room = 1_200): string {
-  const clean = text
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/^(\s*[-*+]) \[[xX]\] /gm, '$1 ✓ ')
-    .replace(/^(\s*[-*+]) \[ \] /gm, '$1 ☐ ')
-    .trim()
+  const clean = flatOf(text)
   return clean.length > room ? `${clean.slice(0, room - 1)}…` : clean
 }
 
 /** The first paragraph under the headings, as one plain line. */
 export function lead(body: string, room = 240): string {
   const paragraph =
-    body
+    flatOf(body)
       .replace(/^#.*$/gm, '')
       .split(/\n\s*\n/)
       .map(text => text.trim())

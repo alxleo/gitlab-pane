@@ -91,7 +91,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { Box, Text, Button, Link, Markdown } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
-  const { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now } = await view($)
+  const { pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now } = await view($)
   // Only the open tab is drawn, so the MR list, the inbox and the opened MRs each have the whole of what the app draws.
   const isInbox = tab === 'inbox'
   const reading = expanded.flatMap(key => rows.filter(row => row.key === key))
@@ -573,7 +573,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           />
         )}
       </Box>
-      {isInbox ? await drawInbox($, e) : isReading ? drawReading($, e, reading, now) : mineTab}
+      {isInbox ? await drawInbox($, e) : isReading ? drawReading($, e, reading, folds, now) : mineTab}
       <Box flexDirection="row" gap={2}>
         <Text color={poll.error !== null ? 'warning' : undefined} dimColor={poll.error === null} size="footnote">
           {status}

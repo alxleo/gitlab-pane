@@ -136,12 +136,9 @@ export type RawResponse = {
   errors?: { message: string }[]
 }
 
-/** Markdown as GitLab stores it, made safe to draw: no HTML, no hidden markers, links absolute. */
+/** Markdown as GitLab stores it, HTML and all, its links made absolute; markdown.ts makes it drawable. */
 export function cleanBody(body: string, project: string): string {
   return body
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
     .replace(/\]\(\/uploads\//g, `](${GITLAB}/${project}/uploads/`)
     .replace(/\]\(\//g, `](${GITLAB}/`)
     .replace(/[ \t]+$/gm, '')
