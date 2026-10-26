@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { AVATAR_BASE64, NOW, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
+import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
 
 import { STAGE_COLOURS } from '../hooks/ci'
 import type { RawMr } from '../hooks/gitlab'
@@ -87,13 +87,24 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const opened: string[] = []
+  const closed: string[] = []
+  on('ui.open', (_, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_, e) => {
+    closed.push(e.id)
+    return { value: undefined }
+  })
   on('ui.toast', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { woken, reads, avatars, jiraReads }
+  return { woken, reads, avatars, jiraReads, opened, closed }
 }
+
+const READING = { ...PANE, requestId: 'gitlab-ci-mr', props: { ...PANE.props, title: 'Reading' } } as const
 
 test('only the pinned MR wakes the session, once, with no comment text', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
@@ -250,6 +261,39 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   expect(marks).toContain('✓')
   expect(marks).toContain('✕')
   await terminal.unmount()
+})
+
+test('opening a card shows it whole in a reading pane of its own, closed with the last card', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const description = `## What\n\n${'This change does a careful thing. '.repeat(40)}\n\nThe end of the description.`
+  const words = `${'Please reconsider this line. '.repeat(70)}The end of the thread.`
+  const failing = pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', Array.from({ length: 9 }, (_, j) => job(`suite-${j}`, 'FAILED')))] } })
+  const asked = thread(words, 'reviewer')
+  const answered = { ...asked, notes: { nodes: [...asked.notes.nodes, note('Kept it; the comment above says why.', 'alex')] } }
+  const { opened, closed } = engine(on, {
+    mrs: [rawMr(12, { description, headPipeline: failing, discussions: { nodes: [answered] } })],
+    isDown: false,
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const open = (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? ''
+  await ui.press({ key: open })
+  expect(opened).toContain('gitlab-ci-mr')
+
+  const reading = await $.ui.mount({ ...READING, surface: 'desktop' })
+  const text = (await reading.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
+  expect(text).toContain('The end of the description.')
+  expect(text).toContain('The end of the thread.')
+  expect(text).toContain('Kept it; the comment above says why.')
+  const jobs = (await reading.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name ?? ''))
+  expect(jobs.length).toBe(9)
+  await reading.unmount()
+
+  await ui.press({ key: open })
+  expect(closed).toContain('gitlab-ci-mr')
+  await ui.unmount()
 })
 
 test('a stage strip draws its passed stages as one run, counted in its title; other stages keep their own', async ($, on) => {

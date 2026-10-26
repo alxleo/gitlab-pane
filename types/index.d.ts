@@ -22,6 +22,8 @@ export type Note = {
   where?: string
   /** In a thread still unresolved. */
   isOpen: boolean
+  /** The answers under an open thread's opening note, oldest first. */
+  replies?: Note[]
 }
 
 export type Reviewer = {

@@ -147,7 +147,6 @@ export function cleanBody(body: string, project: string): string {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
-    .slice(0, 1500)
 }
 
 const toNote = (raw: RawNote, project: string, isOpen: boolean): Note => {
@@ -284,7 +283,7 @@ export function toCard(raw: RawMr): MrCard {
     iid: Number(raw.iid),
     title: raw.title,
     author: raw.author?.username ?? '',
-    description: cleanBody(raw.description ?? '', project).slice(0, 400),
+    description: cleanBody(raw.description ?? '', project),
     branch: { source: raw.sourceBranch, target: raw.targetBranch },
     diff: raw.diffStatsSummary
       ? {
@@ -322,7 +321,9 @@ export function toCard(raw: RawMr): MrCard {
           blockedOn: jobs.filter(job => job.status === 'MANUAL' && !job.allowFailure).map(job => job.name),
         }
       : undefined,
-    openThreads: open.filter(thread => !isBot(thread.first)).map(thread => toNote(thread.first, project, true)),
+    openThreads: open
+      .filter(thread => !isBot(thread.first))
+      .map(thread => ({ ...toNote(thread.first, project, true), replies: thread.notes.slice(1).map(one => toNote(one, project, true)) })),
     bots: {
       threads: open.filter(thread => isBot(thread.first)).map(thread => ({ ...toNote(thread.first, project, true), body: '' })),
       changesBy: requested.filter(reviewer => reviewer.isBot).map(reviewer => reviewer.username),

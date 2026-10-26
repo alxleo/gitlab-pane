@@ -33,7 +33,7 @@ import type { Job, MrCard, Note, Person, Stage } from '../types'
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
 
 /** Keeps a hover scope inside its 64 characters whatever the project path or username. */
-const shortHash = (text: string): string =>
+export const shortHash = (text: string): string =>
   [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
 const REVIEW_STATE: Record<string, string> = {
@@ -77,10 +77,10 @@ const JOBS_SHOWN = 6
 const MINE_SHOWN = 10
 
 /** An MR card's border by `rank`: needs you, moving, waiting on others (grey: nothing for you to do), ready. */
-const URGENCY: Tone[] = ['error', 'suggestion', 'subtle', 'success']
+export const URGENCY: Tone[] = ['error', 'suggestion', 'subtle', 'success']
 
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
-const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
+export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
 
 const xml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&apos;')
@@ -90,7 +90,7 @@ const xml = (text: string): string =>
  * blank). The engine adds up to about 6,000 of press handles and hover stamps to what this measures, so the app gets
  * about 91,000 at most: rows, then open detail, then hover cards, then avatars, in order of what needs Alex.
  */
-const DRAWING_BUDGET = 85_000
+export const DRAWING_BUDGET = 85_000
 
 /** What the repo filter, headings and footer take, with room to spare for a long list of repos. */
 const CHROME_SIZE = 6_000
@@ -99,7 +99,7 @@ const CHROME_SIZE = 6_000
 const THREAD_ROOM = 500
 
 /** A tree's size as the app receives it. */
-const measure = (tree: unknown): number => {
+export const measure = (tree: unknown): number => {
   try {
     return JSON.stringify(tree)?.length ?? 0
   } catch {
@@ -439,14 +439,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {focus.notes.map(note => (
           <Box key={`pn-${note.url}`} flexDirection="column">
             {byline('who', noteKind(note), [note.where, ago(note.at, now)].filter(Boolean).join(' · '), note.url)}
-            <Markdown text={note.body} />
+            <Markdown text={bodyOf(note.body, 1_500)} />
           </Box>
         ))}
         {less}
       </Box>
     ) : (
       <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-        {mr.description.trim() && <Markdown text={bodyOf(mr.description)} />}
+        {mr.description.trim() && <Markdown text={bodyOf(mr.description, 400)} />}
         {pipeline && pipeline.failed.length + pipeline.amber.length > 0 && (
           <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             {[...pipeline.failed.map(job => ({ job, glyph: '✗' })), ...pipeline.amber.map(job => ({ job, glyph: '⚠' }))]

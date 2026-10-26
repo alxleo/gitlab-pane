@@ -58,10 +58,36 @@ export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
   quietly(update($, tabAtom, () => tab))
 }
 
+/** The reading pane's id; register.tsx names it again, since the engine reads a hook's matcher from that file alone. */
+export const READING_PANE = 'gitlab-ci-mr'
+
+/** Opens the reading pane on the rows opened in the list, titled for them, or closes it once none is. */
+async function syncReading($: EngineInterface) {
+  const [expanded, rows] = await Promise.all([read($, expandedAtom), read($, rowsAtom)])
+  const open = rows.filter(row => expanded.includes(row.key))
+  if (open.length === 0) {
+    await $.ui.close({ id: READING_PANE })
+    return
+  }
+  await $.ui.open({ id: READING_PANE, title: open.length === 1 ? `!${open[0]?.iid}` : `${open.length} MRs` })
+}
+
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
 export function toggle($: EngineInterface, key: string) {
-  quietly(update($, expandedAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])))
-  quietly(update($, personAtom, ({ [key]: _, ...rest }) => rest))
+  quietly(
+    Promise.all([
+      update($, expandedAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])),
+      update($, personAtom, ({ [key]: _, ...rest }) => rest),
+    ]).then(() => syncReading($))
+  )
+}
+
+/** Closes every opened row, and with them the reading pane; also what the person closing that pane does. */
+export async function closeReading($: EngineInterface) {
+  const rows = await read($, rowsAtom)
+  await update($, expandedAtom, list => list.filter(key => !rows.some(row => row.key === key)))
+  await update($, personAtom, () => ({}))
+  await syncReading($)
 }
 
 /** Opens a row on one person's comments alone; asked again for the same person, closes it. */
@@ -70,10 +96,12 @@ export async function showPerson($: EngineInterface, key: string, username: stri
   if (expanded.includes(key) && people[key] === username) {
     await update($, expandedAtom, list => list.filter(one => one !== key))
     await update($, personAtom, ({ [key]: _, ...rest }) => rest)
+    await syncReading($)
     return
   }
   await update($, personAtom, previous => ({ ...previous, [key]: username }))
   await update($, expandedAtom, list => (list.includes(key) ? list : [...list, key]))
+  await syncReading($)
 }
 
 /** Narrows the list to one repo; the same repo again, or none, shows them all. */
