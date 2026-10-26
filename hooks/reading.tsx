@@ -90,7 +90,11 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, open: Mr
   let room = DRAWING_BUDGET - CHROME_SIZE
   const drawn = open.map(mr => {
     const whole = card(mr)
-    room -= measure(whole)
+    const size = measure(whole)
+    const fits = size <= room
+    if (fits) {
+      room -= size
+    }
     return (
       <Box key={shortHash(mr.key)} flexDirection="column" gap={1} borderStyle="round" borderColor={STAGE_COLOURS[URGENCY[rank(mr)] ?? 'subtle']} paddingX={1}>
         <Box flexDirection="row" gap={1}>
@@ -99,7 +103,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, open: Mr
           </Box>
           <Button key={`close-${mr.iid}-${shortHash(mr.project)}`} plain label="✕" onPress={() => toggle($, mr.key)} />
         </Box>
-        {room >= 0 ? whole : <Link href={mr.url}>{`Too long to draw here with the others; read !${mr.iid} on GitLab`}</Link>}
+        {fits ? whole : <Link href={mr.url}>{`Too long to draw here with the others; read !${mr.iid} on GitLab`}</Link>}
       </Box>
     )
   })

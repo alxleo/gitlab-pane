@@ -296,6 +296,26 @@ test('opened cards read whole on a Reading tab, which goes once the last card cl
   await ui.unmount()
 })
 
+test('an MR too long for the Reading tab links to GitLab, and the MRs after it still draw whole', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const huge = `${'A changelog line that goes on. '.repeat(4_000)}The end.`
+  engine(on, { mrs: [rawMr(12, { description: huge }), rawMr(13, { description: 'Short and whole.' })], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  for (const iid of [12, 13]) {
+    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith(`open-${iid}-`))?.key ?? '' })
+  }
+  await ui.press({ key: 'tab-reading' })
+
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  const tooLong = (await ui.findAll({ type: 'Link' })).map(link => link.text ?? '').filter(text => text.includes('Too long to draw'))
+  expect(tooLong.length).toBe(1)
+  expect(tooLong[0]).toContain('read !12 on GitLab')
+  expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('Short and whole.')
+  await ui.unmount()
+})
+
 test('/gitlab opens the pane and answers in one line, never the MR list', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false })

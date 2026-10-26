@@ -46,6 +46,8 @@ export const register: Register = (on, options) => {
     $.clock.every(INBOX_TICK_MS, () => quietly(inboxTick($)))
     // A start or a reload reads at once, so rows kept from an older version are replaced before they are drawn for long.
     quietly(refresh($))
+    // Retires the separate reading pane an earlier version opened; the app keeps a pane across reloads.
+    quietly($.ui.close({ id: 'gitlab-ci-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
       quietly($.ui.open({ id: PANE, title: TITLE }))
@@ -60,6 +62,9 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await $.ui.open({ id: PANE, title: TITLE })
     quietly(refresh($))
+    if (opened.isPlaced && !health.last.startsWith('threw')) {
+      return { text: 'GitLab pane open' }
+    }
     return {
       text: [
         opened.isPlaced ? 'GitLab pane open' : `GitLab pane not placed: ${opened.reason}`,
