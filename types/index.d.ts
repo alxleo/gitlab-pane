@@ -112,6 +112,8 @@ export type PollState = {
   /** The last read's error; the cards shown are then from `fetchedAt`. */
   error: string | null
   failures: number
+  /** MRs the last read left out (GitLab timed parts of it out), drawn as the read before saw them. */
+  kept?: number
   ticketsAt: number | null
   usualAt: number | null
 }

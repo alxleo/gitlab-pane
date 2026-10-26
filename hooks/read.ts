@@ -6,6 +6,7 @@ import {
   PINS_PER_QUERY,
   PROJECTS_PER_QUERY,
   authoredQuery,
+  lostIn,
   mergeStatusQuery,
   pinnedQuery,
   readMergeStatus,
@@ -146,8 +147,11 @@ async function ask($: EngineInterface, query: string): Promise<RawResponse> {
   }
 }
 
-/** The authored list, then only the pinned MRs it lacks, a few per query to stay under GitLab's cost limit. */
-async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promise<MrCard[]> {
+/**
+ * The authored list, then only the pinned MRs it lacks, a few per query to stay under GitLab's cost limit. `lost` counts
+ * authored MRs GitLab timed out and sent back null, whose keys it therefore never said.
+ */
+async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promise<{ rows: MrCard[]; lost: number }> {
   // The merge verdict comes from a query of its own, read alongside; if it fails, no card says it can merge.
   const [authored, verdicts] = await Promise.all([
     ask($, authoredQuery()),
@@ -161,7 +165,7 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
     const chunk = missing.slice(i, i + PINS_PER_QUERY)
     rows.push(...readResponse(await ask($, pinnedQuery(chunk)), chunk.length))
   }
-  return rows
+  return { rows, lost: lostIn(authored) }
 }
 
 /**
@@ -272,8 +276,12 @@ async function readOnce($: EngineInterface): Promise<void> {
   const pinned = await read($, pinnedAtom)
   const attemptedAt = await $.clock.now()
   let rows: MrCard[]
+  let kept: MrCard[]
   try {
-    rows = await readGitLab($, pinned)
+    const answer = await readGitLab($, pinned)
+    // A read GitLab partly timed out keeps the cards it left out as last seen, so none vanishes or closes for a poll.
+    kept = answer.lost > 0 ? (await read($, rowsAtom)).filter(row => !answer.rows.some(each => each.key === row.key)) : []
+    rows = [...answer.rows, ...kept]
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await update($, pollAtom, poll => ({ ...poll, attemptedAt, error: message, failures: poll.failures + 1 }))
@@ -315,7 +323,7 @@ async function readOnce($: EngineInterface): Promise<void> {
   if (ended.size > 0) {
     await update($, pinnedAtom, list => list.filter(each => !ended.has(pinKey(each))))
   }
-  await update($, pollAtom, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: null, failures: 0 }))
+  await update($, pollAtom, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: null, failures: 0, kept: kept.length }))
   const pinnedKeys = new Set(pinned.map(pinKey))
   $.ui.status(
     open

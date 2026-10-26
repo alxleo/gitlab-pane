@@ -40,7 +40,7 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
-type Fake = { mrs: RawMr[]; isDown: boolean }
+type Fake = { mrs: RawMr[]; isDown: boolean; lost?: string[] }
 
 function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)
@@ -73,7 +73,11 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
     reads.push(query)
     if (query.includes('authoredMergeRequests')) {
       const open = fake.mrs.filter(mr => mr.state === 'opened')
-      return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: open } } } }))
+      // GitLab times parts of a heavy query out: those MRs come back null beside an error each.
+      const lost = fake.lost ?? []
+      const nodes = open.map(mr => (lost.includes(mr.iid) ? null : mr))
+      const errors = lost.map(() => ({ message: 'Timeout on validation of query' }))
+      return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes } } }, ...(errors.length > 0 ? { errors } : {}) }))
     }
     const iids = [...query.matchAll(/mergeRequest\(iid: "(\d+)"\)/g)].map(match => match[1])
     const data = Object.fromEntries(
@@ -482,6 +486,30 @@ test('a failed read keeps the last cards and says how old they are', async ($, o
   expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toBe(
     'GitLab read failed: glab: connection refused; showing 3m old data'
   )
+  await ui.unmount()
+})
+
+test('an MR a partly failed read leaves out keeps its last card, still open, and the footer says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false }
+  engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-13-'))?.key ?? '' })
+
+  fake.lost = ['13']
+  await clock.advance(180_000)
+  expect((await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-13-'))?.props.label).toBe('▾ thing 13')
+  expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toBe('updated just now; 1 MR kept from the last read')
+
+  fake.lost = []
+  await clock.advance(180_000)
+  expect(await ui.find({ type: 'Text', text: /kept from the last read/ })).toBeUndefined()
+  // A complete read still drops what has closed.
+  fake.mrs = [rawMr(12)]
+  await clock.advance(180_000)
+  expect((await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-13-'))).toBeUndefined()
   await ui.unmount()
 })
 

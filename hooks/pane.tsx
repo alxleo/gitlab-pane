@@ -537,7 +537,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     poll.error !== null
       ? `GitLab read failed: ${poll.error}${poll.fetchedAt ? `; showing ${ago(new Date(poll.fetchedAt).toISOString(), now)} old data` : ''}`
       : poll.fetchedAt
-        ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now))
+        ? `${updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now))}${poll.kept ? `; ${plural(poll.kept, 'MR')} kept from the last read` : ''}`
         : 'reading GitLab…'
 
   // An MR counts as news once, whichever rules list it, as the inbox itself counts it.
