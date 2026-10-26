@@ -1,6 +1,6 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { CHROME_SIZE, DRAWING_BUDGET, LINK, STAGE_COLOURS, URGENCY, ago, botName, measure, plural, rank, shortHash, shortTitle } from './ci'
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, STAGE_COLOURS, ago, botName, measure, plural, reviewTone, shortHash, shortTitle } from './ci'
 import { partsOf } from './markdown'
 import { closeReading, quietly, toggle, toggleFold } from './read'
 
@@ -114,7 +114,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, open: Mr
   let room = DRAWING_BUDGET - CHROME_SIZE
   const drawn = open.map(mr => {
     const framed = (body: RenderChildren) => (
-      <Box key={shortHash(mr.key)} flexDirection="column" gap={1} borderStyle="round" borderColor={STAGE_COLOURS[URGENCY[rank(mr)] ?? 'subtle']} paddingX={1}>
+      <Box key={shortHash(mr.key)} flexDirection="column" gap={1} borderStyle="round" borderColor={STAGE_COLOURS[reviewTone(mr)]} paddingX={1}>
         <Box flexDirection="row" gap={1}>
           <Box flexGrow={1} flexShrink={1}>
             <Text weight="semibold">{shortTitle(mr.title)}</Text>

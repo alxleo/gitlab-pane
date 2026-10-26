@@ -168,19 +168,36 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   await ui.unmount()
 })
 
-test('each MR is a card bordered by how much it needs you, its worst blocker in words', async ($, on) => {
+test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  engine(on, { mrs: [rawMr(12, { headPipeline: pipe('FAILED') }), rawMr(13, { headPipeline: pipe('SUCCESS') })], isDown: false })
+  const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
+  engine(on, {
+    mrs: [
+      rawMr(12, { headPipeline: pipe('FAILED') }),
+      rawMr(13, { headPipeline: pipe('SUCCESS') }),
+      rawMr(14, { ...approved, headPipeline: pipe('SUCCESS'), detailedMergeStatus: 'MERGEABLE' }),
+      rawMr(15, { ...approved, headPipeline: pipe('RUNNING'), detailedMergeStatus: 'CI_STILL_RUNNING' }),
+    ],
+    isDown: false,
+  })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The failed one needs you: a heavier line in the stage squares' red; the other only waits on a review: grey.
-  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined)
-  expect(cards.map(card => [card.props?.borderStyle, card.props?.borderColor])).toEqual([
-    ['bold', STAGE_COLOURS.error],
-    ['round', STAGE_COLOURS.subtle],
-  ])
+  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green,
+  // and only the one GitLab says can merge now carries the word.
+  // The cards, not the chip inside one: a chip's own frame holds no title.
+  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined && /thing \d+/.test(JSON.stringify(box)))
+  const byTitle = Object.fromEntries(
+    cards.map(card => [/thing (\d+)/.exec(JSON.stringify(card))?.[1], [card.props?.borderStyle, card.props?.borderColor]])
+  )
+  expect(byTitle).toEqual({
+    '12': ['bold', STAGE_COLOURS.error],
+    '13': ['round', STAGE_COLOURS.subtle],
+    '14': ['round', STAGE_COLOURS.success],
+    '15': ['round', STAGE_COLOURS.success],
+  })
+  expect((await ui.findAll({ type: 'Text', text: '✓ mergeable' })).length).toBe(1)
   // The marker shows in words; its hover card still lists every marker.
   expect(await ui.find({ type: 'Text', text: '👤 needs 1 approval' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '👤 0/1' })).toBeUndefined()
@@ -521,8 +538,9 @@ test('cards Alex opened keep their detail when the unfolded list fills the drawi
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The lowest rows drawn, opened one at a time, since an open row's detail can push the last row out.
-  for (let i = 0; i < 3; i++) {
+  // The lowest rows drawn, opened one at a time, since an open row's detail can push the last row out. Five, as a few
+  // cards open at once is how Alex reads them.
+  for (let i = 0; i < 5; i++) {
     const closed = (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('open-') && String(button.props.label).startsWith('▸'))
     await ui.press({ key: closed.at(-1)?.key ?? '' })
   }
@@ -530,7 +548,7 @@ test('cards Alex opened keep their detail when the unfolded list fills the drawi
 
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   expect(await ui.find({ type: 'Text', text: /^Too much is open/ })).toBeUndefined()
-  expect((await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('less-')).length).toBe(3)
+  expect((await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('less-')).length).toBe(5)
   // Each thread is cut short in the card; its 💬 link opens it whole.
   const longest = Math.max(...(await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text).length))
   expect(longest).toBeLessThanOrEqual(500)

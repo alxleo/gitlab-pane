@@ -6,7 +6,7 @@ const NOTE_FIELDS = `body system url createdAt author { username name bot avatar
 
 // Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
 const MR_FIELDS = `
-  iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired updatedAt
+  iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired detailedMergeStatus updatedAt
   description sourceBranch targetBranch
   author { username }
   diffStatsSummary { additions deletions fileCount }
@@ -107,6 +107,7 @@ export type RawMr = {
   shouldBeRebased: boolean
   approvalsLeft: number | null
   approvalsRequired: number | null
+  detailedMergeStatus?: string | null
   updatedAt: string
   description: string | null
   sourceBranch: string
@@ -297,6 +298,7 @@ export function toCard(raw: RawMr): MrCard {
     changesRequestedBy: requested.filter(reviewer => !reviewer.isBot).map(reviewer => reviewer.username),
     approvalsLeft: raw.approvalsLeft ?? 0,
     approvalsRequired: raw.approvalsRequired ?? 0,
+    mergeStatus: raw.detailedMergeStatus ?? null,
     approvers: raw.approvedBy.nodes.filter(user => !user.bot).map(user => user.username),
     reviewers,
     people: toPeople(raw, project, threads),

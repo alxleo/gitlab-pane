@@ -72,6 +72,8 @@ export type MrCard = {
   /** Approvals still needed; a bot's approval never counts. */
   approvalsLeft: number
   approvalsRequired: number
+  /** GitLab's own verdict, under the project's merge rules: `MERGEABLE`, `NOT_APPROVED`, `CI_STILL_RUNNING`, ... */
+  mergeStatus: string | null
   approvers: string[]
   reviewers: Reviewer[]
   people: Person[]

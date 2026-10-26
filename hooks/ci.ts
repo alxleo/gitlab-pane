@@ -101,8 +101,17 @@ export const STAGE_COLOURS: Record<Tone, string> = {
   subtle: '#8c959f',
 }
 
-/** An MR card's border by `rank`: needs you, moving, waiting on others (grey: nothing for you to do), ready. */
-export const URGENCY: Tone[] = ['error', 'suggestion', 'subtle', 'success']
+/**
+ * An MR card's border colour, its review: red while someone asked for changes or it cannot merge as it is (conflicts,
+ * a failed pipeline), green once approved, grey while it waits on a review. Whether it needs you is the line's weight.
+ */
+export function reviewTone(card: MrCard): Tone {
+  if (card.changesRequestedBy.length > 0 || card.hasConflicts || card.pipeline?.status === 'failed') {
+    return 'error'
+  }
+  // With no approvals required, approved means someone did approve.
+  return card.approvalsLeft === 0 && (card.approvalsRequired > 0 || card.approvers.length > 0) ? 'success' : 'subtle'
+}
 
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
 export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const

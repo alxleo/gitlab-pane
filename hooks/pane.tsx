@@ -5,7 +5,6 @@ import {
   DRAWING_BUDGET,
   LINK,
   STAGE_COLOURS,
-  URGENCY,
   ago,
   bodyOf,
   botName,
@@ -20,6 +19,7 @@ import {
   plural,
   ranFor,
   rank,
+  reviewTone,
   rowBadges,
   shortHash,
   shortTitle,
@@ -342,8 +342,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         <Button key={scope('read')} plain label="read whole ›" onPress={() => openTab($, 'reading')} />
       </Box>
     )
+    // GitLab's own word that it can merge now, under the project's rules: our blockers can be ones it does not count.
+    const mergeable =
+      mr.mergeStatus !== 'MERGEABLE' ? null : e.surface === 'terminal' ? (
+        <Text bold color="success">
+          ✓ mergeable
+        </Text>
+      ) : (
+        <Box flexShrink={0} borderStyle="round" borderColor={STAGE_COLOURS.success} paddingX={1}>
+          <Text bold color={STAGE_COLOURS.success} size="footnote">
+            ✓ mergeable
+          </Text>
+        </Box>
+      )
     const line1 = (
-      <Box flexDirection="row" gap={1}>
+      <Box flexDirection="row" gap={1} alignItems="center">
         <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
           {canOpen ? (
             <Button key={scope('open')} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(mr.title)}`} onPress={() => toggle($, mr.key)} />
@@ -353,6 +366,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           )}
         </Box>
+        {mergeable}
         <Text dimColor size="footnote">
           {ago(mr.updatedAt, now)}
         </Text>
@@ -499,14 +513,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       return null
     }
     const hasCards = withCards.has(part.key)
-    const urgency = rank(mr)
-    // The stage squares' own colours, brighter than the theme's tones, and a heavier line for an MR that needs you.
+    // The colour is the review, in the stage squares' own colours, brighter than the theme's tones; the heavier line
+    // is an MR that needs you.
     return (
       <Box
         key={shortHash(part.key)}
         flexDirection="column"
-        borderStyle={urgency === 0 ? 'bold' : 'round'}
-        borderColor={STAGE_COLOURS[URGENCY[urgency] ?? 'subtle']}
+        borderStyle={rank(mr) === 0 ? 'bold' : 'round'}
+        borderColor={STAGE_COLOURS[reviewTone(mr)]}
         hover={part.canOpen ? { borderColor: 'claude' } : undefined}
         paddingX={1}
       >
