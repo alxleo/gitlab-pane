@@ -235,6 +235,53 @@ export function rowBadges(card: MrCard): Badge[] {
   })
 }
 
+/** What GitLab's verdict already says, so the pane's own marker for it would only repeat it. */
+const SAID_BY: Record<string, readonly BadgeKind[]> = {
+  MERGEABLE: ['ready', 'approvals'],
+  NOT_APPROVED: ['approvals'],
+  REQUESTED_CHANGES: ['changes'],
+  CONFLICT: ['conflicts'],
+  NEED_REBASE: ['rebase'],
+  CI_MUST_PASS: ['failed'],
+  DISCUSSIONS_NOT_RESOLVED: ['threads'],
+}
+
+/** Still being worked out by GitLab, or about an MR that has left: nothing worth saying. */
+const QUIET = ['UNCHECKED', 'CHECKING', 'PREPARING', 'APPROVALS_SYNCING', 'NOT_OPEN']
+
+/**
+ * GitLab's own verdict on whether the MR can merge (`detailedMergeStatus`), in words and a tone, with the pane's markers
+ * it already covers; null while GitLab is deciding, or when it was not read.
+ */
+export function verdictOf(card: MrCard): { words: string; tone: Tone; covers: readonly BadgeKind[] } | null {
+  const status = card.mergeStatus
+  if (!status || QUIET.includes(status)) {
+    return null
+  }
+  const words: Record<string, [string, Tone]> = {
+    MERGEABLE: ['✓ mergeable', 'success'],
+    NOT_APPROVED: [card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'needs approval', 'subtle'],
+    REQUESTED_CHANGES: ['changes requested', 'error'],
+    CONFLICT: ['conflicts', 'error'],
+    NEED_REBASE: ['needs rebase', 'warning'],
+    CI_MUST_PASS: ['CI must pass', 'error'],
+    CI_STILL_RUNNING: ['CI running', 'subtle'],
+    DISCUSSIONS_NOT_RESOLVED: ['threads open', 'warning'],
+    DRAFT_STATUS: ['draft', 'subtle'],
+  }
+  const [said, tone] = words[status] ?? [status.toLowerCase().replace(/_/g, ' '), 'subtle']
+  return { words: said, tone, covers: SAID_BY[status] ?? [] }
+}
+
+/** A marker said after GitLab's verdict: short, since the verdict already says whether it blocks. */
+export function trailingWords(card: MrCard, badge: Badge): string {
+  if (badge.kind !== 'bots') {
+    return badge.words
+  }
+  const { threads, changesBy } = card.bots
+  return threads.length > 0 ? `${plural(threads.length, 'bot thread')} open` : `${changesBy.map(botName).join(', ')} asked for changes`
+}
+
 /** A person's icon colour: asked for changes, open threads, approved, or nothing pending. */
 export const personTone = (person: Person): Tone =>
   person.state === 'requested_changes' ? 'error' : person.openThreads > 0 ? 'warning' : person.state === 'approved' ? 'success' : 'subtle'

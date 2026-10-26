@@ -16,6 +16,7 @@ import {
   shortTitle,
   sizedAvatar,
   ticketOf,
+  verdictOf,
 } from '../hooks/ci'
 import { cleanBody, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
 import { readTickets, ticketQuery } from '../hooks/jira'
@@ -215,6 +216,27 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
   expect(flatOf(clean)).toBe('### Locate test timeout undercuts ready wait\n\nThe locate spec waits up to `ORDER_PAGE_READY_TIMEOUT`.\n\nSee')
   expect(excerpt(clean)).toBe('Locate test timeout undercuts ready wait')
   expect(excerpt('## Summary\n\nDoes a thing that is long', 12)).toBe('Summary')
+})
+
+test("GitLab's merge verdict reads as words in its tone, and as nothing while GitLab is still deciding", async () => {
+  const card = (mergeStatus: string | null, approvalsLeft = 2) => ({ ...toCard(rawMr(1, { approvalsLeft, approvalsRequired: 2 })), mergeStatus })
+  const said = (mergeStatus: string | null, approvalsLeft?: number) => {
+    const verdict = verdictOf(card(mergeStatus, approvalsLeft))
+    return verdict && [verdict.words, verdict.tone]
+  }
+  expect(said('MERGEABLE')).toEqual(['✓ mergeable', 'success'])
+  expect(said('NOT_APPROVED')).toEqual(['needs 2 approvals', 'subtle'])
+  expect(said('REQUESTED_CHANGES')).toEqual(['changes requested', 'error'])
+  expect(said('CONFLICT')).toEqual(['conflicts', 'error'])
+  expect(said('NEED_REBASE')).toEqual(['needs rebase', 'warning'])
+  expect(said('CI_MUST_PASS')).toEqual(['CI must pass', 'error'])
+  expect(said('CI_STILL_RUNNING')).toEqual(['CI running', 'subtle'])
+  expect(said('DISCUSSIONS_NOT_RESOLVED')).toEqual(['threads open', 'warning'])
+  expect(said('DRAFT_STATUS')).toEqual(['draft', 'subtle'])
+  expect(said('JIRA_ASSOCIATION_MISSING')).toEqual(['jira association missing', 'subtle'])
+  for (const quiet of ['UNCHECKED', 'CHECKING', 'PREPARING', 'APPROVALS_SYNCING', 'NOT_OPEN', null]) {
+    expect(said(quiet)).toBe(null)
+  }
 })
 
 test('an MR reads by its first paragraph, not its headings', async () => {

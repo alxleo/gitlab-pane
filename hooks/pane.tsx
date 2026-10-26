@@ -26,6 +26,8 @@ import {
   stageTone,
   statusMark,
   ticketOf,
+  trailingWords,
+  verdictOf,
 } from './ci'
 import { discMarks } from './avatar'
 import { inboxView } from './inbox'
@@ -98,7 +100,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { Box, Text, Button, Link, Markdown } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
-  const { pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now } = await view($)
+  const { pinned, rows: lastRead, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now } = await view($)
+  // GitLab says an MR is no longer open before the authored list drops it.
+  const rows = lastRead.filter(row => row.mergeStatus !== 'NOT_OPEN')
   // Only the open tab is drawn, so the MR list, the inbox and the opened MRs each have the whole of what the app draws.
   const isInbox = tab === 'inbox'
   const reading = expanded.flatMap(key => rows.filter(row => row.key === key))
@@ -342,19 +346,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         <Button key={scope('read')} plain label="read whole ›" onPress={() => openTab($, 'reading')} />
       </Box>
     )
-    // GitLab's own word that it can merge now, under the project's rules: our blockers can be ones it does not count.
-    const mergeable =
-      mr.mergeStatus !== 'MERGEABLE' ? null : e.surface === 'terminal' ? (
-        <Text bold color="success">
-          ✓ mergeable
-        </Text>
-      ) : (
-        <Box flexShrink={0} borderStyle="round" borderColor={STAGE_COLOURS.success} paddingX={1}>
-          <Text bold color={STAGE_COLOURS.success} size="footnote">
-            ✓ mergeable
-          </Text>
-        </Box>
-      )
     const line1 = (
       <Box flexDirection="row" gap={1} alignItems="center">
         <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
@@ -366,7 +357,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           )}
         </Box>
-        {mergeable}
         <Text dimColor size="footnote">
           {ago(mr.updatedAt, now)}
         </Text>
@@ -380,8 +370,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {!repoFilter && mr.project !== homeRepo && <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>}
       </Box>
     )
-    // What blocks the merge, worst first, in words; the hover lists every marker.
+    // What blocks the merge, worst first, in words; the hover lists every marker. GitLab's verdict, once read, is the
+    // one word on whether it can merge (its rules can ignore a blocker the pane sees); the pane's other markers trail it.
     const blocker = list[0]
+    const verdict = verdictOf(mr)
+    const trailing = verdict ? list.filter(badge => badge.kind !== 'ready' && !verdict.covers.includes(badge.kind)) : []
     const under1 = [
       reveal(about, [
         <Text bold>{shortTitle(mr.title)}</Text>,
@@ -422,10 +415,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ) : (
           <Text dimColor>no pipeline</Text>
         )}
-        {blocker && (
-          <Box flexShrink={0} hover={{ scope: blocks }}>
-            <Text color={blocker.tone}>{`${blocker.glyph} ${blocker.words}${list.length > 1 ? ` +${list.length - 1}` : ''}`}</Text>
+        {verdict ? (
+          <Box flexDirection="row" gap={1} flexShrink={0} hover={{ scope: blocks }}>
+            <Text bold={verdict.tone === 'success'} color={verdict.tone}>
+              {verdict.words}
+            </Text>
+            {trailing[0] && (
+              <Text dimColor>{`· ${trailingWords(mr, trailing[0])}${trailing.length > 1 ? ` +${trailing.length - 1}` : ''}`}</Text>
+            )}
           </Box>
+        ) : (
+          blocker && (
+            <Box flexShrink={0} hover={{ scope: blocks }}>
+              <Text color={blocker.tone}>{`${blocker.glyph} ${blocker.words}${list.length > 1 ? ` +${list.length - 1}` : ''}`}</Text>
+            </Box>
+          )
         )}
         {mr.people.map((person, i) =>
           trigger(personScope(person), [

@@ -179,8 +179,14 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     mrs: [
       rawMr(12, { headPipeline: pipe('FAILED') }),
       rawMr(13, { headPipeline: pipe('SUCCESS') }),
-      rawMr(14, { ...approved, headPipeline: pipe('SUCCESS'), detailedMergeStatus: 'MERGEABLE' }),
+      rawMr(14, {
+        ...approved,
+        headPipeline: pipe('SUCCESS'),
+        detailedMergeStatus: 'MERGEABLE',
+        discussions: { nodes: [thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)] },
+      }),
       rawMr(15, { ...approved, headPipeline: pipe('RUNNING'), detailedMergeStatus: 'CI_STILL_RUNNING' }),
+      rawMr(16, { detailedMergeStatus: 'NOT_OPEN' }),
     ],
     isDown: false,
   })
@@ -188,9 +194,7 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green,
-  // and only the one GitLab says can merge now carries the word.
-  // The cards, not the chip inside one: a chip's own frame holds no title.
+  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
   const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined && /thing \d+/.test(JSON.stringify(box)))
   const byTitle = Object.fromEntries(
     cards.map(card => [/thing (\d+)/.exec(JSON.stringify(card))?.[1], [card.props?.borderStyle, card.props?.borderColor]])
@@ -201,8 +205,15 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     '14': ['round', STAGE_COLOURS.success],
     '15': ['round', STAGE_COLOURS.success],
   })
-  expect((await ui.findAll({ type: 'Text', text: '✓ mergeable' })).length).toBe(1)
-  // The marker shows in words; its hover card still lists every marker.
+  // GitLab's verdict is the one word on whether it can merge, said once; the pane's own findings trail it, quieter.
+  const said = async (words: string) => (await ui.findAll({ type: 'Text', text: words })).length
+  expect(await said('✓ mergeable')).toBe(1)
+  expect(await said('· 1 bot thread open')).toBe(1)
+  expect((await ui.findAll({ type: 'Text' })).filter(text => /^🤖 bots hold the merge/.test(text.text ?? ''))).toEqual([])
+  expect(await said('CI running')).toBe(1)
+  // GitLab says one is no longer open, so it leaves Mine before the next full read.
+  expect(JSON.stringify(await ui.drawn())).not.toContain('thing 16')
+  // With no verdict read, the pane's own marker shows in words; its hover card still lists every marker.
   expect(await ui.find({ type: 'Text', text: '👤 needs 1 approval' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '👤 0/1' })).toBeUndefined()
   await ui.unmount()
