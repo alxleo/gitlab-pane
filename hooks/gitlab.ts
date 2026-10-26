@@ -6,7 +6,7 @@ const NOTE_FIELDS = `body system url createdAt author { username name bot avatar
 
 // Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
 const MR_FIELDS = `
-  iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired detailedMergeStatus updatedAt
+  iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired updatedAt
   description sourceBranch targetBranch
   author { username }
   diffStatsSummary { additions deletions fileCount }
@@ -23,6 +23,21 @@ const MR_FIELDS = `
 /** Every open MR the user authored; GitLab scores it 158 of the 250 a query may cost. */
 export const authoredQuery = (): string =>
   `query { currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ${MR_FIELDS} } } } }`
+
+/**
+ * GitLab's merge verdict for the same MRs, asked on its own: inside the authored query it answered CONFLICT, twice in a
+ * row, for MRs that this query and each MR's own lookup called MERGEABLE.
+ */
+export const mergeStatusQuery = (): string =>
+  `query { currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } } }`
+
+/** Each MR's verdict by card key; an MR missing from the answer has none. */
+export function readMergeStatus(response: RawResponse): Map<string, string> {
+  const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
+  return new Map(
+    nodes.flatMap(node => (node?.detailedMergeStatus ? [[`${node.project.fullPath}!${node.iid}`, node.detailedMergeStatus] as const] : []))
+  )
+}
 
 /** Each pinned MR costs about 103, so a query takes at most this many. */
 export const PINS_PER_QUERY = 2
@@ -298,7 +313,8 @@ export function toCard(raw: RawMr): MrCard {
     changesRequestedBy: requested.filter(reviewer => !reviewer.isBot).map(reviewer => reviewer.username),
     approvalsLeft: raw.approvalsLeft ?? 0,
     approvalsRequired: raw.approvalsRequired ?? 0,
-    mergeStatus: raw.detailedMergeStatus ?? null,
+    // Filled from `mergeStatusQuery`, which reads it truer than this MR's own fields do.
+    mergeStatus: null,
     approvers: raw.approvedBy.nodes.filter(user => !user.bot).map(user => user.username),
     reviewers,
     people: toPeople(raw, project, threads),

@@ -2,7 +2,17 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { advance, ago, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf } from './ci'
-import { PINS_PER_QUERY, PROJECTS_PER_QUERY, authoredQuery, pinnedQuery, readResponse, readUsual, usualQuery } from './gitlab'
+import {
+  PINS_PER_QUERY,
+  PROJECTS_PER_QUERY,
+  authoredQuery,
+  mergeStatusQuery,
+  pinnedQuery,
+  readMergeStatus,
+  readResponse,
+  readUsual,
+  usualQuery,
+} from './gitlab'
 import type { RawResponse } from './gitlab'
 import { isJiraOn, readTickets, ticketQuery } from './jira'
 
@@ -138,7 +148,14 @@ async function ask($: EngineInterface, query: string): Promise<RawResponse> {
 
 /** The authored list, then only the pinned MRs it lacks, a few per query to stay under GitLab's cost limit. */
 async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promise<MrCard[]> {
-  const rows = readResponse(await ask($, authoredQuery()), 0)
+  // The merge verdict comes from a query of its own, read alongside; if it fails, no card says it can merge.
+  const [authored, verdicts] = await Promise.all([
+    ask($, authoredQuery()),
+    ask($, mergeStatusQuery())
+      .then(readMergeStatus)
+      .catch(() => new Map<string, string>()),
+  ])
+  const rows = readResponse(authored, 0).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
   for (let i = 0; i < missing.length; i += PINS_PER_QUERY) {
     const chunk = missing.slice(i, i + PINS_PER_QUERY)
