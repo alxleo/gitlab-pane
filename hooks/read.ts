@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
 import { advance, ago, cardKey, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf } from './ci'
 import {
@@ -88,12 +88,20 @@ export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
   quietly(update($, tabAtom, () => tab).then(() => openPane($)))
 }
 
+/** Why the pane's last scroll did not move, which /gitlab reports; a reload starts it over. */
+export const scrolling = { refused: '' }
+
+async function scrollPane($: EngineInterface, args: Omit<UiScrollArgs, 'in'>) {
+  const result = await $.ui.scroll({ ...args, in: PANE_ID }).catch((error: unknown) => ({ deny: String(error) }))
+  scrolling.refused = result.deny ?? ''
+}
+
 /** Opens one MR whole on a page of its own, drawn alone over the tab it was opened from. */
 export function openReading($: EngineInterface, key: string) {
   quietly(
     update($, readingAtom, () => key)
       .then(() => openPane($))
-      .then(() => $.ui.scroll({ in: PANE_ID, to: 'start' }))
+      .then(() => scrollPane($, { to: 'start' }))
   )
 }
 
@@ -106,7 +114,7 @@ export function leaveReading($: EngineInterface) {
       await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
       await openPane($)
       // The list draws again first; only then is the card there to scroll to.
-      $.clock.after(150, () => quietly($.ui.scroll({ in: PANE_ID, to: { key: cardKey(key) }, block: 'start' })))
+      $.clock.after(150, () => quietly(scrollPane($, { to: { key: cardKey(key) }, block: 'start' })))
     })()
   )
 }
@@ -340,6 +348,12 @@ async function readOnce($: EngineInterface): Promise<void> {
   await update($, expandedAtom, list => list.filter(key => key === 'drafts' || key === 'more' || isShown(key)))
   await update($, personAtom, people => Object.fromEntries(Object.entries(people).filter(([key]) => isShown(key))))
   await update($, foldsAtom, list => list.filter(id => isShown(id.split('#')[0] ?? '')))
+  // An MR read whole that has merged leaves its page, so the title and the list come back with it.
+  const page = await read($, readingAtom)
+  if (page && !isShown(page)) {
+    await update($, readingAtom, () => '')
+    quietly(openPane($))
+  }
   await update($, announcedAtom, () => announced)
   if (ended.size > 0) {
     await update($, pinnedAtom, list => list.filter(each => !ended.has(pinKey(each))))

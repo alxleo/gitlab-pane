@@ -4,7 +4,7 @@ import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
 import { drawPane } from './pane'
-import { openPane, pin, quietly, refresh, tick } from './read'
+import { openPane, pin, quietly, refresh, scrolling, tick } from './read'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
 const PANE = 'gitlab-ci'
@@ -61,13 +61,14 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await openPane($)
     quietly(refresh($))
-    if (opened.isPlaced && !health.last.startsWith('threw')) {
+    if (opened.isPlaced && !health.last.startsWith('threw') && !scrolling.refused) {
       return { text: 'GitLab pane open' }
     }
     return {
       text: [
         opened.isPlaced ? 'GitLab pane open' : `GitLab pane not placed: ${opened.reason}`,
         `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
+        ...(scrolling.refused ? [`last scroll refused: ${scrolling.refused}`] : []),
       ].join(' · '),
     }
   })

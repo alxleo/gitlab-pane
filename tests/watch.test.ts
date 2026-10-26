@@ -534,6 +534,28 @@ test('an MR a partly failed read leaves out keeps its last card, still open, and
   await ui.unmount()
 })
 
+test('an MR that merges while read whole leaves its page, and the title follows', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false }
+  const { titles } = engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
+  expect(titles.at(-1)).toBe('GitLab · !12')
+
+  fake.mrs = [rawMr(13)]
+  await clock.advance(180_000)
+  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  expect(titles.at(-1)).toBe('GitLab · Mine')
+  // Back, the MR does not bring its page with it.
+  fake.mrs = [rawMr(12), rawMr(13)]
+  await clock.advance(180_000)
+  expect(await ui.find({ type: 'Button', key: 'back-top' })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('one transient GitLab error is retried, not shown', async ($, on) => {
   mock.clock(on, { now: NOW })
   let calls = 0
