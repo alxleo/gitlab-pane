@@ -281,22 +281,40 @@ test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label cou
   await ui.unmount()
 })
 
-test('someone without a picture is their initials on a disc, beside their first name', async ($, on) => {
+test('a person is a face alone: initials on a disc without a picture, their name and comments on hover', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const ines = { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }
-  const mel = { ...reviewer('mel.northcote', 'UNREVIEWED'), name: 'Mel.Northcote', avatarUrl: null }
-  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: [ines, mel] } })], isDown: false })
+  const mel = { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null }
+  const asked = { resolvable: true, resolved: false, notes: { nodes: [note('Rename this, please.', 'mel.northcote', { author: mel })] } }
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: [ines, mel] }, discussions: { nodes: [asked] } })], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const disc = elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && String(element.props?.alt).startsWith('Ines Mendel'))
+  const svgs = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg')
+  const disc = svgs.find(element => String(element.props?.alt).startsWith('Ines Mendel'))
   expect(String(disc?.props?.source)).toContain('>IM</text>')
-  const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
-  expect(labels).toContain('Ines')
-  // A name written like a handle still gives a first name.
-  expect(labels).toContain('Mel')
+  // An open thread is counted on the face, where the name used to carry it.
+  const melFace = svgs.find(element => String(element.props?.alt).startsWith('Mel Northcote'))
+  expect(melFace?.props?.alt).toBe('Mel Northcote, 1 open thread')
+  expect(String(melFace?.props?.source)).toContain(`fill='${STAGE_COLOURS.warning}'`)
+  expect(String(melFace?.props?.source)).toContain('>1</text>')
+  const labels = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
+  expect(labels.filter(label => /^(Ines|Mel)\b/.test(label))).toEqual([])
+  // The hover card names them, and reads their comments.
+  expect(await ui.find({ type: 'Text', text: 'Mel Northcote' })).toBeDefined()
+  const read = (await ui.findAll({ type: 'Button' })).find(button => button.props.label === 'Read their comment')
+  await ui.press({ key: read?.key ?? '' })
+  expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('Rename this, please.')
+  expect((await ui.findAll({ type: 'Button' })).some(button => button.props.label === 'Close their comments')).toBe(true)
   await ui.unmount()
+
+  // The terminal has no hover, so there each face keeps its initials as a button.
+  const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const marks = (await terminal.findAll({ type: 'Button' })).map(button => String(button.props.label))
+  expect(marks).toContain('IM')
+  expect(marks).toContain('MN 1')
+  await terminal.unmount()
 })
 
 test('an approval or a request for changes is a heavy ring with a ✓ or ✕ badge; someone yet to review keeps a thin one', async ($, on) => {
@@ -476,15 +494,14 @@ test("a bot is a face like a person's: its own picture or a robot, ringed for it
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).not.toMatch(/bots hold the merge|asked for changes|🤖/i)
   const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && /^(GitLabDuo|cursor)/.test(String(element.props?.alt)))
-  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor'])
-  // Without a picture of its own, a bot is a robot rather than a disc of initials.
-  expect(String(faces[1]?.props?.source)).not.toMatch(/<text|<image/)
-  const names = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
-  expect(names).toContain('GitLabDuo')
-  expect(names).toContain('cursor 1')
-
-  // Its name opens its comments, whole, as anyone's does.
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.props.label === 'cursor 1')?.key ?? '' })
+  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor, 1 open thread'])
+  // Without a picture of its own, a bot is a robot rather than a disc of initials; its count rides on it.
+  expect(String(faces[1]?.props?.source)).not.toMatch(/<image|>CU</)
+  expect(String(faces[1]?.props?.source)).toContain('>1</text>')
+  // Its card says it is a bot, and reads its comments, whole, as anyone's.
+  expect(await ui.find({ type: 'Text', text: 'cursor' })).toBeDefined()
+  // GitLab Duo only reviewed, so cursor's is the one card with a comment to read.
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.props.label === 'Read their comment')?.key ?? '' })
   expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('### What the bot wrote')
   await ui.unmount()
 })
@@ -746,8 +763,8 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     expect(card?.props?.position).toBeUndefined()
     expect(boxes.filter(box => box.hover?.scope === scope).map(box => box.hover)).toEqual([{ scope }, { scope, display: 'flex' }])
 
-    // Initials open the row on that person's comments alone; pressed again, they close it. Keys are short, as each
-    // costs the drawing its length on every row.
+    // A face's card, or the terminal's initials, open the row on that person's comments alone; pressed again, they
+    // close it. Keys are short, as each costs the drawing its length on every row.
     const keys = (await ui.findAll({ type: 'Button' })).map(button => button.key ?? '')
     const timKey = keys.find(key => /^person-tim-103-\w+$/.test(key)) ?? ''
     await ui.press({ key: timKey })
@@ -759,17 +776,18 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     const title = (await ui.findAll({ type: 'Button' })).find(button => /^open-103-\w+$/.test(button.key ?? ''))
     expect(title?.props.label).toBe('▸ thing 103')
     const opens = { key: title?.key ?? '' }
+    const hint = /^(Hover a face|Press their initials) to read only their comments\.$/
     await ui.press(opens)
-    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: hint })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
     expect((await ui.find({ type: 'Button', key: opens.key }))?.props.label).toBe('▾ thing 103')
     await ui.press(opens)
-    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: hint })).toBeUndefined()
     // ▴ less at the card's foot closes it as well.
     await ui.press(opens)
     const less = (await ui.findAll({ type: 'Button' })).find(button => /^less-103-\w+$/.test(button.key ?? ''))
     await ui.press({ key: less?.key ?? '' })
-    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: hint })).toBeUndefined()
 
     await ui.press({ key: 'repo-g/q' })
     expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 5')

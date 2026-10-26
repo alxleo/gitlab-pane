@@ -86,9 +86,6 @@ const xml = (text: string): string =>
 /** An open thread's words in its card; its 💬 link opens it whole. */
 const THREAD_ROOM = 500
 
-/** Letters of a bot's name beside its face. */
-const BOT_NAME_ROOM = 14
-
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; read.ts holds the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const elements = $.ui.resolve(e)
@@ -163,12 +160,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           .filter(Boolean)
           .join(' · ')}
       </Text>,
-      ...(latest ? [noteLine(latest, noteKind(latest))] : []),
-      <Box marginTop={latest ? 1 : 0}>
-        <Text dimColor>
-          {person.notes.length > 1 ? `Click their name for all ${person.notes.length} comments.` : person.notes.length === 1 ? 'Click their name to read it whole.' : 'No comments.'}
-        </Text>
-      </Box>,
+      ...(latest ? [noteLine(latest, noteKind(latest))] : [<Text dimColor>No comments.</Text>]),
     ]
   }
 
@@ -298,12 +290,18 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const mark = badge
       ? `<circle cx='14.75' cy='14.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
       : ''
+    // Their open threads, counted in the corner opposite the badge, now no name beside the face carries the count.
+    const threads = person.openThreads
+    const count =
+      threads > 0
+        ? `<circle cx='14.75' cy='1.25' r='3.75' fill='${STAGE_COLOURS.warning}' stroke='#fff'/><text x='14.75' y='3.2' font-family='system-ui' font-size='5.5' font-weight='700' text-anchor='middle' fill='#fff'>${threads > 9 ? '9+' : threads}</text>`
+        : ''
     return (
       <Svg
         width={22}
         height={22}
-        alt={badge ? `${person.name}, ${REVIEW_STATE[person.state]}` : person.name}
-        source={`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${inner}${ring}${mark}</svg>`}
+        alt={[person.name, badge ? REVIEW_STATE[person.state] : '', threads > 0 ? plural(threads, 'open thread') : ''].filter(Boolean).join(', ')}
+        source={`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${inner}${ring}${mark}${count}</svg>`}
       />
     )
   }
@@ -384,25 +382,33 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       ]),
     ]
     const personScope = (person: Person) => scope(`p${shortHash(person.username)}`)
+    // Opens the row on their comments alone, and closes it again: in a face's card, or the terminal's initials.
+    const readTheirs = (person: Person, label: string) => (
+      <Button key={scope(`person-${person.username}`)} plain label={label} onPress={() => quietly(showPerson($, mr.key, person.username))} />
+    )
     const under2: RenderChildren[] = [
       ...(list.length > 0 ? [reveal(blocks, list.flatMap(badge => blockerLines(mr, badge)))] : []),
-      ...mr.people.map(person => reveal(personScope(person), personCard(person))),
+      ...mr.people.map(person =>
+        reveal(personScope(person), [
+          ...personCard(person),
+          ...(Svg && person.notes.length > 0
+            ? [
+                <Box marginTop={1}>
+                  {readTheirs(
+                    person,
+                    focus?.username === person.username
+                      ? 'Close their comments'
+                      : person.notes.length === 1
+                        ? 'Read their comment'
+                        : `Read their ${person.notes.length} comments`
+                  )}
+                </Box>,
+              ]
+            : []),
+        ])
+      ),
     ]
     const pictures = mr.people.some(person => person.avatarUrl && avatars[person.avatarUrl])
-    // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
-    // Some GitLab names are written like handles ("Mel.Northcote"), so a dot or underscore ends a first name too. A bot
-    // keeps its whole name ("GitLab Duo"), cut short, since its first word alone often names only the vendor.
-    const firstNames = mr.people.map(person =>
-      person.isBot
-        ? person.name.length > BOT_NAME_ROOM
-          ? `${person.name.slice(0, BOT_NAME_ROOM - 1)}…`
-          : person.name
-        : person.name.split(/[\s._]+/)[0] || person.initials
-    )
-    const callName = (person: Person, i: number) => {
-      const first = firstNames[i] ?? person.initials
-      return !Svg || firstNames.filter(name => name === first).length > 1 ? person.initials : first
-    }
     // Drawn with and without pictures, so the room the cards leave decides which; each costs about 1,300 characters.
     const line2 = (withPictures: boolean) => (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
@@ -429,17 +435,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             </Box>
           )
         )}
-        {mr.people.map((person, i) =>
-          trigger(personScope(person), [
-            face(person, focus?.username === person.username, withPictures && person.avatarUrl ? avatars[person.avatarUrl] : undefined),
-            <Button
-              key={scope(`person-${person.username}`)}
-              plain
-              label={`${callName(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`}
-              onPress={() => quietly(showPerson($, mr.key, person.username))}
-            />,
-          ])
-        )}
+        {mr.people.map(person => {
+          const drawn = face(person, focus?.username === person.username, withPictures && person.avatarUrl ? avatars[person.avatarUrl] : undefined)
+          // A face alone: its card names them. The terminal has no hover, so there the initials stay, as a button.
+          return trigger(
+            personScope(person),
+            Svg ? drawn : [drawn, readTheirs(person, `${person.initials}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`)]
+          )
+        })}
       </Box>
     )
     const detail = focus ? (
@@ -474,7 +477,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Markdown text={bodyOf(note.body, THREAD_ROOM)} />
           </Box>
         ))}
-        {mr.people.length > 0 && <Text dimColor>Click a name to read only their comments.</Text>}
+        {mr.people.length > 0 && (
+          <Text dimColor>{Svg ? 'Hover a face to read only their comments.' : 'Press their initials to read only their comments.'}</Text>
+        )}
         {foot}
       </Box>
     )
