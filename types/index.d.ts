@@ -131,6 +131,8 @@ export type InboxItem = {
   title: string
   url: string
   author: string
+  /** Alex wrote it, so his name says nothing on its card. */
+  isMine: boolean
   state: string
   isDraft: boolean
   /** Human activity since the MR was last marked seen. */

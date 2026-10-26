@@ -59,7 +59,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const newest = item.activity[0]?.at
     const about = [
       bang > 0 ? item.ref.slice(0, bang) : '',
-      item.author,
+      item.isMine ? '' : item.author,
       item.isDraft ? 'draft' : '',
       item.state === 'opened' ? '' : item.state,
       ...counted,
@@ -128,11 +128,14 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const isOpen = open.includes(section.rule)
     // MRs with news, not events: an MR nobody has marked seen brings a week of comments, which would swamp the count.
     const fresh = section.items.filter(item => item.unseen > 0).length
+    // One label: the desktop app draws a plain Button's Text children in its own style, weight and dimming dropped.
     return (
-      <Button key={`inbox-rule-${section.rule}`} plain onPress={() => toggleRule($, section.rule)}>
-        <Text weight="semibold">{`${isOpen ? '▾' : '▸'} ${section.title}`}</Text>
-        <Text dimColor>{` · ${section.items.length}${fresh > 0 ? ` · ${fresh} new` : ''}`}</Text>
-      </Button>
+      <Button
+        key={`inbox-rule-${section.rule}`}
+        plain
+        label={`${isOpen ? '▾' : '▸'} ${section.title} · ${section.items.length}${fresh > 0 ? ` · ${fresh} new` : ''}`}
+        onPress={() => toggleRule($, section.rule)}
+      />
     )
   }
 

@@ -24,14 +24,14 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
   value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
 })
 
-const item = (iid: number, unseen: number) => ({
+const item = (iid: number, unseen: number, isMine = false) => ({
   key: `g/p!${iid}`,
   ref: `p!${iid}`,
   project: 'g/p',
   iid,
   title: `feat: [ABC-${iid}] thing ${iid}`,
   url: `https://gitlab.com/g/p/-/merge_requests/${iid}`,
-  author: { username: 'alice', name: 'Alice' },
+  author: isMine ? { username: 'me', name: 'Me', is_me: true } : { username: 'alice', name: 'Alice', is_me: false },
   state: 'opened',
   draft: false,
   unseen,
@@ -84,7 +84,7 @@ const typed = (args: string) => ({
 })
 
 const sections = () => [
-  { rule: 'people', title: 'Reviews: people I follow', note: null, items: [item(1, 3), item(2, 0)] },
+  { rule: 'people', title: 'Reviews: people I follow', note: null, items: [item(1, 3), item(2, 0, true)] },
   { rule: 'to-review', title: 'To review', note: null, items: [] },
 ]
 
@@ -105,14 +105,15 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     expect(drawn.indexOf('inbox-sync')).toBeLessThan(drawn.indexOf('Mine · '))
     // Counts are MRs with news, not the events in them.
     expect(await ui.find({ type: 'Text', text: 'Inbox · 1 new' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '▸ Reviews: people I follow' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: ' · 2 · 1 new' })).toBeDefined()
+    expect(drawn).toContain('▸ Reviews: people I follow · 2 · 1 new')
 
     await ui.press({ key: 'inbox-rule-people' })
     expect((await ui.find({ type: 'Text', text: /thing 1$/ }))?.text).toBe('thing 1')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
     // A count per kind instead of a line of handles, and the ref without the repo, which follows it.
     expect(await ui.find({ type: 'Text', text: 'p · alice · 1 approved · 2 commented · 2h' })).toBeDefined()
+    // Alex's own MR leaves his name out.
+    expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented · 2h' })).toBeDefined()
     expect(JSON.stringify(await ui.drawn())).toContain('"!1"')
     await ui.press({ key: 'inbox-rule-people' })
     await ui.unmount()
