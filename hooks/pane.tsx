@@ -22,6 +22,7 @@ import {
   statusMark,
   ticketOf,
 } from './ci'
+import { discSource } from './avatar'
 import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
@@ -70,8 +71,8 @@ const jobMark = (job: Job): { glyph: string; tone: Tone } =>
 const JOBS_SHOWN = 6
 const MINE_SHOWN = 10
 
-/** An MR card's border by `rank`: needs you, moving, waiting on others, ready. */
-const URGENCY: Tone[] = ['error', 'suggestion', 'warning', 'success']
+/** An MR card's border by `rank`: needs you, moving, waiting on others (grey: nothing for you to do), ready. */
+const URGENCY: Tone[] = ['error', 'suggestion', 'subtle', 'success']
 
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
 const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
@@ -172,7 +173,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       ...(latest ? [noteLine(latest, noteKind(latest))] : []),
       <Box marginTop={latest ? 1 : 0}>
         <Text dimColor>
-          {person.notes.length > 1 ? `Click ${person.initials} for all ${person.notes.length} comments.` : person.notes.length === 1 ? `Click ${person.initials} to read it whole.` : 'No comments.'}
+          {person.notes.length > 1 ? `Click their name for all ${person.notes.length} comments.` : person.notes.length === 1 ? 'Click their name to read it whole.' : 'No comments.'}
         </Text>
       </Box>,
     ]
@@ -277,10 +278,18 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
-  /** Their avatar ringed in the colour of where they stand; a coloured dot where there is no picture or no room. */
+  /**
+   * Their avatar, else their initials on a disc, ringed in the colour of where they stand; a coloured dot where the
+   * surface draws no Svg. A disc costs about 330 characters, a picture about 1,300.
+   */
   const face = (person: Person, isFocused: boolean, picture: string | undefined) => {
-    if (!Svg || !picture) {
+    if (!Svg) {
       return <Text color={personTone(person)}>{isFocused ? '◉' : '●'}</Text>
+    }
+    if (!picture) {
+      return (
+        <Svg width={18} height={18} alt={person.name} source={discSource(person.username, 18, STAGE_COLOURS[personTone(person)], person.initials)} />
+      )
     }
     return (
       <Svg
@@ -313,15 +322,18 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       Boolean(mr.description.trim()) || mr.openThreads.length > 0 || (pipeline?.failed.length ?? 0) > 0 || (pipeline?.amber.length ?? 0) > 0
     // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
     // a Link's text and a Button's label, never styled Text inside them. A Markdown link keeps the title bold and makes
-    // the whole of it the press that opens the card. The title leads, so titles line up.
+    // the whole of it the press that opens the card. The title leads, so titles line up. The desktop app drops a second
+    // press on the same link, so an open card's title is another link under another key, and ▴ less closes it too.
+    const press = isOpen ? { key: scope('shut'), href: `${mr.url}#detail` } : { key: scope('open'), href: mr.url }
+    const less = <Button key={scope('less')} plain label="▴ less" onPress={() => toggle($, mr.key)} />
     const line1 = (
       <Box flexDirection="row" gap={1}>
         <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
           {canOpen ? (
             <Markdown
-              key={scope('open')}
-              text={`[**${markdownText(shortTitle(mr.title))}**](${mr.url})`}
-              pressableLinks={[mr.url]}
+              key={press.key}
+              text={`[**${markdownText(shortTitle(mr.title))}**](${press.href})`}
+              pressableLinks={[press.href]}
               onLinkPress={() => toggle($, mr.key)}
             />
           ) : (
@@ -368,6 +380,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       ...mr.people.map(person => reveal(personScope(person), personCard(person))),
     ]
     const pictures = mr.people.some(person => person.avatarUrl && avatars[person.avatarUrl])
+    // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
+    const firstNames = mr.people.map(person => person.name.split(/\s+/)[0] || person.initials)
+    const callName = (person: Person, i: number) => {
+      const first = firstNames[i] ?? person.initials
+      return !Svg || firstNames.filter(name => name === first).length > 1 ? person.initials : first
+    }
     // Drawn with and without pictures, so the room the cards leave decides which; each costs about 1,300 characters.
     const line2 = (withPictures: boolean) => (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
@@ -383,13 +401,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Text color={blocker.tone}>{`${blocker.glyph} ${blocker.words}${list.length > 1 ? ` +${list.length - 1}` : ''}`}</Text>
           </Box>
         )}
-        {mr.people.map(person =>
+        {mr.people.map((person, i) =>
           trigger(personScope(person), [
             face(person, focus?.username === person.username, withPictures && person.avatarUrl ? avatars[person.avatarUrl] : undefined),
             <Button
               key={scope(`person-${person.username}`)}
               plain
-              label={`${person.initials}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`}
+              label={`${callName(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`}
               onPress={() => quietly(showPerson($, mr.key, person.username))}
             />,
           ])
@@ -405,6 +423,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Markdown text={note.body} />
           </Box>
         ))}
+        {less}
       </Box>
     ) : (
       <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
@@ -426,6 +445,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           </Box>
         ))}
         {mr.people.length > 0 && <Text dimColor>Click someone's initials to read only their comments.</Text>}
+        {less}
       </Box>
     )
     return {

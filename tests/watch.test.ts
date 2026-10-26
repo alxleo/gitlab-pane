@@ -170,11 +170,11 @@ test('each MR is a card bordered by how much it needs you, its worst blocker in 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The failed one needs you: a heavier line in the stage squares' red; the other waits on a review, in their amber.
+  // The failed one needs you: a heavier line in the stage squares' red; the other only waits on a review: grey.
   const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined)
   expect(cards.map(card => [card.props?.borderStyle, card.props?.borderColor])).toEqual([
     ['bold', STAGE_COLOURS.error],
-    ['round', STAGE_COLOURS.warning],
+    ['round', STAGE_COLOURS.subtle],
   ])
   // The marker shows in words; its hover card still lists every marker.
   expect(await ui.find({ type: 'Text', text: '👤 needs 1 approval' })).toBeDefined()
@@ -198,6 +198,21 @@ test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label cou
   expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
   await ui.press({ key: 'tab-mine' })
   expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  await ui.unmount()
+})
+
+test('someone without a picture is their initials on a disc, beside their first name', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const ines = { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: [ines] } })], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const disc = elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === 'Ines Mendel')
+  expect(String(disc?.props?.source)).toContain('>IM</text>')
+  expect(String(disc?.props?.source)).toContain(`stroke='${STAGE_COLOURS.success}'`)
+  expect((await ui.findAll({ type: 'Button' })).some(button => button.props.label === 'Ines')).toBe(true)
   await ui.unmount()
 })
 
@@ -410,7 +425,15 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
+    // Open, the title is another link under another key, as the desktop app drops a second press on the same one.
+    const shut = (await ui.findAll({ type: 'Markdown' })).find(markdown => /^shut-103-\w+$/.test(markdown.key ?? ''))
+    await ui.press({ key: shut?.key ?? '', link: { href: String((shut?.props?.pressableLinks as string[] | undefined)?.[0]) } })
+    expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeUndefined()
+    // ▴ less at the card's foot closes it as well.
     await ui.press(opens)
+    const less = (await ui.findAll({ type: 'Button' })).find(button => /^less-103-\w+$/.test(button.key ?? ''))
+    await ui.press({ key: less?.key ?? '' })
+    expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeUndefined()
 
     await ui.press({ key: 'repo-g/q' })
     expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 5')
