@@ -42,9 +42,11 @@ const item = (iid: number, unseen: number, isMine = false) => ({
   ],
 })
 
-/** The title a card draws, a Markdown link whose press opens the card. */
-const titleOf = async (ui: { find: (query: { type: string; text: RegExp }) => Promise<{ text?: string } | undefined> }, iid: number) =>
-  (await ui.find({ type: 'Markdown', text: new RegExp(`thing ${iid}\\*\\*\\]`) }))?.text
+/** The title a card draws, a Button whose press opens and closes the card. */
+const titleOf = async (
+  ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> },
+  iid: number
+) => (await ui.find({ type: 'Button', key: `inbox-open-${hashOf(`g/p!${iid}`)}` }))?.props?.label
 
 /** mr-inbox as the test sets it: the inbox it prints, and every call it was asked. */
 type Inbox = { sections: unknown[]; sync: Record<string, unknown>; exitCode?: number; stderr?: string }
@@ -115,7 +117,8 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     expect(JSON.stringify(await ui.drawn())).toContain('"Reviews: people I follow · 1 new"')
 
     await ui.press({ key: 'inbox-rule-people' })
-    expect(await titleOf(ui, 1)).toBe('[**thing 1**](https://gitlab.com/g/p/-/merge_requests/1)')
+    // Dark text with a disclosure mark, not a link: a link-blue title read as a way out to GitLab.
+    expect(await titleOf(ui, 1)).toBe('▸ thing 1')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
     // A count per kind instead of a line of handles, and the ref without the repo, which follows it.
     expect(await ui.find({ type: 'Text', text: 'p · alice · 1 approved · 2 commented' })).toBeDefined()
@@ -125,12 +128,13 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     // The newest event says who did what; the rest wait behind a press on the title.
     expect(await ui.find({ type: 'Text', text: '✓ bob approved' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
-    const opens = { key: `inbox-open-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1' } }
+    const opens = { key: `inbox-open-${hashOf('g/p!1')}` }
     await ui.press(opens)
+    expect(await titleOf(ui, 1)).toBe('▾ thing 1')
     expect(await ui.find({ type: 'Text', text: '💬 carol commented' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeDefined()
-    // Open, the title is another link under another key, as a second press on one link never closed a card on desktop.
-    await ui.press({ key: `inbox-shut-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1#activity' } })
+    // The title closes it again, and so does ▴ less at the card's foot.
+    await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
     await ui.press(opens)
     await ui.press({ key: `inbox-less-${hashOf('g/p!1')}` })
@@ -324,15 +328,16 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
   await ui.press({ key: 'tab-inbox' })
   for (const rule of rules) {
     await ui.press({ key: `inbox-rule-${rule}` })
-    const card = await ui.find({ type: 'Markdown', text: /a very long title/ })
-    expect(card?.key).toMatch(/^inbox-open-/)
+    const isClosed = (button: { key?: string; props?: Record<string, unknown> }) =>
+      /^inbox-open-/.test(button.key ?? '') && String(button.props?.label).startsWith('▸')
+    expect((await ui.findAll({ type: 'Button' })).some(isClosed)).toBe(true)
     // Every card drawn opened too, so the open rule is at its largest; an opened card pushes the last ones out.
     for (let opened = 0; opened < 30; opened += 1) {
-      const closed = (await ui.findAll({ type: 'Markdown' })).find(markdown => /^inbox-open-/.test(markdown.key ?? ''))
+      const closed = (await ui.findAll({ type: 'Button' })).find(isClosed)
       if (!closed) {
         break
       }
-      await ui.press({ key: closed.key ?? '', link: { href: String((closed.props?.pressableLinks as string[] | undefined)?.[0]) } })
+      await ui.press({ key: closed.key ?? '' })
     }
     expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
     // Cards past the inbox's share are counted, not drawn.

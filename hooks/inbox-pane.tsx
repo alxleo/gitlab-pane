@@ -1,7 +1,7 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import { discSource } from './avatar'
-import { ago, markdownText, shortTitle } from './ci'
+import { ago, shortTitle } from './ci'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
 import type { InboxActivity, InboxItem, InboxSection } from '../types'
@@ -43,7 +43,7 @@ const firstName = (username: string): string => username.split(/[._]/)[0] || use
 /** The inbox mr-inbox's rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const elements = $.ui.resolve(e)
-  const { Box, Text, Button, Link, Markdown } = elements
+  const { Box, Text, Button, Link } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
   const { inbox, open, cards, now } = await inboxView($)
@@ -120,11 +120,6 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     ]
     const canOpen = item.activity.length > 0
     const isOpen = canOpen && cards.includes(item.key)
-    // Seen on desktop: a second press on the link a card opened from never closed it, so the open title is another
-    // link under another key, and "▴ less" closes it whatever the app does with links.
-    const press = isOpen
-      ? { key: `inbox-shut-${hashOf(item.key)}`, href: `${item.url}#activity` }
-      : { key: `inbox-open-${hashOf(item.key)}`, href: item.url }
     return (
       <Box
         key={`ib-${hashOf(item.key)}`}
@@ -136,12 +131,13 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       >
         <Box flexDirection="row" gap={1}>
           <Box flexGrow={1} flexShrink={1}>
+            {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}
             {canOpen ? (
-              <Markdown
-                key={press.key}
-                text={`[**${markdownText(shortTitle(item.title))}**](${press.href})`}
-                pressableLinks={[press.href]}
-                onLinkPress={() => toggleCard($, item.key)}
+              <Button
+                key={`inbox-open-${hashOf(item.key)}`}
+                plain
+                label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`}
+                onPress={() => toggleCard($, item.key)}
               />
             ) : (
               <Text weight="semibold" wrap="truncate-end">
