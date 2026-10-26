@@ -376,14 +376,17 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     // costs the drawing its length on every row.
     const keys = (await ui.findAll({ type: 'Button' })).map(button => button.key ?? '')
     const timKey = keys.find(key => /^person-tim-103-\w+$/.test(key)) ?? ''
-    const openKey = keys.find(key => /^open-103-\w+$/.test(key)) ?? ''
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeDefined()
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeUndefined()
-    await ui.press({ key: openKey })
+    // The whole title is the press that opens a card, and the card opens onto what its lines do not show.
+    const title = (await ui.findAll({ type: 'Markdown' })).find(markdown => /^open-103-\w+$/.test(markdown.key ?? ''))
+    const opens = { key: title?.key ?? '', link: { href: String((title?.props?.pressableLinks as string[] | undefined)?.[0]) } }
+    await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeDefined()
-    await ui.press({ key: openKey })
+    expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
+    await ui.press(opens)
 
     await ui.press({ key: 'repo-g/q' })
     expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 5')

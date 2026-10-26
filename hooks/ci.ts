@@ -229,6 +229,20 @@ export function excerpt(body: string, room = 160): string {
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
 
+/** Text for Markdown, its marks escaped so a title reads as written. */
+export function markdownText(text: string): string {
+  return text.replace(/([\\`*_[\]()#<>!|~])/g, '\\$1')
+}
+
+/** A description as Markdown worth drawing: template comments and images left out, cut at `room`. */
+export function bodyOf(text: string, room = 1_200): string {
+  const clean = text
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .trim()
+  return clean.length > room ? `${clean.slice(0, room - 1)}…` : clean
+}
+
 /** The first paragraph under the headings, as one plain line. */
 export function lead(body: string, room = 240): string {
   const paragraph =

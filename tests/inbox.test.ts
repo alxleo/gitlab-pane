@@ -36,8 +36,15 @@ const item = (iid: number, unseen: number, isMine = false) => ({
   draft: false,
   unseen,
   counts: { comment: 2, approved: 1 },
-  activity: [{ kind: 'approved', actor: 'bob', at: MINUTES_AGO(120), url: null, excerpt: '' }],
+  activity: [
+    { kind: 'approved', actor: 'bob', at: MINUTES_AGO(120), url: null, excerpt: '' },
+    { kind: 'comment', actor: 'carol.jones', at: MINUTES_AGO(180), url: `https://gitlab.com/g/p/-/merge_requests/${iid}#note_1`, excerpt: 'please rename' },
+  ],
 })
+
+/** The title a card draws, a Markdown link whose press opens the card. */
+const titleOf = async (ui: { find: (query: { type: string; text: RegExp }) => Promise<{ text?: string } | undefined> }, iid: number) =>
+  (await ui.find({ type: 'Markdown', text: new RegExp(`thing ${iid}\\*\\*\\]`) }))?.text
 
 /** mr-inbox as the test sets it: the inbox it prints, and every call it was asked. */
 type Inbox = { sections: unknown[]; sync: Record<string, unknown>; exitCode?: number; stderr?: string }
@@ -99,22 +106,30 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     expect(calls.some(args => args[0] === 'sync' && args.includes('--if-older-than') && args.includes(REMOTE))).toBe(true)
     expect(await ui.find({ type: 'Text', text: 'synced 2m ago' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Nothing else in: To review' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
+    expect(await titleOf(ui, 1)).toBeUndefined()
     // The inbox is what needs Alex, so it draws above the MR list rather than below it.
     const drawn = JSON.stringify(await ui.drawn())
     expect(drawn.indexOf('inbox-sync')).toBeLessThan(drawn.indexOf('Mine · '))
-    // Counts are MRs with news, not the events in them.
-    expect(await ui.find({ type: 'Text', text: 'Inbox · 1 new' })).toBeDefined()
-    expect(drawn).toContain('▸ Reviews: people I follow · 2 · 1 new')
+    // Counts are MRs with news, not the events in them; each rule is a tab.
+    expect(await ui.find({ type: 'Text', text: '1 new' })).toBeDefined()
+    expect(drawn).toContain('"Reviews: people I follow · 1 new"')
 
     await ui.press({ key: 'inbox-rule-people' })
-    expect((await ui.find({ type: 'Text', text: /thing 1$/ }))?.text).toBe('thing 1')
+    expect(await titleOf(ui, 1)).toBe('[**thing 1**](https://gitlab.com/g/p/-/merge_requests/1)')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
     // A count per kind instead of a line of handles, and the ref without the repo, which follows it.
-    expect(await ui.find({ type: 'Text', text: 'p · alice · 1 approved · 2 commented · 2h' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'p · alice · 1 approved · 2 commented' })).toBeDefined()
     // Alex's own MR leaves his name out.
-    expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented · 2h' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented' })).toBeDefined()
     expect(JSON.stringify(await ui.drawn())).toContain('"!1"')
+    // The newest event says who did what; the rest wait behind a press on the title.
+    expect(await ui.find({ type: 'Text', text: '✓ bob approved' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
+    await ui.press({ key: `inbox-open-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1' } })
+    expect(await ui.find({ type: 'Text', text: '💬 carol commented' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeDefined()
+    await ui.press({ key: `inbox-open-${hashOf('g/p!1')}`, link: { href: 'https://gitlab.com/g/p/-/merge_requests/1' } })
+    expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
     await ui.press({ key: 'inbox-rule-people' })
     await ui.unmount()
   }
@@ -129,11 +144,12 @@ test('✓ marks one MR seen and reads the inbox again', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'inbox-rule-people' })
+  expect(await titleOf(ui, 1)).toBeDefined()
   inbox.sections = [{ ...sections()[0], items: [item(2, 0)] }, sections()[1]]
   const before = calls.length
   await ui.press({ key: `inbox-seen-${hashOf('g/p!1')}` })
   expect(calls.slice(before)).toEqual([['seen', 'g/p!1'], ['inbox', '--json', '--repo', REMOTE]])
-  expect(await ui.find({ type: 'Text', text: /thing 1$/ })).toBeUndefined()
+  expect(await titleOf(ui, 1)).toBeUndefined()
   await ui.unmount()
 })
 
@@ -152,7 +168,7 @@ test('an MR under two rules shows once, under the first', async ($, on) => {
   await clock.advance(FIRST_SYNC_MS)
   expect(await ui.find({ type: 'Button', key: 'inbox-rule-repos' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'Nothing else in: To review, Reviews: repos I follow (all above)' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Inbox · 1 new' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '1 new' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -200,7 +216,7 @@ test('a failed sync says why and keeps the rules it last read', async ($, on) =>
   await clock.advance(FIRST_SYNC_MS)
   expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toBe('sync failed: glab is not signed in to gitlab.com')
   await ui.press({ key: 'inbox-rule-people' })
-  expect((await ui.find({ type: 'Text', text: /thing 2$/ }))?.text).toBe('thing 2')
+  expect(await titleOf(ui, 2)).toBeDefined()
   await ui.unmount()
 })
 

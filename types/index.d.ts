@@ -166,8 +166,10 @@ declare module 'claude-code' {
     'gitlab-ci': {
       /** The rules `mr-inbox` evaluates over its own cache. */
       inbox: InboxState
-      /** Inbox rules drawn open. */
+      /** The inbox rule drawn open: one at most, as tabs. */
       inboxOpen: string[]
+      /** Inbox MRs, by key, opened to their recent activity. */
+      inboxCards: string[]
       /** This session's MRs, drawn first and the only ones that wake it. */
       pinned: Pinned[]
       rows: MrCard[]

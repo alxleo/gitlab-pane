@@ -1,27 +1,28 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
-import { ago, shortTitle } from './ci'
-import { discussRule, inboxView, markSeen, syncInbox, toggleRule } from './inbox'
+import { ago, markdownText, shortTitle } from './ci'
+import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
-import type { InboxItem, InboxSection } from '../types'
+import type { InboxActivity, InboxItem, InboxSection } from '../types'
 
-const KIND_WORD: Record<string, string> = {
-  comment: 'commented',
-  review: 'reviewed',
-  approved: 'approved',
-  unapproved: 'withdrew approval',
-  changes_requested: 'requested changes',
-  merged: 'merged',
-  opened: 'opened',
-  pushed: 'pushed',
-  review_requested: 'asked for a review',
+/** How each kind of activity reads, in the order a card counts them: what blocks or clears a merge first. */
+const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
+  changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes' },
+  unapproved: { glyph: '↺', tone: 'warning', word: 'withdrew approval' },
+  approved: { glyph: '✓', tone: 'success', word: 'approved' },
+  review: { glyph: '●', tone: 'suggestion', word: 'reviewed' },
+  comment: { glyph: '💬', word: 'commented' },
+  review_requested: { glyph: '?', word: 'asked for a review' },
+  pushed: { glyph: '↑', word: 'pushed' },
+  opened: { glyph: '+', word: 'opened' },
+  merged: { glyph: '◆', tone: 'merged', word: 'merged' },
 }
 
-/** The order a card counts activity in: what blocks or clears a merge first. */
-const COUNTED = ['changes_requested', 'unapproved', 'approved', 'review', 'comment', 'review_requested', 'pushed', 'opened', 'merged']
+/** Fills for initials avatars, picked by name so a person keeps one colour in every card. */
+const AVATAR_FILLS = ['#5B8DEF', '#E5734A', '#3FA27B', '#B062D8', '#C9971C', '#E0567A', '#3A9FBF', '#7A8899']
 
 /** What the inbox may take of the pane's drawing; past it, an open rule's rows are counted, not drawn. */
-const INBOX_BUDGET = 16_000
+const INBOX_BUDGET = 20_000
 const ITEMS_SHOWN = 8
 
 const measure = (tree: unknown): number => {
@@ -32,13 +33,26 @@ const measure = (tree: unknown): number => {
   }
 }
 
-const hashOf = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
+const hashNumber = (text: string): number =>
+  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7)
+const hashOf = (text: string): string => hashNumber(text).toString(36)
 
-/** The inbox mr-inbox's rules give: each rule a fold, each MR a line saying what happened, ✓ to mark it seen. */
+/** `Tessa.Ravensworth` is Tessa; a handle with no separator stays whole. */
+const firstName = (username: string): string => username.split(/[._]/)[0] || username
+
+const initialsOf = (username: string): string => {
+  const parts = username.split(/[._\-\s]+/).filter(Boolean)
+  const letters = parts.length > 1 ? `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}` : username.slice(0, 2)
+  return letters.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+}
+
+/** The inbox mr-inbox's rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { Box, Text, Button, Link } = $.ui.resolve(e)
-  const { inbox, open, now } = await inboxView($)
+  const elements = $.ui.resolve(e)
+  const { Box, Text, Button, Link, Markdown } = elements
+  // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
+  const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
+  const { inbox, open, cards, now } = await inboxView($)
   const since = (iso: string) => {
     const age = ago(iso, now)
     return age === 'now' ? 'just now' : `${age} ago`
@@ -52,32 +66,94 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         ? 'reading GitLab…'
         : 'not synced yet')
 
-  /** A card per MR, bordered while something on it is new: title first, then the ref and what the rule counted. */
+  /** An initials disc, coloured by name; where the surface draws no Svg, nothing. */
+  const avatar = (username: string) =>
+    Svg ? (
+      <Box flexShrink={0}>
+        <Svg
+          width={16}
+          height={16}
+          alt={username}
+          source={`<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle cx='8' cy='8' r='8' fill='${AVATAR_FILLS[hashNumber(username) % AVATAR_FILLS.length]}'/><text x='8' y='10.6' font-family='-apple-system,Helvetica,sans-serif' font-size='7' font-weight='700' text-anchor='middle' fill='#fff'>${initialsOf(username)}</text></svg>`}
+        />
+      </Box>
+    ) : null
+
+  /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
+  const event = (one: InboxActivity, isWhole: boolean) => {
+    const verb = VERB[one.kind] ?? { glyph: '·', word: one.kind }
+    const when = ago(one.at, now)
+    const said = one.excerpt ? `“${one.excerpt}”` : ''
+    return (
+      <Box key={`ev-${hashOf(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
+        <Box flexDirection="row" gap={1}>
+          {avatar(one.actor)}
+          <Box flexShrink={0}>
+            <Text color={verb.tone}>{`${verb.glyph} ${firstName(one.actor)} ${verb.word}`}</Text>
+          </Box>
+          <Box flexGrow={1} flexShrink={1}>
+            {!isWhole && said && (
+              <Text dimColor italic wrap="truncate-end">
+                {said}
+              </Text>
+            )}
+          </Box>
+          <Box flexShrink={0}>
+            {one.url ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}
+          </Box>
+        </Box>
+        {isWhole && said && (
+          <Box paddingLeft={3}>
+            <Text dimColor italic>
+              {said}
+            </Text>
+          </Box>
+        )}
+      </Box>
+    )
+  }
+
+  /**
+   * A card per MR, bordered while something on it is new: its title, its ref with what the rule counted, then the
+   * newest event. A press on the title opens every event kept, with what each said.
+   */
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
-    const counted = COUNTED.filter(kind => item.counts[kind]).map(kind => `${item.counts[kind]} ${KIND_WORD[kind]}`)
-    const newest = item.activity[0]?.at
+    const counted = Object.keys(VERB)
+      .filter(kind => item.counts[kind])
+      .map(kind => `${item.counts[kind]} ${VERB[kind]?.word}`)
     const about = [
       bang > 0 ? item.ref.slice(0, bang) : '',
       item.isMine ? '' : item.author,
       item.isDraft ? 'draft' : '',
       item.state === 'opened' ? '' : item.state,
       ...counted,
-      newest ? ago(newest, now) : '',
     ]
+    const canOpen = item.activity.length > 0
+    const isOpen = canOpen && cards.includes(item.key)
     return (
       <Box
         key={`ib-${hashOf(item.key)}`}
         flexDirection="column"
         borderStyle="round"
         borderColor={item.unseen > 0 ? 'warning' : 'subtle'}
+        hover={canOpen ? { borderColor: 'claude' } : undefined}
         paddingX={1}
       >
         <Box flexDirection="row" gap={1}>
           <Box flexGrow={1} flexShrink={1}>
-            <Text weight="semibold" wrap="truncate-end">
-              {shortTitle(item.title)}
-            </Text>
+            {canOpen ? (
+              <Markdown
+                key={`inbox-open-${hashOf(item.key)}`}
+                text={`[**${markdownText(shortTitle(item.title))}**](${item.url})`}
+                pressableLinks={[item.url]}
+                onLinkPress={() => toggleCard($, item.key)}
+              />
+            ) : (
+              <Text weight="semibold" wrap="truncate-end">
+                {shortTitle(item.title)}
+              </Text>
+            )}
           </Box>
           {item.unseen > 0 && (
             <Box flexShrink={0}>
@@ -103,6 +179,9 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           </Box>
         </Box>
+        {isOpen
+          ? item.activity.map(one => event(one, true))
+          : item.activity[0] && event(item.activity[0], false)}
       </Box>
     )
   }
@@ -124,25 +203,24 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const shown = sections.filter(section => section.items.length > 0)
   const quiet = sections.filter(section => section.items.length === 0)
   const news = shown.reduce((sum, section) => sum + section.items.filter(item => item.unseen > 0).length, 0)
-  const header = (section: InboxSection) => {
-    const isOpen = open.includes(section.rule)
+  /** A tab per rule, as the repo filter draws its chips; the open one is filled. */
+  const tab = (section: InboxSection) => {
     // MRs with news, not events: an MR nobody has marked seen brings a week of comments, which would swamp the count.
     const fresh = section.items.filter(item => item.unseen > 0).length
-    // One label: the desktop app draws a plain Button's Text children in its own style, weight and dimming dropped.
     return (
       <Button
         key={`inbox-rule-${section.rule}`}
-        plain
-        label={`${isOpen ? '▾' : '▸'} ${section.title} · ${section.items.length}${fresh > 0 ? ` · ${fresh} new` : ''}`}
+        variant={open[0] === section.rule ? 'primary' : 'secondary'}
+        label={`${section.title} · ${fresh > 0 ? `${fresh} new` : section.items.length}`}
         onPress={() => toggleRule($, section.rule)}
       />
     )
   }
 
-  // Headers always draw; open rules' rows take what is left of the budget, in rule order.
-  let room = INBOX_BUDGET - measure(shown.map(header)) - 1_500
+  // The tabs always draw; the open rule's cards take what is left of the budget.
+  let room = INBOX_BUDGET - measure(shown.map(tab)) - 1_500
   const body = (section: InboxSection) => {
-    if (!open.includes(section.rule)) {
+    if (open[0] !== section.rule) {
       return []
     }
     const lines = []
@@ -177,9 +255,10 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" gap={1}>
       <Box flexDirection="row" gap={2}>
-        <Text bold>{news > 0 ? `Inbox · ${news} new` : 'Inbox'}</Text>
+        <Text bold>Inbox</Text>
+        {news > 0 && <Text color="warning">{`${news} new`}</Text>}
         <Text color={problem ? 'warning' : undefined} dimColor={!problem} size="footnote">
           {status}
         </Text>
@@ -190,7 +269,12 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           onPress={() => syncInbox($).catch(() => undefined)}
         />
       </Box>
-      {shown.flatMap(section => [header(section), ...body(section)])}
+      {shown.length > 0 && (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+          {shown.map(tab)}
+        </Box>
+      )}
+      {shown.flatMap(body)}
       {quiet.length > 0 && (
         <Text dimColor wrap="truncate-end">
           {`Nothing else in: ${quiet

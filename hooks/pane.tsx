@@ -3,11 +3,13 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 import {
   STAGE_COLOURS,
   ago,
+  bodyOf,
   botName,
   byAttention,
   duration,
   excerpt,
   lead,
+  markdownText,
   personTone,
   pinKey,
   pipelineTime,
@@ -303,15 +305,27 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const about = scope('l1')
     const blocks = scope('b')
     const list = rowBadges(mr)
+    // A card opens only onto what its lines do not already show: the description, failed jobs, open threads.
+    const canOpen =
+      Boolean(mr.description.trim()) || mr.openThreads.length > 0 || (pipeline?.failed.length ?? 0) > 0 || (pipeline?.amber.length ?? 0) > 0
     // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
-    // a Link's text and a Button's label, never styled Text inside them. The title leads, so titles line up.
+    // a Link's text and a Button's label, never styled Text inside them. A Markdown link keeps the title bold and makes
+    // the whole of it the press that opens the card. The title leads, so titles line up.
     const line1 = (
       <Box flexDirection="row" gap={1}>
-        <Button key={scope('open')} plain label={isOpen ? '▾' : '▸'} onPress={() => toggle($, mr.key)} />
         <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
-          <Text weight="semibold" wrap="truncate-end">
-            {shortTitle(mr.title)}
-          </Text>
+          {canOpen ? (
+            <Markdown
+              key={scope('open')}
+              text={`[**${markdownText(shortTitle(mr.title))}**](${mr.url})`}
+              pressableLinks={[mr.url]}
+              onLinkPress={() => toggle($, mr.key)}
+            />
+          ) : (
+            <Text weight="semibold" wrap="truncate-end">
+              {shortTitle(mr.title)}
+            </Text>
+          )}
         </Box>
         <Text dimColor size="footnote">
           {ago(mr.updatedAt, now)}
@@ -391,11 +405,17 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Box>
     ) : (
       <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          {pipeline && <Link href={pipeline.url}>{`${LINK.pipeline} pipeline ${pipeline.id}`}</Link>}
-          {pipeline?.failed.map(job => <Link href={job.url}>{`✗ ${job.name}`}</Link>)}
-          {pipeline?.amber.map(job => <Link href={job.url}>{`⚠ ${job.name}`}</Link>)}
-        </Box>
+        {mr.description.trim() && <Markdown text={bodyOf(mr.description)} />}
+        {pipeline && pipeline.failed.length + pipeline.amber.length > 0 && (
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+            {pipeline.failed.map(job => (
+              <Link href={job.url}>{`✗ ${job.name}`}</Link>
+            ))}
+            {pipeline.amber.map(job => (
+              <Link href={job.url}>{`⚠ ${job.name}`}</Link>
+            ))}
+          </Box>
+        )}
         {mr.openThreads.map(note => (
           <Box key={`t-${note.url}`} flexDirection="column">
             {byline('who', note.author, [note.where, ago(note.at, now)].filter(Boolean).join(' · '), note.url)}
@@ -412,7 +432,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       line2: line2(false),
       faces: pictures ? line2(true) : null,
       under2,
-      detail: isOpen ? detail : null,
+      canOpen,
+      detail: isOpen && (canOpen || focus) ? detail : null,
     }
   }
 
@@ -443,7 +464,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
     const hasCards = withCards.has(part.key)
     return (
-      <Box key={shortHash(part.key)} flexDirection="column" borderStyle="round" borderColor={URGENCY[rank(mr)]} paddingX={1}>
+      <Box
+        key={shortHash(part.key)}
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={URGENCY[rank(mr)]}
+        hover={part.canOpen ? { borderColor: 'claude' } : undefined}
+        paddingX={1}
+      >
         {part.line1}
         {hasCards && part.under1}
         {withFaces.has(part.key) ? part.faces : part.line2}

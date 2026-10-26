@@ -13,6 +13,7 @@ const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
   error: null,
 } satisfies InboxState)
 const inboxOpenAtom = atom({ plugin: 'gitlab-ci', key: 'inboxOpen' } as const, [])
+const inboxCardsAtom = atom({ plugin: 'gitlab-ci', key: 'inboxCards' } as const, [])
 
 // A login shell finds mr-inbox in ~/.local/bin; the app's own PATH may not.
 const mrInbox = (args: readonly string[]) => ['/bin/zsh', '-lc', 'exec mr-inbox "$@"', 'mr-inbox', ...args]
@@ -132,12 +133,22 @@ export async function inboxTick($: EngineInterface): Promise<void> {
 }
 
 export async function inboxView($: EngineInterface) {
-  const [inbox, open, now] = await Promise.all([read($, inboxAtom), read($, inboxOpenAtom), $.clock.now()])
-  return { inbox, open, now }
+  const [inbox, open, cards, now] = await Promise.all([
+    read($, inboxAtom),
+    read($, inboxOpenAtom),
+    read($, inboxCardsAtom),
+    $.clock.now(),
+  ])
+  return { inbox, open, cards, now }
 }
 
+/** Opens one rule, as a tab, closing the one open before; the open one closes. */
 export function toggleRule($: EngineInterface, rule: string): void {
-  update($, inboxOpenAtom, list => (list.includes(rule) ? list.filter(one => one !== rule) : [...list, rule])).catch(
+  update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])).catch(() => undefined)
+}
+
+export function toggleCard($: EngineInterface, key: string): void {
+  update($, inboxCardsAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])).catch(
     () => undefined
   )
 }
