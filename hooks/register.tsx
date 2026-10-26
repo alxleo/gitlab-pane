@@ -4,11 +4,10 @@ import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
 import { drawPane } from './pane'
-import { pin, quietly, refresh, tick } from './read'
+import { openPane, pin, quietly, refresh, tick } from './read'
 
-// The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here.
+// The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
 const PANE = 'gitlab-ci'
-const TITLE = 'GitLab'
 const TOOL = 'mcp__gitlab-ci__watch_mr'
 const TICK_MS = 30_000
 /** mr-inbox shares one sync across sessions, so asking every minute costs GitLab at most one pass a minute. */
@@ -50,7 +49,7 @@ export const register: Register = (on, options) => {
     quietly($.ui.close({ id: 'gitlab-ci-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
-      quietly($.ui.open({ id: PANE, title: TITLE }))
+      quietly(openPane($))
       $.clock.after(INBOX_FIRST_MS, () => quietly(syncInbox($)))
     }
     return next(e)
@@ -60,7 +59,7 @@ export const register: Register = (on, options) => {
 
   // One line: the MRs belong in the pane. It still says enough to explain a pane that is blank or missing.
   on('command.run', { command: 'gitlab' }, async $ => {
-    const opened = await $.ui.open({ id: PANE, title: TITLE })
+    const opened = await openPane($)
     quietly(refresh($))
     if (opened.isPlaced && !health.last.startsWith('threw')) {
       return { text: 'GitLab pane open' }
@@ -77,7 +76,7 @@ export const register: Register = (on, options) => {
     const { url } = e as { url?: unknown }
     try {
       const result = await pin($, String(url ?? ''))
-      quietly($.ui.open({ id: PANE, title: TITLE }))
+      quietly(openPane($))
       return { result }
     } catch (error) {
       return { deny: error instanceof Error ? error.message : String(error) }
@@ -96,7 +95,7 @@ export const register: Register = (on, options) => {
       await pin($, url).catch(() => undefined)
     }
     if (urls.size > 0) {
-      quietly($.ui.open({ id: PANE, title: TITLE }))
+      quietly(openPane($))
     }
     return ran
   }).catch(($, e, next) => next(e))

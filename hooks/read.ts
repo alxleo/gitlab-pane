@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { advance, ago, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf } from './ci'
+import { advance, ago, cardKey, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf } from './ci'
 import {
   PINS_PER_QUERY,
   PROJECTS_PER_QUERY,
@@ -30,6 +30,7 @@ const personAtom = atom({ plugin: 'gitlab-ci', key: 'person' } as const, {})
 const foldsAtom = atom({ plugin: 'gitlab-ci', key: 'folds' } as const, [])
 const repoFilterAtom = atom({ plugin: 'gitlab-ci', key: 'repoFilter' } as const, '')
 const tabAtom = atom({ plugin: 'gitlab-ci', key: 'tab' } as const, 'mine')
+const readingAtom = atom({ plugin: 'gitlab-ci', key: 'reading' } as const, '')
 const announcedAtom = atom({ plugin: 'gitlab-ci', key: 'announced' } as const, {})
 const wakeAtom = atom({ plugin: 'gitlab-ci', key: 'wake' } as const, true)
 const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
@@ -48,7 +49,7 @@ export const quietly = (work: Promise<unknown>): void => {
 
 /** Everything the pane draws, read at once; reading here makes the pane redraw when any of it changes. */
 export async function view($: EngineInterface) {
-  const [pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now] = await Promise.all([
+  const [pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, now] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, ticketsAtom),
@@ -59,34 +60,64 @@ export async function view($: EngineInterface) {
     read($, foldsAtom),
     read($, repoFilterAtom),
     read($, tabAtom),
+    read($, readingAtom),
     read($, pollAtom),
     read($, wakeAtom),
     $.clock.now(),
   ])
-  return { pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now }
+  return { pinned, rows, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, now }
 }
 
-/** Shows the MR list (`mine`), the inbox, or the opened MRs whole (`reading`); only the open tab is drawn. */
-export function openTab($: EngineInterface, tab: 'mine' | 'inbox' | 'reading') {
-  quietly(update($, tabAtom, () => tab))
+/** The pane's id; register.tsx names it again, since the engine reads a hook's matcher from that file alone. */
+export const PANE_ID = 'gitlab-ci'
+
+/** The pane's title names the view shown, since it is the one line of the pane that never scrolls away. */
+async function paneTitle($: EngineInterface): Promise<string> {
+  const [tab, page, rows] = await Promise.all([read($, tabAtom), read($, readingAtom), read($, rowsAtom)])
+  const row = rows.find(each => each.key === page)
+  return row ? `GitLab · !${row.iid}` : tab === 'inbox' ? 'GitLab · Inbox' : 'GitLab · Mine'
 }
 
-/** Once no MR is open the Reading tab has nothing to show, so the list comes back. */
-async function leaveEmptyReading($: EngineInterface) {
-  const [expanded, rows] = await Promise.all([read($, expandedAtom), read($, rowsAtom)])
-  if (!rows.some(row => expanded.includes(row.key))) {
-    await update($, tabAtom, tab => (tab === 'reading' ? 'mine' : tab))
-  }
+/** Opens the pane, or retitles it for the view now shown. */
+export async function openPane($: EngineInterface) {
+  return $.ui.open({ id: PANE_ID, title: await paneTitle($) })
 }
 
-/** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments; closing it closes its folds. */
+/** Shows the MR list (`mine`) or the inbox; only the open tab is drawn. */
+export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
+  quietly(update($, tabAtom, () => tab).then(() => openPane($)))
+}
+
+/** Opens one MR whole on a page of its own, drawn alone over the tab it was opened from. */
+export function openReading($: EngineInterface, key: string) {
+  quietly(
+    update($, readingAtom, () => key)
+      .then(() => openPane($))
+      .then(() => $.ui.scroll({ in: PANE_ID, to: 'start' }))
+  )
+}
+
+/** Back from an MR's page to its tab, scrolled to the card it was read from. */
+export function leaveReading($: EngineInterface) {
+  quietly(
+    (async () => {
+      const key = await read($, readingAtom)
+      await update($, readingAtom, () => '')
+      await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
+      await openPane($)
+      // The list draws again first; only then is the card there to scroll to.
+      $.clock.after(150, () => quietly($.ui.scroll({ in: PANE_ID, to: { key: cardKey(key) }, block: 'start' })))
+    })()
+  )
+}
+
+/** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
 export function toggle($: EngineInterface, key: string) {
   quietly(
     Promise.all([
       update($, expandedAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])),
       update($, personAtom, ({ [key]: _, ...rest }) => rest),
-      update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`))),
-    ]).then(() => leaveEmptyReading($))
+    ])
   )
 }
 
@@ -95,22 +126,12 @@ export function toggleFold($: EngineInterface, id: string) {
   quietly(update($, foldsAtom, list => (list.includes(id) ? list.filter(one => one !== id) : [...list, id])))
 }
 
-/** Closes every opened row, and the Reading tab with them. */
-export async function closeReading($: EngineInterface) {
-  const rows = await read($, rowsAtom)
-  await update($, expandedAtom, list => list.filter(key => !rows.some(row => row.key === key)))
-  await update($, personAtom, () => ({}))
-  await update($, foldsAtom, () => [])
-  await leaveEmptyReading($)
-}
-
 /** Opens a row on one person's comments alone; asked again for the same person, closes it. */
 export async function showPerson($: EngineInterface, key: string, username: string) {
   const [expanded, people] = await Promise.all([read($, expandedAtom), read($, personAtom)])
   if (expanded.includes(key) && people[key] === username) {
     await update($, expandedAtom, list => list.filter(one => one !== key))
     await update($, personAtom, ({ [key]: _, ...rest }) => rest)
-    await leaveEmptyReading($)
     return
   }
   await update($, personAtom, previous => ({ ...previous, [key]: username }))

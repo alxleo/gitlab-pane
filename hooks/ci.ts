@@ -139,6 +139,9 @@ export const measure = (tree: unknown): number => {
 export const shortHash = (text: string): string =>
   [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
+/** An MR card's element key, which the pane scrolls back to after its page. */
+export const cardKey = (rowKey: string): string => `card-${shortHash(rowKey)}`
+
 export const stageTone = (status: string): Tone =>
   status === 'success'
     ? 'success'

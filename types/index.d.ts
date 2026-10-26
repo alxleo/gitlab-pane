@@ -193,8 +193,10 @@ declare module 'claude-code' {
       folds: string[]
       /** A project path the list is narrowed to; empty shows every repo. */
       repoFilter: string
-      /** The pane's open tab: `mine` (the MR list), `inbox`, or `reading` (the opened MRs whole). */
+      /** The pane's open tab: `mine` (the MR list) or `inbox`. */
       tab: string
+      /** The card key of the MR read whole on a page of its own, over the open tab; empty when none. */
+      reading: string
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
       wake: boolean

@@ -9,6 +9,7 @@ import {
   bodyOf,
   botName,
   byAttention,
+  cardKey,
   duration,
   excerpt,
   lead,
@@ -33,7 +34,7 @@ import { discMarks } from './avatar'
 import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
-import { filterRepo, openTab, quietly, refresh, showPerson, toggle, toggleWake, view } from './read'
+import { filterRepo, leaveReading, openReading, openTab, quietly, refresh, showPerson, toggle, toggleWake, view } from './read'
 import { drawReading } from './reading'
 
 import type { Badge, Tone } from './ci'
@@ -91,7 +92,6 @@ const THREAD_ROOM = 500
 const VIEWS = {
   mine: { title: '🗂 Mine', about: 'Your open MRs, the most pressing first', colour: '#0969da' },
   inbox: { title: '📥 Inbox', about: 'News on the MRs you follow', colour: '#bf8700' },
-  reading: { title: '📖 Reading', about: 'The MRs you opened, whole', colour: '#8250df' },
 } as const
 
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; read.ts holds the state. */
@@ -100,13 +100,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { Box, Text, Button, Link, Markdown } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
-  const { pinned, rows: lastRead, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, poll, isWaking, now } = await view($)
+  const { pinned, rows: lastRead, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, now } = await view($)
   // GitLab says an MR is no longer open before the authored list drops it.
   const rows = lastRead.filter(row => row.mergeStatus !== 'NOT_OPEN')
-  // Only the open tab is drawn, so the MR list, the inbox and the opened MRs each have the whole of what the app draws.
+  // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
   const isInbox = tab === 'inbox'
-  const reading = expanded.flatMap(key => rows.filter(row => row.key === key))
-  const isReading = tab === 'reading' && reading.length > 0
+  const reading = lastRead.find(row => row.key === page)
   const pinnedKeys = new Set(pinned.map(pinKey))
   const repos = [...rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())]
     .sort((a, b) => b[1] - a[1])
@@ -339,11 +338,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
     // a Link's text and a Button's label, never styled Text inside them. The title opens the card, so it is a plain
     // Button with a disclosure arrow, not a link-blue title that reads as leaving for GitLab (🔀 !iid does that).
-    // An open card ends on closing it, or on reading it whole on the Reading tab, which has a drawing of its own.
+    // An open card ends on closing it, or on reading it whole on a page of its own, which has a drawing of its own.
     const foot = (
       <Box flexDirection="row" gap={2}>
         <Button key={scope('less')} plain label="▴ less" onPress={() => toggle($, mr.key)} />
-        <Button key={scope('read')} plain label="read whole ›" onPress={() => openTab($, 'reading')} />
+        <Button key={scope('read')} plain label="read whole ›" onPress={() => openReading($, mr.key)} />
       </Box>
     )
     const line1 = (
@@ -494,7 +493,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // Rows come in order of what needs Alex. Rows he opened take the room first, with their detail; then the other rows
   // in that order, then hover cards, then avatars. Rows that do not fit at all are left out and counted.
-  const built = isInbox || isReading ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
+  const built = isInbox || reading ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
   let room = DRAWING_BUDGET - CHROME_SIZE
   /** Takes the room `tree` needs past what `instead` already took. */
   const fits = (tree: unknown, instead?: unknown) => {
@@ -521,7 +520,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // is an MR that needs you.
     return (
       <Box
-        key={shortHash(part.key)}
+        key={cardKey(part.key)}
         flexDirection="column"
         borderStyle={rank(mr) === 0 ? 'bold' : 'round'}
         borderColor={STAGE_COLOURS[reviewTone(mr)]}
@@ -549,7 +548,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const news = new Set(inboxState.sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
   const openCount = rows.filter(row => !row.isDraft || pinnedKeys.has(row.key)).length
   // A see-through tint where the surface draws one; the terminal gets the name in colour alone.
-  const current = VIEWS[isInbox ? 'inbox' : isReading ? 'reading' : 'mine']
+  const current = VIEWS[isInbox ? 'inbox' : 'mine']
   const band = (
     <Box flexDirection="column" paddingX={1} paddingY={1} backgroundColor={e.surface === 'terminal' ? undefined : `${current.colour}1f`}>
       <Text size="heading" weight="semibold" color={current.colour}>
@@ -586,32 +585,27 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     ...(left > 0 ? [<Text dimColor>{`${plural(left, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.`}</Text>] : []),
   ]
 
+  // An MR read whole is a page over its tab, a way back at each end, so a long one needs no scrolling back up.
+  const back = (key: string) => <Button key={key} plain label={isInbox ? '‹ Inbox' : '‹ Mine'} onPress={() => leaveReading($)} />
+  const body = reading
+    ? [back('back-top'), ...drawReading($, e, reading, folds, now), back('back-bottom')]
+    : [
+        <Box flexDirection="row" columnGap={1}>
+          <Button key="tab-mine" label={`Mine · ${openCount}`} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
+          <Button
+            key="tab-inbox"
+            label={news > 0 ? `Inbox · ${news} new` : 'Inbox'}
+            variant={isInbox ? 'primary' : 'secondary'}
+            onPress={() => openTab($, 'inbox')}
+          />
+        </Box>,
+        band,
+        ...(isInbox ? [await drawInbox($, e)] : mineTab),
+      ]
+
   return (
     <Box flexDirection="column" gap={1}>
-      <Box flexDirection="row" columnGap={1}>
-        <Button
-          key="tab-mine"
-          label={`Mine · ${openCount}`}
-          variant={isInbox || isReading ? 'secondary' : 'primary'}
-          onPress={() => openTab($, 'mine')}
-        />
-        <Button
-          key="tab-inbox"
-          label={news > 0 ? `Inbox · ${news} new` : 'Inbox'}
-          variant={isInbox ? 'primary' : 'secondary'}
-          onPress={() => openTab($, 'inbox')}
-        />
-        {reading.length > 0 && (
-          <Button
-            key="tab-reading"
-            label={`Reading · ${reading.length}`}
-            variant={isReading ? 'primary' : 'secondary'}
-            onPress={() => openTab($, 'reading')}
-          />
-        )}
-      </Box>
-      {band}
-      {isInbox ? await drawInbox($, e) : isReading ? drawReading($, e, reading, folds, now) : mineTab}
+      {body}
       <Box flexDirection="row" gap={2}>
         <Text color={poll.error !== null ? 'warning' : undefined} dimColor={poll.error === null} size="footnote">
           {status}

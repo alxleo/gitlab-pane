@@ -92,8 +92,10 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   const opened: string[] = []
+  const titles: string[] = []
   on('ui.open', (_, e) => {
     opened.push(e.id)
+    titles.push(e.title ?? '')
     return { value: { isPlaced: true } }
   })
   on('ui.close', () => ({ value: undefined }))
@@ -101,7 +103,7 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { woken, reads, avatars, jiraReads, opened }
+  return { woken, reads, avatars, jiraReads, opened, titles }
 }
 
 test('only the pinned MR wakes the session, once, with no comment text', async ($, on) => {
@@ -289,7 +291,7 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   await terminal.unmount()
 })
 
-test('opened cards read whole on a Reading tab, which goes once the last card closes', async ($, on) => {
+test('read whole › opens one MR as a page of its own, a way back at both ends, the pane titled for where you are', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const description = [
     `## What\n\n${'This change does a careful thing. '.repeat(40)}`,
@@ -301,23 +303,26 @@ test('opened cards read whole on a Reading tab, which goes once the last card cl
   const failing = pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', Array.from({ length: 9 }, (_, j) => job(`suite-${j}`, 'FAILED')))] } })
   const asked = thread(words, 'reviewer')
   const answered = { ...asked, notes: { nodes: [...asked.notes.nodes, note('Kept it; the comment above says why.', 'alex')] } }
-  const { opened } = engine(on, {
+  const { opened, titles } = engine(on, {
     mrs: [rawMr(12, { description, headPipeline: failing, discussions: { nodes: [answered] } })],
     isDown: false,
   })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
+  // The pane's own title never scrolls away, so it names the view.
+  expect(titles.at(-1)).toBe('GitLab · Mine')
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Button', key: 'tab-reading' })).toBeUndefined()
   const open = (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? ''
   await ui.press({ key: open })
-  // The desktop app never shows a second pane, so reading stays in this one.
-  expect(opened.filter(id => id !== 'gitlab-ci')).toEqual([])
-  expect((await ui.find({ type: 'Button', key: 'tab-reading' }))?.props.label).toBe('Reading · 1')
 
-  // The open card's short detail leads to the whole of it.
+  // The open card's short detail leads to the whole of it, on a page of its own in this pane.
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
+  expect(new Set(opened)).toEqual(new Set(['gitlab-ci']))
+  expect(titles.at(-1)).toBe('GitLab · !12')
+  expect(await ui.find({ type: 'Button', key: 'tab-mine' })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'back-top' }))?.props.label).toBe('‹ Mine')
+  expect((await ui.find({ type: 'Button', key: 'back-bottom' }))?.props.label).toBe('‹ Mine')
   const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
   expect(text).toContain('The end of the description, made `<meta>` tags self-closing.')
   // The desktop app strikes a ticked task through, which reads as dropped, so ticks are marks instead.
@@ -333,32 +338,35 @@ test('opened cards read whole on a Reading tab, which goes once the last card cl
   expect(text).toContain('Kept it; the comment above says why.')
   const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name ?? ''))
   expect(jobs.length).toBe(9)
-  // Only the open tab is drawn: no MR list under the reading.
+  // The page is drawn alone: no MR list under it.
   expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeUndefined()
 
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('close-12-'))?.key ?? '' })
-  expect(await ui.find({ type: 'Button', key: 'tab-reading' })).toBeUndefined()
+  await ui.press({ key: 'back-bottom' })
   expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  expect(titles.at(-1)).toBe('GitLab · Mine')
+  // The card it was read from is still open where it was.
+  expect((await ui.findAll({ type: 'Button' })).find(button => button.key === open)?.props.label).toBe('▾ thing 12')
+  await ui.press({ key: 'tab-inbox' })
+  expect(titles.at(-1)).toBe('GitLab · Inbox')
   await ui.unmount()
 })
 
-test('an MR too long for the Reading tab links to GitLab, and the MRs after it still draw whole', async ($, on) => {
+test('an MR too long for its page shows what fits of the description, then links to GitLab for the rest', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const huge = `${'A changelog line that goes on. '.repeat(4_000)}The end.`
-  engine(on, { mrs: [rawMr(12, { description: huge }), rawMr(13, { description: 'Short and whole.' })], isDown: false })
+  const huge = `The opening line.\n\n${'A changelog line that goes on. '.repeat(4_000)}The end.`
+  engine(on, { mrs: [rawMr(12, { description: huge, discussions: { nodes: [thread('Still whole.', 'reviewer')] } })], isDown: false })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  for (const iid of [12, 13]) {
-    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith(`open-${iid}-`))?.key ?? '' })
-  }
-  await ui.press({ key: 'tab-reading' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
 
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-  const tooLong = (await ui.findAll({ type: 'Link' })).map(link => link.text ?? '').filter(text => text.includes('Too long to draw'))
-  expect(tooLong.length).toBe(1)
-  expect(tooLong[0]).toContain('read !12 on GitLab')
-  expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('Short and whole.')
+  const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
+  expect(text).toContain('The opening line.')
+  expect(text).not.toContain('The end.')
+  expect(text).toContain('Still whole.')
+  expect((await ui.findAll({ type: 'Link' })).some(link => (link.text ?? '').includes('The rest of the description is on GitLab'))).toBe(true)
   await ui.unmount()
 })
 
@@ -376,15 +384,17 @@ test('each view opens under a band of its own colour, icon and name, so it reads
   await ui.press({ key: 'tab-inbox' })
   expect(await band()).toEqual({ tint: '#bf87001f', title: '📥 Inbox' })
   await ui.press({ key: 'tab-mine' })
+  // An MR's own page is a document, not a list: no band, its title instead.
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? '' })
-  await ui.press({ key: 'tab-reading' })
-  expect(await band()).toEqual({ tint: '#8250df1f', title: '📖 Reading' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
+  expect((await band()).tint).toBeUndefined()
+  await ui.press({ key: 'back-top' })
   await ui.unmount()
 
   // The terminal draws no see-through colour, so there the band is its name in colour alone.
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(boxesOf(await terminal.drawn()).some(box => typeof box.props?.backgroundColor === 'string')).toBe(false)
-  expect((await terminal.find({ type: 'Text', text: '📖 Reading' }))?.props.color).toBe('#8250df')
+  expect((await terminal.find({ type: 'Text', text: '🗂 Mine' }))?.props.color).toBe('#0969da')
   await terminal.unmount()
 })
 
