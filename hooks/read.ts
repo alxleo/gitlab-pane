@@ -113,10 +113,24 @@ export function leaveReading($: EngineInterface) {
       await update($, readingAtom, () => '')
       await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
       await openPane($)
-      // The list draws again first; only then is the card there to scroll to.
-      $.clock.after(150, () => quietly(scrollPane($, { to: { key: cardKey(key) }, block: 'start' })))
+      await scrollToCard($, key)
     })()
   )
+}
+
+/**
+ * The desktop tells the engine where keyed elements sit only when it next asks for a drawing, so a card just drawn
+ * again is not yet there to scroll to. Each miss asks for that drawing and tries again.
+ */
+async function scrollToCard($: EngineInterface, rowKey: string) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await $.clock.sleep(150 * attempt)
+    await scrollPane($, { to: { key: cardKey(rowKey) }, block: 'start' })
+    if (!scrolling.refused.startsWith('no element')) {
+      return
+    }
+    $.ui.invalidate('ui.render')
+  }
 }
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
