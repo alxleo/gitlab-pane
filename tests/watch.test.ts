@@ -338,8 +338,8 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
   await ui.unmount()
 })
 
-test('fifty MRs with full pipelines and long threads stay inside the 100,000 characters a drawing holds', async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
+/** Fifty MRs with nine-stage pipelines and six long open threads each: more than one drawing holds. */
+const fiftyBusy = (): Fake => {
   const long = (name: string) => `${name}-${'x'.repeat(30)}`
   const busy = (status: string) =>
     pipe(status, {
@@ -349,7 +349,7 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
         ),
       },
     })
-  const fake: Fake = {
+  return {
     mrs: Array.from({ length: 50 }, (_, i) =>
       rawMr(1000 + i, {
         project: project(`acme-corp/platform/some-group/another-group/${i % 3 === 0 ? 'repo-one' : 'repo-two'}`),
@@ -360,7 +360,34 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
     ),
     isDown: false,
   }
-  engine(on, fake)
+}
+
+test('cards Alex opened keep their detail when the unfolded list fills the drawing', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, fiftyBusy())
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // The lowest rows drawn, opened one at a time, since an open row's detail can push the last row out.
+  for (let i = 0; i < 3; i++) {
+    const closed = (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('open-') && String(button.props.label).startsWith('▸'))
+    await ui.press({ key: closed.at(-1)?.key ?? '' })
+  }
+  await ui.press({ key: 'more' })
+
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  expect(await ui.find({ type: 'Text', text: /^Too much is open/ })).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('less-')).length).toBe(3)
+  // Each thread is cut short in the card; its 💬 link opens it whole.
+  const longest = Math.max(...(await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text).length))
+  expect(longest).toBeLessThanOrEqual(500)
+  expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
+  await ui.unmount()
+})
+
+test('fifty MRs with full pipelines and long threads stay inside the 100,000 characters a drawing holds', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, fiftyBusy())
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -461,16 +488,16 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     expect(title?.props.label).toBe('▸ thing 103')
     const opens = { key: title?.key ?? '' }
     await ui.press(opens)
-    expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
     expect((await ui.find({ type: 'Button', key: opens.key }))?.props.label).toBe('▾ thing 103')
     await ui.press(opens)
-    expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
     // ▴ less at the card's foot closes it as well.
     await ui.press(opens)
     const less = (await ui.findAll({ type: 'Button' })).find(button => /^less-103-\w+$/.test(button.key ?? ''))
     await ui.press({ key: less?.key ?? '' })
-    expect(await ui.find({ type: 'Text', text: "Click someone's initials to read only their comments." })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
 
     await ui.press({ key: 'repo-g/q' })
     expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 5')

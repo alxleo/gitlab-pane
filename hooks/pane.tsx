@@ -95,6 +95,9 @@ const DRAWING_BUDGET = 85_000
 /** What the repo filter, headings and footer take, with room to spare for a long list of repos. */
 const CHROME_SIZE = 6_000
 
+/** An open thread's words in its card; its 💬 link opens it whole. */
+const THREAD_ROOM = 500
+
 /** A tree's size as the app receives it. */
 const measure = (tree: unknown): number => {
   try {
@@ -437,21 +440,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {mr.description.trim() && <Markdown text={bodyOf(mr.description)} />}
         {pipeline && pipeline.failed.length + pipeline.amber.length > 0 && (
           <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            {pipeline.failed.map(job => (
-              <Link href={job.url}>{`✗ ${job.name}`}</Link>
-            ))}
-            {pipeline.amber.map(job => (
-              <Link href={job.url}>{`⚠ ${job.name}`}</Link>
-            ))}
+            {[...pipeline.failed.map(job => ({ job, glyph: '✗' })), ...pipeline.amber.map(job => ({ job, glyph: '⚠' }))]
+              .slice(0, JOBS_SHOWN)
+              .map(({ job, glyph }) => (
+                <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
+              ))}
+            {pipeline.failed.length + pipeline.amber.length > JOBS_SHOWN && (
+              <Link href={pipeline.url}>{`+${pipeline.failed.length + pipeline.amber.length - JOBS_SHOWN} more`}</Link>
+            )}
           </Box>
         )}
         {mr.openThreads.map(note => (
           <Box key={`t-${note.url}`} flexDirection="column">
             {byline('who', note.author, [note.where, ago(note.at, now)].filter(Boolean).join(' · '), note.url)}
-            <Markdown text={note.body} />
+            <Markdown text={bodyOf(note.body, THREAD_ROOM)} />
           </Box>
         ))}
-        {mr.people.length > 0 && <Text dimColor>Click someone's initials to read only their comments.</Text>}
+        {mr.people.length > 0 && <Text dimColor>Click a name to read only their comments.</Text>}
         {less}
       </Box>
     )
@@ -467,8 +472,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
-  // Rows come in order of what needs Alex, and take the room in that order: the rows themselves, then open rows'
-  // detail, then hover cards, then avatars. Rows that do not fit at all are left out and counted.
+  // Rows come in order of what needs Alex. Rows he opened take the room first, with their detail; then the other rows
+  // in that order, then hover cards, then avatars. Rows that do not fit at all are left out and counted.
   const built = isInbox ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
   let room = DRAWING_BUDGET - CHROME_SIZE
   /** Takes the room `tree` needs past what `instead` already took. */
@@ -480,9 +485,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     room -= size
     return true
   }
-  const drawn = new Set(built.filter(part => fits([part.line1, part.line2])).map(part => part.key))
+  const opened = built.filter(part => part.detail && fits([part.line1, part.line2]))
+  const withDetail = new Set(opened.filter(part => fits(part.detail)).map(part => part.key))
+  const drawn = new Set([...opened, ...built.filter(part => !part.detail && fits([part.line1, part.line2]))].map(part => part.key))
   const left = built.length - drawn.size
-  const withDetail = new Set(built.filter(part => drawn.has(part.key) && part.detail && fits(part.detail)).map(part => part.key))
   const withCards = new Set(built.filter(part => drawn.has(part.key) && fits([part.under1, part.under2])).map(part => part.key))
   const withFaces = new Set(built.filter(part => drawn.has(part.key) && part.faces && fits(part.faces, part.line2)).map(part => part.key))
   const draw = (mr: MrCard) => {
