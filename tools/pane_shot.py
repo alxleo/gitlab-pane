@@ -14,7 +14,9 @@
 The pane is found by reading its title off the window (macOS text recognition), and found
 again before every scroll, so a pane that moved or a session that changed is never scrolled
 or cropped by mistake. Scrolling goes through Hammerspoon, which holds the Accessibility
-grant, aimed at the pane: the mouse pointer does not move.
+grant: the pointer is moved over the pane for the scroll, since macOS gives a wheel to what
+is under the pointer, and put back before the capture. A scroll that leaves the pane as it
+was is reported, not passed off as the page asked for.
 
 Run it when the person says the pane is in front, never on a timer. Only the pane is
 written: the whole-window frames it reads, which show other sessions, stay in a temporary
@@ -163,16 +165,24 @@ def hammerspoon(lua: str) -> str:
     return run.stdout
 
 
+#: One wheel event's distance: 400 pixels moved a session's transcript when tried by hand; 2,000 never moved the pane.
+STEP_PIXELS = 400
+#: Far enough to reach either end of any pane drawn so far.
+TO_THE_END = 20_000
+
+
 def scroll(pane: Rect, pixels: int) -> None:
-    """Scrolls the pane by `pixels` (negative is down), in steps, aimed at its middle."""
+    """Scrolls the pane by `pixels` (negative is down) with the pointer over its middle, then puts the pointer back."""
     x, y = pane.x + pane.w / 2, pane.y + pane.h / 2
-    # Hammerspoon stops answering when one call posts about a hundred events, so big scrolls take big steps.
-    size = min(2000, max(1, abs(pixels)))
-    count = min(25, -(-abs(pixels) // size))
-    step = -size if pixels < 0 else size
+    count = max(1, abs(pixels) // STEP_PIXELS)
+    step = -STEP_PIXELS if pixels < 0 else STEP_PIXELS
+    # macOS gives a wheel event to what is under the pointer, whatever the event's own location says.
     hammerspoon(
+        f"local was = hs.mouse.absolutePosition(); hs.mouse.absolutePosition({{x = {x:.0f}, y = {y:.0f}}}); "
+        "hs.timer.usleep(50000); "
         f"for i = 1, {count} do local e = hs.eventtap.event.newScrollEvent({{0, {step}}}, {{}}, 'pixel'); "
-        f"e:location({{x = {x:.0f}, y = {y:.0f}}}); e:post() end"
+        f"e:location({{x = {x:.0f}, y = {y:.0f}}}); e:post(); hs.timer.usleep(10000) end; "
+        "hs.timer.usleep(150000); hs.mouse.absolutePosition(was)"
     )
     time.sleep(0.6)
 
@@ -213,9 +223,13 @@ def capture(
     with tempfile.TemporaryDirectory() as tmp:
         try:
             found = find_pane(owner, title, Path(tmp))
+            before = Path(tmp) / "before.png"
             if to != "here":
-                found = guarded_scroll(owner, title, found, 40_000 if to == "top" else -40_000, Path(tmp))
+                crop(found.window, found.pane, before, Path(tmp))
+                found = guarded_scroll(owner, title, found, TO_THE_END if to == "top" else -TO_THE_END, Path(tmp))
             crop(found.window, found.pane, out, Path(tmp))
+            if to != "here" and before.read_bytes() == out.read_bytes():
+                typer.echo(f"pane-shot: the pane did not move: it was at its {to} already, or the scroll missed it", err=True)
         except PaneShotError as exc:
             raise fail(exc) from exc
     typer.echo(Shot(path=str(out), pane=found.pane, window_id=found.window.id).model_dump_json())
@@ -233,7 +247,7 @@ def tour(
     shots: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            found = guarded_scroll(owner, title, find_pane(owner, title, Path(tmp)), 40_000, Path(tmp))
+            found = guarded_scroll(owner, title, find_pane(owner, title, Path(tmp)), TO_THE_END, Path(tmp))
             previous = b""
             for page in range(1, pages + 1):
                 path = out / f"page-{page:02d}.png"
@@ -245,9 +259,11 @@ def tour(
                 shots.append(str(path))
                 previous = data
                 found = guarded_scroll(owner, title, found, -int(found.pane.h * 0.8), Path(tmp))
-            guarded_scroll(owner, title, found, 40_000, Path(tmp))
+            guarded_scroll(owner, title, found, TO_THE_END, Path(tmp))
         except PaneShotError as exc:
             raise fail(exc) from exc
+    if len(shots) == 1:
+        typer.echo("pane-shot: one page only: the pane fits on one screen, or the scroll missed it", err=True)
     typer.echo(json.dumps({"pages": shots}))
 
 
