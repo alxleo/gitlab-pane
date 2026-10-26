@@ -22,9 +22,10 @@ import {
   statusMark,
   ticketOf,
 } from './ci'
+import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
-import { filterRepo, quietly, refresh, showPerson, toggle, toggleWake, view } from './read'
+import { filterRepo, openTab, quietly, refresh, showPerson, toggle, toggleWake, view } from './read'
 
 import type { Badge, Tone } from './ci'
 import type { Job, MrCard, Note, Person, Stage } from '../types'
@@ -103,7 +104,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { Box, Text, Button, Link, Markdown } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
-  const { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, poll, isWaking, now } = await view($)
+  const { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now } = await view($)
+  // Only the open tab is drawn, so the MR list and the inbox each have the whole of what the app draws.
+  const isInbox = tab === 'inbox'
   const pinnedKeys = new Set(pinned.map(pinKey))
   const repos = [...rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())]
     .sort((a, b) => b[1] - a[1])
@@ -439,10 +442,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // Rows come in order of what needs Alex, and take the room in that order: the rows themselves, then open rows'
   // detail, then hover cards, then avatars. Rows that do not fit at all are left out and counted.
-  const built = [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
-  // The inbox keeps itself inside its own budget; what it takes comes off the rows' room.
-  const inbox = await drawInbox($, e)
-  let room = DRAWING_BUDGET - CHROME_SIZE - measure(inbox)
+  const built = isInbox ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
+  let room = DRAWING_BUDGET - CHROME_SIZE
   /** Takes the room `tree` needs past what `instead` already took. */
   const fits = (tree: unknown, instead?: unknown) => {
     const size = measure(tree) - (instead === undefined ? 0 : measure(instead))
@@ -463,12 +464,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       return null
     }
     const hasCards = withCards.has(part.key)
+    const urgency = rank(mr)
+    // The stage squares' own colours, brighter than the theme's tones, and a heavier line for an MR that needs you.
     return (
       <Box
         key={shortHash(part.key)}
         flexDirection="column"
-        borderStyle="round"
-        borderColor={URGENCY[rank(mr)]}
+        borderStyle={urgency === 0 ? 'bold' : 'round'}
+        borderColor={STAGE_COLOURS[URGENCY[urgency] ?? 'subtle']}
         hover={part.canOpen ? { borderColor: 'claude' } : undefined}
         paddingX={1}
       >
@@ -488,31 +491,48 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now))
         : 'reading GitLab…'
 
+  // An MR counts as news once, whichever rules list it, as the inbox itself counts it.
+  const { inbox: inboxState } = await inboxView($)
+  const news = new Set(inboxState.sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
+  const openCount = rows.filter(row => !row.isDraft || pinnedKeys.has(row.key)).length
+  const mineTab = [
+    <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+      <Button key="repo-all" label={`All ${rows.length}`} variant={repoFilter ? 'secondary' : 'primary'} onPress={() => filterRepo($, repoFilter)} />
+      {repos.map(([project, count]) => (
+        <Button
+          key={`repo-${project}`}
+          label={`${repoName(project)} ${count}`}
+          variant={repoFilter === project ? 'primary' : 'secondary'}
+          onPress={() => filterRepo($, project)}
+        />
+      ))}
+    </Box>,
+    ...(session.length > 0 ? [<Text bold>This session</Text>, ...session.map(draw)] : []),
+    <Text bold>{`Mine · ${mine.length}`}</Text>,
+    ...(mine.length === 0 ? [<Text dimColor>Nothing open here.</Text>] : []),
+    ...mineShown.map(draw),
+    ...(mine.length > MINE_SHOWN
+      ? [<Button key="more" plain label={showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`} onPress={() => toggle($, 'more')} />]
+      : []),
+    ...(drafts.length > 0
+      ? [<Button key="drafts" plain label={`${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`} onPress={() => toggle($, 'drafts')} />]
+      : []),
+    ...(showDrafts ? drafts.map(draw) : []),
+    ...(left > 0 ? [<Text dimColor>{`${plural(left, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.`}</Text>] : []),
+  ]
+
   return (
     <Box flexDirection="column" gap={1}>
-      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-        <Button key="repo-all" label={`All ${rows.length}`} variant={repoFilter ? 'secondary' : 'primary'} onPress={() => filterRepo($, repoFilter)} />
-        {repos.map(([project, count]) => (
-          <Button
-            key={`repo-${project}`}
-            label={`${repoName(project)} ${count}`}
-            variant={repoFilter === project ? 'primary' : 'secondary'}
-            onPress={() => filterRepo($, project)}
-          />
-        ))}
+      <Box flexDirection="row" columnGap={1}>
+        <Button key="tab-mine" label={`Mine · ${openCount}`} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
+        <Button
+          key="tab-inbox"
+          label={news > 0 ? `Inbox · ${news} new` : 'Inbox'}
+          variant={isInbox ? 'primary' : 'secondary'}
+          onPress={() => openTab($, 'inbox')}
+        />
       </Box>
-      {inbox}
-      {session.length > 0 && <Text bold>This session</Text>}
-      {session.map(draw)}
-      <Text bold>{`Mine · ${mine.length}`}</Text>
-      {mine.length === 0 && <Text dimColor>Nothing open here.</Text>}
-      {mineShown.map(draw)}
-      {mine.length > MINE_SHOWN && (
-        <Button key="more" plain label={showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`} onPress={() => toggle($, 'more')} />
-      )}
-      {drafts.length > 0 && <Button key="drafts" plain label={`${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`} onPress={() => toggle($, 'drafts')} />}
-      {showDrafts && drafts.map(draw)}
-      {left > 0 && <Text dimColor>{`${plural(left, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.`}</Text>}
+      {isInbox ? await drawInbox($, e) : mineTab}
       <Box flexDirection="row" gap={2}>
         <Text color={poll.error !== null ? 'warning' : undefined} dimColor={poll.error === null} size="footnote">
           {status}

@@ -17,6 +17,7 @@ const avatarsAtom = atom({ plugin: 'gitlab-ci', key: 'avatars' } as const, {})
 const expandedAtom = atom({ plugin: 'gitlab-ci', key: 'expanded' } as const, [])
 const personAtom = atom({ plugin: 'gitlab-ci', key: 'person' } as const, {})
 const repoFilterAtom = atom({ plugin: 'gitlab-ci', key: 'repoFilter' } as const, '')
+const tabAtom = atom({ plugin: 'gitlab-ci', key: 'tab' } as const, 'mine')
 const announcedAtom = atom({ plugin: 'gitlab-ci', key: 'announced' } as const, {})
 const wakeAtom = atom({ plugin: 'gitlab-ci', key: 'wake' } as const, true)
 const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
@@ -35,7 +36,7 @@ export const quietly = (work: Promise<unknown>): void => {
 
 /** Everything the pane draws, read at once; reading here makes the pane redraw when any of it changes. */
 export async function view($: EngineInterface) {
-  const [pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, poll, isWaking, now] = await Promise.all([
+  const [pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, ticketsAtom),
@@ -44,11 +45,17 @@ export async function view($: EngineInterface) {
     read($, expandedAtom),
     read($, personAtom),
     read($, repoFilterAtom),
+    read($, tabAtom),
     read($, pollAtom),
     read($, wakeAtom),
     $.clock.now(),
   ])
-  return { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, poll, isWaking, now }
+  return { pinned, rows, tickets, usual, avatars, expanded, chosen, repoFilter, tab, poll, isWaking, now }
+}
+
+/** Shows the MR list (`mine`) or the inbox; only the open tab is drawn. */
+export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
+  quietly(update($, tabAtom, () => tab))
 }
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */

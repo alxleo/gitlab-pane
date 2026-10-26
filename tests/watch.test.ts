@@ -3,6 +3,7 @@ import type { On } from 'claude-code'
 
 import { AVATAR_BASE64, NOW, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
 
+import { STAGE_COLOURS } from '../hooks/ci'
 import type { RawMr } from '../hooks/gitlab'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
@@ -169,11 +170,34 @@ test('each MR is a card bordered by how much it needs you, its worst blocker in 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle === 'round')
-  expect(cards.map(card => card.props?.borderColor)).toEqual(['error', 'warning'])
+  // The failed one needs you: a heavier line in the stage squares' red; the other waits on a review, in their amber.
+  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined)
+  expect(cards.map(card => [card.props?.borderStyle, card.props?.borderColor])).toEqual([
+    ['bold', STAGE_COLOURS.error],
+    ['round', STAGE_COLOURS.warning],
+  ])
   // The marker shows in words; its hover card still lists every marker.
   expect(await ui.find({ type: 'Text', text: '👤 needs 1 approval' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '👤 0/1' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label counting MRs with news', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { mrs: [rawMr(12)], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Button', key: 'tab-mine' }))?.props.variant).toBe('primary')
+  expect((await ui.find({ type: 'Button', key: 'tab-inbox' }))?.props.label).toBe('Inbox')
+  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  await ui.press({ key: 'tab-inbox' })
+  expect((await ui.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
+  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
+  await ui.press({ key: 'tab-mine' })
+  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
   await ui.unmount()
 })
 
