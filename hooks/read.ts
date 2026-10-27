@@ -88,8 +88,8 @@ export function openTab($: EngineInterface, tab: 'mine' | 'inbox') {
   quietly(update($, tabAtom, () => tab).then(() => openPane($)))
 }
 
-/** Why the pane's last scroll did not move, which /gitlab reports; a reload starts it over. */
-export const scrolling = { refused: '' }
+/** Why the pane's last scroll did not move, and how far going back from a page got; /gitlab reports both. */
+export const scrolling = { refused: '', goingBack: '' }
 
 async function scrollPane($: EngineInterface, args: Omit<UiScrollArgs, 'in'>) {
   const result = await $.ui.scroll({ ...args, in: PANE_ID }).catch((error: unknown) => ({ deny: String(error) }))
@@ -112,38 +112,35 @@ export const paneDrawn = (): void => waitingForDraw.splice(0).forEach(resolve =>
 
 const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDraw.push(resolve))
 
-/** Past this long since leaving a page, its card is not scrolled to: a pane drawn that late would jump unasked. */
-const SCROLL_BACK_MS = 3_000
-
 /**
- * Back from an MR's page to its tab, scrolled to the card it was read from. It waits on drawings, never on a timer:
- * a timed wait started from a press never ends. Why it failed, if it did, is what /gitlab says.
+ * Back from an MR's page to its tab, scrolled to the card it was read from. It waits on drawings and never on
+ * `$.clock`, whose calls made after a press were never seen to answer. `scrolling.goingBack` says how far it got.
  */
 export function leaveReading($: EngineInterface) {
+  scrolling.goingBack = 'started'
   ;(async () => {
     const key = await read($, readingAtom)
-    await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
-    const left = await $.clock.now()
     const listed = nextDraw()
     await update($, readingAtom, () => '')
+    await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
     await openPane($)
+    scrolling.goingBack = 'waiting for the list to draw'
     await listed
     // The desktop reports where cards sit only with its next ask for a drawing, and that report is of the screen it
     // showed before: the ask that drew the list described the page. Each drawing asked for after it may report the list.
     for (let attempt = 1; attempt <= 3; attempt++) {
+      scrolling.goingBack = `waiting for drawing ${attempt} after the list`
       const reported = nextDraw()
       $.ui.invalidate('ui.render')
       await reported
-      if ((await $.clock.now()) - left > SCROLL_BACK_MS) {
-        return
-      }
       await scrollPane($, { to: { key: cardKey(key) }, block: 'start' })
       if (!scrolling.refused.startsWith('no element')) {
-        return
+        break
       }
     }
+    scrolling.goingBack = 'done'
   })().catch((error: unknown) => {
-    scrolling.refused = `going back failed: ${error instanceof Error ? error.message : String(error)}`
+    scrolling.goingBack = `failed: ${error instanceof Error ? error.message : String(error)}`
   })
 }
 

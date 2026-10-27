@@ -61,7 +61,8 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await openPane($)
     quietly(refresh($))
-    if (opened.isPlaced && !health.last.startsWith('threw') && !scrolling.refused) {
+    const isGoingBackStuck = scrolling.goingBack !== '' && scrolling.goingBack !== 'done'
+    if (opened.isPlaced && !health.last.startsWith('threw') && !scrolling.refused && !isGoingBackStuck) {
       return { text: 'GitLab pane open' }
     }
     return {
@@ -69,6 +70,7 @@ export const register: Register = (on, options) => {
         opened.isPlaced ? 'GitLab pane open' : `GitLab pane not placed: ${opened.reason}`,
         `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
         ...(scrolling.refused ? [`last scroll refused: ${scrolling.refused}`] : []),
+        ...(isGoingBackStuck ? [`going back: ${scrolling.goingBack}`] : []),
       ].join(' · '),
     }
   })
