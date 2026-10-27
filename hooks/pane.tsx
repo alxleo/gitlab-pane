@@ -117,8 +117,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // The desktop paints no background on a floating Box, so a card opens in the flow under its line instead.
   // A scope groups a trigger with its card, so neither needs a key; keys would only spend the character budget.
+  // The desktop joins a Box to its scope only when its hover also sets a style, so a trigger tints faintly in either theme.
+  const joins = (scope: string) => ({ scope, backgroundColor: 'rgba(128, 128, 128, 0.14)' })
   const trigger = (scope: string, child: RenderChildren) => (
-    <Box flexDirection="row" alignItems="center" flexShrink={0} hover={{ scope }}>
+    <Box flexDirection="row" alignItems="center" flexShrink={0} hover={joins(scope)}>
       {child}
     </Box>
   )
@@ -339,7 +341,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
     const line1 = (
       <Box flexDirection="row" gap={1} alignItems="center">
-        <Box flexGrow={1} flexShrink={1} hover={{ scope: about }}>
+        <Box flexGrow={1} flexShrink={1} hover={joins(about)}>
           {canOpen ? (
             <Button key={scope('open')} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(mr.title)}`} onPress={() => toggle($, mr.key)} />
           ) : (
@@ -414,7 +416,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text dimColor>no pipeline</Text>
         )}
         {verdict ? (
-          <Box flexDirection="row" gap={1} flexShrink={0} hover={{ scope: blocks }}>
+          <Box flexDirection="row" gap={1} flexShrink={0} hover={joins(blocks)}>
             <Text bold={verdict.tone === 'success'} color={verdict.tone}>
               {verdict.words}
             </Text>
@@ -424,7 +426,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           </Box>
         ) : (
           blocker && (
-            <Box flexShrink={0} hover={{ scope: blocks }}>
+            <Box flexShrink={0} hover={joins(blocks)}>
               <Text color={blocker.tone}>{`${blocker.glyph} ${blocker.words}${list.length > 1 ? ` +${list.length - 1}` : ''}`}</Text>
             </Box>
           )

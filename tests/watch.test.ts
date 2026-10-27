@@ -737,14 +737,19 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     const controls = elementsOf(await ui.drawn()).filter(element => element.type === 'Link' || element.type === 'Button')
     expect(controls.length).toBeGreaterThan(0)
     expect(controls.filter(element => (element.children ?? []).some(child => typeof child !== 'string'))).toEqual([])
-    // Each card opens in the flow under its line, lit by the hover group its trigger shares.
+    // Each card opens in the flow under its line, lit by the hover group its trigger shares. The desktop joins a Box to
+    // its group only when its hover also sets a style, so no trigger names its scope alone.
     const boxes = boxesOf(await ui.drawn())
+    expect(boxes.filter(box => box.hover?.scope !== undefined && Object.keys(box.hover).length === 1)).toEqual([])
     const card = boxes.find(box => box.hover?.display === 'flex' && /^p\w+-103-/.test(box.hover.scope ?? ''))
     const scope = card?.hover?.scope ?? ''
     expect(scope.length).toBeGreaterThan(0)
     expect(card?.props?.display).toBe('none')
     expect(card?.props?.position).toBeUndefined()
-    expect(boxes.filter(box => box.hover?.scope === scope).map(box => box.hover)).toEqual([{ scope }, { scope, display: 'flex' }])
+    expect(boxes.filter(box => box.hover?.scope === scope).map(box => Object.keys(box.hover ?? {}).sort())).toEqual([
+      ['backgroundColor', 'scope'],
+      ['display', 'scope'],
+    ])
 
     // Initials open the row on that person's comments alone; pressed again, they close it. Keys are short, as each
     // costs the drawing its length on every row.
