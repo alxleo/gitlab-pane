@@ -10,6 +10,7 @@
   pane-shot capture --pane GitLab -o pane.png        the pane as it is now
   pane-shot capture --pane GitLab --to bottom -o b.png
   pane-shot tour --pane GitLab -o shots/             top to bottom, a page per file
+  pane-shot press "read whole" "Mine" -o after.png   click buttons by what they read, then capture
 
 The pane is found by reading its title off the window (macOS text recognition), and found
 again before every scroll, so a pane that moved or a session that changed is never scrolled
@@ -197,6 +198,36 @@ def scroll(pane: Rect, pixels: int) -> None:
     time.sleep(0.6)
 
 
+def plain(text: str) -> str:
+    """Letters and digits only, lower case: what reading text off the screen gets right."""
+    return "".join(char for char in text.lower() if char.isalnum())
+
+
+def click_text(found: Found, text: str, scratch: Path) -> str:
+    """Clicks the topmost line in the pane that reads `text`, then puts the pointer back; returns the line clicked."""
+    shot = scratch / "press.png"
+    grab(found.window, shot)
+    image = load(shot)
+    scale = Quartz.CGImageGetWidth(image) / found.window.bounds.w
+    wanted = plain(text)
+    inside = []
+    for line, x, y, w, h in recognise(image):
+        left, top = found.window.bounds.x + x / scale, found.window.bounds.y + y / scale
+        below_header = top > found.title_at.y + found.title_at.h + 4
+        if found.pane.x <= left <= found.pane.x + found.pane.w and below_header and wanted and wanted in plain(line):
+            inside.append((plain(line) != wanted, top, line, left + w / scale / 2, top + h / scale / 2))
+    shot.unlink(missing_ok=True)
+    if not inside:
+        raise PaneShotError(f"nothing in the pane reads {text!r}")
+    _, _, line, x, y = min(inside)
+    hammerspoon(
+        f"local was = hs.mouse.absolutePosition(); hs.eventtap.leftClick({{x = {x:.0f}, y = {y:.0f}}}); "
+        "hs.timer.usleep(150000); hs.mouse.absolutePosition(was)"
+    )
+    time.sleep(1.5)
+    return line
+
+
 def guarded_scroll(owner: str, title: str, expected: Found, pixels: int, scratch: Path) -> Found:
     """Finds the pane again and scrolls only if it is still where it was."""
     again = find_pane(owner, title, scratch)
@@ -246,6 +277,35 @@ def capture(
         except PaneShotError as exc:
             raise fail(exc) from exc
     typer.echo(Shot(path=str(out), pane=found.pane, window_id=found.window.id, session=found.session).model_dump_json())
+
+
+@app.command()
+def press(
+    text: Annotated[list[str], typer.Argument(help="What each button reads, pressed in order; an exact read wins over a partial one.")],
+    out: Annotated[Path | None, typer.Option("-o", "--out", help="PNG of the pane once the last press settles.")] = None,
+    title: Title = "GitLab",
+    owner: Owner = "Claude Work",
+) -> None:
+    """Clicks buttons in the pane by what they read, the topmost first, as a person would, then captures it.
+
+    Only text inside the pane, below its header, is ever clicked, and the window must still show the session it showed
+    at the first press.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            first = find_pane(owner, title, Path(tmp))
+            pressed = []
+            for each in text:
+                # The title changes with the view ("GitLab · !57"), so the pane is found by its first word.
+                found = find_pane(owner, title, Path(tmp))
+                if difflib.SequenceMatcher(None, found.session.lower(), first.session.lower()).ratio() < 0.9:
+                    raise PaneShotError(f"the window now shows another session ({found.session!r}); not pressing")
+                pressed.append(click_text(found, each, Path(tmp)))
+            if out:
+                crop(found.window, find_pane(owner, title, Path(tmp)).pane, out, Path(tmp))
+        except PaneShotError as exc:
+            raise fail(exc) from exc
+    typer.echo(json.dumps({"session": first.session, "pressed": pressed, **({"path": str(out)} if out else {})}))
 
 
 @app.command()
