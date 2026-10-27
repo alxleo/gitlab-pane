@@ -113,8 +113,8 @@ export const paneDrawn = (): void => waitingForDraw.splice(0).forEach(resolve =>
 const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDraw.push(resolve))
 
 /**
- * Back from an MR's page to its tab, scrolled to the card it was read from. It waits on drawings and never on
- * `$.clock`, whose calls made after a press were never seen to answer. `scrolling.goingBack` says how far it got.
+ * Back from an MR's page to its tab, scrolled to the card it was read from. It waits on the pane's drawings, which
+ * are what decide when the card can be found. `scrolling.goingBack` says how far it got.
  */
 export function leaveReading($: EngineInterface) {
   scrolling.goingBack = 'started'
