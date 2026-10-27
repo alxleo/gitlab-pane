@@ -110,31 +110,41 @@ const waitingForDraw: (() => void)[] = []
 /** The pane was just drawn: register.tsx calls this from its render hook, so a scroll can wait for the list. */
 export const paneDrawn = (): void => waitingForDraw.splice(0).forEach(resolve => resolve())
 
-/** The pane's next drawing, or two seconds, whichever comes first: a pane nobody shows is never drawn. */
-function nextDraw($: EngineInterface): Promise<unknown> {
-  return Promise.race([new Promise<void>(resolve => waitingForDraw.push(resolve)), $.clock.sleep(2_000)])
-}
+const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDraw.push(resolve))
 
-/** Back from an MR's page to its tab, scrolled to the card it was read from. */
+/** Past this long since leaving a page, its card is not scrolled to: a pane drawn that late would jump unasked. */
+const SCROLL_BACK_MS = 3_000
+
+/**
+ * Back from an MR's page to its tab, scrolled to the card it was read from. It waits on drawings, never on a timer:
+ * a timed wait started from a press never ends. Why it failed, if it did, is what /gitlab says.
+ */
 export function leaveReading($: EngineInterface) {
-  quietly(
-    (async () => {
-      const key = await read($, readingAtom)
-      await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
-      const listed = nextDraw($)
-      await update($, readingAtom, () => '')
-      await openPane($)
-      // The desktop reports where cards sit only with its next ask for a drawing, and that report is of the screen it
-      // showed before, so the ask that draws the list describes the page. One more drawing, once the list is up,
-      // reports the list; until then a scroll lands against the page, or against the list as it was before it.
-      await listed
-      await $.clock.sleep(200)
-      const reported = nextDraw($)
+  ;(async () => {
+    const key = await read($, readingAtom)
+    await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
+    const left = await $.clock.now()
+    const listed = nextDraw()
+    await update($, readingAtom, () => '')
+    await openPane($)
+    await listed
+    // The desktop reports where cards sit only with its next ask for a drawing, and that report is of the screen it
+    // showed before: the ask that drew the list described the page. Each drawing asked for after it may report the list.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const reported = nextDraw()
       $.ui.invalidate('ui.render')
       await reported
+      if ((await $.clock.now()) - left > SCROLL_BACK_MS) {
+        return
+      }
       await scrollPane($, { to: { key: cardKey(key) }, block: 'start' })
-    })()
-  )
+      if (!scrolling.refused.startsWith('no element')) {
+        return
+      }
+    }
+  })().catch((error: unknown) => {
+    scrolling.refused = `going back failed: ${error instanceof Error ? error.message : String(error)}`
+  })
 }
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
