@@ -117,8 +117,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // The desktop paints no background on a floating Box, so a card opens in the flow under its line instead.
   // A scope groups a trigger with its card, so neither needs a key; keys would only spend the character budget.
-  // The desktop joins a Box to its scope only when its hover also sets a style, so a trigger tints faintly in either theme.
-  const joins = (scope: string) => ({ scope, backgroundColor: 'rgba(128, 128, 128, 0.14)' })
+  // The desktop joins a Box to its scope only when its hover also sets a style, so a trigger tints faintly in either
+  // theme; short, as every row draws several. A terminal would paint this colour solid grey and needs no style to join.
+  const joins = (scope: string) => (e.surface === 'terminal' ? { scope } : { scope, backgroundColor: '#8882' })
   const trigger = (scope: string, child: RenderChildren) => (
     <Box flexDirection="row" alignItems="center" flexShrink={0} hover={joins(scope)}>
       {child}

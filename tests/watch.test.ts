@@ -738,16 +738,17 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     expect(controls.length).toBeGreaterThan(0)
     expect(controls.filter(element => (element.children ?? []).some(child => typeof child !== 'string'))).toEqual([])
     // Each card opens in the flow under its line, lit by the hover group its trigger shares. The desktop joins a Box to
-    // its group only when its hover also sets a style, so no trigger names its scope alone.
+    // its group only when its hover also sets a style, so there no trigger names its scope alone.
     const boxes = boxesOf(await ui.drawn())
-    expect(boxes.filter(box => box.hover?.scope !== undefined && Object.keys(box.hover).length === 1)).toEqual([])
+    const alone = boxes.filter(box => box.hover?.scope !== undefined && Object.keys(box.hover).length === 1)
+    expect(surface === 'terminal' ? alone.length > 0 : alone.length === 0).toBe(true)
     const card = boxes.find(box => box.hover?.display === 'flex' && /^p\w+-103-/.test(box.hover.scope ?? ''))
     const scope = card?.hover?.scope ?? ''
     expect(scope.length).toBeGreaterThan(0)
     expect(card?.props?.display).toBe('none')
     expect(card?.props?.position).toBeUndefined()
     expect(boxes.filter(box => box.hover?.scope === scope).map(box => Object.keys(box.hover ?? {}).sort())).toEqual([
-      ['backgroundColor', 'scope'],
+      surface === 'terminal' ? ['scope'] : ['backgroundColor', 'scope'],
       ['display', 'scope'],
     ])
 
