@@ -105,32 +105,36 @@ export function openReading($: EngineInterface, key: string) {
   )
 }
 
+const waitingForDraw: (() => void)[] = []
+
+/** The pane was just drawn: register.tsx calls this from its render hook, so a scroll can wait for the list. */
+export const paneDrawn = (): void => waitingForDraw.splice(0).forEach(resolve => resolve())
+
+/** The pane's next drawing, or two seconds, whichever comes first: a pane nobody shows is never drawn. */
+function nextDraw($: EngineInterface): Promise<unknown> {
+  return Promise.race([new Promise<void>(resolve => waitingForDraw.push(resolve)), $.clock.sleep(2_000)])
+}
+
 /** Back from an MR's page to its tab, scrolled to the card it was read from. */
 export function leaveReading($: EngineInterface) {
   quietly(
     (async () => {
       const key = await read($, readingAtom)
-      await update($, readingAtom, () => '')
       await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
+      const listed = nextDraw($)
+      await update($, readingAtom, () => '')
       await openPane($)
-      await scrollToCard($, key)
+      // The desktop reports where cards sit only with its next ask for a drawing, and that report is of the screen it
+      // showed before, so the ask that draws the list describes the page. One more drawing, once the list is up,
+      // reports the list; until then a scroll lands against the page, or against the list as it was before it.
+      await listed
+      await $.clock.sleep(200)
+      const reported = nextDraw($)
+      $.ui.invalidate('ui.render')
+      await reported
+      await scrollPane($, { to: { key: cardKey(key) }, block: 'start' })
     })()
   )
-}
-
-/**
- * The desktop tells the engine where keyed elements sit only when it next asks for a drawing, so a card just drawn
- * again is not yet there to scroll to. Each miss asks for that drawing and tries again.
- */
-async function scrollToCard($: EngineInterface, rowKey: string) {
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    await $.clock.sleep(150 * attempt)
-    await scrollPane($, { to: { key: cardKey(rowKey) }, block: 'start' })
-    if (!scrolling.refused.startsWith('no element')) {
-      return
-    }
-    $.ui.invalidate('ui.render')
-  }
 }
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */

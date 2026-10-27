@@ -4,7 +4,7 @@ import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
 import { drawPane } from './pane'
-import { openPane, pin, quietly, refresh, scrolling, tick } from './read'
+import { openPane, paneDrawn, pin, quietly, refresh, scrolling, tick } from './read'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
 const PANE = 'gitlab-ci'
@@ -106,6 +106,7 @@ export const register: Register = (on, options) => {
     health.draws += 1
     try {
       const tree = await drawPane($, e)
+      paneDrawn()
       health.last = `drew ${JSON.stringify(tree).length} characters on ${e.surface}`
       return tree
     } catch (error) {
