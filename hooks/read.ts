@@ -15,7 +15,7 @@ import {
   usualQuery,
 } from './gitlab'
 import type { RawResponse } from './gitlab'
-import { isJiraOn, readTickets, ticketQuery } from './jira'
+import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
 
 import type { MrCard, Pinned, PollState } from '../types'
 
@@ -183,7 +183,7 @@ export function toggleWake($: EngineInterface) {
 const TICKETS_EVERY_MS = 15 * 60_000
 const USUAL_EVERY_MS = 30 * 60_000
 
-// A login shell finds glab and glean wherever they are installed; the app's own PATH may not.
+// A login shell finds glab and acli wherever they are installed; the app's own PATH may not.
 const shell = (tool: string, args: readonly string[]) => ['/bin/zsh', '-lc', `exec ${tool} "$@"`, tool, ...args]
 
 /** GitLab.com's edge answers 52x or drops the stream now and then; one retry rides that out. */
@@ -224,7 +224,7 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
 
 /**
  * Jira's view of the tickets the titles name, every 15 minutes or when a new one appears, while a Jira site is set; a
- * failure (no `glean` installed, say) keeps the last.
+ * failure (no `acli` installed or signed in, say) keeps the last.
  */
 async function readJira($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
   if (!isJiraOn()) {
@@ -236,7 +236,8 @@ async function readJira($: EngineInterface, rows: readonly MrCard[], now: number
   if (keys.length === 0 || (!isDue && keys.every(key => key in known))) {
     return
   }
-  const run = await $.process.run(shell('glean', ['jira', 'audit', '--json', ticketQuery(keys)]), { timeoutMs: 60_000 })
+  const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
+  const run = await $.process.run(shell('acli', search), { timeoutMs: 60_000 })
   if (run.exitCode !== 0) {
     return
   }

@@ -6,7 +6,7 @@ Bots' comments are never shown; what they hold the merge on is one 🤖 marker.
 
 Links say what they open: 🔀 MR, 🎫 Jira ticket, 📁 repo, 🚦 pipeline, 💬 comment. People show as their GitLab avatar, fetched once with `curl` and kept across sessions, wherever the pane has room after the hover cards; otherwise as a coloured dot.
 
-Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the inbox, and `glean jira` for ticket details once a Jira site is set.
+Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
 
 ## Install
 
@@ -19,7 +19,7 @@ claude plugin install gitlab-ci --marketplace alxleo/gitlab-pane
 From a clone, so every session reads the mod from that folder and an edit there needs only `/reload-plugins`:
 
 ```bash
-claude plugin marketplace add ~/personal/gitlab-pane
+claude plugin marketplace add path/to/gitlab-pane
 ```
 
 ```bash
@@ -32,7 +32,7 @@ claude plugin install gitlab-ci@gitlab-pane
 
 | Setting | What it does |
 |---|---|
-| `jiraUrl` | Your Jira address, such as `https://example.atlassian.net`. Ticket keys in MR titles link there, and their details are read with `glean jira`. Empty leaves Jira out: keys show as plain text. |
+| `jiraUrl` | Your Jira address, such as `https://example.atlassian.net`. Ticket keys in MR titles link there, and their details are read with `acli`. Empty leaves Jira out: keys show as plain text. |
 
 Set it with `/plugin configure gitlab-ci` in a terminal session, or:
 

@@ -243,7 +243,7 @@ test('without mr-inbox installed the pane says so once and draws the rest', asyn
   await clock.advance(FIRST_SYNC_MS)
   expect(await ui.find({ type: 'Text', text: /^Mine/ })).toBeDefined()
   await ui.press({ key: 'tab-inbox' })
-  expect((await ui.find({ type: 'Text', text: /not installed/ }))?.text).toBe('mr-inbox is not installed (see ~/work/mr-inbox)')
+  expect((await ui.find({ type: 'Text', text: /not installed/ }))?.text).toBe('mr-inbox is not installed')
   await ui.unmount()
 })
 
@@ -298,7 +298,7 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
     if (e.argv.includes('mr-inbox')) {
       return ran(JSON.stringify({ sync: { ok: true, finished_at: MINUTES_AGO(1) }, sections: inboxSections }))
     }
-    if (e.argv.includes('glean')) {
+    if (e.argv.includes('acli')) {
       return ran('[]')
     }
     if (e.argv.includes('avatar')) {

@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { InboxActivity, InboxItem, InboxSection, InboxState } from '../types'
 
-// mr-inbox owns the GitLab reads, the cache and the rules (~/work/mr-inbox); this module only asks it.
+// mr-inbox owns the GitLab reads, the cache and the rules; this module only asks it.
 const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
   sections: [],
   syncedAt: null,
@@ -34,7 +34,7 @@ async function run($: EngineInterface, args: readonly string[], timeoutMs: numbe
 
 const reason = (ran: Ran): string =>
   ran.exitCode === 127
-    ? 'mr-inbox is not installed (see ~/work/mr-inbox)'
+    ? 'mr-inbox is not installed'
     : ran.stderr.trim().split('\n').pop()?.replace(/^mr-inbox: /, '') || `mr-inbox exited ${ran.exitCode}`
 
 async function repoArgs($: EngineInterface): Promise<string[]> {

@@ -50,9 +50,9 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   const avatars: string[] = []
   const jiraReads: string[] = []
   on('process.run', (_, e) => {
-    if (e.argv.includes('glean')) {
+    if (e.argv.includes('acli')) {
       jiraReads.push(e.argv.at(-1) ?? '')
-      return ran(JSON.stringify([{ key: 'ABC-1', type: 'Task', status: 'In Progress', summary: 'Make the thing work' }]))
+      return ran(JSON.stringify([{ key: 'ABC-1', fields: { issuetype: { name: 'Task' }, status: { name: 'In Progress' }, summary: 'Make the thing work' } }]))
     }
     if (e.argv.includes('avatar')) {
       avatars.push(e.argv.at(-1) ?? '')

@@ -188,7 +188,7 @@ declare module 'claude-code' {
       /** This session's MRs, drawn first and the only ones that wake it. */
       pinned: Pinned[]
       rows: MrCard[]
-      /** Jira tickets by key, as glean last read them. */
+      /** Jira tickets by key, as acli last read them. */
       tickets: Record<string, Ticket>
       /** Pipeline run times by project path. */
       usual: Record<string, Usual>
