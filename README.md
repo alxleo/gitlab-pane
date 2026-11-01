@@ -77,3 +77,7 @@ claude plugin validate .
 CI runs both on every push, at the Claude Code version pinned in `.github/workflows/check.yml`. The type-check needs the types the engine writes once it has loaded the mod in a signed-in session (`.claude-plugin/types/`), so it runs locally: `npx --package typescript tsc -p .`.
 
 The screenshots come from `uv run tools/pane_screens.py render`, which runs the mod's drawing under the pinned Claude Code and photographs it in Chromium (`setup --with-deps` installs Chromium first). `.github/workflows/screens.yml` runs it on every push to main that touches the drawing and commits the new PNGs, so pull before pushing again. The look the renderer gives the desktop app's elements lives in `tools/screens/pane.css`.
+
+## Releasing
+
+Commit messages say what each change is (`feat:`, `fix:`, `docs:` and so on), and `.github/workflows/release.yml` keeps a release pull request open from them: the next version and its changelog. Merging that pull request is the release. It raises `version` in `.claude-plugin/plugin.json`, which is what makes Claude Code offer the update, and the workflow tags it and publishes it on GitHub. A `feat:` raises the minor number and a `fix:` the patch; other kinds wait for one of those. No checks run on the release pull request itself, as GitHub starts no workflow for one its own token opened; they run once it is merged.

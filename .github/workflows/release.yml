@@ -1,0 +1,23 @@
+# Keeps one pull request open that would release what has landed on main since the last release: the next version,
+# worked out from the commit messages, and the changelog. Merging it is the release: it raises `version` in
+# .claude-plugin/plugin.json, which is what makes Claude Code offer installed copies the update, and this workflow then
+# tags it and publishes the GitHub release. The settings are release-please-config.json; the last released version is
+# .release-please-manifest.json.
+#
+# The pull request is opened with GITHUB_TOKEN, so no checks run on it; they run once it is merged into main.
+name: release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
