@@ -46,6 +46,10 @@ const INFRA = project('acme-corp/infra')
 
 const url = (repo: string, iid: number) => `https://gitlab.com/${repo}/-/merge_requests/${iid}`
 
+/** A job of one of the storefront's pipelines, linking where GitLab would (the fixtures' own jobs link to a placeholder repo). */
+const storefrontJob = (name: string, status: string, over: Parameters<typeof job>[2] = {}) =>
+  job(name, status, { webPath: `/acme-corp/storefront/-/jobs/${name}`, ...over })
+
 const withThread = (body: string, author: string, repo: string, iid: number, file: string, line: number) => {
   const base = thread(body, author)
   return {
@@ -84,12 +88,12 @@ const mine = (): RawMr[] => [
       startedAt: minutesAgo(7),
       stages: {
         nodes: [
-          stage('build', 'SUCCESS', [job('compile', 'SUCCESS', { startedAt: minutesAgo(7), finishedAt: minutesAgo(5) })]),
+          stage('build', 'SUCCESS', [storefrontJob('compile', 'SUCCESS', { startedAt: minutesAgo(7), finishedAt: minutesAgo(5) })]),
           stage('test', 'RUNNING', [
-            job('unit', 'SUCCESS', { startedAt: minutesAgo(5), finishedAt: minutesAgo(3) }),
-            job('e2e', 'RUNNING', { startedAt: minutesAgo(5) }),
+            storefrontJob('unit', 'SUCCESS', { startedAt: minutesAgo(5), finishedAt: minutesAgo(3) }),
+            storefrontJob('e2e', 'RUNNING', { startedAt: minutesAgo(5) }),
           ]),
-          stage('deploy', 'CREATED', [job('preview', 'CREATED', { startedAt: null })]),
+          stage('deploy', 'CREATED', [storefrontJob('preview', 'CREATED', { startedAt: null })]),
         ],
       },
     }),
@@ -116,10 +120,10 @@ const mine = (): RawMr[] => [
       duration: 238,
       stages: {
         nodes: [
-          stage('build', 'SUCCESS', [job('compile', 'SUCCESS', { startedAt: minutesAgo(27), finishedAt: minutesAgo(25) })]),
+          stage('build', 'SUCCESS', [storefrontJob('compile', 'SUCCESS', { startedAt: minutesAgo(27), finishedAt: minutesAgo(25) })]),
           stage('test', 'FAILED', [
-            job('unit', 'FAILED', { startedAt: minutesAgo(25), finishedAt: minutesAgo(23) }),
-            job('lint', 'SUCCESS', { startedAt: minutesAgo(25), finishedAt: minutesAgo(24) }),
+            storefrontJob('unit', 'FAILED', { startedAt: minutesAgo(25), finishedAt: minutesAgo(23) }),
+            storefrontJob('lint', 'SUCCESS', { startedAt: minutesAgo(25), finishedAt: minutesAgo(24) }),
           ]),
         ],
       },

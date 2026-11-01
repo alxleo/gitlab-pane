@@ -39,6 +39,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.13.5"
+          enable-cache: false
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
       - run: uv run tools/pane_screens.py setup --with-deps
       # Draws every scene twice and fails unless the two sets of PNGs match byte for byte, so a push never churns them.

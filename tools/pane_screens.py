@@ -89,7 +89,7 @@ class Options(BaseModel):
 
     out: Path
     scenes: list[str]
-    width: int = Field(gt=200, description="The pane's width in CSS pixels")
+    width: int | None = Field(default=None, gt=200, description="The pane's width in CSS pixels; None leaves pane.css's own")
     scale: int = Field(ge=1, le=4, description="Device pixels per CSS pixel")
     claude: str
     keep: Path | None
@@ -106,7 +106,8 @@ STEPS = {"xs": 0.5, "sm": 1, "md": 2, "lg": 3, "xl": 4}
 SAFE_COLOUR = re.compile(r"^[#\w\s(),.%/-]+$")
 SAFE_LENGTH = re.compile(r"^-?\d+(\.\d+)?(%|px)?$")
 SIZES = {"caption", "footnote", "body", "heading", "title"}
-WEIGHTS = {"regular": 400, "medium": 500, "semibold": 600, "bold": 700}
+WEIGHTS = {"regular", "medium", "semibold", "bold"}
+BORDER_STYLES = {"single", "double", "round", "bold", "singleDouble", "doubleSingle", "classic", "arrow", "dashed", "quote"}
 MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False}).enable("table")
 
 
@@ -144,7 +145,8 @@ class Page:
 
     # -- boxes --
 
-    def box_style(self, props: dict[str, Any]) -> tuple[str, bool]:
+    def box_style(self, props: dict[str, Any]) -> tuple[str, str, bool]:
+        """A Box's classes, its inline style (layout the tree sets), and whether it is drawn `display: none`."""
         css: dict[str, str] = {}
         for prop, name in (("flexDirection", "flex-direction"), ("flexWrap", "flex-wrap"), ("alignItems", "align-items"),
                            ("alignSelf", "align-self"), ("justifyContent", "justify-content"), ("overflow", "overflow")):  # fmt: skip
@@ -174,13 +176,13 @@ class Page:
                     css[f"{kind}-{names[0]}"] = value
         if (value := colour(props.get("backgroundColor"))) is not None:
             css["background-color"] = value
-        self._border(props, css)
+        classes = ["box", self._border(props, css)]
         if props.get("position") == "absolute":
             css["position"] = "absolute"
             for side, axis in (("top", "y"), ("bottom", "y"), ("left", "x"), ("right", "x")):
                 if isinstance(props.get(side), int | float) and (value := space(props[side], axis)) is not None:
                     css[side] = value
-        return "; ".join(f"{k}: {v}" for k, v in css.items()), props.get("display") == "none"
+        return " ".join(c for c in classes if c), "; ".join(f"{k}: {v}" for k, v in css.items()), props.get("display") == "none"
 
     @staticmethod
     def _side(props: dict[str, Any], kind: str, side: str, axis: str) -> str | None:
@@ -192,26 +194,16 @@ class Page:
         return None
 
     @staticmethod
-    def _border(props: dict[str, Any], css: dict[str, str]) -> None:
+    def _border(props: dict[str, Any], css: dict[str, str]) -> str:
+        """The class that draws the border (its width, shape and radius are pane.css's); the colour rides along as --bc."""
         style = props.get("borderStyle")
         if not isinstance(style, str):
-            return
+            return ""
         tone = colour(props.get("borderColor")) or "var(--c-subtle)"
         if props.get("borderDimColor") is True:
             tone = f"color-mix(in srgb, {tone} 50%, transparent)"
-        match style:
-            case "bold":
-                css.update({"border": f"2px solid {tone}", "border-radius": "10px"})
-            case "round":
-                css.update({"border": f"1px solid {tone}", "border-radius": "10px"})
-            case "double" | "doubleSingle":
-                css.update({"border": f"3px double {tone}"})
-            case "dashed":
-                css.update({"border": f"1px dashed {tone}"})
-            case "quote":
-                css.update({"border-left": f"3px solid {tone}"})
-            case _:
-                css.update({"border": f"1px solid {tone}"})
+        css["--bc"] = tone
+        return f"border-{style}" if style in BORDER_STYLES else "border-single"
 
     # -- text --
 
@@ -229,7 +221,7 @@ class Page:
             classes.append(size)
         weight = props.get("weight") or ("semibold" if props.get("bold") is True else None)
         if weight in WEIGHTS:
-            css["font-weight"] = str(WEIGHTS[weight])
+            classes.append(f"w-{weight}")
         for flag, cls in (("mono", "mono"), ("tabular", "tabular")):
             if props.get(flag) is True:
                 classes.append(cls)
@@ -259,8 +251,8 @@ class Page:
         inner = "".join(self.draw(child, hovered) for child in node.children)
         match node.type:
             case "Box":
-                style, hidden = self.box_style(props)
-                return f'<div class="box"{" data-hidden" if hidden else ""} style="{html.escape(style)}">{inner}</div>'
+                classes, style, hidden = self.box_style(props)
+                return f'<div class="{classes}"{" data-hidden" if hidden else ""} style="{html.escape(style)}">{inner}</div>'
             case "Text":
                 classes, style = self.text_classes(props)
                 return f'<span class="{classes}" style="{html.escape(style)}">{inner}</span>'
@@ -294,13 +286,15 @@ class Page:
         return f'<div class="unknown">&lt;{html.escape(node.type)}&gt; is not drawn by this renderer</div>'
 
 
-def page_html(scene: Scene, width: int) -> tuple[str, set[str]]:
+def page_html(scene: Scene, width: int | None) -> tuple[str, set[str]]:
+    """The scene's page; `width` overrides pane.css's own only when the command line gave one."""
     page = Page()
     body = page.draw(scene.tree, frozenset(scene.hover))
+    override = f"<style>:root {{ --pane-width: {width}px; }}</style>" if width else ""
     document = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{html.escape(scene.title)}</title>
 <link rel="stylesheet" href="pane.css">
-<style>:root {{ --pane-width: {width}px; }}</style></head>
+{override}</head>
 <body><div id="pane"><header><span>{html.escape(scene.title)}</span><span class="close">×</span></header><main>{body}</main></div></body></html>
 """
     return document, page.unknown
@@ -448,7 +442,7 @@ def produce(options: Options, out: Path) -> list[Scene]:
 def render(
     out: Annotated[Path, typer.Option(help="Where the PNGs go, one per scene")] = ROOT / "docs" / "screens",
     scene: Annotated[list[str] | None, typer.Option(help="Only this scene; repeat for several")] = None,
-    width: Annotated[int, typer.Option(help="The pane's width in CSS pixels")] = 460,
+    width: Annotated[int | None, typer.Option(help="The pane's width in CSS pixels (default: pane.css's --pane-width)")] = None,
     scale: Annotated[int, typer.Option(help="Device pixels per CSS pixel")] = 2,
     claude: Annotated[str, typer.Option(help="The Claude Code binary that draws the pane")] = "claude",
     keep: Annotated[Path | None, typer.Option(help="Also keep each scene's tree (JSON) and page (HTML) in this folder")] = None,
