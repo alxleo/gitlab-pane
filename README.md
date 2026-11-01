@@ -42,6 +42,16 @@ claude plugin install gitlab-ci@gitlab-pane
 
 `/gitlab` opens the pane; `/mrs` shows the inbox in a session.
 
+## Updating
+
+A new release reaches you when you ask for it:
+
+```bash
+claude plugin update gitlab-ci@gitlab-pane
+```
+
+Claude Code installs a new copy only when the plugin's version has changed. To get releases without asking, open `/plugin`, go to **Marketplaces**, select `gitlab-pane` and choose **Enable auto-update**; it is off by default. A running session keeps the copy it loaded until `/reload-plugins` or the next launch. A clone added as a local marketplace reads its files at every session start, whatever the version.
+
 ## Settings
 
 | Setting | What it does |
