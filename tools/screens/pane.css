@@ -1,0 +1,96 @@
+/*
+ * How the pane's element tree looks on the Claude desktop app, as a web page: tools/pane_screens.py turns each element
+ * into the HTML these rules style. The sizes are the one place to tune a look: --ux and --uy are what one terminal
+ * cell across and down become (a Box's gap, padding and margin count in cells), and the type steps are Text's `size`.
+ */
+@font-face { font-family: "Pane Sans"; src: url("fonts/InterVariable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Pane Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "Pane Symbols"; src: url("fonts/DejaVuSans-Subset.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Pane Emoji"; src: url("fonts/NotoColorEmoji-Subset.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+
+:root {
+  --ux: 8px;
+  --uy: 5px;
+  --font: "Pane Sans", "Pane Symbols", "Pane Emoji", sans-serif;
+  --mono: "Pane Mono", "Pane Symbols", "Pane Emoji", monospace;
+
+  --page: #f0eee6;
+  --surface: #faf9f5;
+  --edge: #e3e0d3;
+  --ink: #1f1e1d;
+  --faint: #6b6a65;
+  --link: #2b5fd0;
+  --chip: #ece9de;
+  --chip-edge: #d9d5c5;
+
+  /* The theme keys a tree may name, in the app's light theme. */
+  --c-text: var(--ink);
+  --c-inverseText: #ffffff;
+  --c-inactive: #6b6a65;
+  --c-subtle: #8a8983;
+  --c-suggestion: #3d5fe0;
+  --c-remember: #3d5fe0;
+  --c-success: #2c7a39;
+  --c-error: #ab2b3f;
+  --c-warning: #966c1e;
+  --c-merged: #8700ff;
+  --c-claude: #d77757;
+  --c-permission: #3d5fe0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--page); }
+body { padding: 16px; font-family: var(--font); font-size: 13px; line-height: 1.4; color: var(--ink); -webkit-font-smoothing: antialiased; font-optical-sizing: auto; }
+
+#pane { width: var(--pane-width, 460px); background: var(--surface); border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; }
+#pane > header { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid var(--edge); font-weight: 600; font-size: 13px; }
+#pane > header .close { color: var(--faint); font-weight: 400; font-size: 16px; line-height: 1; }
+#pane > main { padding: 12px 14px 14px; }
+
+/* Ink's Box: a flex row that may shrink, in the surface's own spacing. */
+.box { display: flex; flex-direction: row; flex-shrink: 1; flex-grow: 0; min-width: 0; position: relative; }
+.box[data-hidden] { display: none; }
+
+.text { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.text.cut { white-space: pre; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.text.cut-start { direction: rtl; text-align: left; }
+.text.dim { opacity: 0.6; }
+.text.mono { font-family: var(--mono); }
+.text.tabular { font-variant-numeric: tabular-nums; }
+.text.caption { font-size: 11px; }
+.text.footnote { font-size: 12px; }
+.text.body { font-size: 13px; }
+.text.heading { font-size: 15px; }
+.text.title { font-size: 18px; }
+
+a.link { color: var(--link); text-decoration: none; min-width: 0; overflow-wrap: anywhere; }
+a.link:hover { text-decoration: underline; }
+
+button.btn { font: inherit; color: inherit; background: none; border: 0; text-align: left; min-width: 0; cursor: default; }
+button.btn.plain { padding: 0; }
+button.btn.plain.dim { opacity: 0.6; }
+button.btn:not(.plain) { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--chip-edge); background: var(--chip); font-weight: 500; font-size: 12px; white-space: nowrap; }
+button.btn.primary:not(.plain) { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.svg { display: block; flex-shrink: 0; line-height: 0; }
+.svg svg { display: block; width: 100%; height: 100%; }
+.svg svg text { font-family: var(--font) !important; }
+
+.md { min-width: 0; overflow-wrap: anywhere; }
+.md > * + * { margin-top: 8px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 13px; font-weight: 600; }
+.md h1 { font-size: 15px; }
+.md ul, .md ol { padding-left: 20px; }
+.md li + li { margin-top: 2px; }
+.md code { font-family: var(--mono); font-size: 12px; background: var(--chip); border-radius: 4px; padding: 1px 4px; }
+.md pre { background: var(--chip); border-radius: 6px; padding: 8px 10px; overflow: hidden; }
+.md pre code { background: none; padding: 0; white-space: pre-wrap; }
+.md blockquote { border-left: 3px solid var(--edge); padding-left: 10px; color: var(--faint); }
+.md a { color: var(--link); text-decoration: none; }
+.md table { border-collapse: collapse; }
+.md th, .md td { border: 1px solid var(--edge); padding: 3px 8px; text-align: left; }
+.md hr { border: 0; border-top: 1px solid var(--edge); }
+.md.dim { opacity: 0.6; }
+
+/* An element this renderer has no look for: said out loud, so it is never mistaken for part of the pane. */
+.unknown { border: 1px dashed #c0392b; color: #c0392b; padding: 2px 6px; font: 11px/1.3 var(--mono); }
