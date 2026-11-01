@@ -11,6 +11,7 @@
   pane-screens render --out /tmp/shots     somewhere else, to compare two runs
   pane-screens render --verify             draw twice, fail unless both are byte-identical
   pane-screens setup                       fetch the Chromium it photographs with (once per Playwright version)
+  pane-screens publish --branch main       commit docs/screens if it changed and push, even if the branch moved meanwhile
 
 How it works, so nobody has to remember it:
 
@@ -21,15 +22,15 @@ How it works, so nobody has to remember it:
   2. This script turns that tree into a web page (tools/screens/pane.css) and Chromium photographs it, with the fonts
      in tools/screens/fonts, so a Mac and a CI runner draw the same letters.
 
-Nothing here talks to GitLab, Anthropic or the network, and nothing reads your Claude config. The page is this script's
-reading of the element tree, not the desktop app's own paint: when the app's look changes, change pane.css.
+`render` talks to no one: not GitLab, not Anthropic, nothing on the network, and it reads none of your Claude config. Only
+`publish` reaches a remote, and only the one it is given. The page is this script's reading of the element tree, not the
+desktop app's own paint: when the app's look changes, change pane.css.
 
 Same commit, same machine kind: the same bytes. A Mac and a Linux runner agree on what is drawn, not on every pixel.
 """
 
 from __future__ import annotations
 
-import base64
 import html
 import json
 import re
@@ -42,13 +43,14 @@ from typing import Annotated, Any
 
 import typer
 from markdown_it import MarkdownIt
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 ROOT = Path(__file__).resolve().parent.parent
 SCREENS = Path(__file__).resolve().parent / "screens"
 SCENES_FILE = SCREENS / "scenes.ts"
 EXPECTED_CLAUDE = "2.1.308"
 MARKER = "PANE-SCENE "
+LISTED = "PANE-SCENES "
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode=None, help=__doc__)
 
@@ -66,21 +68,30 @@ class PaneScreensError(RuntimeError):
 
 
 class Node(BaseModel):
-    """One element of a drawn tree: its type, props, children (strings or elements) and the engine's own extras."""
+    """One element of a drawn tree, as the engine hands it over: a field it adds that is not named here stops the run."""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     type: str
     props: dict[str, Any] = Field(default_factory=dict)
     children: list[Node | str] = Field(default_factory=list)
+    #: Style overrides while the pointer is over the element's keyed Box, or over its hover group (`scope`).
     hover: dict[str, Any] | None = None
+    #: What the engine keeps for a press, a hover group and the plugin that drew a part. Nothing of it is drawn.
+    press: dict[str, Any] | None = None
+    group: dict[str, Any] | None = None
+    part: dict[str, Any] | None = None
 
 
 class Scene(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     title: str
     #: Hover groups lit, as if the pointer rested on them.
     hover: list[str] = Field(default_factory=list)
+    #: Keys of the Boxes the pointer is inside; an element's hover with no group applies while its keyed Box is in this.
+    hover_keys: list[str] = Field(default_factory=list, alias="hoverKeys")
     tree: Node
 
 
@@ -109,6 +120,48 @@ SIZES = {"caption", "footnote", "body", "heading", "title"}
 WEIGHTS = {"regular", "medium", "semibold", "bold"}
 BORDER_STYLES = {"single", "double", "round", "bold", "singleDouble", "doubleSingle", "classic", "arrow", "dashed", "quote"}
 MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False}).enable("table")
+
+# What each element may carry. A tree with any other prop stops the run, so a prop the pane starts to use is drawn on
+# purpose or ignored on purpose, never dropped by accident. `DRAWN` is what the renderer draws; `KEPT` is accepted and not
+# drawn (an address, a hotkey, a sandbox flag: nothing a photograph shows).
+DRAWN = {
+    "Box": {
+        "flexDirection", "flexWrap", "alignItems", "alignSelf", "justifyContent", "overflow", "flexGrow", "flexShrink", "gap",
+        "rowGap", "columnGap", "width", "minWidth", "height", "minHeight", "margin", "marginX", "marginY", "marginTop",
+        "marginBottom", "marginLeft", "marginRight", "padding", "paddingX", "paddingY", "paddingTop", "paddingBottom",
+        "paddingLeft", "paddingRight", "backgroundColor", "borderStyle", "borderColor", "borderDimColor", "position", "top",
+        "bottom", "left", "right", "display",
+    },
+    "Text": {
+        "color", "backgroundColor", "dimColor", "size", "weight", "bold", "mono", "tabular", "italic", "underline",
+        "strikethrough", "inverse", "wrap",
+    },
+    "Button": {"label", "variant", "plain", "dimColor"},
+    "Link": {"href", "label"},
+    "Svg": {"source", "alt", "width", "height"},
+    "Image": {"source", "alt", "columns", "rows"},
+    "Markdown": {"text", "dimColor"},
+}  # fmt: skip
+KEPT = {
+    "Box": {"key"},
+    "Text": {"dir"},
+    "Button": {"key", "hotkey", "action", "role", "autoFocus"},
+    "Link": set(),
+    "Svg": {"isInteractive"},
+    "Image": {"key"},
+    "Markdown": {"key", "pressableLinks"},
+}
+HOVER_PROPS = {
+    "scope", "color", "backgroundColor", "dimColor", "bold", "italic", "underline", "strikethrough", "inverse", "borderStyle",
+    "borderColor", "borderDimColor", "display", "top", "left", "right", "bottom",
+}  # fmt: skip
+
+
+class Lit(BaseModel):
+    """What the pointer is on: the hover groups it lights, and the keyed Boxes it is inside."""
+
+    scopes: frozenset[str] = frozenset()
+    keys: frozenset[str] = frozenset()
 
 
 def colour(value: Any) -> str | None:
@@ -241,14 +294,30 @@ class Page:
 
     # -- elements --
 
-    def draw(self, node: Node | str, hovered: frozenset[str]) -> str:
+    def check(self, node: Node) -> None:
+        """Notes any prop or hover prop this renderer was not taught, under the name `Element.prop`."""
+        known = DRAWN.get(node.type, set()) | KEPT.get(node.type, set())
+        self.unknown.update(f"{node.type}.{name}" for name in node.props if node.type in DRAWN and name not in known)
+        self.unknown.update(f"{node.type}.hover.{name}" for name in (node.hover or {}) if name not in HOVER_PROPS)
+
+    @staticmethod
+    def hovered(node: Node, key: str | None, lit: Lit) -> dict[str, Any]:
+        """The hover props that apply now: a group's while the pointer is on the group, any other while it is in the keyed Box."""
+        hover = node.hover or {}
+        scope = hover.get("scope")
+        applies = scope in lit.scopes if scope is not None else key is not None and key in lit.keys
+        # A hover restyles a border the Box has; it adds none.
+        return {k: v for k, v in hover.items() if k != "scope" and (not k.startswith("border") or "borderStyle" in node.props)} if applies else {}
+
+    def draw(self, node: Node | str, lit: Lit, key: str | None = None) -> str:
+        """`key` is the nearest keyed Box around this element, itself included."""
         if isinstance(node, str):
             return html.escape(node)
-        props = dict(node.props)
-        hover = node.hover or {}
-        if hover.get("scope") in hovered:
-            props.update({k: v for k, v in hover.items() if k != "scope"})
-        inner = "".join(self.draw(child, hovered) for child in node.children)
+        self.check(node)
+        if node.type == "Box" and isinstance(node.props.get("key"), str):
+            key = node.props["key"]
+        props = {**node.props, **self.hovered(node, key, lit)}
+        inner = "".join(self.draw(child, lit, key) for child in node.children)
         match node.type:
             case "Box":
                 classes, style, hidden = self.box_style(props)
@@ -271,9 +340,10 @@ class Page:
                                 f"height: {int(props['height'])}px" if isinstance(props.get("height"), int | float) else ""])  # fmt: skip
                 return f'<div class="svg" role="img" aria-label="{html.escape(str(props.get("alt", "")))}" style="{size}">{props.get("source", "")}</div>'
             case "Image":
-                source = props.get("source") or props.get("src")
-                if isinstance(source, str) and source.startswith("data:image/"):
-                    return f'<img class="svg" alt="{html.escape(str(props.get("alt", "")))}" src="{html.escape(source)}">'
+                png = props.get("source", {}).get("png") if isinstance(props.get("source"), dict) else None
+                if isinstance(png, str) and re.fullmatch(r"[A-Za-z0-9+/=]+", png):
+                    size = f"width: {space(props.get('columns'), 'x')}; height: {space(props.get('rows'), 'y')}"
+                    return f'<img class="svg" alt="{html.escape(str(props.get("alt", "")))}" style="{size}" src="data:image/png;base64,{png}">'
                 return self.unknown_element(node)
             case "Markdown":
                 dim = " dim" if props.get("dimColor") else ""
@@ -289,7 +359,7 @@ class Page:
 def page_html(scene: Scene, width: int | None) -> tuple[str, set[str]]:
     """The scene's page; `width` overrides pane.css's own only when the command line gave one."""
     page = Page()
-    body = page.draw(scene.tree, frozenset(scene.hover))
+    body = page.draw(scene.tree, Lit(scopes=frozenset(scene.hover), keys=frozenset(scene.hover_keys)))
     override = f"<style>:root {{ --pane-width: {width}px; }}</style>" if width else ""
     document = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{html.escape(scene.title)}</title>
@@ -326,17 +396,38 @@ def clean_env(home: Path) -> dict[str, str]:
     return env
 
 
+def said_without_trees(output: str) -> str:
+    """What `claude plugin test` said, less the trees: they are nearly all of its output and never say why a test failed."""
+    lines = [line for line in output.splitlines() if not line.startswith((MARKER, LISTED))]
+    failed = [line.removeprefix("(fail) ") for line in lines if line.startswith("(fail)")]
+    summary = "failed: " + "; ".join(failed) + "\n" if failed else ""
+    return summary + "\n".join(lines)[-4000:]
+
+
 def draw_scenes(claude: str, work: Path) -> list[Scene]:
+    """Runs the scenes under the engine and reads the trees back, or says exactly which scene failed and why."""
     mod = stage_mod(work)
     home = work / "home"
     (home / "config").mkdir(parents=True)
-    ran = subprocess.run([claude, "plugin", "test", str(mod)], capture_output=True, text=True, env=clean_env(home), check=False)
-    output = ran.stdout + ran.stderr
+    # One stream, so lines come back in the order they were written.
+    ran = subprocess.run([claude, "plugin", "test", str(mod)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=clean_env(home), check=False)
     if ran.returncode != 0:
-        raise PaneScreensError(f"`claude plugin test` failed ({ran.returncode}):\n{output[-4000:]}")
-    scenes = [Scene.model_validate_json(line[len(MARKER) :]) for line in output.splitlines() if line.startswith(MARKER)]
-    if not scenes:
-        raise PaneScreensError(f"the scenes drew nothing; the engine said:\n{output[-4000:]}")
+        raise PaneScreensError(f"`claude plugin test` failed ({ran.returncode}):\n{said_without_trees(ran.stdout)}")
+    lines = ran.stdout.splitlines()
+    try:
+        listed = [json.loads(line[len(LISTED) :]) for line in lines if line.startswith(LISTED)]
+        scenes = [Scene.model_validate_json(line[len(MARKER) :]) for line in lines if line.startswith(MARKER)]
+    except (ValueError, ValidationError) as error:
+        raise PaneScreensError(f"a scene did not read as this script expects (the engine's drawing changed?):\n{error}") from error
+    if len(listed) != 1 or not all(isinstance(name, str) for name in listed[0]):
+        raise PaneScreensError(f"scenes.ts did not say which scenes to expect, once:\n{said_without_trees(ran.stdout)}")
+    lost = [name for name in listed[0] if name not in {scene.name for scene in scenes}]
+    stray = sorted({scene.name for scene in scenes} - set(listed[0]))
+    if lost or stray or len({scene.name for scene in scenes}) != len(scenes):
+        raise PaneScreensError(
+            f"the scenes drawn are not the scenes listed (listed {listed[0]}; lost {lost or 'none'}; unlisted {stray or 'none'}); the engine said:\n"
+            f"{said_without_trees(ran.stdout)}"
+        )
     return scenes
 
 
@@ -403,10 +494,13 @@ def setup(
 
 
 def produce(options: Options, out: Path) -> list[Scene]:
-    """Draws the scenes with the engine, then photographs each into `out`; returns the scenes it wrote."""
+    """Draws the scenes with the engine and photographs each; only when every check has passed do the PNGs reach `out`."""
     version = claude_version(options.claude)
     if version != EXPECTED_CLAUDE:
-        typer.echo(f"warning: Claude Code {version} draws these, CI pins {EXPECTED_CLAUDE}; the shots may differ", err=True)
+        raise PaneScreensError(
+            f"{options.claude} is Claude Code {version}; the pane is drawn by {EXPECTED_CLAUDE}, the version CI pins, and another version "
+            f"may draw it differently. Install it (npm install --global @anthropic-ai/claude-code@{EXPECTED_CLAUDE}) or point --claude at it."
+        )
     with tempfile.TemporaryDirectory(prefix="pane-screens-") as scratch:
         work = Path(scratch)
         scenes = draw_scenes(options.claude, work)
@@ -426,15 +520,22 @@ def produce(options: Options, out: Path) -> list[Scene]:
                 undrawn[each.name] = unknown_types
             pages[each.name] = site / f"{each.name}.html"
             pages[each.name].write_text(document, encoding="utf-8")
-        photograph(pages, out, options.scale)
+        shots = work / "shots"
+        photograph(pages, shots, options.scale)
         if options.keep:
             options.keep.mkdir(parents=True, exist_ok=True)
             for each in scenes:
                 (options.keep / f"{each.name}.json").write_text(json.dumps(json.loads(each.model_dump_json()), indent=1), encoding="utf-8")
                 shutil.copy(pages[each.name], options.keep / f"{each.name}.html")
-    if undrawn and not options.allow_unknown:
-        said = "; ".join(f"{name}: {', '.join(sorted(types))}" for name, types in undrawn.items())
-        raise PaneScreensError(f"the pane draws elements this renderer has no look for, shown as red dashed boxes in the shots ({said}). Teach tools/pane_screens.py, or pass --allow-unknown.")
+        if undrawn and not options.allow_unknown:
+            said = "; ".join(f"{name}: {', '.join(sorted(names))}" for name, names in undrawn.items())
+            raise PaneScreensError(
+                f"the pane draws what this renderer was not taught ({said}); an unknown element shows as a red dashed box and an unknown prop is "
+                "dropped. Teach tools/pane_screens.py (DRAWN and KEPT list the props), or pass --allow-unknown. Nothing was written."
+            )
+        out.mkdir(parents=True, exist_ok=True)
+        for each in scenes:
+            shutil.copyfile(shots / f"{each.name}.png", out / f"{each.name}.png")
     return scenes
 
 
@@ -449,13 +550,13 @@ def render(
     verify: Annotated[bool, typer.Option("--verify", help="Draw everything a second time and fail unless every PNG is byte-identical")] = False,
     allow_unknown: Annotated[bool, typer.Option("--allow-unknown", help="Write the shots even when an element has no look here")] = False,
 ) -> None:
-    """Write one PNG of the pane per scene, and remove the PNGs of scenes that no longer exist."""
+    """Write one PNG of the pane per scene. It writes only those, and deletes nothing: a PNG that is no scene is named, not removed."""
     options = Options(out=out, scenes=scene or [], width=width, scale=scale, claude=claude, keep=keep, allow_unknown=allow_unknown)
     try:
         scenes = produce(options, options.out)
-        if not options.scenes:
-            for stale in sorted(set(options.out.glob("*.png")) - {options.out / f"{s.name}.png" for s in scenes}):
-                stale.unlink()
+        others = sorted(path.name for path in options.out.glob("*.png") if path.stem not in {s.name for s in scenes})
+        if others and not options.scenes:
+            typer.echo(f"note: {', '.join(others)} in {options.out} is no scene (any more); delete it if it is stale", err=True)
         if verify:
             with tempfile.TemporaryDirectory(prefix="pane-screens-again-") as again:
                 produce(options.model_copy(update={"keep": None}), Path(again))
@@ -468,6 +569,89 @@ def render(
         raise typer.Exit(1) from error
     for each in scenes:
         typer.echo(str(options.out / f"{each.name}.png"))
+
+
+# ---- keeping the PNGs in the repository --------------------------------------------------------------------------------
+
+
+class Publishing(BaseModel):
+    """Where and as whom `publish` commits, checked before anything runs."""
+
+    branch: str = Field(pattern=r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$", description="The branch, as the remote names it")
+    push_url: str = Field(min_length=1, description="Where the branch is fetched from and pushed to; may carry a token")
+    path: Path
+    author_name: str
+    author_email: str
+    message: str
+    attempts: int = Field(ge=1, le=10)
+
+
+def redact(text: str, push_url: str) -> str:
+    """Git's words for a failure, shortened to one line and with the remote hidden: a token in it must not reach a log."""
+    said = [line for line in text.splitlines() if line.strip() and not line.startswith("hint:")]
+    return re.sub(r"://[^/@\s]*@", "://***@", " | ".join(said).replace(push_url, "<remote>"))
+
+
+def git(plan: Publishing, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    import os
+
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_AUTHOR_NAME": plan.author_name, "GIT_AUTHOR_EMAIL": plan.author_email,
+           "GIT_COMMITTER_NAME": plan.author_name, "GIT_COMMITTER_EMAIL": plan.author_email}  # fmt: skip
+    ran = subprocess.run(["git", *args], cwd=ROOT, env=env, capture_output=True, text=True, check=False)
+    if check and ran.returncode != 0:
+        said = redact((ran.stderr or ran.stdout).strip(), plan.push_url)
+        raise PaneScreensError(f"`git {redact(' '.join(args), plan.push_url)}` failed ({ran.returncode}): {said}")
+    return ran
+
+
+@app.command()
+def publish(
+    branch: Annotated[str, typer.Option(help="The branch to commit to and push, as the remote names it (CI: its own ref name)")],
+    push_url: Annotated[str, typer.Option(envvar="PANE_SCREENS_PUSH_URL", help="Where to fetch and push, token included; give it by the environment")],
+    path: Annotated[Path, typer.Option(help="The folder of PNGs to commit")] = ROOT / "docs" / "screens",
+    author_name: Annotated[str, typer.Option(help="Who the commit is by")] = "github-actions[bot]",
+    author_email: Annotated[str, typer.Option(help="Their address")] = "41898282+github-actions[bot]@users.noreply.github.com",
+    message: Annotated[str, typer.Option(help="The commit message; [skip ci] keeps it from starting more CI")] = "docs: regenerate the pane screenshots [skip ci]",
+    attempts: Annotated[int, typer.Option(help="Tries at pushing when someone else pushed first")] = 3,
+) -> None:
+    """Commit the PNGs if they changed, and push them even when the branch moved while they were drawn.
+
+    A push that finds the branch ahead is refused, and the PNGs would be lost, so each try first puts the commit on top of
+    the branch as it is now. Only a clash on the PNGs themselves, or no remote to reach, ends in failure; the next push to
+    the branch draws them afresh.
+    """
+    try:
+        plan = Publishing(branch=branch, push_url=push_url, path=path, author_name=author_name, author_email=author_email,
+                          message=message, attempts=attempts)  # fmt: skip
+        git(plan, "add", "-A", "--", str(plan.path))
+        if git(plan, "diff", "--cached", "--quiet", "--", str(plan.path), check=False).returncode == 0:
+            typer.echo("The screenshots are unchanged.")
+            return
+        git(plan, "commit", "-q", "-m", plan.message, "--", str(plan.path))
+        last = ""
+        for attempt in range(1, plan.attempts + 1):
+            pulled = git(plan, "pull", "--rebase", "--no-edit", plan.push_url, plan.branch, check=False)
+            if pulled.returncode != 0:
+                last = redact((pulled.stderr or pulled.stdout).strip(), plan.push_url)
+                if git(plan, "rev-parse", "--verify", "-q", "REBASE_HEAD", check=False).returncode == 0:
+                    git(plan, "rebase", "--abort", check=False)
+                    raise PaneScreensError(f"the screenshots clash with what {plan.branch} gained meanwhile; not pushed ({last})")
+                typer.echo(f"try {attempt}: could not bring in {plan.branch}: {last}", err=True)
+                continue
+            pushed = git(plan, "push", plan.push_url, f"HEAD:refs/heads/{plan.branch}", check=False)
+            if pushed.returncode == 0:
+                typer.echo(f"Pushed the screenshots to {plan.branch} ({git(plan, 'rev-parse', '--short', 'HEAD').stdout.strip()}), try {attempt}.")
+                return
+            last = redact((pushed.stderr or pushed.stdout).strip(), plan.push_url)
+            typer.echo(f"try {attempt}: push refused: {last}", err=True)
+        raise PaneScreensError(f"the screenshots were not pushed after {plan.attempts} tries; the last said: {last}")
+    except PaneScreensError as error:
+        typer.echo(f"pane-screens: {error}", err=True)
+        raise typer.Exit(1) from error
+    except ValidationError as error:
+        # Only which options are wrong: pydantic would print their values, and one of them holds a token.
+        typer.echo(f"pane-screens: bad option: {', '.join(str(e['loc'][0]) for e in error.errors())}", err=True)
+        raise typer.Exit(2) from error
 
 
 if __name__ == "__main__":

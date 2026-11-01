@@ -308,21 +308,34 @@ const press = async (ui: Ui, prefix: string) => {
 
 type Node = { type: string; props?: Record<string, unknown>; hover?: { scope?: string }; children?: (Node | string)[] }
 
-const hasButton = (node: Node | string, keyPrefix: string): boolean =>
-  typeof node !== 'string' && ((node.type === 'Button' && String(node.props?.key).startsWith(keyPrefix)) || (node.children ?? []).some(child => hasButton(child, keyPrefix)))
-
-/** The hover group of the innermost Box around the Button keyed `keyPrefix…`: what the pointer lights when it rests on it. */
-const scopeAround = (node: Node | string, keyPrefix: string): string | undefined => {
+/** The elements from the root down to the Button keyed `keyPrefix…`, that Button last; empty when there is none. */
+const pathTo = (node: Node | string, keyPrefix: string): Node[] => {
   if (typeof node === 'string') {
-    return undefined
+    return []
+  }
+  if (node.type === 'Button' && String(node.props?.key).startsWith(keyPrefix)) {
+    return [node]
   }
   for (const child of node.children ?? []) {
-    const found = scopeAround(child, keyPrefix)
-    if (found) {
-      return found
+    const below = pathTo(child, keyPrefix)
+    if (below.length > 0) {
+      return [node, ...below]
     }
   }
-  return node.type === 'Box' && node.hover?.scope && hasButton(node, keyPrefix) ? node.hover.scope : undefined
+  return []
+}
+
+/**
+ * What a pointer resting on the Button keyed `keyPrefix…` is on: the hover group of the innermost Box around it, which
+ * the pane lights, and the key of every keyed Box it is inside, whose own hover (a card's border) applies while it is.
+ */
+const pointerOn = (tree: Node, keyPrefix: string): { scopes: string[]; keys: string[] } => {
+  const boxes = pathTo(tree, keyPrefix).filter(node => node.type === 'Box')
+  const scope = [...boxes].reverse().find(node => node.hover?.scope)?.hover?.scope
+  return {
+    scopes: scope ? [scope] : [],
+    keys: boxes.flatMap(node => (typeof node.props?.key === 'string' ? [node.props.key] : [])),
+  }
 }
 
 /** `hover` names a Button by the start of its key: the scene is drawn as if the pointer rested on it. */
@@ -354,6 +367,10 @@ const SCENES: Scene[] = [
   },
 ]
 
+// Said before any scene draws, so the caller knows which trees to expect and can tell a scene that was lost from one
+// that was never there.
+console.log(`PANE-SCENES ${JSON.stringify(SCENES.map(scene => scene.name))}`)
+
 for (const scene of SCENES) {
   test(`scene ${scene.name}`, async ($, on) => {
     const clock = mock.clock(on, { now: NOW })
@@ -364,11 +381,12 @@ for (const scene of SCENES) {
     await clock.advance(FIRST_SYNC_MS)
     await scene.steps(ui)
     const tree = await ui.drawn()
-    const scope = scene.hover ? scopeAround(tree as unknown as Node, scene.hover) : undefined
-    if (scene.hover && !scope) {
+    const pointer = scene.hover ? pointerOn(tree as unknown as Node, scene.hover) : { scopes: [], keys: [] }
+    if (scene.hover && pointer.scopes.length === 0) {
       throw new Error(`scene ${scene.name}: nothing drawn is keyed ${scene.hover}`)
     }
-    console.log(`PANE-SCENE ${JSON.stringify({ name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: scope ? [scope] : [], tree })}`)
+    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: pointer.scopes, hoverKeys: pointer.keys, tree }
+    console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
     await ui.unmount()
   })
 }
