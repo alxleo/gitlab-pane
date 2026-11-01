@@ -6,6 +6,20 @@ Bots' comments are never shown; what they hold the merge on is one 🤖 marker.
 
 People show as their GitLab avatar, fetched once with `curl` and kept across sessions, wherever the pane has room after the hover cards. [DESIGN.md](DESIGN.md) is the pane's design language: what each colour, border, mark and link icon means.
 
+<p>
+  <img src="docs/screens/mine.png" alt="The Mine tab: five MR cards, bordered by their review, with stage strips, run times and reviewers' faces" width="420">
+  <img src="docs/screens/inbox.png" alt="The Inbox tab: MR cards counting new reviews and comments since last seen" width="420">
+</p>
+
+An opened card shows the description and comments, and `read whole ›` gives the MR a page of its own:
+
+<p>
+  <img src="docs/screens/mine-open.png" alt="An opened MR card with its description and a review comment" width="420">
+  <img src="docs/screens/reading.png" alt="One MR read as a page of its own" width="420">
+</p>
+
+The screenshots are drawn from the mod's own desktop drawing with made-up data, and CI draws them again whenever the drawing changes.
+
 Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
 
 ## Install
@@ -51,3 +65,5 @@ claude plugin validate .
 ```
 
 CI runs both on every push, at the Claude Code version pinned in `.github/workflows/check.yml`. The type-check needs the types the engine writes once it has loaded the mod in a signed-in session (`.claude-plugin/types/`), so it runs locally: `npx --package typescript tsc -p .`.
+
+The screenshots come from `uv run tools/pane_screens.py render`, which runs the mod's drawing under the pinned Claude Code and photographs it in Chromium (`setup --with-deps` installs Chromium first). `.github/workflows/screens.yml` runs it on every push to main that touches the drawing and commits the new PNGs, so pull before pushing again. The look the renderer gives the desktop app's elements lives in `tools/screens/pane.css`.
