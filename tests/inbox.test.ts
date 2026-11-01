@@ -56,7 +56,7 @@ function engine(on: On, inbox: Inbox) {
   on('process.run', (_, e) => {
     const at = e.argv.indexOf('mr-inbox')
     if (at < 0) {
-      // The pane's own GitLab read: no open MRs of Alex's.
+      // The pane's own GitLab read: no open MRs of yours.
       return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: [] } } } }))
     }
     const args = e.argv.slice(at + 1)
@@ -122,7 +122,7 @@ test('the inbox syncs once the pane shows it, folds each rule, and opens one to 
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
     // A count per kind instead of a line of handles, and the ref without the repo, which follows it.
     expect(await ui.find({ type: 'Text', text: 'p · alice · 1 approved · 2 commented' })).toBeDefined()
-    // Alex's own MR leaves his name out.
+    // Your own MR leaves your name out.
     expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented' })).toBeDefined()
     expect(JSON.stringify(await ui.drawn())).toContain('"!1"')
     // The newest event says who did what; the rest wait behind a press on the title.

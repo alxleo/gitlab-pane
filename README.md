@@ -4,7 +4,7 @@ A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions: y
 
 Bots' comments are never shown; what they hold the merge on is one 🤖 marker.
 
-Links say what they open: 🔀 MR, 🎫 Jira ticket, 📁 repo, 🚦 pipeline, 💬 comment. People show as their GitLab avatar, fetched once with `curl` and kept across sessions, wherever the pane has room after the hover cards; otherwise as a coloured dot.
+People show as their GitLab avatar, fetched once with `curl` and kept across sessions, wherever the pane has room after the hover cards. [DESIGN.md](DESIGN.md) is the pane's design language: what each colour, border, mark and link icon means.
 
 Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
 

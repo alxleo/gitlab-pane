@@ -631,14 +631,14 @@ const fiftyBusy = (): Fake => {
   }
 }
 
-test('cards Alex opened keep their detail when the unfolded list fills the drawing', async ($, on) => {
+test('cards you opened keep their detail when the unfolded list fills the drawing', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   engine(on, fiftyBusy())
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // The lowest rows drawn, opened one at a time, since an open row's detail can push the last row out. Five, as a few
-  // cards open at once is how Alex reads them.
+  // cards open at once is how you read them.
   for (let i = 0; i < 5; i++) {
     const closed = (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('open-') && String(button.props.label).startsWith('▸'))
     await ui.press({ key: closed.at(-1)?.key ?? '' })

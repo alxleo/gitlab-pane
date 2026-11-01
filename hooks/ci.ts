@@ -54,7 +54,7 @@ export function wakeLine(card: MrCard, due: Due, now: number): string {
   return `!${card.iid} ${when}${jobs ? `: ${jobs}` : ''} · ${pipeline?.url ?? card.url}`
 }
 
-/** 0 needs Alex now, 1 is moving, 2 waits on others, 3 is ready. */
+/** 0 needs you now, 1 is moving, 2 waits on others, 3 is ready. */
 export function rank(card: MrCard): number {
   const status = card.pipeline?.status
   if (
@@ -125,7 +125,7 @@ export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', 
 /**
  * The desktop app draws nothing for a tree past 100,000 characters serialized (a 381,164-character one left the pane
  * blank). The engine adds up to about 6,000 of press handles and hover stamps to what this measures, so the app gets
- * about 91,000 at most: rows, then open detail, then hover cards, then avatars, in order of what needs Alex.
+ * about 91,000 at most: rows, then open detail, then hover cards, then avatars, in order of what needs you.
  */
 export const DRAWING_BUDGET = 85_000
 

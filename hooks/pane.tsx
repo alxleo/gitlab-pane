@@ -493,7 +493,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
-  // Rows come in order of what needs Alex. Rows he opened take the room first, with their detail; then the other rows
+  // Rows come in order of what needs you. Rows you opened take the room first, with their detail; then the other rows
   // in that order, then hover cards, then avatars. Rows that do not fit at all are left out and counted.
   const built = isInbox || reading ? [] : [...session, ...mineShown, ...(showDrafts ? drafts : [])].map(row)
   let room = DRAWING_BUDGET - CHROME_SIZE

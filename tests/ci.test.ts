@@ -46,7 +46,7 @@ test('a passed pipeline alone never wakes; GitLab newly saying it can merge does
   expect(advance(approved.announced, { pipeline: view('success'), mergeStatus: 'MERGEABLE' }).due).toBe(null)
 })
 
-test('MRs sort by what needs Alex: failing, then running, then waiting, then ready', async () => {
+test('MRs sort by what needs you: failing, then running, then waiting, then ready', async () => {
   const ready = toCard(rawMr(1, { approvalsLeft: 0, updatedAt: '2026-10-23T15:05:00Z' }))
   const waiting = toCard(rawMr(2))
   const running = toCard(rawMr(3, { headPipeline: pipe('RUNNING') }))

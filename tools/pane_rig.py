@@ -18,7 +18,7 @@ and the order of the asks, are what it gets right. A step prints what was drawn,
 the engine sent and which element each landed on, the pane's title, and the engine's own log
 lines about the mod.
 
-It checks behaviour, not looks: pane-shot still shows how the desktop draws it. It speaks the
+It checks behaviour, not looks: the README's screenshots show how the terminal draws it. It speaks the
 engine's internal control protocol of the build it runs against, and stops with the engine's
 own error when a shape changes. It never sends a message to the model, and stops at once if a
 model turn begins.

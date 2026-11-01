@@ -15,7 +15,7 @@ const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
 const inboxOpenAtom = atom({ plugin: 'gitlab-ci', key: 'inboxOpen' } as const, [])
 const inboxCardsAtom = atom({ plugin: 'gitlab-ci', key: 'inboxCards' } as const, [])
 
-// A login shell finds mr-inbox in ~/.local/bin; the app's own PATH may not.
+// A login shell finds mr-inbox wherever it is installed; the app's own PATH may not.
 const mrInbox = (args: readonly string[]) => ['/bin/zsh', '-lc', 'exec mr-inbox "$@"', 'mr-inbox', ...args]
 
 /** Many sessions share one sync: mr-inbox skips it when another finished within this many seconds. */
@@ -153,7 +153,7 @@ export function toggleCard($: EngineInterface, key: string): void {
   )
 }
 
-/** Puts `/mrs --rule <rule>` in the prompt box for Alex to send; where a surface draws its own box, copies it. */
+/** Puts `/mrs --rule <rule>` in the prompt box for you to send; where a surface draws its own box, copies it. */
 export async function discussRule($: EngineInterface, rule: string): Promise<void> {
   const command = `/mrs --rule ${rule}`
   const filled = await $.prompt.fill({ text: command, mode: 'insert' }).catch(() => ({ isFilled: false }))
