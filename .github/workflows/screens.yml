@@ -1,10 +1,13 @@
 # Keeps docs/screens/*.png, the README's pictures of the pane, true to what the pane draws.
-# The work is one command, `uv run tools/pane_screens.py render`: it runs the mod's own drawing code under the pinned
-# Claude Code and photographs the result in Chromium. This file only installs the tools, runs it, and commits the PNGs
-# back when they changed. A move to GitLab CI keeps the same three steps.
+# The work is `uv run tools/pane_screens.py render`: it runs the mod's own drawing code under the pinned Claude Code and
+# photographs the result in Chromium. `publish` then commits the PNGs when they changed and pushes them, even when the
+# branch moved while they were drawn. This file only installs the tools and runs those two commands, so a move to GitLab
+# CI keeps the same steps.
 #
 # No loop: the workflow starts only for changes to what the pictures are made from, never for docs/screens itself, and
 # a push made with GITHUB_TOKEN starts no workflow either.
+#
+# The write token reaches one step. Checkout keeps no credentials, and the script's own packages are pinned by its lock file.
 name: screens
 on:
   push:
@@ -14,6 +17,7 @@ on:
       - types/**
       - tests/fixtures.ts
       - tools/pane_screens.py
+      - tools/pane_screens.py.lock
       - tools/screens/**
       - .claude-plugin/plugin.json
       - .github/workflows/screens.yml
@@ -33,6 +37,8 @@ jobs:
       CLAUDE_CODE_VERSION: "2.1.308"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,17 +47,10 @@ jobs:
           version: "0.13.5"
           enable-cache: false
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
-      - run: uv run tools/pane_screens.py setup --with-deps
+      - run: uv run --locked tools/pane_screens.py setup --with-deps
       # Draws every scene twice and fails unless the two sets of PNGs match byte for byte, so a push never churns them.
-      - run: uv run tools/pane_screens.py render --verify
+      - run: uv run --locked tools/pane_screens.py render --verify
       - name: Commit the screenshots if they changed
-        run: |
-          git add docs/screens
-          if git diff --cached --quiet; then
-            echo "The screenshots are unchanged."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs: regenerate the pane screenshots [skip ci]"
-          git push
+        env:
+          PANE_SCREENS_PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+        run: uv run --locked tools/pane_screens.py publish --branch "$GITHUB_REF_NAME"
