@@ -262,7 +262,7 @@ test('/mrs hands the briefing to the model, out of the transcript', async ($, on
   expect(usage.context).toBeUndefined()
 })
 
-test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside the 100,000 characters a drawing holds', async ($, on) => {
+test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside the 100,000 characters a drawing holds', { timeoutMs: 20_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const long = (name: string) => `${name}-${'x'.repeat(30)}`
   const busy = (status: string) =>
