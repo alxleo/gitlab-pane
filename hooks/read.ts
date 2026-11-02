@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
-import { advance, ago, cardKey, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf, wakeLine } from './ci'
+import { advance, ago, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf, titleKey, wakeLine } from './ci'
 import {
   PINS_PER_QUERY,
   PROJECTS_PER_QUERY,
@@ -120,6 +120,7 @@ export function leaveReading($: EngineInterface) {
   scrolling.goingBack = 'started'
   ;(async () => {
     const key = await read($, readingAtom)
+    const row = (await read($, rowsAtom)).find(each => each.key === key)
     const listed = nextDraw()
     await update($, readingAtom, () => '')
     await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
@@ -128,12 +129,12 @@ export function leaveReading($: EngineInterface) {
     await listed
     // The desktop reports where cards sit only with its next ask for a drawing, and that report is of the screen it
     // showed before: the ask that drew the list described the page. Each drawing asked for after it may report the list.
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; row && attempt <= 3; attempt++) {
       scrolling.goingBack = `waiting for drawing ${attempt} after the list`
       const reported = nextDraw()
       $.ui.invalidate('ui.render')
       await reported
-      await scrollPane($, { to: { key: cardKey(key) }, block: 'start' })
+      await scrollPane($, { to: { key: titleKey(row) }, block: 'start' })
       if (!scrolling.refused.startsWith('no element')) {
         break
       }

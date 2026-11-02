@@ -8,7 +8,6 @@ import {
   ago,
   bodyOf,
   byAttention,
-  cardKey,
   duration,
   excerpt,
   lead,
@@ -26,6 +25,7 @@ import {
   stageTone,
   statusMark,
   ticketOf,
+  titleKey,
   verdictOf,
 } from './ci'
 import { BOT_MARKS, discMarks } from './avatar'
@@ -344,7 +344,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       <Box flexDirection="row" gap={1} alignItems="center">
         <Box flexGrow={1} flexShrink={1} hover={joins(about)}>
           {canOpen ? (
-            <Button key={scope('open')} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(mr.title)}`} onPress={() => toggle($, mr.key)} />
+            <Button key={titleKey(mr)} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(mr.title)}`} onPress={() => toggle($, mr.key)} />
           ) : (
             <Text weight="semibold" wrap="truncate-end">
               {shortTitle(mr.title)}
@@ -522,7 +522,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // is an MR that needs you.
     return (
       <Box
-        key={cardKey(part.key)}
+        key={shortHash(part.key)}
         flexDirection="column"
         borderStyle={rank(mr) === 0 ? 'bold' : 'round'}
         borderColor={STAGE_COLOURS[reviewTone(mr)]}

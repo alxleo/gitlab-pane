@@ -11,7 +11,7 @@
 
 Each run starts a fresh `claude -p` process, so it runs the mod as it is on disk: no
 /reload-plugins. The rig answers the engine as the desktop does: it asks for a drawing when
-told to redraw or after a press, reports where keyed elements sat one drawing late (the
+told to redraw or after a press, reports where pressable elements sat one drawing late (the
 desktop's report rides its next ask and describes the screen before), and carries each scroll
 the engine sends into its next ask. Row numbers are its own estimate; which keys are present,
 and the order of the asks, are what it gets right. A step prints what was drawn, the scrolls
@@ -180,7 +180,8 @@ def place(node: Any, top: int, keyed: list[dict[str, Any]]) -> int:
         else:
             used = max((place(child, inner, keyed) for child in children), default=0)
         rows = used + border + pad + (props.get("marginTop") or 0)
-    if props.get("key"):
+    # The desktop reports only elements it can press: a scroll to a keyed Box was refused live as drawn under no key.
+    if props.get("key") and node.get("press"):
         keyed.append({"plugin": PLUGIN, "key": str(props["key"]), "top": top, "bottom": top + max(rows, 1) - 1})
     return rows
 
@@ -194,14 +195,17 @@ class Desktop:
         self.offset = 0
         self.tree: dict[str, Any] = {}
         self.report: dict[str, Any] = {}
+        self.sent: dict[str, Any] = {}
         self.draws = 0
-        self.scrolls: list[int] = []
+        self.scrolls: list[tuple[int, str]] = []
 
     def draw(self) -> None:
         request: dict[str, Any] = {
             "subtype": "ui_render", "surface": "desktop", "component": "Pane", "instance_id": PANE_ID,
             "props": {"scroll": {"offset": self.offset, "bodyRows": self.body_rows}}, **self.report,
         }  # fmt: skip
+        # What the engine now knows of the layout: a scroll it sends is worked out against this.
+        self.sent = self.report
         self.tree = self.engine.ask(request).get("tree") or {}
         self.draws += 1
         keyed: list[dict[str, Any]] = []
@@ -222,7 +226,7 @@ class Desktop:
                 self.draw()
             elif event.get("subtype") == "ui_scroll" and event.get("instance_id") == PANE_ID:
                 self.offset = int(event.get("offset", 0))
-                self.scrolls.append(self.offset)
+                self.scrolls.append((self.offset, self.landed_on(self.offset)))
 
     def find(self, spec: str) -> dict[str, Any]:
         buttons = [element for element in walk(self.tree) if element.get("press")]
@@ -240,7 +244,8 @@ class Desktop:
         return key
 
     def landed_on(self, offset: int) -> str:
-        at = [item for item in self.report.get("keyed", []) if item["top"] <= offset <= item["bottom"]]
+        """The pressable element at the top of the window, in the layout the engine scrolled against."""
+        at = [item for item in self.sent.get("keyed", []) if item["top"] <= offset <= item["bottom"]]
         return min(at, key=lambda item: item["bottom"] - item["top"])["key"] if at else "nothing keyed"
 
     def texts(self) -> list[str]:
@@ -259,8 +264,8 @@ def describe(desktop: Desktop, engine: Engine, show: int, scrolls_before: int) -
     keys = {str((element.get("props") or {}).get("key", "")) for element in walk(desktop.tree)}
     view = "page" if "back-top" in keys else "inbox" if any(k.startswith("inbox") for k in keys) else "list"
     lines = [f"  view {view} · title {title(engine)} · {desktop.draws} drawings · offset {desktop.offset}"]
-    for offset in desktop.scrolls[scrolls_before:]:
-        lines.append(f"  scrolled to row {offset}: lands on {desktop.landed_on(offset)}")
+    for offset, landed in desktop.scrolls[scrolls_before:]:
+        lines.append(f"  scrolled to row {offset}: lands on {landed}")
     lines += [f"  · {text[:110]}" for text in desktop.texts()[:show]]
     lines += [f"  log {line[:220]}" for line in engine.new_log_lines()]
     return lines
