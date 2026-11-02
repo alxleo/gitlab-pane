@@ -1,7 +1,9 @@
 {
   "name": "gitlab-ci",
-  "version": "0.1.0",
-  "author": { "name": "Alexander Leonov" },
+  "version": "0.2.0",
+  "author": {
+    "name": "Alexander Leonov"
+  },
   "homepage": "https://github.com/alxleo/gitlab-pane",
   "repository": "https://github.com/alxleo/gitlab-pane",
   "description": "A pane of your GitLab merge requests (pipelines, reviewers, what blocks the merge) and an inbox of reviews from mr-inbox; wakes a session when its MR's pipeline fails or finishes.",
