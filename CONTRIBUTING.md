@@ -25,6 +25,7 @@ pre-commit install
 - **Secrets:** gitleaks reads each staged change before it is committed, and every commit in the history in CI.
 - **Workflows:** actionlint catches mistakes in `.github/workflows/`, and zizmor catches unsafe patterns such as script injection and actions not pinned to a commit.
 - **Files:** JSON and YAML parse; no private keys, conflict markers or large files.
+- **Addresses:** CI fails any commit whose author or committer is not a GitHub noreply address, so nobody's own email is published here. Set yours from https://github.com/settings/emails, and turn on "Keep my email addresses private" there so merges you make on GitHub use it too.
 - **The plugin:** `claude plugin validate --strict .` on each commit that touches it, and `claude plugin test .` before each push.
 - **Commit messages:** each one says what it is, such as `feat: …`, `fix(jira): …` or `docs: …`, because releases are worked out from them. A pull request's title follows the same rule; merge with a squash, so the title becomes the commit on main.
 
