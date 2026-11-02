@@ -145,8 +145,11 @@ export const measure = (tree: unknown): number => {
 export const shortHash = (text: string): string =>
   [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
-/** An MR card's element key, which the pane scrolls back to after its page. */
-export const cardKey = (rowKey: string): string => `card-${shortHash(rowKey)}`
+/**
+ * The key of an MR's title button, which the pane scrolls back to after the MR's page. The desktop reports where only
+ * elements it can press sit, so the card's own box is never found.
+ */
+export const titleKey = (mr: { iid: number; project: string }): string => `open-${mr.iid}-${shortHash(mr.project)}`
 
 export const stageTone = (status: string): Tone =>
   status === 'success'
