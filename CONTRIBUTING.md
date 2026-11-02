@@ -46,6 +46,12 @@ npx --package typescript tsc -p .
 
 `.github/workflows/check.yml` runs the checks above and the tests as one job, for pull requests and for main. The Claude Code version CI uses is pinned there, in `screens.yml` and in `tools/pane_screens.py`; change all three together. Dependabot proposes newer pinned actions and hooks monthly.
 
+`.github/workflows/canary.yml` runs every Monday, for what breaks the pane while this repository stands still. It validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an empty setup, and checks every query the pane sends against gitlab.com's live schema. A failure opens an issue, and the next green run closes it. When the newest Claude Code passes, it is safe to raise the pinned version. A pull request that changes the queries in `hooks/gitlab.ts` gets the schema check too; to run it yourself, with Node 24 or newer:
+
+```bash
+uv run tools/gitlab_schema.py check
+```
+
 ## Screenshots
 
 The README's pictures come from `uv run tools/pane_screens.py render`, which runs the mod's drawing under the pinned Claude Code and photographs it in Chromium. Run `uv run tools/pane_screens.py setup` first to fetch Chromium; on Linux, `setup --with-deps` also installs the libraries it needs. `.github/workflows/screens.yml` redraws them on every push to main that touches the drawing and commits any change, so pull before pushing again. The look the renderer gives the desktop app's elements lives in `tools/screens/pane.css`; what each colour and mark means is in [DESIGN.md](DESIGN.md).
