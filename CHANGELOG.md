@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/alxleo/gitlab-pane/compare/v0.2.0...v0.2.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **security:** https-only avatars; CI checks secrets and workflows ([#2](https://github.com/alxleo/gitlab-pane/issues/2)) ([6a9dfa4](https://github.com/alxleo/gitlab-pane/commit/6a9dfa4198b1ec38f5154b0e9eff00571ec3b44e))
+
 ## [0.2.0](https://github.com/alxleo/gitlab-pane/compare/v0.1.0...v0.2.0) (2026-11-01)
 
 
