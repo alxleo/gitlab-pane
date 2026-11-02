@@ -1,0 +1,100 @@
+# Catches what breaks the pane while this repository stands still: a new Claude Code, or a change to GitLab's API.
+# check.yml tests one pinned Claude Code, and the tests answer for GitLab with made-up data, so neither can see these.
+#
+# Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an
+# empty setup as a teammate would, and checks every query the pane sends against gitlab.com's live schema
+# (tools/gitlab_schema.py). A failure opens an issue, or comments on the one already open, so it reaches whoever watches
+# the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
+# check.yml and screens.yml to match.
+#
+# A pull request that changes the queries gets the schema check alone. GitHub turns schedules off in a public
+# repository after 60 days without a commit; the Actions tab then offers to turn this back on.
+name: canary
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - hooks/gitlab.ts
+      - tools/gitlab_queries.ts
+      - tools/gitlab_schema.py
+      - tools/gitlab_schema.py.lock
+      - .github/workflows/canary.yml
+
+permissions: {}
+
+concurrency:
+  group: canary-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  latest:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm install --global @anthropic-ai/claude-code@latest # zizmor: ignore[adhoc-packages] the newest is the point
+      - run: claude --version
+      - run: claude plugin validate --strict .
+      - run: claude plugin test .
+      - name: Install from GitHub into an empty setup
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/fresh
+        run: |
+          claude plugin marketplace add "$GITHUB_REPOSITORY"
+          claude plugin install gitlab-ci@gitlab-pane
+          claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
+
+  schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Node 24 runs tools/gitlab_queries.ts as it is, types stripped.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+          enable-cache: false
+      - run: uv run --locked tools/gitlab_schema.py check
+
+  tell:
+    needs: [latest, schema]
+    # A cancelled run says nothing either way, so it neither opens nor closes the issue.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: Weekly canary failed
+      RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      FAILED: ${{ contains(needs.*.result, 'failure') }}
+    steps:
+      - name: Open, add to or close the canary issue
+        run: |
+          open=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ "$FAILED" = true ] && [ -n "$open" ]; then
+            gh issue comment "$open" --body "Failed again: $RUN"
+          elif [ "$FAILED" = true ]; then
+            gh issue create --title "$TITLE" --body "The newest Claude Code or GitLab's schema no longer fits the pane. The run says which step: $RUN"
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "Passing again: $RUN"
+          fi
