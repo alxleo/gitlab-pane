@@ -96,25 +96,32 @@ async function scrollPane($: EngineInterface, args: Omit<UiScrollArgs, 'in'>) {
   scrolling.refused = result.deny ?? ''
 }
 
-/** Opens one MR whole on a page of its own, drawn alone over the tab it was opened from. */
+/**
+ * Opens one MR whole on a page of its own, drawn alone over the tab it was opened from. The list moves to its top
+ * first: the desktop tells the engine where its buttons sit only when its window moves, so a page opened after that
+ * leaves the engine knowing where the card's title is for the way back.
+ */
 export function openReading($: EngineInterface, key: string) {
   quietly(
-    update($, readingAtom, () => key)
+    scrollPane($, { to: 'start' })
+      .then(() => update($, readingAtom, () => key))
       .then(() => openPane($))
-      .then(() => scrollPane($, { to: 'start' }))
   )
 }
 
 const waitingForDraw: (() => void)[] = []
+let drawnAtRow = 0
 
-/** The pane was just drawn: register.tsx calls this from its render hook, so a scroll can wait for the list. */
-export const paneDrawn = (): void => waitingForDraw.splice(0).forEach(resolve => resolve())
+/** The pane was just drawn, its window at `row`: register.tsx calls this from its render hook. */
+export const paneDrawn = (row: number): void => {
+  drawnAtRow = row
+  waitingForDraw.splice(0).forEach(resolve => resolve())
+}
 
 const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDraw.push(resolve))
 
 /**
- * Back from an MR's page to its tab, scrolled to the card it was read from. It waits on the pane's drawings, which
- * are what decide when the card can be found. `scrolling.goingBack` says how far it got.
+ * Back from an MR's page to its tab, scrolled to the card it was read from. `scrolling.goingBack` says how far it got.
  */
 export function leaveReading($: EngineInterface) {
   scrolling.goingBack = 'started'
@@ -127,17 +134,20 @@ export function leaveReading($: EngineInterface) {
     await openPane($)
     scrolling.goingBack = 'waiting for the list to draw'
     await listed
-    // The desktop reports where cards sit only with its next ask for a drawing, and that report is of the screen it
-    // showed before: the ask that drew the list described the page. Each drawing asked for after it may report the list.
-    for (let attempt = 1; row && attempt <= 3; attempt++) {
-      scrolling.goingBack = `waiting for drawing ${attempt} after the list`
+    if (!row) {
+      scrolling.goingBack = 'done'
+      return
+    }
+    // The list's drawing leaves only after this resumes; a scroll ahead of it would stop at the page's last row.
+    await $.clock.sleep(50)
+    await scrollPane($, { to: { key: titleKey(row) }, block: 'start' })
+    if (scrolling.refused.startsWith('no element')) {
+      // Scrolling the page told the engine where the page's buttons sit; a move tells it the list's.
+      scrolling.goingBack = 'moving the window for the desktop to report the list'
       const reported = nextDraw()
-      $.ui.invalidate('ui.render')
-      await reported
+      await scrollPane($, { to: drawnAtRow > 0 ? 'start' : 'end' })
+      await Promise.race([reported, $.clock.sleep(2000)])
       await scrollPane($, { to: { key: titleKey(row) }, block: 'start' })
-      if (!scrolling.refused.startsWith('no element')) {
-        break
-      }
     }
     scrolling.goingBack = 'done'
   })().catch((error: unknown) => {

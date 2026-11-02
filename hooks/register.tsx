@@ -108,7 +108,7 @@ export const register: Register = (on, options) => {
     health.draws += 1
     try {
       const tree = await drawPane($, e)
-      paneDrawn()
+      paneDrawn(e.props.scroll.offset)
       health.last = `drew ${JSON.stringify(tree).length} characters on ${e.surface}`
       return tree
     } catch (error) {
