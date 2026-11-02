@@ -6,7 +6,8 @@
   },
   "homepage": "https://github.com/alxleo/gitlab-pane",
   "repository": "https://github.com/alxleo/gitlab-pane",
-  "description": "A pane of your GitLab merge requests (pipelines, reviewers, what blocks the merge) and an inbox of reviews from mr-inbox; wakes a session when its MR's pipeline fails or finishes.",
+  "license": "MIT",
+  "description": "A pane of your GitLab merge requests (pipelines, reviewers, what blocks the merge) and an inbox of reviews from mr-inbox; wakes a session when an MR it opened fails its pipeline or can merge.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "jiraUrl": {

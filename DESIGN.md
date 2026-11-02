@@ -1,36 +1,35 @@
 # Design language
 
-How the pane looks, and why. The code is the source of truth: each rule names where it lives, so a change there is a change here.
+What each colour, border and mark in the pane means. Each rule names the code that holds it, so a change there is a change here.
 
 ## Principles
 
-- **What needs you comes first, and looks heavier.** Rows sort by what you can act on now: something failing or blocked, then running, then waiting on others, then ready (`rank` in `hooks/ci.ts`). An MR that needs you has a bold border; everything else a round one.
-- **Colour means the same thing everywhere.** One small palette, used for pipeline stages, card borders and reviewer badges alike.
-- **Words beat icons for what blocks a merge.** The worst blocker is said in words on the card's second line; markers only trail it.
-- **Small enough to draw.** The desktop app draws nothing for a tree past 100,000 characters, so rows come first, then open detail, then hover cards, then avatars (`DRAWING_BUDGET` in `hooks/ci.ts`). What does not fit is counted, never silently dropped.
-- **Bots are people, quietly.** A bot gets a face like anyone else's, but its comments are never shown; what it holds the merge on is one 🤖 marker.
+- **What needs you comes first.** Rows sort by what you can act on now: something failing or blocked, then running, then waiting on others, then ready (`rank` in `hooks/ci.ts`).
+- **Colour means the same thing everywhere.** One small palette serves pipeline stages, card borders and reviewer rings.
+- **Words beat icons for what blocks a merge.** The worst blocker is said in words on the card's second line; other markers only trail it.
+- **Small enough to draw.** The desktop app draws nothing for a tree past 100,000 characters. So rows you opened come first, then the other rows, then hover cards, then avatars (`DRAWING_BUDGET` in `hooks/ci.ts`). Rows that do not fit are counted, not silently dropped.
+- **Bots show only when they hold the merge,** by an open thread or a request for changes. Then a bot gets a face like anyone's; otherwise its summary comments stay out of the way.
 
 ## Colour
 
-The palette is `STAGE_COLOURS` in `hooks/ci.ts`. It is brighter than the theme's own tones, so it reads in both light and dark.
+The palette is `STAGE_COLOURS` in `hooks/ci.ts`, the same in light and dark.
 
 | Tone | Colour | Means |
 |---|---|---|
 | success | `#2da44e` green | passed, approved |
 | error | `#cf222e` red | failed, changes requested, conflicts |
-| warning | `#bf8700` amber | waiting on a manual job, new inbox activity, a withdrawn approval |
+| warning | `#bf8700` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
 | suggestion | `#0969da` blue | running, reviewed |
 | subtle | `#8c959f` grey | skipped, canceled, not started, waiting on a review |
 
-Hovering anything that opens turns its border the theme's `claude` colour.
+Hovering a card that opens turns its border the theme's `claude` colour.
 
 ## MR cards
 
 - **Border colour is the review** (`reviewTone`): red while someone asked for changes or the MR cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits.
-- **Border weight is whether it needs you**: bold for rank 0, round otherwise.
-- **Line 1** is the title, opened with `▸` and closed with `▾`, and `read whole ›`, which opens the MR as a page of its own.
-- **Line 2** is the card's links, the pipeline's stage strip and run time against how long that repo's pipelines usually take, then GitLab's merge verdict in words, with any other blockers trailing it dimly. Passed stages fold into one run, counted in its title.
-- Your own MRs leave your name out.
+- **Border weight is whether it needs you**: bold at rank 0, round otherwise.
+- **Line 1** is the title, `▸` while closed and `▾` while open, and the time since the last update. An open card ends with `▴ less` and `read whole ›`, which gives the MR a page of its own.
+- **Line 2** is the card's links, the pipeline's stage strip and run time against how long that repo's pipelines usually take, GitLab's merge verdict in words with any other blockers trailing it dimly, then the people. Passed stages fold into one run, counted in its tooltip.
 
 ## Pipeline marks
 
@@ -49,11 +48,11 @@ A failed job is ✗ and a job allowed to fail is ⚠, each with its run time.
 
 ## People
 
-A person is their GitLab avatar or, if they have none, their initials on a disc coloured by name; a bot is its own picture or a robot. The ring is the review: heavy once they have a say, thin while they have none. A ✓ or ✕ badge in the corner marks an approval or a request for changes (`REVIEW_MARK` in `hooks/pane.tsx`). Where the surface draws no images, as in the terminal, the person is a coloured `●`, or the badge's own glyph.
+A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot. The ring takes the palette's tones: red for changes requested, amber for open threads, green for approved, grey otherwise. It is heavy once they have a say and thin while they have none. A ✓ or ✕ badge in the corner marks an approval or a request for changes (`REVIEW_MARK` in `hooks/pane.tsx`). Where the surface draws no images, as in the terminal, the person is a coloured `●`, or the badge's own glyph.
 
 ## Links
 
-Every link says what it opens before its words (`LINK` in `hooks/ci.ts`). An emoji costs two characters of the drawing; a logo would cost hundreds.
+Every link says what it opens before its words (`LINK` in `hooks/ci.ts`).
 
 | Mark | Opens |
 |---|---|

@@ -1,24 +1,24 @@
 # gitlab-pane
 
-A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions: your open merge requests with each pipeline's stages and run time against how long that repo's pipelines usually take, what blocks the merge, and one icon per reviewer or commenter whose comments open on a click. MRs pinned to a session (by `watch_mr`, or opened from it with `glab mr create`) sit on top and wake the session when their pipeline fails or finishes. Below them, an inbox of reviews and comments from `mr-inbox`.
+A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions. It shows your open merge requests: each pipeline's stages and run time against the repo's usual, what blocks the merge, and a face for each reviewer or commenter that opens their comments on a click. A second tab, Inbox, lists reviews and comments from `mr-inbox`.
 
-Bots' comments are never shown; what they hold the merge on is one 🤖 marker.
+MRs pinned to a session sit on top: the ones Claude pins with `watch_mr` and the ones opened from the session with `glab mr create`. An MR opened from the session also wakes it when its pipeline fails or it can merge.
 
-People show as their GitLab avatar, fetched once with `curl` and kept across sessions, wherever the pane has room after the hover cards. [DESIGN.md](DESIGN.md) is the pane's design language: what each colour, border, mark and link icon means.
+[DESIGN.md](DESIGN.md) says what each colour, border, mark and link icon means.
 
 <p>
   <img src="docs/screens/mine.png" alt="The Mine tab: five MR cards, bordered by their review, with stage strips, run times and reviewers' faces" width="420">
   <img src="docs/screens/inbox.png" alt="The Inbox tab: MR cards counting new reviews and comments since last seen" width="420">
 </p>
 
-An opened card shows the description and comments, and `read whole ›` gives the MR a page of its own:
+An opened card shows the description, failed jobs and open threads, and `read whole ›` gives the MR a page of its own:
 
 <p>
   <img src="docs/screens/mine-open.png" alt="An opened MR card with its description and a review comment" width="420">
   <img src="docs/screens/reading.png" alt="One MR read as a page of its own" width="420">
 </p>
 
-The screenshots are drawn from the mod's own desktop drawing with made-up data, and CI draws them again whenever the drawing changes.
+The screenshots use made-up data.
 
 Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
 
@@ -30,13 +30,7 @@ From GitHub, in a shell:
 claude plugin install gitlab-ci --marketplace alxleo/gitlab-pane
 ```
 
-The repository is private, so git on your machine needs a credential for github.com that works without a prompt; Claude Code checks for updates in the background, where it cannot ask. If you use the GitHub CLI, this sets git up to use its sign-in:
-
-```bash
-gh auth setup-git
-```
-
-For a whole team, add the marketplace to a project's `.claude/settings.json`; anyone who opens that project and trusts the folder gets the pane, with nothing to run:
+For a whole team, add the marketplace to a project's `.claude/settings.json`. Anyone who opens that project and trusts the folder gets the pane, with nothing to run:
 
 ```json
 {
@@ -49,17 +43,9 @@ For a whole team, add the marketplace to a project's `.claude/settings.json`; an
 
 That follows main: each update installs whatever main holds, and the plugin runs with your own GitLab and Jira sign-ins, so trust whoever can push to this repository as you would trust them with those. To take released versions only, add `"ref": "v0.2.0"` beside `"repo"` and raise it when you choose to update.
 
-From a clone, so every session reads the mod from that folder and an edit there needs only `/reload-plugins`:
+To run from a clone instead, see [CONTRIBUTING.md](CONTRIBUTING.md#set-up-a-clone).
 
-```bash
-claude plugin marketplace add path/to/gitlab-pane
-```
-
-```bash
-claude plugin install gitlab-ci@gitlab-pane
-```
-
-`/gitlab` opens the pane; `/mrs` shows the inbox in a session.
+`/gitlab` opens the pane. `/mrs repo!123 …` or `/mrs --rule <name>` puts those MRs, threads and all, into the conversation.
 
 ## Updating
 
@@ -69,7 +55,7 @@ A new release reaches you when you ask for it:
 claude plugin update gitlab-ci@gitlab-pane
 ```
 
-Claude Code installs a new copy only when the plugin's version has changed. To get releases without asking, open `/plugin`, go to **Marketplaces**, select `gitlab-pane` and choose **Enable auto-update**; it is off by default. A running session keeps the copy it loaded until `/reload-plugins` or the next launch. A clone added as a local marketplace reads its files at every session start, whatever the version.
+Claude Code installs a new copy only when the plugin's version has changed. To get releases without asking, open `/plugin`, go to **Marketplaces**, select `gitlab-pane` and choose **Enable auto-update**; it is off by default. A running session keeps the copy it loaded until `/reload-plugins` or the next launch.
 
 ## Settings
 
@@ -85,11 +71,11 @@ echo '{"jiraUrl":"https://example.atlassian.net"}' | claude plugin configure git
 
 ## What it runs on your machine
 
-The pane changes nothing on GitLab or Jira, and needs no token of its own: `glab`, `acli` and `mr-inbox` use the sign-ins you already have. `glab`, `acli` and `mr-inbox` run through a zsh login shell (`zsh -lc`), so they are found wherever your own shell finds them, and your shell's start-up files run each time; it needs macOS, or another system with zsh at `/bin/zsh`.
+The pane changes nothing on GitLab or Jira and needs no token of its own: `glab`, `acli` and `mr-inbox` use the sign-ins you already have. It runs them through a zsh login shell (`zsh -lc`), so they are found wherever your own shell finds them and your shell's start-up files run each time. It needs macOS, or another system with zsh at `/bin/zsh`.
 
 | Runs | How often | For | Writes |
 |---|---|---|---|
-| `glab api graphql` | every minute while a watched pipeline runs, every 3 min otherwise, slower after errors | your MRs, pipelines, reviewers and comments, as you, on gitlab.com | nothing: queries only |
+| `glab api graphql` | every minute while a pinned pipeline runs, every 3 min otherwise, slower after errors | your MRs and the ones you pin: pipelines, reviewers, comments, and how long each repo's pipelines usually take; as you, on gitlab.com | nothing: queries only |
 | `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (gitlab.com or Gravatar), https only | nothing; the pictures are kept in the plugin's own store |
 | `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
 | `mr-inbox` | every minute, when installed | the inbox | its own cache, and what you mark seen |

@@ -5,10 +5,10 @@
 
 ### Features
 
-* **jira:** ticket details come from Atlassian's acli; the mr-inbox hint and README name no one's own folders ([47a462c](https://github.com/alxleo/gitlab-pane/commit/47a462c8b9274511e854192c4bf53dc3ce07f360))
-* **tools:** pane-screens draws the README's pane screenshots from the mod's own desktop drawing, and CI keeps them current ([eb70142](https://github.com/alxleo/gitlab-pane/commit/eb70142ac0c40989f4470a008dcc4043b7d80ab1))
+* **jira:** read ticket details with Atlassian's acli ([a28ec71](https://github.com/alxleo/gitlab-pane/commit/a28ec7114f6de557bd7903dabc58172a7547b5f4))
+* **tools:** CI draws the README screenshots ([faca0b1](https://github.com/alxleo/gitlab-pane/commit/faca0b1675652b49ffc3f88e637054d08b627ba3))
 
 
 ### Bug Fixes
 
-* **tools:** pane-screens publishes through a rebase, says why a scene failed, deletes nothing, and refuses a drawing it was not taught ([cb4fc64](https://github.com/alxleo/gitlab-pane/commit/cb4fc640b0905cd9a5ddaf356845cbb6519c3c89))
+* **tools:** pane-screens rebases before pushing and fails loudly ([0585922](https://github.com/alxleo/gitlab-pane/commit/05859220315c2666784a457516feb429e0d0844b))
