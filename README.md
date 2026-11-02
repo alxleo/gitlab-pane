@@ -24,11 +24,30 @@ Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the i
 
 ## Install
 
-From GitHub, in a shell (the repository is private, so your machine needs a git credential for github.com):
+From GitHub, in a shell:
 
 ```bash
 claude plugin install gitlab-ci --marketplace alxleo/gitlab-pane
 ```
+
+The repository is private, so git on your machine needs a credential for github.com that works without a prompt; Claude Code checks for updates in the background, where it cannot ask. If you use the GitHub CLI, this sets git up to use its sign-in:
+
+```bash
+gh auth setup-git
+```
+
+For a whole team, add the marketplace to a project's `.claude/settings.json`; anyone who opens that project and trusts the folder gets the pane, with nothing to run:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "gitlab-pane": { "source": { "source": "github", "repo": "alxleo/gitlab-pane" } }
+  },
+  "enabledPlugins": { "gitlab-ci@gitlab-pane": true }
+}
+```
+
+That follows main: each update installs whatever main holds, and the plugin runs with your own GitLab and Jira sign-ins, so trust whoever can push to this repository as you would trust them with those. To take released versions only, add `"ref": "v0.2.0"` beside `"repo"` and raise it when you choose to update.
 
 From a clone, so every session reads the mod from that folder and an edit there needs only `/reload-plugins`:
 
@@ -64,20 +83,23 @@ Set it with `/plugin configure gitlab-ci` in a terminal session, or:
 echo '{"jiraUrl":"https://example.atlassian.net"}' | claude plugin configure gitlab-ci@gitlab-pane --values-stdin
 ```
 
-## Develop
+## What it runs on your machine
 
-```bash
-claude plugin test .
-```
+The pane changes nothing on GitLab or Jira, and needs no token of its own: `glab`, `acli` and `mr-inbox` use the sign-ins you already have. `glab`, `acli` and `mr-inbox` run through a zsh login shell (`zsh -lc`), so they are found wherever your own shell finds them, and your shell's start-up files run each time; it needs macOS, or another system with zsh at `/bin/zsh`.
 
-```bash
-claude plugin validate .
-```
+| Runs | How often | For | Writes |
+|---|---|---|---|
+| `glab api graphql` | every minute while a watched pipeline runs, every 3 min otherwise, slower after errors | your MRs, pipelines, reviewers and comments, as you, on gitlab.com | nothing: queries only |
+| `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (gitlab.com or Gravatar), https only | nothing; the pictures are kept in the plugin's own store |
+| `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
+| `mr-inbox` | every minute, when installed | the inbox | its own cache, and what you mark seen |
 
-CI runs both on every push, at the Claude Code version pinned in `.github/workflows/check.yml`. The type-check needs the types the engine writes once it has loaded the mod in a signed-in session (`.claude-plugin/types/`), so it runs locally: `npx --package typescript tsc -p .`.
+What reaches Claude, and so the model provider, from GitLab:
 
-The screenshots come from `uv run tools/pane_screens.py render`, which runs the mod's drawing under the pinned Claude Code and photographs it in Chromium (`setup --with-deps` installs Chromium first). `.github/workflows/screens.yml` runs it on every push to main that touches the drawing and commits the new PNGs, so pull before pushing again. The look the renderer gives the desktop app's elements lives in `tools/screens/pane.css`.
+- **Wakes.** When an MR opened from a session fails its pipeline or can merge, the pane sends that session a message saying so, with the names of the failed jobs. Job names come from the repo's CI configuration, so treat them as text from that repo, not instructions. The pane's `wake Claude` switch turns this off.
+- **`/mrs`** puts the MRs' descriptions and other people's comments into the conversation, and **`watch_mr`** answers with an MR's pipeline and what blocks it.
+- **Bash commands.** The pane reads each Bash command a session runs, and the output of `glab mr create`, to pin the MR it opens. Nothing is sent anywhere for this.
 
-## Releasing
+## Contributing
 
-Commit messages say what each change is (`feat:`, `fix:`, `docs:` and so on), and `.github/workflows/release.yml` keeps a release pull request open from them: the next version and its changelog. Merging that pull request is the release. It raises `version` in `.claude-plugin/plugin.json`, which is what makes Claude Code offer the update, and the workflow tags it and publishes it on GitHub. A `feat:` raises the minor number and a `fix:` the patch; other kinds wait for one of those. No checks run on the release pull request itself, as GitHub starts no workflow for one its own token opened; they run once it is merged.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setting up a clone, the checks every commit passes, and how releases are made.

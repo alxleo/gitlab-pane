@@ -284,7 +284,8 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
   const fetched = await Promise.all(
     wanted.map(async url => {
       const run = await $.process.run(
-        ['/bin/sh', '-c', 'curl -sfL --max-time 10 "$1" | base64', 'avatar', sizedAvatar(url, AVATAR_PX)],
+        // The URL comes from GitLab's answer, so curl is held to https, redirects included.
+        ['/bin/sh', '-c', 'curl -sfL --proto =https --proto-redir =https --max-time 10 --url "$1" | base64', 'avatar', sizedAvatar(url, AVATAR_PX)],
         { timeoutMs: 15_000 }
       )
       const uri = run.exitCode === 0 ? pictureUri(run.stdout, AVATAR_MOST) : null

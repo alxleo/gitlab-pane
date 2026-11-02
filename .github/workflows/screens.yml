@@ -23,8 +23,7 @@ on:
       - .github/workflows/screens.yml
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: screens-${{ github.ref }}
@@ -33,20 +32,23 @@ concurrency:
 jobs:
   screens:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
     env:
       CLAUDE_CODE_VERSION: "2.1.308"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.13.5"
           enable-cache: false
-      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: uv run --locked tools/pane_screens.py setup --with-deps
       # Draws every scene twice and fails unless the two sets of PNGs match byte for byte, so a push never churns them.
       - run: uv run --locked tools/pane_screens.py render --verify

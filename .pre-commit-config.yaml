@@ -1,0 +1,67 @@
+# The checks a commit has to pass, the same here and in CI.
+# `pre-commit install` sets up all three kinds of hook below: before a commit, on its message, and before a push.
+# CI runs `pre-commit run --all-files --hook-stage manual`: every commit-time check over the whole tree, and gitleaks
+# over the whole history instead of the staged change.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit, manual]
+exclude: ^(CHANGELOG\.md|tools/screens/fonts/.*)$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--enforce-all] # also in CI, where nothing is staged
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # Secrets: the staged change before each commit; every commit in CI.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
+    hooks:
+      - id: gitleaks
+        stages: [pre-commit]
+      - id: gitleaks
+        alias: gitleaks-history
+        name: Detect hardcoded secrets in every commit
+        entry: gitleaks git --redact --verbose
+        pass_filenames: false
+        stages: [manual]
+
+  # The workflows: actionlint for mistakes, zizmor for security (injection, over-broad tokens, unpinned actions).
+  - repo: https://github.com/rhysd/actionlint
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
+    hooks:
+      - id: actionlint
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f  # frozen: v1.31.1
+    hooks:
+      - id: zizmor
+
+  # Releases are worked out from commit messages, so each one says what it is: `feat: …`, `fix(jira): …`.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: 91ab4bf57e58b32adf1a122681f6ebe164d081c8  # frozen: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
+  # The plugin itself, with the Claude Code you have installed.
+  - repo: local
+    hooks:
+      - id: plugin-validate
+        name: claude plugin validate --strict
+        entry: claude plugin validate --strict .
+        language: system
+        pass_filenames: false
+        files: ^(\.claude-plugin|hooks|types)/
+      - id: plugin-test
+        name: claude plugin test
+        entry: claude plugin test .
+        language: system
+        pass_filenames: false
+        files: ^(\.claude-plugin|hooks|types|tests)/
+        stages: [pre-push]

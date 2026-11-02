@@ -1,18 +1,83 @@
-# The engine runs the mod's tests and checks its manifest and state contract; neither needs a sign-in.
-# The type-check needs the engine's generated types, which only a signed-in session writes, so it runs locally.
+# Everything a change has to pass, in one job: GitHub bills each job as at least a whole minute, so one job of 40 s
+# costs one minute where three jobs of 15 s cost three. It runs for pull requests and for main, never for other branch
+# or tag pushes, and a newer push to the same pull request cancels the run it replaces.
+#
+# The checks themselves are .pre-commit-config.yaml's, the same as a developer's commit runs, then the plugin's tests.
+# The engine's generated types need a signed-in session, so the type-check stays local: see CONTRIBUTING.md.
+#
+# On main, a green check then runs release-please, so nothing is released from a red main. It keeps one pull request
+# open that would release what has landed since the last release: the next version, worked out from the commit
+# messages, and the changelog. Merging that pull request is the release: it raises `version` in
+# .claude-plugin/plugin.json, which is what makes Claude Code offer installed copies the update, and the release job
+# then tags it and publishes the GitHub release. Its settings are release-please-config.json; the last released version
+# is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no checks run on it; they run
+# once it is merged.
 name: check
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # `edited` re-checks a renamed pull request's title; other edits are skipped below.
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
+    if: github.event.action != 'edited' || github.event.changes.title
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     env:
       CLAUDE_CODE_VERSION: "2.1.308"
+      PRE_COMMIT_VERSION: "4.7.0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # gitleaks reads every commit
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
-      - run: claude plugin validate --strict .
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+          enable-cache: false
+      # The hooks' own installs (Go for gitleaks and actionlint, Python for zizmor) are most of a cold run.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ env.PRE_COMMIT_VERSION }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      - run: uvx "pre-commit@${PRE_COMMIT_VERSION}" run --all-files --hook-stage manual --show-diff-on-failure
+      # A squash merge makes the pull request's title the commit on main, so it follows the same rule as a commit message.
+      - name: The pull request title says what the change is
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$TITLE" > "$RUNNER_TEMP/title"
+          uvx "pre-commit@${PRE_COMMIT_VERSION}" run --hook-stage commit-msg --commit-msg-filename "$RUNNER_TEMP/title"
       - run: claude plugin test .
+
+  release:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Two quick pushes must not both publish: the second waits for the first.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
