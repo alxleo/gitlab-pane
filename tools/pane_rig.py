@@ -7,13 +7,14 @@
 
 \b
   pane-rig flow                                       draw the pane once GitLab has answered
-  pane-rig flow --press open-1394 --press read-1394 --press back-top
+  pane-rig flow --press tab-mine --press scroll:25 --press open-42 --press read-42 --press back-top
 
 Each run starts a fresh `claude -p` process, so it runs the mod as it is on disk: no
 /reload-plugins. The rig answers the engine as the desktop does: it asks for a drawing when
-told to redraw or after a press, reports where pressable elements sat one drawing late (the
-desktop's report rides its next ask and describes the screen before), and carries each scroll
-the engine sends into its next ask. Row numbers are its own estimate; which keys are present,
+told to redraw or after a press, and measures where pressable elements sit after each drawing
+and scroll. Like the desktop, it hands the engine a new measurement only when the window's
+offset changes, with a person's scroll or with its own ask after one; every other ask repeats
+the measurement it last handed over. Row numbers are its own estimate; which keys are present,
 and the order of the asks, are what it gets right. A step prints what was drawn, the scrolls
 the engine sent and which element each landed on, the pane's title, and the engine's own log
 lines about the mod.
@@ -180,7 +181,7 @@ def place(node: Any, top: int, keyed: list[dict[str, Any]]) -> int:
         else:
             used = max((place(child, inner, keyed) for child in children), default=0)
         rows = used + border + pad + (props.get("marginTop") or 0)
-    # The desktop reports only elements it can press: a scroll to a keyed Box was refused live as drawn under no key.
+    # The desktop measures only elements it can press (`[data-press-key]`), so a keyed Box is never reported.
     if props.get("key") and node.get("press"):
         keyed.append({"plugin": PLUGIN, "key": str(props["key"]), "top": top, "bottom": top + max(rows, 1) - 1})
     return rows
@@ -194,24 +195,47 @@ class Desktop:
         self.body_rows = body_rows
         self.offset = 0
         self.tree: dict[str, Any] = {}
-        self.report: dict[str, Any] = {}
-        self.sent: dict[str, Any] = {}
+        self.rows = 0
+        self.keyed: list[dict[str, Any]] = []
+        # What every ask carries: the window and measurement as of the window's last move.
+        self.handed: dict[str, Any] | None = None
         self.draws = 0
         self.scrolls: list[tuple[int, str]] = []
 
     def draw(self) -> None:
+        handed = self.handed or {"offset": 0, "content_rows": 0, "keyed": []}
         request: dict[str, Any] = {
             "subtype": "ui_render", "surface": "desktop", "component": "Pane", "instance_id": PANE_ID,
-            "props": {"scroll": {"offset": self.offset, "bodyRows": self.body_rows}}, **self.report,
+            "props": {"scroll": {"offset": handed["offset"], "bodyRows": self.body_rows}},
+            "content_rows": handed["content_rows"], "keyed": handed["keyed"],
         }  # fmt: skip
-        # What the engine now knows of the layout: a scroll it sends is worked out against this.
-        self.sent = self.report
         self.tree = self.engine.ask(request).get("tree") or {}
         self.draws += 1
-        keyed: list[dict[str, Any]] = []
-        rows = place(self.tree, 0, keyed)
-        # Reported with the next ask, as the desktop reports the screen it showed before.
-        self.report = {"content_rows": rows, "keyed": keyed[:512]}
+        self.measure()
+        if self.handed is None:
+            # The first measurement changes the window's width from its placeholder, which hands it over.
+            self.hand_over()
+        elif self.clamped(self.offset) != self.offset:
+            # A shorter tree pulls the window up, and the browser's scroll event reports it as the person's.
+            self.scroll_to(self.offset)
+
+    def measure(self) -> None:
+        self.keyed = []
+        self.rows = place(self.tree, 0, self.keyed)
+
+    def clamped(self, row: int) -> int:
+        return max(0, min(row, self.rows - self.body_rows))
+
+    def hand_over(self) -> None:
+        """Hands the latest measurement to the engine with a new ask, as the desktop does once its window moved."""
+        self.handed = {"offset": self.offset, "content_rows": self.rows, "keyed": self.keyed[:512]}
+        self.draw()
+
+    def moved(self) -> None:
+        self.measure()
+        self.offset = self.clamped(self.offset)
+        if self.handed is None or self.handed["offset"] != self.offset:
+            self.hand_over()
 
     def settle(self, quiet_ms: int, most_s: float = 30) -> None:
         """Answers the engine's redraws and scrolls until it is quiet for `quiet_ms`."""
@@ -227,6 +251,7 @@ class Desktop:
             elif event.get("subtype") == "ui_scroll" and event.get("instance_id") == PANE_ID:
                 self.offset = int(event.get("offset", 0))
                 self.scrolls.append((self.offset, self.landed_on(self.offset)))
+                self.moved()
 
     def find(self, spec: str) -> dict[str, Any]:
         buttons = [element for element in walk(self.tree) if element.get("press")]
@@ -236,17 +261,35 @@ class Desktop:
                 return element
         raise RigError(f"no button {spec!r} in the drawing; there are: {', '.join(text_of(b) for b in buttons[:30])}")
 
+    def scroll_to(self, row: int) -> str:
+        """Scrolls the window as the person's wheel does, which hands the engine a fresh measurement."""
+        before = self.offset
+        self.measure()
+        self.offset = self.clamped(row)
+        request = {
+            "subtype": "ui_scroll", "component": "Pane", "instance_id": PANE_ID, "offset": self.offset,
+            "by": self.offset - before, "body_rows": self.body_rows, "content_rows": self.rows,
+            "keyed": self.keyed[:512], "surface": "desktop",
+        }  # fmt: skip
+        answer = self.engine.ask(request)
+        self.offset = int(answer.get("offset", self.offset))
+        self.moved()
+        moved = "moved" if answer.get("moved") else answer.get("deny", answer)
+        return f"scrolled to row {row}: {moved}, at {self.offset}, on {self.landed_on(self.offset)}"
+
     def press(self, spec: str) -> str:
+        if spec.startswith("scroll:"):
+            return self.scroll_to(int(spec.removeprefix("scroll:")))
         element = self.find(spec)
         key = str((element.get("props") or {}).get("key", ""))
         press = element["press"]
         self.engine.ask({"subtype": "ui_press", "plugin": press["plugin"], "handle": press["handle"], "key": key, "surface": "desktop"})
-        return key
+        return f"pressed {key}"
 
     def landed_on(self, offset: int) -> str:
-        """The pressable element at the top of the window, in the layout the engine scrolled against."""
-        at = [item for item in self.sent.get("keyed", []) if item["top"] <= offset <= item["bottom"]]
-        return min(at, key=lambda item: item["bottom"] - item["top"])["key"] if at else "nothing keyed"
+        """The first pressable element the window shows, in the drawing on screen."""
+        shown = [item for item in self.keyed if item["bottom"] >= offset]
+        return min(shown, key=lambda item: (item["top"], item["bottom"]))["key"] if shown else "nothing pressable"
 
     def texts(self) -> list[str]:
         return [text for text in (text_of(element) for element in walk(self.tree)) if text.strip()]
@@ -263,7 +306,7 @@ def title(engine: Engine) -> str:
 def describe(desktop: Desktop, engine: Engine, show: int, scrolls_before: int) -> list[str]:
     keys = {str((element.get("props") or {}).get("key", "")) for element in walk(desktop.tree)}
     view = "page" if "back-top" in keys else "inbox" if any(k.startswith("inbox") for k in keys) else "list"
-    lines = [f"  view {view} · title {title(engine)} · {desktop.draws} drawings · offset {desktop.offset}"]
+    lines = [f"  view {view} · title {title(engine)} · {desktop.draws} drawings · offset {desktop.offset} of {desktop.rows} rows"]
     for offset, landed in desktop.scrolls[scrolls_before:]:
         lines.append(f"  scrolled to row {offset}: lands on {landed}")
     lines += [f"  · {text[:110]}" for text in desktop.texts()[:show]]
@@ -273,7 +316,7 @@ def describe(desktop: Desktop, engine: Engine, show: int, scrolls_before: int) -
 
 @app.command()
 def flow(
-    press: list[str] = typer.Option([], "--press", "-p", help="A button to press, in order: key, key prefix or label."),
+    press: list[str] = typer.Option([], "--press", "-p", help="Each step in order: a button's key, key prefix or label, or scroll:<row> as the person's wheel."),
     wait_rows: float = typer.Option(120, help="Seconds to wait for GitLab's first answer."),
     settle_ms: int = typer.Option(1500, help="Quiet milliseconds that end a step."),
     body_rows: int = typer.Option(40, help="Rows the pane's window shows."),
@@ -298,9 +341,9 @@ def flow(
             typer.echo("\n".join(describe(desktop, engine, options.show, 0)))
             for spec in options.presses:
                 before = len(desktop.scrolls)
-                key = desktop.press(spec)
+                step = desktop.press(spec)
                 desktop.settle(options.settle_ms)
-                typer.echo(f"pressed {key}")
+                typer.echo(step)
                 typer.echo("\n".join(describe(desktop, engine, options.show, before)))
         except RigError as error:
             typer.echo(f"stopped: {error}", err=True)
