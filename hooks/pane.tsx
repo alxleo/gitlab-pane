@@ -156,10 +156,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   const personCard = (person: Person) => {
     const latest = person.notes[0]
+    // A name written like the handle ("Mel.Northcote") would say it twice.
+    const isHandle = person.name.toLowerCase() === person.username.toLowerCase()
     return [
       <Box flexDirection="row" gap={1}>
         <Text bold>{person.name}</Text>
-        <Text dimColor>{person.isBot ? 'bot' : `@${person.username}`}</Text>
+        {(person.isBot || !isHandle) && <Text dimColor>{person.isBot ? 'bot' : `@${person.username}`}</Text>}
       </Box>,
       <Text color={personTone(person)}>
         {[REVIEW_STATE[person.state] ?? person.state, person.openThreads > 0 ? plural(person.openThreads, 'open thread') : '']

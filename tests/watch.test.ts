@@ -294,8 +294,11 @@ test('someone without a picture is their initials on a disc, beside their first 
   expect(String(disc?.props?.source)).toContain('>IM</text>')
   const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
   expect(labels).toContain('Ines')
-  // A name written like a handle still gives a first name.
+  // A name written like a handle still gives a first name, and its hover card says it once.
   expect(labels).toContain('Mel')
+  expect(await ui.find({ type: 'Text', text: '@ines.mendel' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Mel.Northcote' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '@mel.northcote' })).toBeUndefined()
   await ui.unmount()
 })
 
