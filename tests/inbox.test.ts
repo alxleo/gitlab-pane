@@ -3,7 +3,7 @@ import type { On } from 'claude-code'
 
 import { shortHash as hashOf } from '../hooks/identity'
 import { AVATAR_BASE64, NOW, job, mergeStatuses, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
-import { answered } from './gitlab_fake'
+import { fakeGitLab, ran } from './gitlab_host'
 
 const PANE = {
   plugin: 'gitlab-ci',
@@ -21,10 +21,6 @@ const PANE = {
 
 const REMOTE = 'git@gitlab.com:g/p.git'
 const MINUTES_AGO = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
-
-const ran = (stdout: string, exitCode = 0, stderr = '') => ({
-  value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
-})
 
 const item = (iid: number, unseen: number, isMine = false) => ({
   key: `g/p!${iid}`,
@@ -299,6 +295,21 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
     note: null,
     items: Array.from({ length: 30 }, (_, i) => wide(r * 100 + i)),
   }))
+  // The token comes from glab here, the second place the pane looks.
+  const gitlab = fakeGitLab(
+    on,
+    {
+      'gitlab.com': {
+        answers: {
+          Usual: () => ({ data: { project: { pipelines: { nodes: [{ duration: 600 }] } } } }),
+          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+          MergeStatus: () => mergeStatuses(mrs),
+        },
+        accepts: 'glab-held-token',
+      },
+    },
+    { glab: { 'gitlab.com': 'glab-held-token' } }
+  )
   on('process.run', (_, e) => {
     if (e.argv.includes('mr-inbox')) {
       return ran(JSON.stringify({ sync: { ok: true, finished_at: MINUTES_AGO(1) }, sections: inboxSections }))
@@ -309,12 +320,7 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
     if (e.argv.includes('avatar')) {
       return ran(AVATAR_BASE64)
     }
-    const text = answered(e.argv, {
-      Usual: () => ({ data: { project: { pipelines: { nodes: [{ duration: 600 }] } } } }),
-      Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
-      MergeStatus: () => mergeStatuses(mrs),
-    })
-    return ran(text ?? '', text === undefined ? 1 : 0, text === undefined ? `nothing answers ${e.argv.join(' ')}` : '')
+    return gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`)
   })
   on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
