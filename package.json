@@ -1,0 +1,63 @@
+{
+  "name": "gitlab-pane-tooling",
+  "private": true,
+  "description": "Dev-time tooling only: the checks, generators and screenshots of the gitlab-pane mod. The mod itself has no npm packages and ships none (release/files leaves this file out).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "setup": "simple-git-hooks && node tools/engine_types.ts",
+    "check": "npm run check:fast && npm run scan",
+    "check:fast": "npm run files && npm run lint && npm run types && npm run schema -- types --check && npm run release-tree -- check && npm run validate",
+    "files": "node tools/check_files.ts",
+    "lint": "eslint --max-warnings 0 hooks tests tools",
+    "types": "node tools/engine_types.ts && node node_modules/typescript-7/bin/tsc -p tsconfig.core.json && node node_modules/typescript-7/bin/tsc -p tsconfig.json && node node_modules/typescript-7/bin/tsc -p tools/store-probe/tsconfig.json && node node_modules/typescript-7/bin/tsc -p tsconfig.tools.json",
+    "validate": "claude plugin validate --strict . && claude plugin validate --strict tools/store-probe",
+    "test": "claude plugin test .",
+    "schema": "node tools/gitlab_schema.ts",
+    "screens": "node tools/pane_screens.ts",
+    "rig": "node tools/pane_rig.ts",
+    "release-tree": "node tools/release_tree.ts",
+    "scan": "node tools/scan.ts",
+    "commit-msg": "commitlint --edit",
+    "pr-title": "commitlint"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "npm run check:fast && npm run scan -- --staged",
+    "commit-msg": "npm run commit-msg -- \"$1\"",
+    "pre-push": "npm test"
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ],
+    "rules": {
+      "body-max-line-length": [
+        0
+      ],
+      "footer-max-line-length": [
+        0
+      ]
+    }
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "@graphql-codegen/cli": "7.4.6",
+    "@graphql-codegen/typescript": "6.1.2",
+    "@graphql-codegen/typescript-operations": "6.2.0",
+    "@types/markdown-it": "14.2.0",
+    "@types/node": "22.20.5",
+    "eslint": "10.14.0",
+    "graphql": "17.1.0",
+    "markdown-it": "15.0.3",
+    "playwright": "1.64.1",
+    "simple-git-hooks": "2.14.0",
+    "typescript": "6.0.3",
+    "typescript-7": "npm:typescript@7.0.2",
+    "typescript-eslint": "8.72.1",
+    "yaml": "2.9.1"
+  }
+}

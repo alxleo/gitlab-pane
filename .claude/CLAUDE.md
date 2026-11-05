@@ -10,8 +10,8 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 
 ## Layers
 
-- The core is pure code on plain data: the files in `include` in `tsconfig.core.json`, the one list of it (the linter and the Claude hook read it too). `claude-code` is not importable there.
-- A core file imports only core files, each by its `.ts` path (`import { x } from './identity.ts'`; `tools/gitlab_queries.ts` runs `gitlab-documents.ts` under plain Node), and `../types`. Other files import the core, the engine and each other without extensions.
+- The core is pure code on plain data: the files in `include` in `tsconfig.core.json`, the one list of it (the linter and the Claude hook, `tools/check_core.ts`, read it too). `claude-code` is not importable there.
+- A core file imports only core files, each by its `.ts` path (`import { x } from './identity.ts'`; the `tools/*.ts` import `gitlab-documents.ts` and `decode.ts` under plain Node), and `../types`. Other files import the core, the engine and each other without extensions.
 - New logic that can run on plain data goes in the core, with a test on plain data. The engine-facing files (`pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `register.tsx`) stay thin. A new file joins the core by being listed in `tsconfig.core.json`.
 - No `x as T` anywhere (`as const` is fine). The only assertions: `decodeGraphql` in `decode.ts` (the GraphQL boundary: GitLab checked the answer against the schema the types came from) and the private `brand` of `markdown.ts` (it stamps `GitLabMarkdown` through `fromGitLab`, which only `gitlab.ts` calls), `model-text.ts` and `svg.ts`. Narrow with a type guard instead: an annotated `x is T` must test `x` in its body (`typeof`, `in`, `instanceof`, `Array.isArray`, or a call of another guard), a null check is left unannotated for the compiler to infer, and an overload implementation returns no more than its signatures. No `any`, no `!`, no `JSON.parse` outside the core (use `parseJson`).
 - No state in module variables, `let` or mutated `const`. State lives in atoms; `in-flight.ts` alone may hold promises and callbacks, which an atom cannot store.
@@ -26,25 +26,30 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 - The desktop draws nothing for a tree past 100,000 characters. `DRAWING_BUDGET` in `drawing.ts` is 85,000; measure with `measure`, and drop rows rather than overshoot.
 - `types/index.d.ts` must stay one self-contained file for `claude plugin validate --strict`. Domain types cannot move out of it, and every atom key is declared there.
 - Wakes and `watch_mr` answers never carry other people's words (comments, descriptions, titles): only who, what and where. Text from GitLab reaches the model only through `foreign` in `model-text.ts`.
-- GitLab's types: documents are static strings in `gitlab-documents.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `uv run tools/gitlab_schema.py types` (never edit it; a stale one fails the `gitlab-types` hook). `uv run tools/gitlab_schema.py snapshot` refreshes the snapshot from gitlab.com.
-- The engine's declarations are not committed: `node tools/engine_types.ts` has the `claude` on PATH unpack them from its bundled plugin-authoring skill (no sign-in, no network) into the git-ignored `.claude-plugin/types/`, where the full `tsc -p tsconfig.json` and the type-aware lint over every file read them. `tsconfig.core.json` still has no engine types, which keeps the core from importing the engine. The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.py`: change all three together, and the declarations follow.
+- GitLab's types: documents are static strings in `gitlab-documents.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types` (never edit it; a stale one fails `npm run check`). `npm run schema -- snapshot` refreshes the snapshot from gitlab.com.
+- The engine's declarations are not committed: `npm run setup` (or `node tools/engine_types.ts`) has the `claude` on PATH unpack them from its bundled plugin-authoring skill (no sign-in, no network) into the git-ignored `.claude-plugin/types/`, where the full `tsc -p tsconfig.json` and the type-aware lint over every file read them. `tsconfig.core.json` still has no engine types, which keeps the core from importing the engine. The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all three together, and the declarations follow.
+
+## One toolchain: Node
+
+- Every tool, check and hook is TypeScript run by Node (`node tools/<name>.ts`, or an `npm run` script); there is no bash or shell script and no Python in the repository. A new tool is a `tools/*.ts` file, held to the same lint as the rest. The only shell is a workflow's own `run:` lines. One `package.json` holds the dev dependencies and one `package-lock.json` pins them; the published tree leaves both out.
+- `npm ci` then `npm run setup` once per clone (git hooks and the engine's declarations). The hooks run `npm run check:fast`, the commit-message check and `npm test`; they are written by `simple-git-hooks` from `package.json`, and no script lives in the repository.
+- Gitleaks, actionlint and zizmor are not Node tools: CI runs them with their official actions, `npm run scan` runs whichever is installed and says which it skipped.
 
 ## Commits
 
-- The author must be a GitHub noreply address (`<id>+<name>@users.noreply.github.com`); the committer the same, or `noreply@anthropic.com` for a commit Claude signs. CI fails any other. Set git's `author.*` and `committer.*` apart, not `user.*`, so a rebase keeps both right.
-- Conventional messages: `feat:`, `fix(jira):`, `docs:`, `test:`, `ci:`, `refactor:`, `chore:`. Releases are worked out from them. Do not edit `CHANGELOG.md`.
+- The author must be a GitHub noreply address (`<id>+<name>@users.noreply.github.com`); the committer the same, or `noreply@anthropic.com` for a commit Claude signs. CI fails any other. Set git's `author.*` and `committer.*` apart, not `user.*`, so a rebase keeps both right. In an agent container that means `author.*` is the human's GitHub noreply identity and `committer.*` is Claude (`Claude <noreply@anthropic.com>`).
+- Conventional messages: `feat:`, `fix(jira):`, `docs:`, `test:`, `ci:`, `refactor:`, `chore:`; commitlint checks them in the commit-msg hook and in CI, on a pull request's title too. Releases are worked out from them. Do not edit `CHANGELOG.md`.
 
 ## Before you commit
 
 Run all of these; CI runs the same and has gone red when a branch skipped one.
 
 ```bash
-pre-commit run --all-files --hook-stage manual   # every check; zizmor needs the GitHub API
-claude plugin validate --strict .
-claude plugin test .
+npm run check            # files, lint, all type-checks, GitLab types, release tree, plugin validate, scanners that are installed
+npm test                 # claude plugin test .
 ```
 
-The pre-commit run includes the full `tsc -p tsconfig.json` and the type-aware lint over every file. `.claude/settings.json` runs the core's `tsc` and `eslint` on a core file you edit; read what it says.
+`npm run check` includes the full `tsc` over every config (the core, the engine-facing files, `tools/store-probe`, `tools/*.ts`), the type-aware lint over every file, `claude plugin validate --strict` on the plugin and on the store probe, and the release-tree check. `.claude/settings.json` runs the core's `tsc` and `eslint` on a core file you edit; read what it says.
 
 ## Tests
 

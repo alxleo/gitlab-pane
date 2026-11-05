@@ -2,9 +2,9 @@
 # check.yml tests one pinned Claude Code, and the tests answer for GitLab with made-up data, so neither can see these.
 #
 # Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an
-# empty setup as a teammate would, installs the release tree (tools/release_tree.py) and checks that only the plugin's
+# empty setup as a teammate would, installs the release tree (tools/release_tree.ts) and checks that only the plugin's
 # files arrive, checks that the release branch holds the latest released version once there is one, and checks every query the pane sends against gitlab.com's live schema
-# (tools/gitlab_schema.py), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
+# (tools/gitlab_schema.ts), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
 # the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
 # check.yml and screens.yml to match.
@@ -20,11 +20,10 @@ on:
     paths:
       - hooks/gitlab-documents.ts
       - hooks/gitlab.generated.ts
-      - tools/codegen/**
       - tools/gitlab_schema.snapshot.json
-      - tools/gitlab_queries.ts
-      - tools/gitlab_schema.py
-      - tools/gitlab_schema.py.lock
+      - tools/gitlab_schema.ts
+      - package.json
+      - package-lock.json
       - .github/workflows/canary.yml
 
 permissions: {}
@@ -46,7 +45,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: 22
       - run: npm install --global @anthropic-ai/claude-code@latest # zizmor: ignore[adhoc-packages] the newest is the point
       - run: claude --version
       - run: claude plugin validate --strict .
@@ -59,15 +58,11 @@ jobs:
           claude plugin install gitlab-ci@gitlab-pane
           claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
       # What a team that pins `plugin-v<version>` gets: the tree's own marketplace, built here, installed from its folder.
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          version: "0.13.5"
-          enable-cache: false
       - name: Install the release tree, which holds the plugin's files and nothing else
         env:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/tree-setup
         run: |
-          uv run tools/release_tree.py build "$RUNNER_TEMP/tree"
+          node tools/release_tree.ts build "$RUNNER_TEMP/tree"
           claude plugin marketplace add "$RUNNER_TEMP/tree"
           claude plugin install gitlab-ci@gitlab-pane
           claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
@@ -83,7 +78,7 @@ jobs:
       - name: The release branch holds the latest released version
         run: |
           url="https://github.com/${GITHUB_REPOSITORY}.git"
-          if ! git ls-remote --exit-code --heads "$url" release > /dev/null; then
+          if ! git ls-remote --exit-code --heads "$url" refs/heads/release > /dev/null; then
             echo "::notice::Skipped: there is no release branch yet, because no release has been published since the publish job was added."
             exit 0
           fi
@@ -108,18 +103,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Node 24 runs tools/gitlab_queries.ts as it is, types stripped, and graphql-codegen (tools/codegen).
+      # Node runs tools/gitlab_schema.ts as it is, types stripped; graphql-codegen is in package.json.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm run schema -- check
+
+  # The whole history, for secrets: check.yml's run reads what a pull request or a push brought, and a schedule reads everything.
+  history:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: "0.13.5"
-          enable-cache: false
-      - run: uv run --locked tools/gitlab_schema.py check
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   tell:
-    needs: [latest, schema]
+    needs: [latest, schema, history]
     # A cancelled run says nothing either way, so it neither opens nor closes the issue.
     if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
