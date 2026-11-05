@@ -1,4 +1,4 @@
-import type { CiStatus, MergeStatus, ReviewState } from '../types'
+import type { CheckStatus, CiStatus, ReviewState } from '../types'
 
 const CI_STATUSES: Record<CiStatus, true> = {
   created: true,
@@ -27,32 +27,13 @@ const REVIEW_STATES: Record<ReviewState, true> = {
   unknown: true,
 }
 
-const MERGE_STATUSES: Record<MergeStatus, true> = {
-  UNCHECKED: true,
-  CHECKING: true,
-  MERGEABLE: true,
-  COMMITS_STATUS: true,
-  CI_MUST_PASS: true,
-  CI_STILL_RUNNING: true,
-  DISCUSSIONS_NOT_RESOLVED: true,
-  DRAFT_STATUS: true,
-  NOT_OPEN: true,
-  NOT_APPROVED: true,
-  BLOCKED_STATUS: true,
-  EXTERNAL_STATUS_CHECKS: true,
-  PREPARING: true,
-  JIRA_ASSOCIATION: true,
-  CONFLICT: true,
-  NEED_REBASE: true,
-  APPROVALS_SYNCING: true,
-  LOCKED_PATHS: true,
-  LOCKED_LFS_FILES: true,
-  MERGE_TIME: true,
-  SECURITY_POLICIES_VIOLATIONS: true,
-  TITLE_NOT_MATCHING: true,
-  REQUESTED_CHANGES: true,
-  SECURITY_POLICY_PIPELINE_CHECK: true,
-  UNKNOWN: true,
+const CHECK_STATUSES: Record<CheckStatus, true> = {
+  success: true,
+  checking: true,
+  failed: true,
+  warning: true,
+  inactive: true,
+  unknown: true,
 }
 
 // GitLab adds enum values without notice; one the pane does not know becomes `unknown`, drawn as such, and never a known one.
@@ -65,4 +46,5 @@ export const ciStatusOf = (status: string): CiStatus => known(CI_STATUSES, statu
 /** `MergeRequestReviewState`, lower cased; none yet reads as unreviewed. */
 export const reviewStateOf = (state: string | null | undefined): ReviewState => known(REVIEW_STATES, (state ?? 'unreviewed').toLowerCase()) ?? 'unknown'
 
-export const mergeStatusOf = (status: string): MergeStatus => known(MERGE_STATUSES, status) ?? 'UNKNOWN'
+/** GitLab's `MergeabilityCheckStatus`, lower cased. */
+export const checkStatusOf = (status: string): CheckStatus => known(CHECK_STATUSES, status.toLowerCase()) ?? 'unknown'

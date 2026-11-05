@@ -49,6 +49,7 @@
     "hooks/first-run.ts",
     "hooks/face-model.ts",
     "hooks/job-lines.ts",
+    "hooks/job-tail.ts",
     "hooks/pane-model.ts",
     "hooks/row-facts.ts",
     "hooks/row-lines.ts",

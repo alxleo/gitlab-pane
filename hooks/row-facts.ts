@@ -1,7 +1,7 @@
 // What an MR card says that depends on the card alone, not on the time or on what is open: its badges, verdict, words and
 // the Markdown cut from its description and notes. It is the costly part of a row, so `buildPane` works it out for the
 // rows it draws and no others. Pure, on plain data.
-import { badges, personTone, rank, reviewTone, rowBadges, verdictOf } from './attention.ts'
+import { badges, personTone, rank, reviewTone, rowBadges, trailingOf, verdictOf } from './attention.ts'
 import type { Badge, Verdict } from './attention.ts'
 import { faceFacts, REVIEW_STATE } from './face-model.ts'
 import type { FaceFacts } from './face-model.ts'
@@ -140,7 +140,7 @@ export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>
     badges: badges(card),
     row: list,
     verdict,
-    trailing: verdict !== null ? list.filter(badge => badge.kind !== 'ready' && !verdict.covers.includes(badge.kind)) : [],
+    trailing: verdict !== null ? trailingOf(verdict, list) : [],
     lead: card.lead,
     // A shared card has no description; the whole one arrives when the card is opened.
     detail: card.description !== '' ? bodyOf(card.description, DESCRIPTION_ROOM) : null,

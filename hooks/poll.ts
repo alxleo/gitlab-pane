@@ -29,6 +29,7 @@ import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from '.
 import { isPaneDrawn, openPane } from './panes'
 import { readGitLab, readRaised, readSingle } from './read-gitlab'
 import type { HostAsk } from './read-gitlab'
+import { readFailures } from './job-failures'
 import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
@@ -57,7 +58,7 @@ const isRaised = (pin: Pinned): boolean => pin.origin !== 'watched'
  */
 async function applyCards($: EngineInterface, cards: readonly MrCard[], now: number): Promise<MrCard[]> {
   const [pinned, announced] = await Promise.all([readPins($), readAnnounced($)])
-  const reconciled = reconcile({ pinned, rows: cards, announced, now })
+  const reconciled = await reconcile({ pinned, rows: cards, announced, now, failures: (card, jobs) => readFailures($, card, jobs) })
   reconciled.toasts.forEach(text => $.ui.toast(text))
   const open = reconciled.rows
   const isShown = (key: string) => open.some(row => row.key === key)

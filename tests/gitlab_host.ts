@@ -1,7 +1,7 @@
 import { parseJson } from '../hooks/decode.ts'
 import type { On } from 'claude-code'
 
-import { sent, serve } from './gitlab_fake'
+import { sent, serve, traced } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 
 /** What `$.process.run` resolves with. */
@@ -58,7 +58,12 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
 export const STORE_BYTES = 4 * 1024 * 1024
 
 /** A GitLab host as a test sets it: what it answers, and the one token it accepts (none: it rejects every token). */
-export type FakeHost = { answers: Answers; accepts?: string }
+export type FakeHost = {
+  answers: Answers
+  accepts?: string
+  /** The log of each job the REST API serves, by `<project path>#<job number>`; any other job is not found. */
+  traces?: Record<string, string>
+}
 
 export type FakeWorld = {
   /** Environment variables the session has; `SHELL` is a stale path, so the tools must fall back to sh. */
@@ -81,6 +86,14 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
   const glabAsked: string[] = []
   const tokens: string[] = []
   on('http.fetch', (_, e) => {
+    const trace = traced(e.url, e.init)
+    if (trace !== null) {
+      requests.push(`${trace.host} trace ${trace.path}#${trace.job}`)
+      tokens.push(`${trace.host} ${trace.token ?? ''}`)
+      const log = hosts[trace.host]?.traces?.[`${trace.path}#${trace.job}`]
+      const isAccepted = trace.token !== undefined && trace.token === hosts[trace.host]?.accepts
+      return { value: { status: !isAccepted ? 401 : log === undefined ? 404 : 200, ok: isAccepted && log !== undefined, headers: {}, text: isAccepted ? (log ?? '404 Not found') : '401 Unauthorized' } }
+    }
     const request = sent(e.url, e.init)
     requests.push(`${request.host} ${request.operation}`)
     tokens.push(`${request.host} ${request.token ?? ''}`)

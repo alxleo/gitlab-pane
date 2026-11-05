@@ -1,25 +1,19 @@
 import type { EngineInterface } from 'claude-code'
 
 import { asFailure, Failure } from './failure'
-import { lostIn, readFeatures, readMergeStatus, readPinned, readResponse } from './gitlab'
-import { AUTHORED_PAGE, authoredQuery, mergeStatusQuery, pinnedQuery, probeQuery } from './gitlab-documents'
+import { lostIn, readMergeStatus, readPinned, readResponse } from './gitlab'
+import { AUTHORED_PAGE, authoredQuery, mergeStatusQuery, pinnedQuery } from './gitlab-documents'
 import type { AuthoredScope } from './gitlab-documents'
-import { ask } from './graphql'
+import { askVariant } from './graphql'
 import { cursorAfter, mergeReads, MOVING_MAX, movingRows, scopeFor } from './incremental'
-import { probed } from './in-flight'
 import { pinKey } from './mr-url'
 import { slimCard } from './slim'
 import type { Cursor } from './snapshot'
 
-import type { HostFeatures, MrCard, Pinned } from '../types'
+import type { MrCard, Pinned } from '../types'
 
 // Every question put to GitLab for the MRs. Only the leader asks the whole list; a session that draws what the leader
 // read asks nothing, and one that raised an MR but draws no pane asks for those MRs alone (`readRaised`).
-
-/** What a host's schema has of the fields older GitLab versions lack: asked the first time the host is read, then kept. */
-function featuresOf($: EngineInterface, host: string): Promise<HostFeatures> {
-  return probed(host, async () => readFeatures(await ask($, host, probeQuery())))
-}
 
 /** What the leader knows of a host before it reads it, and what it was asked for. */
 export type HostAsk = {
@@ -57,7 +51,6 @@ const asPin = (card: MrCard): Pinned => ({ url: card.url, host: card.host, path:
  */
 export async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
   const { host, base, pinned, extras, cursor, now } = input
-  const features = await featuresOf($, host)
   const moving = movingRows(base)
   // Reading a running pipeline's MR one by one costs about two thirds of a whole read, so past a few, read whole.
   const wanted = scopeFor(cursor, now, input.isFresh)
@@ -66,15 +59,13 @@ export async function readHost($: EngineInterface, input: HostAsk): Promise<Host
   // The merge verdict comes from a query of its own, read alongside; a host without it, or a failed read of it, leaves
   // every card without a verdict, and none says it can merge.
   const [authored, verdicts] = await Promise.all([
-    ask($, host, authoredQuery(features, scope)),
-    features.hasMergeVerdict
-      ? ask($, host, mergeStatusQuery())
-          .then(answer => readMergeStatus(host, answer))
-          .catch((error: unknown) => {
-            notes.push(asFailure(error, message => `merge status: ${message}`))
-            return null
-          })
-      : Promise.resolve(null),
+    askVariant($, host, features => authoredQuery(features, scope)),
+    askVariant($, host, mergeStatusQuery)
+      .then(answer => (answer !== null ? readMergeStatus(host, answer) : null))
+      .catch((error: unknown) => {
+        notes.push(asFailure(error, message => `merge status: ${message}`))
+        return null
+      }),
   ])
   const fetched = readResponse(host, authored).map(slimCard)
   const lost = lostIn(authored)
@@ -87,7 +78,7 @@ export async function readHost($: EngineInterface, input: HostAsk): Promise<Host
   const pins = pinned.filter(pin => !fetchedKeys.has(pinKey(pin)) && (scope.kind === 'open' || extras.has(pinKey(pin)) || !baseKeys.has(pinKey(pin))))
   const asked = new Set(pins.map(pinKey))
   const movingSingles = scope.kind === 'since' ? moving.filter(row => !fetchedKeys.has(row.key) && !asked.has(row.key)).map(asPin) : []
-  const singles = await Promise.all([...pins, ...movingSingles].map(async pin => readPinned(host, await ask($, host, pinnedQuery(pin, features))).map(slimCard)))
+  const singles = await Promise.all([...pins, ...movingSingles].map(async pin => readPinned(host, await askVariant($, host, features => pinnedQuery(pin, features))).map(slimCard)))
   const rows = mergeReads({ scope: scope.kind, base, fetched, singles: singles.flat(), pinned: new Set(pinned.map(pinKey)), verdicts })
   return {
     rows,
@@ -116,14 +107,12 @@ export function readGitLab($: EngineInterface, inputs: readonly HostAsk[]): Prom
 
 /** One MR read on its own, as a shared card; none when GitLab names no such MR or project (out of reach). */
 export async function readSingle($: EngineInterface, pin: Pinned): Promise<MrCard | null> {
-  const features = await featuresOf($, pin.host)
-  return readPinned(pin.host, await ask($, pin.host, pinnedQuery(pin, features))).map(slimCard)[0] ?? null
+  return readPinned(pin.host, await askVariant($, pin.host, features => pinnedQuery(pin, features))).map(slimCard)[0] ?? null
 }
 
 /** One MR read whole: its description and every thread, which the shared cards leave out. */
 export async function readWhole($: EngineInterface, pin: Pinned): Promise<MrCard | null> {
-  const features = await featuresOf($, pin.host)
-  return readPinned(pin.host, await ask($, pin.host, pinnedQuery(pin, features)))[0] ?? null
+  return readPinned(pin.host, await askVariant($, pin.host, features => pinnedQuery(pin, features)))[0] ?? null
 }
 
 /** Each of the MRs a session raised, read one by one, for a session that draws no pane. A host that fails loses only its own. */

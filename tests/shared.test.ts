@@ -149,22 +149,24 @@ test('between whole reads a host is asked only for what changed since, and a who
 
 test('a delta replaces the cards that changed, drops the merged unless pinned, keeps verdicts, and a whole read forgets what it lacks', () => {
   const card = (iid: number, over: Partial<MrCard> = {}): MrCard => ({ ...toCard(HOST, rawMr(iid)), ...over })
-  const base = [card(1, { mergeStatus: 'MERGEABLE' }), card(2, { mergeStatus: 'MERGEABLE' }), card(3), card(4, { isOpen: false })]
+  const passing = [{ id: 'CI_MUST_PASS', status: 'success' as const }]
+  const conflict = [{ id: 'CONFLICT', status: 'failed' as const }]
+  const base = [card(1, { mergeStatus: passing }), card(2, { mergeStatus: passing }), card(3), card(4, { isOpen: false })]
   const delta = mergeReads({
     scope: 'since',
     base,
     fetched: [card(2, { title: 'newer' }), card(3, { isOpen: false }), card(5)],
     singles: [],
     pinned: new Set(['gitlab.com/g/p!3']),
-    verdicts: new Map([['gitlab.com/g/p!5', 'CONFLICT']]),
+    verdicts: new Map([['gitlab.com/g/p!5', conflict]]),
   })
   const byIid = Object.fromEntries(delta.map(row => [row.iid, [row.title, row.isOpen, row.mergeStatus]]))
   // 4 closed and nobody pins it any more; 3 closed but pinned stays, so each session can unpin it; 1 and 2 keep their verdict.
   expect(byIid).toEqual({
-    1: ['fix: [ABC-1] thing 1', true, 'MERGEABLE'],
-    2: ['newer', true, 'MERGEABLE'],
+    1: ['fix: [ABC-1] thing 1', true, passing],
+    2: ['newer', true, passing],
     3: ['fix: [ABC-1] thing 3', false, null],
-    5: ['fix: [ABC-1] thing 5', true, 'CONFLICT'],
+    5: ['fix: [ABC-1] thing 5', true, conflict],
   })
   const whole = mergeReads({ scope: 'open', base, fetched: [card(2)], singles: [], pinned: new Set(), verdicts: null })
   expect(whole.map(row => row.iid)).toEqual([2])

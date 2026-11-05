@@ -25,6 +25,12 @@
       "description": "Last resort when neither GITLAB_TOKEN nor glab holds a token for a host: one host=token per entry, such as git.example.com=glpat-…; a bare token is for the first host. A token needs the read_api scope.",
       "default": []
     },
+    "failureLogs": {
+      "type": "boolean",
+      "title": "Failed job logs in wakes",
+      "description": "When an MR opened from a session fails its pipeline, the wake quotes the last lines of each failed job's log (at most 20 lines and 2000 characters), fenced as the job's output. Turn off to send only the job names and GitLab's failure message.",
+      "default": true
+    },
     "jiraUrl": {
       "type": "string",
       "title": "Jira site",

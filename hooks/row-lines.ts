@@ -95,6 +95,8 @@ export function blockerLines(card: MrCard, facts: CardFacts, badge: Badge, now: 
       return [head('Failed, allowed to fail'), ...links(pipeline?.amber ?? [])]
     case 'manual':
       return [head(`Waiting on ${pipeline?.blockedOn.join(', ') ?? 'a manual job'}`)]
+    case 'check':
+      return [head(badge.words)]
     case 'conflicts':
       return [head(`Conflicts with ${card.branch.target}`)]
     case 'rebase':
