@@ -14,7 +14,7 @@ import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, to
 import type { Found } from './inbox-gitlab'
 import { parseFollow } from './inbox-follow'
 import { isRefTo, parseRef, parseRemote } from './inbox-refs'
-import { HORIZON_MS, RULES, bounded, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
+import { HORIZON_MS, RULES, bounded, ownedSections, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
 import type { Context } from './inbox-rules'
 import { NO_SNAPSHOT, carryOver, problemOf, readSnapshot } from './inbox-snapshot'
 import { cardKey } from './hosts'
@@ -133,12 +133,14 @@ async function readHost($: EngineInterface, host: string, now: number, follows: 
 async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
   const [now, follows] = await Promise.all([$.clock.now(), read($, inboxFollowAtom)])
   const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows)) })))
+  const listed = reads.flatMap(one => one.found.mrs)
   const snapshot: InboxSnapshot = {
     at: now,
     hosts: Object.fromEntries(reads.map(one => [one.host, { user: one.found.user, failure: one.failure }])),
-    mrs: bounded(reads.flatMap(one => one.found.mrs)),
+    mrs: bounded(listed),
   }
-  await Promise.all(staleSeenKeys(await $.store.keys(), snapshot).map(key => $.store.delete(key)))
+  // A mark goes when GitLab stops listing its MR, not when the MR only falls past what the snapshot keeps: it may come back.
+  await Promise.all(staleSeenKeys(await $.store.keys(), { ...snapshot, mrs: listed }).map(key => $.store.delete(key)))
   return snapshot
 }
 
@@ -248,7 +250,7 @@ export async function discussRule($: EngineInterface, rule: string): Promise<voi
  */
 export async function markSeen($: EngineInterface, target: { key: string } | { rule: string }): Promise<void> {
   const { snapshot, seen } = await read($, inboxAtom)
-  const sections = sectionsOf(snapshot, seen, await contextOf($))
+  const sections = ownedSections(sectionsOf(snapshot, seen, await contextOf($)))
   const keys = new Set('key' in target ? [target.key] : (sections.find(section => section.rule === target.rule)?.items ?? []).map(item => item.key))
   const marks = snapshot.mrs.flatMap(mr => (keys.has(cardKey(mr.host, mr.path, mr.iid)) ? (seenKeyOf(snapshot, mr) ?? []) : []))
   const at = await $.clock.now()
@@ -311,7 +313,7 @@ async function briefOf($: EngineInterface, target: Wanted): Promise<Brief | null
 
 /** The MRs a rule shows, as what to ask GitLab for; at most the briefing carries. */
 function ruleTargets(name: string, snapshot: InboxSnapshot, seen: Readonly<Record<string, number>>, context: Context): Wanted[] {
-  const items = sectionsOf(snapshot, seen, context).find(section => section.rule === name)?.items ?? []
+  const items = ownedSections(sectionsOf(snapshot, seen, context)).find(section => section.rule === name)?.items ?? []
   return items
     .slice(0, BRIEF_MOST)
     .flatMap(item => snapshot.mrs.filter(mr => cardKey(mr.host, mr.path, mr.iid) === item.key))

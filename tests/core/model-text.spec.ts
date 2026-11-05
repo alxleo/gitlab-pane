@@ -37,6 +37,9 @@ test('the model reads who and where, never the comment itself, and a job name as
   expect(foreign('y'.repeat(200), 300)).toHaveLength(200)
   expect(foreign('a\u200Bb\u2066c')).toBe('abc')
   expect(foreign('a \u200B b')).toBe('a b')
+  // Variation selectors smuggle a byte each behind a visible letter; Hangul fillers are blank letters.
+  expect(foreign('lint\u{E0139}\u{E0137}\uFE0F')).toBe('lint')
+  expect(foreign('x\u3164\u115F y\uFFA0')).toBe('x y')
   expect([refused, said, forged]).toEqual([[true, true, true, true], [false, false, false], false])
 })
 
@@ -44,7 +47,7 @@ test('foreign text is one line without control or bidi characters, within its ro
   fc.assert(
     fc.property(textArb, fc.integer({ min: 1, max: 120 }), (text, room) => {
       const out = foreign(text, room)
-      expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+      expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}ㅤᅟᅠﾠ]/u)
       expect(out).not.toMatch(/\s\s|[^\S ]/u)
       expect([...out].length).toBeLessThanOrEqual(room)
       expect(foreign(out, room)).toBe(out)

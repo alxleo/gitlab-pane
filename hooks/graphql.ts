@@ -13,7 +13,13 @@ import type { Found } from './tokens'
 import type { HostFeatures } from '../types'
 
 /** The most of an answer the engine's `$.http.fetch` reads; it cuts the rest off, which no longer parses. */
-export const ENGINE_READS_BYTES = 4 * 1024 * 1024
+const ENGINE_READS_BYTES = 4 * 1024 * 1024
+
+/**
+ * Whether an answer may be one the engine cut: within a tenth of its limit, counted in bytes as the engine counts, since
+ * text heavy in multi-byte characters (box drawing, progress bars) is far fewer characters than bytes.
+ */
+export const mayBeCut = (text: string): boolean => new TextEncoder().encode(text).length > ENGINE_READS_BYTES * 0.9
 
 type Answer = { status: number; text: string }
 
@@ -59,7 +65,7 @@ function read<Data>(host: string, found: Found, answer: Answer): RawResponse<Dat
   try {
     raw = parseJson(answer.text)
   } catch {
-    throw answer.text.length > ENGINE_READS_BYTES * 0.9
+    throw mayBeCut(answer.text)
       ? new Failure('bad-answer', `${host} answered more than the ${ENGINE_READS_BYTES / 1024 / 1024} MiB the engine reads`)
       : answer.status >= 500
         ? new Failure('server', `${host} answered HTTP ${answer.status}`)

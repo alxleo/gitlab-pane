@@ -141,6 +141,26 @@ function noteOf(rule: Rule, snapshot: InboxSnapshot, context: Context): string |
 }
 
 /**
+ * The sections as the pane shows them: each MR once, under the first rule that has it, and whether all of a rule's MRs
+ * show above it. What a rule's "mark all seen" and `/mrs --rule` act on is this, the MRs its tab shows.
+ */
+export function ownedSections(sections: readonly InboxSection[]): (InboxSection & { isAllAbove: boolean })[] {
+  const firstRule = new Map<string, string>()
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (!firstRule.has(item.key)) {
+        firstRule.set(item.key, section.rule)
+      }
+    }
+  }
+  return sections.map(section => ({
+    ...section,
+    items: section.items.filter(item => firstRule.get(item.key) === section.rule),
+    isAllAbove: section.items.length > 0 && section.items.every(item => firstRule.get(item.key) !== section.rule),
+  }))
+}
+
+/**
  * The sections the rules make of a snapshot, given when each MR was marked seen (by seen key). Within a section an MR with
  * news comes first, the newest first; a queue keeps the MRs without news after them.
  */

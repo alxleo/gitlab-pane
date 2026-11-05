@@ -21,12 +21,9 @@ export function bareHost(text: string): string {
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : typeof value === 'string' ? [value] : [])
 
-/**
- * The hosts setting: a list, or one comma-separated string, as bare host names without repeats, in the order given. The
- * first is home. A setting with no valid host gives gitlab.com.
- */
-export function parseHosts(setting: unknown): string[] {
-  const hosts = [
+/** The hosts the setting names, as bare host names without repeats, in the order given; an entry that is not one is left out. */
+export function namedHosts(setting: unknown): string[] {
+  return [
     ...new Set(
       strings(setting)
         .flatMap(entry => entry.split(','))
@@ -34,11 +31,20 @@ export function parseHosts(setting: unknown): string[] {
         .filter(isFilled)
     ),
   ]
+}
+
+/** The hosts setting: a list, or one comma-separated string, as `namedHosts`. The first is home. A setting with no valid host gives gitlab.com. */
+export function parseHosts(setting: unknown): string[] {
+  const hosts = namedHosts(setting)
   return hosts.length > 0 ? hosts : [DEFAULT_HOST]
 }
 
-/** The tokens setting: `host=token` entries, and a bare token for the first host. Gives each host's token. */
-export function parseTokens(setting: unknown, hosts: readonly string[]): Record<string, string> {
+/**
+ * The tokens setting: `host=token` entries for the hosts read, and a bare token for `home`, the first host the hosts
+ * setting itself names. With none named (gitlab.com stands in), a bare token belongs to no host: it was meant for one
+ * the pane could not read, and is not sent to gitlab.com in its place.
+ */
+export function parseTokens(setting: unknown, hosts: readonly string[], home: string | undefined): Record<string, string> {
   const pairs = strings(setting)
     .flatMap(entry => entry.split(','))
     .map(entry => entry.trim())
@@ -46,7 +52,6 @@ export function parseTokens(setting: unknown, hosts: readonly string[]): Record<
     .flatMap((entry): [string, string][] => {
       const at = entry.indexOf('=')
       if (at < 0) {
-        const [home] = hosts
         return home === undefined ? [] : [[home, entry]]
       }
       const host = bareHost(entry.slice(0, at))

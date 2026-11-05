@@ -260,6 +260,12 @@ test('a log that tries to give the model orders is only quoted: every line of it
   expect(wake).not.toContain('\u001b')
 })
 
+test('a log near the size the engine cuts at, counted in bytes, is not quoted, as its last lines may come from its middle', async ($, on) => {
+  // 1.3 million characters, but 3.9 MB: each bar is three bytes.
+  const { woken } = await failLint($, on, `${'█'.repeat(1_300_000)}\nERROR: the real reason`)
+  expect(woken).toEqual([`!12 pipeline failed in 10m: lint (script failure) · ${pipeline}`])
+})
+
 test('turning the failure logs setting off leaves the log unread and the wake with only the reason', { options: { failureLogs: false } }, async ($, on) => {
   const { woken, gitlab } = await failLint($, on, 'secret: hunter2')
   expect(woken).toEqual([`!12 pipeline failed in 10m: lint (script failure) · ${pipeline}`])

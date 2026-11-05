@@ -14,13 +14,20 @@ export const NAME_ROOM = 80
 export const URL_ROOM = 300
 
 /**
- * A foreign value as one line: control and format characters (bidi overrides, zero-width marks) gone, every run of
- * whitespace and line breaks one space, cut at `room` characters.
+ * Characters that draw nothing but are not format characters, so `\p{Cf}` keeps them: variation selectors (marks, which
+ * can carry a byte each after a visible letter) and the Hangul fillers (letters).
+ */
+const INVISIBLE = /[\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}\u{115F}\u{1160}\u{3164}\u{FFA0}]/gu
+
+/**
+ * A foreign value as one line: control, format and invisible characters (bidi overrides, zero-width marks, variation
+ * selectors) gone, every run of whitespace and line breaks one space, cut at `room` characters.
  */
 export function foreign(text: string, room = NAME_ROOM): ModelLine {
   // Format characters go first: removed after the whitespace is joined, one between two spaces would leave a double space.
   const flat = text
     .replace(/\p{Cf}/gu, '')
+    .replace(INVISIBLE, '')
     .replace(/[\p{Cc}\p{Z}\s]+/gu, ' ')
     .trim()
   const chars = [...flat]

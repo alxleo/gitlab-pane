@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { ask, ENGINE_READS_BYTES } from './graphql'
+import { ask, mayBeCut } from './graphql'
 import { failuresQuery } from './gitlab-documents'
 import { jobIdOf, tailOf } from './job-tail'
 import { foreign } from './model-text'
@@ -52,7 +52,7 @@ async function tailFor($: EngineInterface, card: MrCard, id: number): Promise<Jo
     const answer = await $.http.fetch(`https://${card.host}/api/v4/projects/${encodeURIComponent(card.path)}/jobs/${id}/trace`, {
       headers: { Authorization: `Bearer ${found.value.token}`, Accept: 'text/plain', Range: `bytes=-${TAIL_BYTES}` },
     })
-    return (answer.status === 200 || answer.status === 206) && answer.text.length < ENGINE_READS_BYTES * 0.9 ? tailOf(answer.text) : []
+    return (answer.status === 200 || answer.status === 206) && !mayBeCut(answer.text) ? tailOf(answer.text) : []
   } catch {
     return []
   }

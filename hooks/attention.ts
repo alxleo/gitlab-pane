@@ -31,10 +31,11 @@ export const byAttention = (a: MrCard, b: MrCard): number => firstDifference(ran
 
 /**
  * An MR card's border colour, its review: red while someone asked for changes or it cannot merge as it is (conflicts,
- * a failed pipeline), green once approved, grey while it waits on a review. Whether it needs you is the line's weight.
+ * a failed pipeline, or a job that failed in one still running), green once approved, grey while it waits on a review.
+ * Whether it needs you is the line's weight.
  */
 export function reviewTone(card: MrCard): Tone {
-  if (card.changesRequestedBy.length > 0 || card.hasConflicts || card.pipeline?.status === 'failed') {
+  if (card.changesRequestedBy.length > 0 || card.hasConflicts || card.pipeline?.status === 'failed' || (card.pipeline !== undefined && failedCount(card.pipeline) > 0)) {
     return 'error'
   }
   // With no approvals required, approved means someone did approve.
