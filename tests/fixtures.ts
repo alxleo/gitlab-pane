@@ -1,5 +1,5 @@
-import type { CiJobStatus, DetailedMergeStatus, MergeRequestReviewState, PipelineStatusEnum } from '../hooks/gitlab.generated'
-import type { RawJob, RawMr, RawNote, RawPipeline, RawStage } from '../hooks/gitlab'
+import type { CiJobStatus, DetailedMergeStatus, MergeRequestReviewState, PipelineStatusEnum } from '../hooks/gitlab.generated.ts'
+import type { RawJob, RawMr, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
 
 export const NOW = Date.parse('2026-10-23T15:10:00Z')
 

@@ -34,7 +34,7 @@ export function line<V extends readonly (number | string)[]>(
   parts: TemplateStringsArray,
   ...values: V & { [K in keyof V]: string extends V[K] ? never : V[K] }
 ): ModelLine {
-  return brand(parts.reduce((out, text, i) => out + text + String(values[i] ?? ''), ''))
+  return brand(parts.reduce((out, text, i) => out + text + (i < values.length ? String(values[i]) : ''), ''))
 }
 
 /** No words. */

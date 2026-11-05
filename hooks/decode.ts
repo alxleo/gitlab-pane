@@ -1,12 +1,31 @@
 // Small hand-written decoders for what the outside tools print: each takes `unknown` and gives a typed value or throws
 // with a message the pane can show. No library, since a mod's npm packages cannot be relied on at runtime.
-import type { RawResponse } from './gitlab'
+import type { RawResponse } from './gitlab.ts'
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** JSON text as `unknown`: `JSON.parse` answers `any`, which would pass for any type it is put into. */
+export const parseJson = (json: string): unknown => JSON.parse(json)
+
+/** Not null or undefined, for an optional value tested without a loose truthiness check (`0` and `''` are values). */
+export const isSome = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined
+
+/** A string with something in it; null, undefined and the empty string are none. */
+export const isFilled = (value: string | null | undefined): value is string => value !== null && value !== undefined && value !== ''
+
 /** A string, or empty for anything else. */
 export const text = (value: unknown): string => (typeof value === 'string' ? value : '')
+
+/** A string, or null for anything else and for the empty string. */
+export const textOrNull = (value: unknown): string | null => {
+  const found = text(value)
+  return found === '' ? null : found
+}
+
+/** The string values of an object, by key; anything else gives none. */
+export const stringRecord = (value: unknown): Record<string, string> =>
+  isRecord(value) ? Object.fromEntries(Object.entries(value).filter((pair): pair is [string, string] => typeof pair[1] === 'string')) : {}
 
 /** The objects in a list; anything else in it, or a non-list, gives none. */
 export const records = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value.filter(isRecord) : [])

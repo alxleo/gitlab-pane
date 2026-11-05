@@ -6,11 +6,11 @@ export type Asked = { operation: string; variables: Record<string, string> }
 /** What a command line asks of GitLab, or undefined for any other command. */
 export function asked(argv: readonly string[]): Asked | undefined {
   const query = argv.find(arg => arg.startsWith('query='))
-  if (!argv.includes('glab') || !query) {
+  if (!argv.includes('glab') || query === undefined) {
     return undefined
   }
   const operation = /^\s*query\s+(\w+)/m.exec(query)?.[1]
-  if (!operation) {
+  if (operation === undefined) {
     throw new Error(`a GraphQL document with no operation name: ${query.slice(0, 80)}`)
   }
   const variables: Record<string, string> = {}
@@ -37,7 +37,7 @@ const need = (variables: Record<string, string>, name: string): string => {
 }
 
 const set = <Handler>(handler: Handler | undefined, operation: string): Handler => {
-  if (!handler) {
+  if (handler === undefined) {
     throw new Error(`the test set no answer for the ${operation} operation`)
   }
   return handler
@@ -46,7 +46,7 @@ const set = <Handler>(handler: Handler | undefined, operation: string): Handler 
 /** The JSON text GitLab would print for the command line, or undefined when it is not a GraphQL one. */
 export function answered(argv: readonly string[], answers: Answers): string | undefined {
   const request = asked(argv)
-  if (!request) {
+  if (request === undefined) {
     return undefined
   }
   const { operation, variables } = request
