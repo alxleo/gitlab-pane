@@ -38,6 +38,8 @@ To run the checks by hand:
 pre-commit run --all-files --hook-stage manual
 ```
 
+When Claude Code edits a core file in this repository, `.claude/settings.json` runs `tools/check_core.sh`, which runs the core's tsc and eslint from the environments pre-commit installed (run `pre-commit run --all-files` once to create them) and shows the model what they find.
+
 That leaves out `claude plugin test .`, which CI runs as its own step, so run it too.
 
 Everything else (the panes, `poll.ts`, the tests) imports `claude-code`, so it is type-checked only against the engine's types, which are not generated here but committed in `types/engine/`, a snapshot of what Claude Code writes into `.claude-plugin/types/` when a signed-in session has loaded the mod from your clone:
