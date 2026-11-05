@@ -1,4 +1,4 @@
-import { initials } from './identity'
+import { initials } from './identity.ts'
 
 import type { CiStatus, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
