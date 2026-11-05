@@ -1,0 +1,11 @@
+{
+  "name": "pane-codegen",
+  "private": true,
+  "description": "Dev-time only: turns the pane's GraphQL documents and GitLab's schema into hooks/gitlab.generated.ts. The mod itself has no npm dependencies.",
+  "devDependencies": {
+    "@graphql-codegen/cli": "7.4.6",
+    "@graphql-codegen/typescript": "6.1.2",
+    "@graphql-codegen/typescript-operations": "6.2.0",
+    "graphql": "17.1.0"
+  }
+}

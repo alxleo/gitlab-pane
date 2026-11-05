@@ -3,6 +3,7 @@ import type { On } from 'claude-code'
 
 import { shortHash as hashOf } from '../hooks/identity'
 import { AVATAR_BASE64, NOW, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
+import { answered } from './gitlab_fake'
 
 const PANE = {
   plugin: 'gitlab-ci',
@@ -305,12 +306,12 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
     if (e.argv.includes('avatar')) {
       return ran(AVATAR_BASE64)
     }
-    const query = e.argv.find(arg => arg.startsWith('query=')) ?? ''
-    if (query.includes('pipelines(source:')) {
-      const aliases = [...query.matchAll(/(h\d+): project/g)].map(match => match[1] ?? '')
-      return ran(JSON.stringify({ data: Object.fromEntries(aliases.map(alias => [alias, { pipelines: { nodes: [{ duration: 600 }] } }])) }))
-    }
-    return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }))
+    const text = answered(e.argv, {
+      Usual: () => ({ data: { project: { pipelines: { nodes: [{ duration: 600 }] } } } }),
+      Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+      MergeStatus: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+    })
+    return ran(text ?? '', text === undefined ? 1 : 0, text === undefined ? `nothing answers ${e.argv.join(' ')}` : '')
   })
   on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))

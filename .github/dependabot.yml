@@ -27,3 +27,17 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+
+  # The dev-time generator of hooks/gitlab.generated.ts (tools/codegen); the mod itself has no npm packages.
+  - package-ecosystem: npm
+    directory: /tools/codegen
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      codegen:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope

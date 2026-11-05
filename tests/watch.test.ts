@@ -3,9 +3,10 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import type { Mr } from './fixtures'
+import { answered } from './gitlab_fake'
 
 import { STAGE_COLOURS } from '../hooks/ci'
-import type { RawMr } from '../hooks/gitlab'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
 
@@ -41,11 +42,12 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
-type Fake = { mrs: RawMr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
+type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
 
 function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)
   const woken: string[] = []
+  /** The operations asked for, but for the run times. */
   const reads: string[] = []
   const avatars: string[] = []
   const jiraReads: string[] = []
@@ -65,29 +67,31 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
     if (e.argv.includes('mr-inbox')) {
       return ran(JSON.stringify({ sync: { ok: true, finished_at: null }, sections: [] }))
     }
-    const query = e.argv.find(arg => arg.startsWith('query=')) ?? ''
     if (fake.isDown) {
       return ran('', 1, 'glab: connection refused')
     }
-    if (query.includes('pipelines(source:')) {
-      const aliases = [...query.matchAll(/(h\d+): project/g)].map(match => match[1] ?? '')
-      const nodes = [600, 660, 720, 780, 840, 900].map(duration => ({ duration }))
-      return ran(JSON.stringify({ data: Object.fromEntries(aliases.map(alias => [alias, { pipelines: { nodes } }])) }))
-    }
-    reads.push(query)
-    if (query.includes('authoredMergeRequests')) {
-      const open = fake.mrs.filter(mr => mr.state === 'opened')
-      // GitLab times parts of a heavy query out: those MRs come back null beside an error each.
-      const lost = fake.lost ?? []
-      const nodes = open.map(mr => (lost.includes(mr.iid) ? null : mr))
-      const errors = lost.map(() => ({ message: 'Timeout on validation of query' }))
-      return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes } } }, ...(errors.length > 0 ? { errors } : {}) }))
-    }
-    const iids = [...query.matchAll(/mergeRequest\(iid: "(\d+)"\)/g)].map(match => match[1])
-    const data = Object.fromEntries(
-      iids.map((iid, i) => [`p${i}`, { mergeRequest: fake.mrs.find(mr => mr.iid === iid) ?? null }])
-    )
-    return ran(JSON.stringify({ data }))
+    const text = answered(e.argv, {
+      Usual: () => ({ data: { project: { pipelines: { nodes: [600, 660, 720, 780, 840, 900].map(duration => ({ duration })) } } } }),
+      MergeStatus: () => {
+        reads.push('MergeStatus')
+        const nodes = fake.mrs.filter(mr => mr.state === 'opened').map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus ?? null }))
+        return { data: { currentUser: { authoredMergeRequests: { nodes } } } }
+      },
+      Authored: () => {
+        reads.push('Authored')
+        const open = fake.mrs.filter(mr => mr.state === 'opened')
+        // GitLab times parts of a heavy query out: those MRs come back null beside an error each.
+        const lost = fake.lost ?? []
+        const nodes = open.map(mr => (lost.includes(mr.iid) ? null : mr))
+        const errors = lost.map(() => ({ message: 'Timeout on validation of query' }))
+        return { data: { currentUser: { authoredMergeRequests: { nodes } } }, ...(errors.length > 0 ? { errors } : {}) }
+      },
+      Pinned: ({ path, iid }) => {
+        reads.push(`Pinned ${path}!${iid}`)
+        return { data: { project: { mergeRequest: fake.mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } } }
+      },
+    })
+    return ran(text ?? '', text === undefined ? 1 : 0, text === undefined ? `nothing answers ${e.argv.join(' ')}` : '')
   })
   on('prompt.submit', (_, e) => {
     woken.push(e.text)
@@ -141,7 +145,7 @@ test('only an MR this session raised wakes it, once, in one short line with no c
   await clock.advance(180_000)
   expect(woken).toHaveLength(1)
   // A pinned MR in the authored list costs no query of its own.
-  expect(reads.every(query => query.includes('authoredMergeRequests'))).toBe(true)
+  expect(reads.filter(read => read.startsWith('Pinned'))).toEqual([])
 })
 
 test('an MR watched with watch_mr is pinned and answered, but never wakes the session', async ($, on) => {
@@ -512,9 +516,9 @@ test('a pinned MR that merged is read on its own, then unpinned', async ($, on) 
   fake.mrs = [rawMr(12, { state: 'merged' }), rawMr(13)]
   await clock.advance(60_000)
 
-  expect(reads.at(-1)).toContain('p0: project(fullPath: "g/p") { mergeRequest(iid: "12")')
+  expect(reads.at(-1)).toBe('Pinned g/p!12')
   await clock.advance(180_000)
-  expect(reads.at(-1)).toContain('authoredMergeRequests')
+  expect(reads.at(-1)).not.toMatch(/^Pinned/)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: 'This session' })).toBeUndefined()
   await ui.unmount()
