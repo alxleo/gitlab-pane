@@ -27,7 +27,7 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 - `types/index.d.ts` must stay one self-contained file for `claude plugin validate --strict`. Domain types cannot move out of it, and every atom key is declared there.
 - Wakes and `watch_mr` answers never carry other people's words (comments, descriptions, titles): only who, what and where. Text from GitLab reaches the model only through `foreign` in `model-text.ts`.
 - GitLab's types: documents are static strings in `gitlab.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `uv run tools/gitlab_schema.py types` (never edit it; a stale one fails the `gitlab-types` hook). `uv run tools/gitlab_schema.py snapshot` refreshes the snapshot from gitlab.com.
-- `types/engine/` is a copy of what Claude Code wrote; `tools/snapshot_types.sh` refreshes it. The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.py`: change all three and the snapshot together.
+- The engine's declarations are not committed: `node tools/engine_types.ts` has the `claude` on PATH unpack them from its bundled plugin-authoring skill (no sign-in, no network) into the git-ignored `.claude-plugin/types/`, where the full `tsc -p tsconfig.json` and the type-aware lint over every file read them. `tsconfig.core.json` still has no engine types, which keeps the core from importing the engine. The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.py`: change all three together, and the declarations follow.
 
 ## Commits
 
@@ -44,7 +44,7 @@ claude plugin validate --strict .
 claude plugin test .
 ```
 
-`.claude/settings.json` runs the core's `tsc` and `eslint` on a core file you edit; read what it says.
+The pre-commit run includes the full `tsc -p tsconfig.json` and the type-aware lint over every file. `.claude/settings.json` runs the core's `tsc` and `eslint` on a core file you edit; read what it says.
 
 ## Tests
 

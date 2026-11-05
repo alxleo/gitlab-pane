@@ -41,7 +41,7 @@ jobs:
     permissions:
       contents: read
     env:
-      CLAUDE_CODE_VERSION: "2.1.308"
+      CLAUDE_CODE_VERSION: "2.1.318"
       PRE_COMMIT_VERSION: "4.7.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

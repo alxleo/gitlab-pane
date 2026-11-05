@@ -1,9 +1,10 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, FoundElement } from 'claude-code/testing'
 
-import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { AVATAR_BASE64, NOW, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
+import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
 import { answered } from './gitlab_fake'
 
 import { STAGE_COLOURS } from '../hooks/status'
@@ -33,6 +34,9 @@ const elementsOf = (node: unknown): Drawn[] => (isDrawn(node) ? [node, ...(node.
 
 const boxesOf = (node: unknown): Drawn[] => elementsOf(node).filter(element => element.type === 'Box')
 
+/** Whether an element's `key` starts with `prefix`. */
+const keyed = (prefix: string) => (element: FoundElement) => element.key?.startsWith(prefix) === true
+
 const ran = (stdout: string, exitCode = 0, stderr = '') => ({
   value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
 })
@@ -50,7 +54,7 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   on('process.run', (_, e) => {
     if (e.argv.includes('acli')) {
       jiraReads.push(e.argv.at(-1) ?? '')
-      if (fake.isJiraMissing) {
+      if (fake.isJiraMissing === true) {
         return ran('', 127, 'zsh: command not found: acli')
       }
       return ran(JSON.stringify([{ key: 'ABC-1', fields: { issuetype: { name: 'Task' }, status: { name: 'In Progress' }, summary: 'Make the thing work' } }]))
@@ -70,8 +74,7 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
       Usual: () => ({ data: { project: { pipelines: { nodes: [600, 660, 720, 780, 840, 900].map(duration => ({ duration })) } } } }),
       MergeStatus: () => {
         reads.push('MergeStatus')
-        const nodes = fake.mrs.filter(mr => mr.state === 'opened').map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus ?? null }))
-        return { data: { currentUser: { authoredMergeRequests: { nodes } } } }
+        return mergeStatuses(fake.mrs.filter(mr => mr.state === 'opened'))
       },
       Authored: () => {
         reads.push('Authored')
@@ -250,7 +253,10 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
   const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined && /thing \d+/.test(JSON.stringify(box)))
   const byTitle = Object.fromEntries(
-    cards.map(card => [/thing (\d+)/.exec(JSON.stringify(card))?.[1], [card.props?.borderStyle, card.props?.borderColor]])
+    cards.flatMap(card => {
+      const title = /thing (\d+)/.exec(JSON.stringify(card))?.[1]
+      return title === undefined ? [] : [[title, [card.props?.borderStyle, card.props?.borderColor]]]
+    })
   )
   expect(byTitle).toEqual({
     '12': ['bold', STAGE_COLOURS.error],
@@ -262,7 +268,7 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   const said = async (words: string) => (await ui.findAll({ type: 'Text', text: words })).length
   expect(await said('✓ mergeable')).toBe(1)
   // A bot's open thread is counted on its face, so nothing trails the verdict for it.
-  expect((await ui.findAll({ type: 'Text' })).filter(text => /bot threads? open|bots hold/i.test(text.text ?? ''))).toEqual([])
+  expect((await ui.findAll({ type: 'Text' })).filter(text => /bot threads? open|bots hold/i.test(text.text))).toEqual([])
   expect(await said('CI running')).toBe(1)
   // GitLab says one is no longer open, so it leaves Mine before the next full read.
   expect(JSON.stringify(await ui.drawn())).not.toContain('thing 16')
@@ -325,7 +331,7 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const faceOf = async (name: string) =>
-    String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt?.toString().startsWith(name))?.props?.source)
+    String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt?.toString().startsWith(name) === true)?.props?.source)
   expect(await faceOf('Ines')).toContain(`stroke='${STAGE_COLOURS.success}' stroke-width='3'`)
   expect(await faceOf('Ines')).toContain(`fill='${STAGE_COLOURS.success}'`)
   expect(await faceOf('Tessa')).toContain(`stroke='${STAGE_COLOURS.error}' stroke-width='3'`)
@@ -367,11 +373,11 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
   // The pane's own title never scrolls away, so it names the view.
   expect(titles.at(-1)).toBe('GitLab · Mine')
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const open = (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? ''
+  const open = (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? ''
   await ui.press({ key: open })
 
   // The open card's short detail leads to the whole of it, on a page of its own in this pane.
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
   expect(new Set(opened)).toEqual(new Set(['gitlab-ci']))
   expect(titles.at(-1)).toBe('GitLab · !12')
   expect(await ui.find({ type: 'Button', key: 'tab-mine' })).toBeUndefined()
@@ -390,7 +396,7 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
   expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('The timings, in full.')
   expect(text).toContain('The end of the thread.')
   expect(text).toContain('Kept it; the comment above says why.')
-  const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name ?? ''))
+  const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name))
   expect(jobs.length).toBe(9)
   // The page is drawn alone: no MR list under it.
   expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeUndefined()
@@ -412,15 +418,15 @@ test('an MR too long for its page shows what fits of the description, then links
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? '' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
 
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
   expect(text).toContain('The opening line.')
   expect(text).not.toContain('The end.')
   expect(text).toContain('Still whole.')
-  expect((await ui.findAll({ type: 'Link' })).some(link => (link.text ?? '').includes('The rest of the description is on GitLab'))).toBe(true)
+  expect((await ui.findAll({ type: 'Link' })).some(link => link.text.includes('The rest of the description is on GitLab'))).toBe(true)
   await ui.unmount()
 })
 
@@ -440,7 +446,7 @@ test('/gitlab opens the pane and answers in one line, never the MR list', async 
 test('a stage strip draws its passed stages as one run, counted in its title; other stages keep their own', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const names = ['install', 'precheck', 'gate', 'validate', 'build', 'deploy', 'cleanup', 'e2e', 'external']
-  const statuses = ['SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SKIPPED', 'RUNNING', 'SUCCESS']
+  const statuses: CiJobStatus[] = ['SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SKIPPED', 'RUNNING', 'SUCCESS']
   const headPipeline = pipe('RUNNING', { stages: { nodes: names.map((name, s) => stage(name, statuses[s] ?? 'SUCCESS', [job(`${name}-job`, statuses[s] ?? 'SUCCESS')])) } })
   engine(on, { mrs: [rawMr(12, { headPipeline })], isDown: false })
 
@@ -558,11 +564,11 @@ test('an MR a partly failed read leaves out keeps its last card, still open, and
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-13-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.key ?? '' })
 
   fake.lost = ['13']
   await clock.advance(180_000)
-  expect((await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-13-'))?.props.label).toBe('▾ thing 13')
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.props.label).toBe('▾ thing 13')
   expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toBe('updated just now; 1 MR kept from the last read')
 
   fake.lost = []
@@ -571,7 +577,7 @@ test('an MR a partly failed read leaves out keeps its last card, still open, and
   // A complete read still drops what has closed.
   fake.mrs = [rawMr(12)]
   await clock.advance(180_000)
-  expect((await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-13-'))).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))).toBeUndefined()
   await ui.unmount()
 })
 
@@ -582,8 +588,8 @@ test('an MR that merges while read whole leaves its page, and the title follows'
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-12-'))?.key ?? '' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('read-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
   expect(titles.at(-1)).toBe('GitLab · !12')
 
   fake.mrs = [rawMr(13)]
@@ -623,7 +629,7 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
 /** Fifty MRs with nine-stage pipelines and six long open threads each: more than one drawing holds. */
 const fiftyBusy = (): Fake => {
   const long = (name: string) => `${name}-${'x'.repeat(30)}`
-  const busy = (status: string) =>
+  const busy = (status: 'RUNNING' | 'FAILED') =>
     pipe(status, {
       stages: {
         nodes: Array.from({ length: 9 }, (_, s) =>
@@ -637,7 +643,7 @@ const fiftyBusy = (): Fake => {
         project: project(`acme-corp/platform/some-group/another-group/${i % 3 === 0 ? 'repo-one' : 'repo-two'}`),
         headPipeline: busy(i % 2 === 0 ? 'RUNNING' : 'FAILED'),
         reviewers: { nodes: [reviewer('first.reviewer', 'REQUESTED_CHANGES'), reviewer('second.reviewer', 'APPROVED')] },
-        discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 ? 'first.reviewer' : 'second.reviewer')) },
+        discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 === 1 ? 'first.reviewer' : 'second.reviewer')) },
       })
     ),
     isDown: false,
@@ -653,14 +659,14 @@ test('cards you opened keep their detail when the unfolded list fills the drawin
   // The lowest rows drawn, opened one at a time, since an open row's detail can push the last row out. Five, as a few
   // cards open at once is how you read them.
   for (let i = 0; i < 5; i++) {
-    const closed = (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('open-') && String(button.props.label).startsWith('▸'))
+    const closed = (await ui.findAll({ type: 'Button' })).filter(button => keyed('open-')(button) && String(button.props.label).startsWith('▸'))
     await ui.press({ key: closed.at(-1)?.key ?? '' })
   }
   await ui.press({ key: 'more' })
 
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   expect(await ui.find({ type: 'Text', text: /^Too much is open/ })).toBeUndefined()
-  expect((await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('less-')).length).toBe(5)
+  expect((await ui.findAll({ type: 'Button' })).filter(keyed('less-')).length).toBe(5)
   // Each thread is cut short in the card; its 💬 link opens it whole.
   const longest = Math.max(...(await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text).length))
   expect(longest).toBeLessThanOrEqual(500)
@@ -687,12 +693,13 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
 
 test('thirty MRs in two repos, with hover cards and a repo filter, draw on terminal, desktop and vscode', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
+  const pipelines: PipelineStatusEnum[] = ['SUCCESS', 'FAILED', 'RUNNING', 'MANUAL']
   const fake: Fake = {
     mrs: Array.from({ length: 30 }, (_, i) =>
       rawMr(100 + i, {
         draft: i % 7 === 0,
         project: project(i % 5 === 0 ? 'g/q' : 'g/p'),
-        headPipeline: pipe(['SUCCESS', 'FAILED', 'RUNNING', 'MANUAL'][i % 4] ?? 'SUCCESS'),
+        headPipeline: pipe(pipelines[i % 4] ?? 'SUCCESS'),
         reviewers: { nodes: i === 3 ? [reviewer('tim', 'REQUESTED_CHANGES')] : [] },
         discussions: {
           nodes:

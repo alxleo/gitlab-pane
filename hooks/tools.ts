@@ -42,13 +42,16 @@ async function once($: EngineInterface, tool: string, args: readonly string[], t
 
 async function ran($: EngineInterface, tool: string, args: readonly string[], options: ToolOptions): Promise<Ran> {
   const first = await once($, tool, args, options.timeoutMs)
-  return first.exitCode !== 0 && first.exitCode !== 127 && options.retryIf?.(first.stderr)
+  return first.exitCode !== 0 && first.exitCode !== 127 && options.retryIf?.(first.stderr) === true
     ? once($, tool, args, options.timeoutMs)
     : first
 }
 
+/** `text`, or `fallback` where it is empty. */
+const orElse = (text: string, fallback: string): string => (text !== '' ? text : fallback)
+
 const failure = (tool: string, run: Ran): string =>
-  run.exitCode === 127 ? `${tool} is not installed` : lastLine(run.stderr) || `${tool} exited ${run.exitCode}`
+  run.exitCode === 127 ? `${tool} is not installed` : orElse(lastLine(run.stderr), `${tool} exited ${run.exitCode}`)
 
 /** Runs a tool and gives its standard output; a non-zero exit is the reason. */
 export async function runText(
@@ -73,14 +76,14 @@ export async function runJson<T>(
   if (run.exitCode === 127) {
     return { ok: false, reason: failure(tool, run) }
   }
-  if (run.exitCode !== 0 && !options.isPartialOk) {
+  if (run.exitCode !== 0 && options.isPartialOk !== true) {
     return { ok: false, reason: failure(tool, run) }
   }
   let raw: unknown
   try {
     raw = parseJson(run.stdout)
   } catch {
-    return { ok: false, reason: run.exitCode === 0 ? lastLine(run.stderr) || `${tool} printed no JSON` : failure(tool, run) }
+    return { ok: false, reason: run.exitCode === 0 ? orElse(lastLine(run.stderr), `${tool} printed no JSON`) : failure(tool, run) }
   }
   try {
     return { ok: true, value: decode(raw) }
