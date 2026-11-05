@@ -1,16 +1,16 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
 
-import { parseJson } from '../hooks/decode'
-import type { TodoActionEnum } from '../hooks/gitlab.generated'
-import { briefing, readBrief } from '../hooks/inbox-brief'
-import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from '../hooks/inbox-gitlab'
-import { parseFollow } from '../hooks/inbox-follow'
-import { isRefTo, parseRef, parseRemote } from '../hooks/inbox-refs'
-import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, MAX_MRS, MAX_SIGNALS, RULES, bounded, ruleNamed, sectionsOf, seenKey, seenKeyOf, staleSeenKeys } from '../hooks/inbox-rules'
-import { carryOver, problemOf, readSnapshot } from '../hooks/inbox-snapshot'
-import { NOW } from './fixtures'
+import { parseJson } from '../../hooks/decode.ts'
+import type { TodoActionEnum } from '../../hooks/gitlab.generated.ts'
+import { briefing, readBrief } from '../../hooks/inbox-brief.ts'
+import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from '../../hooks/inbox-gitlab.ts'
+import { parseFollow } from '../../hooks/inbox-follow.ts'
+import { isRefTo, parseRef, parseRemote } from '../../hooks/inbox-refs.ts'
+import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, MAX_MRS, MAX_SIGNALS, RULES, bounded, ruleNamed, sectionsOf, seenKey, seenKeyOf, staleSeenKeys } from '../../hooks/inbox-rules.ts'
+import { carryOver, problemOf, readSnapshot } from '../../hooks/inbox-snapshot.ts'
+import { NOW } from '../fixtures.ts'
 
-import type { InboxKind, InboxMr, InboxSignal, InboxSnapshot } from '../types'
+import type { InboxKind, InboxMr, InboxSignal, InboxSnapshot } from '../../types'
 
 const AGO = (minutes: number) => NOW - minutes * 60_000
 const ISO = (minutes: number) => new Date(AGO(minutes)).toISOString()

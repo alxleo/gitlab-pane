@@ -84,12 +84,6 @@ export type Note = {
   replies?: Note[]
 }
 
-export type Reviewer = {
-  username: string
-  isBot: boolean
-  state: ReviewState
-}
-
 /** Someone other than the author, a bot included, who reviewed or commented. */
 export type Person = {
   username: string
@@ -144,7 +138,7 @@ export type MrCard = {
   /** GitLab's own merge checks, under the project's merge rules; null while they were not read. */
   mergeStatus: MergeStatus | null
   approvers: string[]
-  reviewers: Reviewer[]
+  reviewers: { username: string; isBot: boolean; state: ReviewState }[]
   people: Person[]
   pipeline?: {
     id: number

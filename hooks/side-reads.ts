@@ -100,7 +100,7 @@ export function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now:
 const AVATAR_PX = 20
 /** Base64 past this is no thumbnail: GitLab sent the full picture. */
 const AVATAR_MOST = 6_000
-export const AVATAR_STORE = 'avatars'
+const AVATAR_STORE = 'avatars'
 
 /**
  * Each person's avatar, fetched once and kept across sessions by the URL GitLab gave, so a new picture is a new URL. The

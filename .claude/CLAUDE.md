@@ -4,6 +4,7 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 
 ## No debt from day one
 
+- Dead code is an error: `npm run knip` fails on an unused file, export, type or dependency, and the fix is to delete it. A path knip cannot see is configured in `knip.jsonc` with its reason, never ignored per export.
 - Whoever adds a rule fixes every violation of it, in the same change. There are no allowlists, no ratchets, no "to be split" lists, and no disable comments: `eslint-disable` is itself an error, and so is `@ts-ignore`. A rule that is wrong changes in `eslint.config.cjs`, with its reason beside it.
 - Do not hide a violation in another form (a cast in a helper, state in a const object). If the rule seems to be in the way, the code is.
 - Change existing tests before adding new ones: a behaviour that changes edits the test that names it. A bug fix starts with a test that fails for it.
@@ -46,15 +47,15 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 Run all of these; CI runs the same and has gone red when a branch skipped one.
 
 ```bash
-npm run check            # files, lint, all type-checks, GitLab types, release tree, plugin validate, scanners that are installed
-npm test                 # claude plugin test .
+npm run check            # files, knip (no dead code), lint, all type-checks, GitLab types, release tree, plugin validate, scanners that are installed
+npm test                 # vitest run (the core), claude plugin test . (the engine), then the scenes
 ```
 
 `npm run check` includes the full `tsc` over every config (the core, the engine-facing files, `tools/store-probe`, `tools/*.ts`), the type-aware lint over every file, `claude plugin validate --strict` on the plugin and on the store probe, and the release-tree check. `.claude/settings.json` runs the core's `tsc` and `eslint` on a core file you edit; read what it says.
 
 ## Tests
 
-- They live in `tests/*.test.ts` and import from `claude-code/testing`; shared data is in `tests/fixtures.ts`.
+- Pure logic is tested in `tests/core/*.spec.ts` under Vitest and fast-check, on plain Node; `tests/*.test.ts` (imports from `claude-code/testing`, run by `claude plugin test`) is only for wiring, drawing, wakes end to end, the budgets and the scenes. Shared data is in `tests/fixtures.ts`.
 - A test name is a sentence that says what happens: `a pipeline that failed twice shows its latest failure`.
-- Test pure logic on plain data, with no engine: see `tests/reconcile.test.ts`. A few engine-level tests (`tests/watch.test.ts`) stay as smoke tests that the whole pane draws and wakes.
+- `tests/core/reconcile.spec.ts` is the model of a pure test; `tests/watch.test.ts` is the engine smoke test that the whole pane draws and wakes. Property tests use a fixed seed (`tests/core/setup.ts`; fast-check prints the seed and path of a counterexample).
 - Fix the code, not the test, when they disagree. Do not weaken an assertion to go green.

@@ -7,7 +7,7 @@ import { runText } from './tools'
 import type { Outcome } from './tools'
 
 /** Where a token came from, for saying which one a host refused; the token itself is never said. */
-export type Source = 'the environment' | 'glab' | 'the plugin settings'
+type Source = 'the environment' | 'glab' | 'the plugin settings'
 
 export type Found = { token: string; source: Source }
 
