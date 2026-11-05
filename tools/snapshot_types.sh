@@ -9,7 +9,7 @@ from=.claude-plugin/types
 to=types/engine
 
 if [ ! -f "$from/tsconfig.json" ]; then
-  echo "$from/tsconfig.json is missing: open this clone as a local marketplace in a signed-in Claude Code session first (see CONTRIBUTING.md)." >&2
+  echo "$from/tsconfig.json is missing: start a signed-in Claude Code session with claude --plugin-dir . from this clone first (see CONTRIBUTING.md)." >&2
   exit 1
 fi
 

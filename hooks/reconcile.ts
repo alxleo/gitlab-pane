@@ -1,5 +1,6 @@
-import { advance, pinKey, wakeLine } from './ci'
-import type { ModelLine } from './model-text'
+import { advance, wakeLine } from './wake.ts'
+import { pinKey } from './mr-url.ts'
+import type { ModelLine } from './model-text.ts'
 
 import type { MrCard, Pinned } from '../types'
 
@@ -32,7 +33,7 @@ export function reconcile(input: {
   const unpinned: string[] = []
   for (const pin of input.pinned) {
     const row = input.rows.find(each => each.key === pinKey(pin))
-    if (!row) {
+    if (row === undefined) {
       continue
     }
     if (!row.isOpen) {
@@ -44,7 +45,7 @@ export function reconcile(input: {
     const next = advance(prior ?? [], row)
     announced[row.key] = next.announced
     // The first sighting only seeds: what it shows was told when it was pinned.
-    if (next.due && prior !== undefined) {
+    if (next.due !== null && prior !== undefined) {
       const line = wakeLine(row, next.due, input.now)
       // Every pin's news is a toast; only an MR this session raised wakes it, since that is the work it can act on.
       toasts.push(line)

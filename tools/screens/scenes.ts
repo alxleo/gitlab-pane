@@ -8,6 +8,7 @@ import { mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Mounted } from 'claude-code/testing'
 
+import { isRecord } from '../../hooks/decode'
 import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
 import { answered } from '../../tests/gitlab_fake'
@@ -302,6 +303,14 @@ const press = async (ui: Ui, prefix: string) => {
 
 type Node = { type: string; props?: Record<string, unknown>; hover?: { scope?: string }; children?: (Node | string)[] }
 
+/** Whether a drawn tree has the shape the screens read: elements with a type, perhaps props, a hover scope and children. */
+const isNode = (value: unknown): value is Node =>
+  isRecord(value) &&
+  typeof value.type === 'string' &&
+  (value.props === undefined || isRecord(value.props)) &&
+  (value.hover === undefined || (isRecord(value.hover) && (value.hover.scope === undefined || typeof value.hover.scope === 'string'))) &&
+  (value.children === undefined || (Array.isArray(value.children) && value.children.every(child => typeof child === 'string' || isNode(child))))
+
 /** The elements from the root down to the Button keyed `keyPrefix…`, that Button last; empty when there is none. */
 const pathTo = (node: Node | string, keyPrefix: string): Node[] => {
   if (typeof node === 'string') {
@@ -375,7 +384,10 @@ for (const scene of SCENES) {
     await clock.advance(FIRST_SYNC_MS)
     await scene.steps(ui)
     const tree = await ui.drawn()
-    const pointer = scene.hover ? pointerOn(tree as unknown as Node, scene.hover) : { scopes: [], keys: [] }
+    if (!isNode(tree)) {
+      throw new Error(`scene ${scene.name}: the pane did not draw a tree of elements`)
+    }
+    const pointer = scene.hover ? pointerOn(tree, scene.hover) : { scopes: [], keys: [] }
     if (scene.hover && pointer.scopes.length === 0) {
       throw new Error(`scene ${scene.name}: nothing drawn is keyed ${scene.hover}`)
     }
