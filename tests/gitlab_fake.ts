@@ -11,6 +11,13 @@ export const undefinedField = (typeName: string, fieldName: string) => ({
   errors: [{ message: `Field '${fieldName}' doesn't exist on type '${typeName}'`, extensions: { code: 'undefinedField', typeName, fieldName } }],
 })
 
+/** What an account with nothing waiting on it answers to the three inbox documents unless a test sets them: the user is `me`. */
+const NOTHING = {
+  InboxTodos: { data: { currentUser: { username: 'me', todos: { nodes: [] } } } },
+  InboxQueue: { data: { currentUser: { username: 'me', reviewRequestedMergeRequests: { nodes: [] } } } },
+  InboxAuthored: { data: { currentUser: { username: 'me', opened: { nodes: [] }, merged: { nodes: [] } } } },
+} as const
+
 /** What `$.http.fetch` resolves with. */
 export type Served = { status: number; ok: boolean; headers: Record<string, string>; text: string }
 
@@ -91,6 +98,20 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, set(answers.PinnedPlain, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'Usual':
       return reply(200, set(answers.Usual, operation)({ path: need(variables, 'path') }))
+    case 'InboxTodos':
+      return reply(200, answers.InboxTodos !== undefined ? answers.InboxTodos({}) : NOTHING.InboxTodos)
+    case 'InboxTodosPlain':
+      return reply(200, answers.InboxTodosPlain !== undefined ? answers.InboxTodosPlain({}) : NOTHING.InboxTodos)
+    case 'InboxQueue':
+      return reply(200, answers.InboxQueue !== undefined ? answers.InboxQueue({}) : NOTHING.InboxQueue)
+    case 'InboxAuthored':
+      return reply(200, answers.InboxAuthored !== undefined ? answers.InboxAuthored({ since: need(variables, 'since') }) : NOTHING.InboxAuthored)
+    case 'InboxFollowUser':
+      return reply(200, answers.InboxFollowUser !== undefined ? answers.InboxFollowUser({ username: need(variables, 'username'), since: need(variables, 'since') }) : { data: { currentUser: { username: 'me' }, user: null } })
+    case 'InboxFollowProject':
+      return reply(200, answers.InboxFollowProject !== undefined ? answers.InboxFollowProject({ path: need(variables, 'path'), since: need(variables, 'since') }) : { data: { currentUser: { username: 'me' }, project: null } })
+    case 'InboxBrief':
+      return reply(200, set(answers.InboxBrief, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     default:
       throw new Error(`the pane sent an operation the fake does not know: ${operation}`)
   }

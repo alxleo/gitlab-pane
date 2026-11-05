@@ -62,6 +62,13 @@ const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
 const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
 const ENDPOINT = 'https://gitlab.com/api/graphql'
+/**
+ * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has
+ * said it lacks the newer field. Nothing else is excused.
+ */
+const OLD_HOST_FIELDS: Readonly<Record<string, { field: string; why: string }>> = {
+  InboxTodosPlain: { field: 'Todo.target', why: 'GitLab before 17.4 has no Todo.targetEntity; the document is sent only to a host that answered undefinedField for it' },
+}
 const EXPERIMENT = 'Status: Experiment'
 // GitLab's own directives take its own types, which the queries never use.
 const STANDARD_DIRECTIVES = new Set(['skip', 'include', 'deprecated', 'specifiedBy', 'oneOf'])
@@ -142,6 +149,8 @@ function marks(schema: GraphQLSchema, name: string, document: DocumentNode): Fin
   const note = (what: string, reason: string | null | undefined, description: string | null | undefined): void => {
     if ((reason ?? '').includes(EXPERIMENT) || (description ?? '').includes(EXPERIMENT)) {
       found.push({ query: name, problem: `${what} is an experiment, so it may change without notice`, fails: false })
+    } else if (OLD_HOST_FIELDS[name]?.field === what) {
+      // Named below, for this document alone: it is what a host without the newer field is sent.
     } else if (reason !== undefined && reason !== null && reason !== '') {
       found.push({ query: name, problem: `${what} is deprecated: ${reason}`, fails: true })
     }
@@ -193,7 +202,7 @@ type Cost = { readonly score: number; readonly limit: number }
 const isCost = (value: unknown): value is Cost => isRecord(value) && typeof value['score'] === 'number' && typeof value['limit'] === 'number'
 
 /** Values for the documents' variables: GitLab scores a document before it runs, so any project and number do. */
-const SAMPLE_VARIABLES: Readonly<Record<string, string>> = { path: 'gitlab-org/gitlab', iid: '1' }
+const SAMPLE_VARIABLES: Readonly<Record<string, string>> = { path: 'gitlab-org/gitlab', iid: '1', since: '2026-01-01T00:00:00Z', username: 'root' }
 
 /** GitLab refuses a burst of requests with 429; the schedule is weekly, so waiting out a few is cheap. */
 const RATE_LIMIT_TRIES = 4
@@ -364,25 +373,58 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
   const full: IntrospectionSchema = introspection.__schema
   const types = new Map(full.types.map(kind => [kind.name, kind]))
   const { fields, arguments: args, variables } = used(buildClientSchema(introspection), queries)
-  const keep = new Set<string>()
-  const todo = [full.queryType.name, ...variables]
-  for (let name = todo.pop(); name !== undefined; name = todo.pop()) {
-    if (keep.has(name)) {
-      continue
+  /** The types the queries reach from the query type: through the fields they select, and the types they name. */
+  const reach = (): Set<string> => {
+    const reached = new Set<string>()
+    const todo = [full.queryType.name, ...variables]
+    for (let name = todo.pop(); name !== undefined; name = todo.pop()) {
+      if (reached.has(name)) {
+        continue
+      }
+      reached.add(name)
+      const kind = types.get(name)
+      if (kind === undefined) {
+        throw new SchemaError(`the queries use ${name}, which the schema does not hold`)
+      }
+      for (const field of fieldsOf(kind)) {
+        if (fields.get(name)?.has(field.name) === true) {
+          todo.push(unwrap(field.type))
+          todo.push(...field.args.filter(arg => args.get(`${name}.${field.name}`)?.has(arg.name) === true).map(arg => unwrap(arg.type)))
+        }
+      }
+      todo.push(...(inputFieldsOf(kind) ?? []).map(field => unwrap(field.type)))
+      todo.push(...(possibleTypesOf(kind) ?? []).map(possible => possible.name).filter(possible => fields.has(possible)))
     }
-    keep.add(name)
-    const kind = types.get(name)
-    if (kind === undefined) {
-      throw new SchemaError(`the queries use ${name}, which the schema does not hold`)
-    }
-    for (const field of fieldsOf(kind)) {
-      if (fields.get(name)?.has(field.name) === true) {
-        todo.push(unwrap(field.type))
-        todo.push(...field.args.filter(arg => args.get(`${name}.${field.name}`)?.has(arg.name) === true).map(arg => unwrap(arg.type)))
+    return reached
+  }
+
+  /**
+   * A type that implements a kept interface must keep each field the queries select on the interface, or the pruned
+   * schema is not valid (a query that selects `webUrl` on an interface reaches every kept type that implements it).
+   * Gives whether a field was added, which can reach new types.
+   */
+  const inherit = (reached: ReadonlySet<string>): boolean => {
+    let added = false
+    for (const name of reached) {
+      const kind = types.get(name)
+      for (const parent of kind === undefined ? [] : (interfacesOf(kind) ?? [])) {
+        for (const field of fields.get(parent.name) ?? []) {
+          if (fields.get(name)?.has(field) !== true) {
+            into(fields, name, field)
+            for (const arg of args.get(`${parent.name}.${field}`) ?? []) {
+              into(args, `${name}.${field}`, arg)
+            }
+            added = true
+          }
+        }
       }
     }
-    todo.push(...(inputFieldsOf(kind) ?? []).map(field => unwrap(field.type)))
-    todo.push(...(possibleTypesOf(kind) ?? []).map(possible => possible.name).filter(possible => fields.has(possible)))
+    return added
+  }
+
+  let keep = reach()
+  while (inherit(keep)) {
+    keep = reach()
   }
 
   const slimArgument = (arg: IntrospectionInputValue) => ({ ...arg, description: null })
@@ -460,7 +502,7 @@ async function generate(schemaFile: string): Promise<string> {
           useTypeImports: true,
           // A scalar not named below is `unknown`, so a new one cannot slip in as `any`.
           defaultScalarType: 'unknown',
-          scalars: { ID: 'string', Time: 'string' },
+          scalars: { ID: 'string', Time: 'string', NoteID: 'string' },
         },
       },
     },

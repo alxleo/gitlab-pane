@@ -6,7 +6,7 @@ import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
 import { hostsLine, parseHosts } from './hosts'
-import { briefCommand, inboxTick, syncInbox } from './inbox'
+import { briefCommand, inboxTick, setFollow, syncInbox } from './inbox'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
@@ -18,7 +18,7 @@ import { rememberSettings } from './tokens'
 export const PANE = 'gitlab-ci'
 const TOOL = 'mcp__gitlab-ci__watch_mr'
 const TICK_MS = 30_000
-/** mr-inbox shares one sync across sessions, so asking every minute costs GitLab at most one pass a minute. */
+/** The inbox reads GitLab (three small queries per host) at most this often. */
 const INBOX_TICK_MS = 60_000
 /** The inbox starts a moment after the pane's own read, so the two do not race for the first answers. */
 const INBOX_FIRST_MS = 2_000
@@ -33,7 +33,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     forgetProbed()
     const hosts = parseHosts(options.gitlabHosts)
-    await Promise.all([startData($, options.jiraUrl, hosts), rememberSettings(options.gitlabTokens, hosts), rememberLogs($, options.failureLogs), forgetProblems($), forgetScrolling($)])
+    await Promise.all([startData($, options.jiraUrl, hosts), setFollow($, options.inboxFollow), rememberSettings(options.gitlabTokens, hosts), rememberLogs($, options.failureLogs), forgetProblems($), forgetScrolling($)])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)
     await $.command.register({
       name: 'gitlab',
