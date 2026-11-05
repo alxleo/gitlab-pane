@@ -42,7 +42,7 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
-type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
+type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean; isPaneBroken?: boolean }
 
 function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)
@@ -101,6 +101,9 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   const opened: string[] = []
   const titles: string[] = []
   on('ui.open', (_, e) => {
+    if (fake.isPaneBroken === true) {
+      throw new Error('no window to open in')
+    }
     opened.push(e.id)
     titles.push(e.title ?? '')
     return { value: { isPlaced: true } }
@@ -220,11 +223,12 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Link', text: '🎫 ABC-1' }))?.props.href).toBe('https://jira.example.com/browse/ABC-1')
   expect(jiraReads).toEqual(['key in (ABC-1)'])
-  // Once acli goes missing, the next read says so in /gitlab's answer instead of keeping quiet.
+  // Jira is optional: with acli gone the next read keeps the last tickets, and /gitlab does not call the pane unwell.
   fake.isJiraMissing = true
   await clock.advance(20 * 60_000)
   const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
-  expect(answer.text).toContain('jira: acli is not installed')
+  expect(jiraReads.length).toBeGreaterThan(1)
+  expect(answer.text).toBe('GitLab pane open')
   await ui.unmount()
 })
 
@@ -432,14 +436,22 @@ test('an MR too long for its page shows what fits of the description, then links
 
 test('/gitlab opens the pane and answers in one line, never the MR list', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false })
+  // The pane fails to open when the session starts, and opens at the next try.
+  const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false, isPaneBroken: true }
+  engine(on, fake)
   on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
 
-  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  const ask = () => $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  fake.isPaneBroken = false
+  expect((await ask()).text).toContain('pane: ')
+  // Once the work that failed succeeds, its failure is no longer true. The pin opens the pane again.
+  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await clock.settle()
+  const answer = await ask()
   expect(answer.text?.split('\n').length).toBe(1)
-  expect(answer.text).toContain('GitLab pane open')
+  expect(answer.text).toBe('GitLab pane open')
   expect(answer.text).not.toContain('!12')
 })
 

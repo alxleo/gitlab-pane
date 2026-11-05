@@ -246,6 +246,9 @@ test('without mr-inbox installed the pane says so once and draws the rest', asyn
   expect(await ui.find({ type: 'Text', text: /^Mine/ })).toBeDefined()
   await ui.press({ key: 'tab-inbox' })
   expect((await ui.find({ type: 'Text', text: /not installed/ }))?.text).toBe('mr-inbox is not installed')
+  // An optional tool that is missing is shown there, not listed among /gitlab's failures every minute.
+  await clock.advance(120_000)
+  expect((await $.command.run({ ...typed(''), command: 'gitlab' })).text).not.toContain('inbox')
   await ui.unmount()
 })
 
