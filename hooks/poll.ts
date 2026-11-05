@@ -34,7 +34,7 @@ import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from '.
 import { pictureUri, sizedAvatar } from './picture'
 import { openPane } from './panes'
 import { reconcile } from './reconcile'
-import { isSettled, statusMark } from './status'
+import { isSettled } from './status'
 import { runJson } from './tools'
 
 import type { MergeStatus, MrCard, Pinned, Usual } from '../types'
@@ -214,12 +214,6 @@ async function readOnce($: EngineInterface): Promise<void> {
     await unpinKeys($, reconciled.unpinned)
   }
   await changePoll($, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: null, failures: 0, kept: kept.length }))
-  const pinnedKeys = new Set(pinned.map(pinKey))
-  const marks = open
-    .filter(row => pinnedKeys.has(row.key))
-    .map(row => `${statusMark(row.pipeline?.status).glyph} !${row.iid}`)
-    .join('  ')
-  $.ui.status(marks === '' ? undefined : marks)
   if (reconciled.wakes.length > 0 && (await readWake($))) {
     quietly($, wake($, reconciled.wakes))
   }

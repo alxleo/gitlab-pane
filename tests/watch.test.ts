@@ -111,7 +111,6 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
     return { result: { stdout: text, stderr: '', interrupted: false }, text }
   })
   on('ui.toast', () => ({ value: undefined }))
-  on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return { woken, reads, avatars, jiraReads, opened, titles }
@@ -615,7 +614,6 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 

@@ -250,6 +250,24 @@ export type ProblemSource = 'gitlab' | 'jira' | 'usual' | 'avatars' | 'inbox' | 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
 export type Problems = { [Source in ProblemSource]?: { message: string; at: number } }
 
+/** What the person chose in the pane: one value, so a drawing reads it once and a choice that touches two things redraws once. */
+export type Choices = {
+  /** Card keys drawn open, `drafts` and `more` when those folds are open. */
+  expanded: string[]
+  /** Per open card key, the one person whose comments it shows. */
+  person: Record<string, string>
+  /** `<details>` folds drawn the other way from how GitLab first shows them, as `<card key>#<where>`. */
+  folds: string[]
+  /** A project path the list is narrowed to; empty shows every repo. */
+  repoFilter: string
+  /** The pane's open tab: `mine` (the MR list) or `inbox`. */
+  tab: string
+  /** The card key of the MR read whole on a page of its own, over the open tab; empty when none. */
+  reading: string
+  /** Whether a pinned MR's news wakes the session. */
+  wake: boolean
+}
+
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }
 
@@ -271,21 +289,10 @@ declare module 'claude-code' {
       usual: Record<string, Usual>
       /** Small avatar pictures as `data:` URIs, by the avatar URL GitLab gave. */
       avatars: Record<string, string>
-      /** Card keys drawn open, `drafts` and `more` when those folds are open. */
-      expanded: string[]
-      /** Per open card key, the one person whose comments it shows. */
-      person: Record<string, string>
-      /** `<details>` folds drawn the other way from how GitLab first shows them, as `<card key>#<where>`. */
-      folds: string[]
-      /** A project path the list is narrowed to; empty shows every repo. */
-      repoFilter: string
-      /** The pane's open tab: `mine` (the MR list) or `inbox`. */
-      tab: string
-      /** The card key of the MR read whole on a page of its own, over the open tab; empty when none. */
-      reading: string
+      /** What the person chose in the pane. */
+      choices: Choices
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
-      wake: boolean
       poll: PollState
       /** The base of ticket links (`<jiraUrl>/browse/`); empty while no Jira site is set. */
       jira: string
