@@ -1,3 +1,4 @@
+import type { MergeabilityCheckIdentifier } from './gitlab.generated.ts'
 import { plural } from './format.ts'
 import { firstDifference } from './order.ts'
 import { isSettled, type Tone } from './status.ts'
@@ -68,12 +69,46 @@ export const checkWords = (id: string): string => id.toLowerCase().replaceAll('_
 const standing = (checks: MergeStatus | null): MergeCheck[] =>
   (['failed', 'warning'] as const).flatMap(status => (checks ?? []).filter(check => check.status === status))
 
-const checkBadge = (check: MergeCheck): Badge => ({
+/**
+ * What each check asks of you when it fails, as a tone: red is yours to fix, amber is a smaller fix, grey is waiting on
+ * others or on time. Typed over GitLab's identifiers, so a check GitLab adds does not compile until it has a tone.
+ */
+const CHECK_TONE: Record<MergeabilityCheckIdentifier, Tone> = {
+  CI_MUST_PASS: 'error',
+  COMMITS_STATUS: 'error',
+  CONFLICT: 'error',
+  DISCUSSIONS_NOT_RESOLVED: 'warning',
+  DRAFT_STATUS: 'subtle',
+  JIRA_ASSOCIATION_MISSING: 'warning',
+  LOCKED_LFS_FILES: 'error',
+  LOCKED_PATHS: 'error',
+  MERGE_REQUEST_BLOCKED: 'subtle',
+  MERGE_TIME: 'subtle',
+  NEED_REBASE: 'warning',
+  NOT_APPROVED: 'subtle',
+  NOT_OPEN: 'subtle',
+  REQUESTED_CHANGES: 'error',
+  SECURITY_POLICY_PIPELINE_CHECK: 'error',
+  SECURITY_POLICY_VIOLATIONS: 'error',
+  STATUS_CHECKS_MUST_PASS: 'subtle',
+  TITLE_REGEX: 'warning',
+}
+
+const isKnownCheck = (id: string): id is MergeabilityCheckIdentifier => Object.hasOwn(CHECK_TONE, id)
+
+/** A failing check's tone; one GitLab adds after this was written blocks the merge, so it is red until it has a tone. */
+const failureTone = (id: string): Tone => (isKnownCheck(id) ? CHECK_TONE[id] : 'error')
+
+/** A check in words; the approvals one says how many, as the pane knows. */
+const wordsFor = (card: MrCard, id: string): string =>
+  id === 'NOT_APPROVED' && card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : checkWords(id)
+
+const checkBadge = (card: MrCard, check: MergeCheck): Badge => ({
   kind: 'check',
   glyph: check.status === 'failed' ? '✗' : '⚠',
-  tone: check.status === 'failed' ? 'error' : 'warning',
+  tone: check.status === 'failed' ? failureTone(check.id) : 'warning',
   count: '',
-  words: checkWords(check.id),
+  words: wordsFor(card, check.id),
   check: check.id,
 })
 
@@ -138,7 +173,7 @@ export function badges(card: MrCard): Badge[] {
   const claimed = new Set(list.flatMap(badge => badge.check ?? []))
   const unsaid = standing(checks)
     .filter(check => !claimed.has(check.id))
-    .map(checkBadge)
+    .map(check => checkBadge(card, check))
   const isReady = checks !== null ? isMergeable(checks) : card.approvalsLeft === 0 && pipeline?.status === 'success' && !card.isDraft
   const blocks = list.some(badge => badge.kind !== 'approvals')
   const ready: Badge[] = !blocks && isReady ? [{ kind: 'ready', glyph: '⤵', tone: 'success', count: '', words: 'ready to merge' }] : []
@@ -155,7 +190,7 @@ export function rowBadges(card: MrCard): Badge[] {
   const checkOf = (id: string): Badge[] =>
     standing(card.mergeStatus)
       .filter(check => check.id === id)
-      .map(checkBadge)
+      .map(check => checkBadge(card, check))
   return badges(card).flatMap(badge => {
     if (badge.kind === 'changes') {
       return checkOf('REQUESTED_CHANGES')
@@ -177,7 +212,7 @@ export type Verdict = { words: string; tone: Tone; check: string | null }
 export function verdictOf(card: MrCard): Verdict | null {
   const failed = card.mergeStatus?.find(check => check.status === 'failed')
   if (failed !== undefined) {
-    return { words: checkWords(failed.id), tone: 'error', check: failed.id }
+    return { words: wordsFor(card, failed.id), tone: failureTone(failed.id), check: failed.id }
   }
   const checking = card.mergeStatus?.find(check => check.status === 'checking')
   if (checking !== undefined) {

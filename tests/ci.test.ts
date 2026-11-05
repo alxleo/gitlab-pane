@@ -271,9 +271,16 @@ test("GitLab's own merge checks give the verdict: its first failing check in wor
   }
   expect(said(gitlabSays())).toEqual(['✓ mergeable', 'success'])
   // GitLab lists the checks in the order that settles which one it reports, so the first that fails is the one said.
-  expect(said(gitlabSays({ CI_MUST_PASS: 'failed', DRAFT_STATUS: 'failed', NOT_APPROVED: 'failed' }))).toEqual(['draft status', 'error'])
+  expect(said(gitlabSays({ CI_MUST_PASS: 'failed', DRAFT_STATUS: 'failed', NOT_APPROVED: 'failed' }))).toEqual(['draft status', 'subtle'])
   expect(said(gitlabSays({ CI_MUST_PASS: 'failed' }))).toEqual(['CI must pass', 'error'])
-  expect(said(gitlabSays({ CI_MUST_PASS: 'checking', NOT_APPROVED: 'failed' }))).toEqual(['not approved', 'error'])
+  expect(said(gitlabSays({ CI_MUST_PASS: 'checking', NOT_APPROVED: 'failed' }))).toEqual(['needs 1 approval', 'subtle'])
+  // Red is what you must fix, amber a smaller fix, grey what waits on others or on time.
+  expect(said(gitlabSays({ CONFLICT: 'failed' }))).toEqual(['conflict', 'error'])
+  expect(said(gitlabSays({ NEED_REBASE: 'failed' }))).toEqual(['need rebase', 'warning'])
+  expect(said(gitlabSays({ DISCUSSIONS_NOT_RESOLVED: 'failed' }))).toEqual(['discussions not resolved', 'warning'])
+  expect(said(gitlabSays({ REQUESTED_CHANGES: 'failed' }))).toEqual(['requested changes', 'error'])
+  expect(said(gitlabSays({ MERGE_TIME: 'failed' }))).toEqual(['merge time', 'subtle'])
+  expect(said(gitlabSays({ SECURITY_POLICY_VIOLATIONS: 'failed' }))).toEqual(['security policy violations', 'error'])
   expect(said(gitlabSays({ CI_MUST_PASS: 'checking' }))).toEqual(['CI must pass (checking)', 'subtle'])
   // A warning passed with a note, and a check the project turned off is not one.
   expect(said(gitlabSays({ JIRA_ASSOCIATION_MISSING: 'warning', MERGE_TIME: 'inactive' }))).toEqual(['✓ mergeable', 'success'])
