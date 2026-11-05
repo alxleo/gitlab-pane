@@ -12,6 +12,12 @@
 # then tags it and publishes the GitHub release. Its settings are release-please-config.json; the last released version
 # is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no checks run on it; they run
 # once it is merged.
+#
+# What a team can pin is not this repository but the tree tools/release_tree.py builds from the allowlist release/files:
+# the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so
+# a broken tree fails there and not at a release. The publish job then commits the tree of a new version to the
+# `release` branch, one commit and one `plugin-v<version>` tag per version, never forced.
+# See CONTRIBUTING.md, Releasing.
 name: check
 on:
   push:
@@ -79,6 +85,12 @@ jobs:
           printf '%s\n' "$TITLE" > "$RUNNER_TEMP/title"
           uvx "pre-commit@${PRE_COMMIT_VERSION}" run --hook-stage commit-msg --commit-msg-filename "$RUNNER_TEMP/title"
       - run: claude plugin test .
+      - name: The release tree builds, validates and loads only what it holds
+        run: |
+          uv run tools/release_tree.py build "$RUNNER_TEMP/tree"
+          claude plugin validate --strict "$RUNNER_TEMP/tree"
+          claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
+          claude plugin validate --strict .claude-plugin/marketplace.json
 
   release:
     needs: check
@@ -93,5 +105,55 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+
+  # When release-please made a release, puts the plugin's tree at that tag on the `release` branch. It builds from the
+  # tag and not from main, which may hold changes that are not released yet. Re-running only this job after a failure
+  # publishes the same release again.
+  publish:
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+          enable-cache: false
+      - name: Commit the tree to the release branch
+        env:
+          TAG: ${{ needs.release.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run tools/release_tree.py build "$RUNNER_TEMP/tree"
+          version=$(jq -r .version "$RUNNER_TEMP/tree/.claude-plugin/plugin.json")
+          test "v${version}" = "$TAG"
+          url="https://github.com/${GITHUB_REPOSITORY}.git"
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          if git ls-remote --exit-code --heads "$url" release > /dev/null; then
+            git clone --quiet --branch release --single-branch "$url" "$RUNNER_TEMP/release"
+          else
+            git init --quiet --initial-branch release "$RUNNER_TEMP/release"
+          fi
+          from=$(git rev-parse HEAD)
+          cd "$RUNNER_TEMP/release"
+          git rm -rq --ignore-unmatch .
+          cp -a "$RUNNER_TEMP/tree/." .
+          git add --all
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit --quiet -m "release: ${TAG}" -m "The plugin's files at ${GITHUB_REPOSITORY}@${from}, built by tools/release_tree.py."
+          git tag "plugin-${TAG}"
+          git -c "http.extraheader=AUTHORIZATION: basic ${auth}" push --atomic "$url" release "refs/tags/plugin-${TAG}"
