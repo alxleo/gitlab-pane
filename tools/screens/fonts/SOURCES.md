@@ -1,6 +1,6 @@
 # Fonts for the README screenshots
 
-`tools/pane_screens.py` photographs the pane with these files and nothing the machine has installed, so a Mac and a CI
+`tools/pane_screens.ts` photographs the pane with these files and nothing the machine has installed, so a Mac and a CI
 runner draw the same letters. Each font keeps its own licence, in the file beside it; the repo's MIT licence does not
 cover them.
 
@@ -17,5 +17,5 @@ The two subsets were made once with fonttools (WOFF2 out, all layout features ke
   U+25BE U+25C6 U+25C9 U+25CB U+25CF U+2610 U+2713 U+2715 U+2717 U+26A0
 - Noto Color Emoji, U+1F3AB U+1F464 U+1F4AC U+1F4C1 U+1F500 U+1F6A6 U+1F916 U+26A0 U+270B U+23F8 U+2935 U+FE0F U+200D
 
-With Inter, these cover every non-ASCII character `hooks/` writes. If `pane_screens.py render` stops, naming a font it
+With Inter, these cover every non-ASCII character `hooks/` writes. If `npm run screens -- render` stops, naming a font it
 took from the machine, the pane has gained a glyph none of these have: re-cut a subset with it and list it here.

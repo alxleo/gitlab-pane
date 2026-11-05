@@ -11,7 +11,6 @@ import {
   readAnnounced,
   readAvatarsShown,
   readBrowse,
-  readFeaturesKnown,
   readHosts,
   readPinned as readPins,
   readPoll,
@@ -21,13 +20,12 @@ import {
   readUsualKnown,
   setAnnounced,
   setAvatars,
-  setFeatures,
   setRows,
   unpinKeys,
 } from './data'
 import { Failure, kindOf } from './failure'
 import { clear, quietly, record } from './failures'
-import { joined, serialised } from './in-flight'
+import { joined, probed, serialised } from './in-flight'
 import { stringRecord } from './decode'
 import { lostIn, readFeatures, readMergeStatus, readPinned, readResponse, readUsual } from './gitlab'
 import { authoredQuery, mergeStatusQuery, pinnedQuery, probeQuery, usualQuery } from './gitlab-documents'
@@ -41,7 +39,7 @@ import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from '.
 import { pictureUri, sizedAvatar } from './picture'
 import { openPane } from './panes'
 import { reconcile } from './reconcile'
-import { isSettled, statusMark } from './status'
+import { isSettled } from './status'
 import { failureOf, runJson } from './tools'
 
 import type { HostFeatures, MergeStatus, MrCard, Pinned, Usual } from '../types'
@@ -58,14 +56,8 @@ const asFailure = (error: unknown, label = (message: string) => message): Failur
 const together = (list: readonly Failure[]): Failure => new Failure(list[0]?.kind ?? 'unknown', list.map(one => one.message).join('; '))
 
 /** What a host's schema has of the fields older GitLab versions lack: asked the first time the host is read, then kept. */
-async function featuresOf($: EngineInterface, host: string): Promise<HostFeatures> {
-  const known = (await readFeaturesKnown($))[host]
-  if (known !== undefined) {
-    return known
-  }
-  const probed = readFeatures(await ask($, host, probeQuery()))
-  await setFeatures($, host, probed)
-  return probed
+function featuresOf($: EngineInterface, host: string): Promise<HostFeatures> {
+  return probed(host, async () => readFeatures(await ask($, host, probeQuery())))
 }
 
 type HostRead = { rows: MrCard[]; lost: number; notes: Failure[] }
@@ -271,12 +263,6 @@ async function readOnce($: EngineInterface): Promise<void> {
     await unpinKeys($, reconciled.unpinned)
   }
   await changePoll($, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: failures.length > 0 ? together(failures).message : null, failures: 0, kept: kept.length }))
-  const pinnedKeys = new Set(pinned.map(pinKey))
-  const marks = open
-    .filter(row => pinnedKeys.has(row.key))
-    .map(row => `${statusMark(row.pipeline?.status).glyph} !${row.iid}`)
-    .join('  ')
-  $.ui.status(marks === '' ? undefined : marks)
   if (reconciled.wakes.length > 0 && (await readWake($))) {
     quietly($, wake($, reconciled.wakes))
   }

@@ -1,7 +1,7 @@
-# Everything the plugin ships, and nothing else: tools/release_tree.py copies exactly these files into the tree that
+# Everything the plugin ships, and nothing else: tools/release_tree.ts copies exactly these files into the tree that
 # the `release` branch holds, and fails if a module the plugin loads imports something that is not listed.
 # One path per line, relative to the repository root. A line with two paths copies the first to the second.
-# A new runtime file belongs here; `uv run tools/release_tree.py check` fails until it is.
+# A new runtime file belongs here; `npm run release-tree -- check` fails until it is.
 .claude-plugin/plugin.json
 # The tree is also a marketplace of its own, so a team can pin a released version by tag (see CONTRIBUTING.md).
 release/marketplace.json .claude-plugin/marketplace.json
@@ -11,7 +11,6 @@ types/index.d.ts
 hooks/hooks.json
 hooks/attention.ts
 hooks/avatar.ts
-hooks/blockers.tsx
 hooks/card.tsx
 hooks/choices.ts
 hooks/data.ts
@@ -53,3 +52,11 @@ hooks/tokens.ts
 hooks/tools.ts
 hooks/view.ts
 hooks/wake.ts
+hooks/equal.ts
+hooks/face-model.ts
+hooks/job-lines.ts
+hooks/pane-model.ts
+hooks/row-facts.ts
+hooks/row-lines.ts
+hooks/strip-model.ts
+hooks/first-run.ts

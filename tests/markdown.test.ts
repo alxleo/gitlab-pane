@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { flatOf, partsOf } from '../hooks/markdown'
+import { flatOf, fromGitLab, partsOf } from '../hooks/markdown'
 
 test('code keeps the tags it quotes; HTML elsewhere becomes Markdown or goes, as GitLab draws it', () => {
   const text = [
@@ -14,7 +14,7 @@ test('code keeps the tags it quotes; HTML elsewhere becomes Markdown or goes, as
     '',
     '> <sup>Reviewed by a bot.</sup>',
   ].join('\n')
-  const flat = flatOf(text)
+  const flat = flatOf(fromGitLab(text))
   expect(flat).toContain('`<meta>`')
   expect(flat).toContain('`v<version> - <sha>`')
   expect(flat).toContain('<script>run()</script>')
@@ -23,11 +23,11 @@ test('code keeps the tags it quotes; HTML elsewhere becomes Markdown or goes, as
 })
 
 test('a table cell keeps its line when a <br> breaks it', () => {
-  expect(flatOf('| a | one<br>two |')).toBe('| a | one two |')
+  expect(flatOf(fromGitLab('| a | one<br>two |'))).toBe('| a | one two |')
 })
 
 test('task boxes and callouts read as marks, outside code only', () => {
-  const flat = flatOf('- [x] done\n- [ ] to do\n\n> [!NOTE]\n> Mind this.\n\n`- [x] quoted`')
+  const flat = flatOf(fromGitLab('- [x] done\n- [ ] to do\n\n> [!NOTE]\n> Mind this.\n\n`- [x] quoted`'))
   expect(flat).toContain('- ✓ done\n- ☐ to do')
   expect(flat).toContain('> **Note**\n> Mind this.')
   expect(flat).toContain('`- [x] quoted`')
@@ -50,7 +50,7 @@ test('each <details> is a fold under its summary, nested ones inside, open ones 
     '</details>',
     'After, with `<details>` quoted.',
   ].join('\n')
-  const parts = partsOf(text)
+  const parts = partsOf(fromGitLab(text))
   expect(parts.length).toBe(3)
   expect(parts[0]).toEqual({ text: 'Before.' })
   const fold = parts[1]
@@ -63,5 +63,5 @@ test('each <details> is a fold under its summary, nested ones inside, open ones 
   expect(fold.parts[1]).toEqual({ summary: 'Raw', isOpen: true, parts: [{ text: 'Inner words.' }] })
   expect(parts[2]).toEqual({ text: 'After, with `<details>` quoted.' })
   // Closed, as GitLab first shows it: the summary alone.
-  expect(flatOf(text)).toBe('Before.\n\n▸ Evidence\n\nAfter, with `<details>` quoted.')
+  expect(flatOf(fromGitLab(text))).toBe('Before.\n\n▸ Evidence\n\nAfter, with `<details>` quoted.')
 })

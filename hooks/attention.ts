@@ -124,7 +124,7 @@ export function rowBadges(card: MrCard): Badge[] {
   })
 }
 
-type Verdict = { words: string; tone: Tone; covers: readonly BadgeKind[] }
+export type Verdict = { words: string; tone: Tone; covers: readonly BadgeKind[] }
 
 const said = (words: string, tone: Tone, covers: readonly BadgeKind[] = []): Verdict => ({ words, tone, covers })
 

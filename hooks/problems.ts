@@ -15,7 +15,7 @@ export const withProblem = (all: Problems, source: ProblemSource, error: unknown
  * Whether a failure only says that an optional tool is not installed. mr-inbox and acli are not needed for the pane to work,
  * so their absence is not a failure to list in `/gitlab`: the Inbox tab and a ticket say it where it matters.
  */
-export const isAbsentOptional = (source: ProblemSource, kind: FailureKind): boolean => (source === 'inbox' || source === 'jira') && kind === 'not-installed'
+export const isAbsentOptional = (source: string, kind: FailureKind): boolean => (source === 'inbox' || source === 'jira') && kind === 'not-installed'
 
 /** `all` without the source: it worked, so whatever it last failed with is no longer true. */
 export const withoutProblem = (all: Problems, source: ProblemSource): Problems =>
@@ -23,4 +23,16 @@ export const withoutProblem = (all: Problems, source: ProblemSource): Problems =
 
 /** One line per source that last failed, oldest source first, as `jira: acli is not installed (12:03:04 UTC)`. */
 export const problemLines = (all: Problems): string[] =>
-  Object.entries(all).map(([source, { message, at }]) => `${source}: ${message} (${new Date(at).toISOString().slice(11, 19)} UTC)`)
+  Object.entries(all)
+    // An optional tool that is absent is said where it matters, not here.
+    .filter(([source, { kind }]) => !isAbsentOptional(source, kind))
+    .map(([source, { message, at }]) => `${source}: ${message} (${new Date(at).toISOString().slice(11, 19)} UTC)`)
+
+/** A problem without the time it was last seen at, to tell whether it is the same failure again. */
+export function withoutTime(problem: Problems[ProblemSource]): Omit<NonNullable<Problems[ProblemSource]>, 'at'> | undefined {
+  if (problem === undefined) {
+    return undefined
+  }
+  const { at: _, ...rest } = problem
+  return rest
+}
