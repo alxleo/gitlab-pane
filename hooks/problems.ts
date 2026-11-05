@@ -29,8 +29,7 @@ export const reportedProblems = (shared: Readonly<Record<string, { message: stri
   Object.fromEntries(LEADER_SOURCES.flatMap(source => (shared[source] !== undefined ? [[source, { ...shared[source], at }]] : [])))
 
 /** `all` without the source: it worked, so whatever it last failed with is no longer true. */
-export const withoutProblem = (all: Problems, source: ProblemSource): Problems =>
-  Object.fromEntries(Object.entries(all).filter(([name]) => name !== source))
+export const withoutProblem = (all: Problems, source: ProblemSource): Problems => Object.fromEntries(Object.entries(all).filter(([name]) => name !== source))
 
 /** One line per source that last failed, oldest source first, as `jira: acli is not installed (12:03:04 UTC)`. */
 export const problemLines = (all: Problems, note = ''): string[] =>

@@ -212,7 +212,9 @@ function followedMrs(host: string, me: string | null, group: Followed | null | u
   const merged = present(group.merged?.nodes).flatMap((fields): InboxMr[] => {
     const at = timeOf(fields.mergedAt)
     const by = fields.mergeUser?.username
-    return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], { ...PLAIN, isFollowed: true })]
+    return at === null || by === undefined || by === me
+      ? []
+      : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], { ...PLAIN, isFollowed: true })]
   })
   return { user: me, mrs: [...opened, ...merged] }
 }
@@ -221,7 +223,8 @@ function followedMrs(host: string, me: string | null, group: Followed | null | u
 export const followedUserMrs = (host: string, data: InboxFollowUserQuery | null, now: number): Found => followedMrs(host, data?.currentUser?.username ?? null, data?.user, now)
 
 /** A followed project's MRs, the same. */
-export const followedProjectMrs = (host: string, data: InboxFollowProjectQuery | null, now: number): Found => followedMrs(host, data?.currentUser?.username ?? null, data?.project, now)
+export const followedProjectMrs = (host: string, data: InboxFollowProjectQuery | null, now: number): Found =>
+  followedMrs(host, data?.currentUser?.username ?? null, data?.project, now)
 
 /** The same MR as several documents saw it becomes one, with all their signals, newest first; a request counts once. */
 function joined(first: InboxMr, all: readonly InboxMr[]): InboxMr {

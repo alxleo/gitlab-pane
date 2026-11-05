@@ -62,24 +62,13 @@ const failure = (tool: string, run: Ran): { ok: false; kind: FailureKind; reason
 export const failureOf = (outcome: { kind: FailureKind; reason: string }): Failure => new Failure(outcome.kind, outcome.reason)
 
 /** Runs a tool and gives its standard output; a non-zero exit is the reason. */
-export async function runText(
-  $: EngineInterface,
-  tool: string,
-  args: readonly string[],
-  options: ToolOptions
-): Promise<Outcome<string>> {
+export async function runText($: EngineInterface, tool: string, args: readonly string[], options: ToolOptions): Promise<Outcome<string>> {
   const run = await once($, tool, args, options.timeoutMs)
   return run.exitCode === 0 ? { ok: true, value: run.stdout } : failure(tool, run)
 }
 
 /** Runs a tool that prints JSON and decodes it; a failed run, unreadable output or one `decode` throws on is the reason. */
-export async function runJson<T>(
-  $: EngineInterface,
-  tool: string,
-  args: readonly string[],
-  decode: (raw: unknown) => T,
-  options: ToolOptions
-): Promise<Outcome<T>> {
+export async function runJson<T>($: EngineInterface, tool: string, args: readonly string[], decode: (raw: unknown) => T, options: ToolOptions): Promise<Outcome<T>> {
   const run = await once($, tool, args, options.timeoutMs)
   if (run.exitCode !== 0) {
     return failure(tool, run)

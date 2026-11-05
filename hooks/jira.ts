@@ -3,8 +3,7 @@ import { field, records, text } from './decode.ts'
 import type { Ticket } from '../types'
 
 /** The start of a ticket's link for the `jiraUrl` setting, `<site>/browse/`; empty for anything but an http(s) address, so ticket keys are not linked or read. */
-export const browseUrl = (site: unknown): string =>
-  typeof site === 'string' && /^https?:\/\/\S+$/.test(site.trim()) ? `${site.trim().replace(/\/+$/, '')}/browse/` : ''
+export const browseUrl = (site: unknown): string => (typeof site === 'string' && /^https?:\/\/\S+$/.test(site.trim()) ? `${site.trim().replace(/\/+$/, '')}/browse/` : '')
 
 /** Where a ticket key links, or null while no Jira site is set (`browse` is empty). */
 export const ticketUrl = (browse: string, key: string): string | null => (browse === '' ? null : `${browse}${key}`)
@@ -12,8 +11,7 @@ export const ticketUrl = (browse: string, key: string): string | null => (browse
 const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/
 
 /** The JQL `acli jira workitem search` takes for these keys; anything that is not a key is left out. */
-export const ticketQuery = (keys: readonly string[]): string =>
-  `key in (${keys.filter(key => TICKET_KEY.test(key)).join(', ')})`
+export const ticketQuery = (keys: readonly string[]): string => `key in (${keys.filter(key => TICKET_KEY.test(key)).join(', ')})`
 
 /** The fields a ticket's hover card shows, as `acli` names them. */
 export const TICKET_FIELDS = 'key,issuetype,status,summary'

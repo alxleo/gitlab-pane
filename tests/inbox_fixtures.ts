@@ -125,9 +125,10 @@ export const brief = (iid: number, over: Partial<BriefMr> = {}): BriefMr => ({
   ...over,
 })
 
-
 /** GitLab's answers to the inbox documents (and the brief) as `world` holds them; `isDown` is the network's, set on the fake host. */
-export const inboxAnswers = (world: World): Pick<Answers, 'InboxTodos' | 'InboxTodosPlain' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject'> => ({
+export const inboxAnswers = (
+  world: World
+): Pick<Answers, 'InboxTodos' | 'InboxTodosPlain' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject'> => ({
   InboxTodos: () =>
     world.isOlder !== true
       ? { data: { currentUser: { username: world.user, todos: { nodes: world.todos } } } }

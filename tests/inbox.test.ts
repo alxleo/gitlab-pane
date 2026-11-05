@@ -10,9 +10,9 @@ import type { Fields, Note, Person, World } from './inbox_fixtures'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 
 const PANE = {
-  plugin: 'gitlab-ci',
+  plugin: 'gitlab-pane',
   component: 'Pane',
-  requestId: 'gitlab-ci',
+  requestId: 'gitlab-pane',
   props: {
     title: 'GitLab',
     isFocused: false,
@@ -43,7 +43,7 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('process.run', (_, e) => gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`))
   on('session.repo', () => ({ value: remote === null ? null : { root: '/r', remote, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
-  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return { ...gitlab, store, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }
@@ -52,10 +52,8 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
 const FIRST_SYNC_MS = 2_000
 
 /** The title a card draws, a Button whose press opens and closes the card. */
-const titleOf = async (
-  ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> },
-  iid: number
-) => (await ui.find({ type: 'Button', key: `inbox-open-${hashOf(`gitlab.com/g/p!${iid}`)}` }))?.props?.label
+const titleOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }, iid: number) =>
+  (await ui.find({ type: 'Button', key: `inbox-open-${hashOf(`gitlab.com/g/p!${iid}`)}` }))?.props?.label
 
 const typed = (args: string) => ({
   command: 'mrs',
@@ -389,7 +387,7 @@ test('without a token the Inbox says so, /gitlab lists it, and the rest is drawn
 
 // ---- /mrs ----------------------------------------------------------------------------------------------------------------
 
-test('/mrs hands the briefing to the model, out of the transcript, with other people\'s words behind a margin', async ($, on) => {
+test("/mrs hands the briefing to the model, out of the transcript, with other people's words behind a margin", async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = busyWorld()
   world.briefs = { 'g/p!1': brief(1), 'g/p!2': brief(2) }
@@ -432,9 +430,7 @@ test('/mrs --rule briefs the MRs a rule shows, and says so for a rule that is no
   expect(answer.context?.[0]).toContain('## g/p!1')
   expect(answer.context?.[0]).not.toContain('## g/p!2')
   expect((await $.command.run(typed('--rule Review requested'))).text).toMatch(/^Briefed 1 MR \(/)
-  expect((await $.command.run(typed('--rule nope'))).text).toBe(
-    '/mrs: nope is not a rule. Rules: review-requested, mentions, build-failed, cant-merge, on-my-mrs, following'
-  )
+  expect((await $.command.run(typed('--rule nope'))).text).toBe('/mrs: nope is not a rule. Rules: review-requested, mentions, build-failed, cant-merge, on-my-mrs, following')
   expect((await $.command.run(typed('--rule mentions'))).text).toBe('/mrs: nothing in Mentions right now')
   await ui.unmount()
 })
@@ -450,7 +446,7 @@ test('/mrs refuses what it cannot find rather than briefing nothing', async ($, 
   expect((await $.command.run(typed('nonsense'))).text).toBe('/mrs: nonsense is not repo!iid or a merge request URL')
   // The session's repo is g/p, so p!9 is asked of GitLab, which has no such MR.
   expect((await $.command.run(typed('p!9'))).text).toBe('/mrs: GitLab returned none of g/p!9')
-  expect((await $.command.run(typed('q!9'))).text).toContain('q!9 is not in your inbox or this session\'s repo')
+  expect((await $.command.run(typed('q!9'))).text).toContain("q!9 is not in your inbox or this session's repo")
 })
 
 // ---- the drawing budget --------------------------------------------------------------------------------------------------
@@ -477,8 +473,7 @@ test('a full inbox and each rule open in turn stay inside the 100,000 characters
   await ui.press({ key: 'tab-inbox' })
   for (const rule of ['review-requested', 'mentions', 'on-my-mrs']) {
     await ui.press({ key: `inbox-rule-${rule}` })
-    const isClosed = (button: { key?: string; props?: Record<string, unknown> }) =>
-      /^inbox-open-/.test(button.key ?? '') && String(button.props?.label).startsWith('▸')
+    const isClosed = (button: { key?: string; props?: Record<string, unknown> }) => /^inbox-open-/.test(button.key ?? '') && String(button.props?.label).startsWith('▸')
     expect((await ui.findAll({ type: 'Button' })).some(isClosed)).toBe(true)
     // Every card drawn opened too, so the open rule is at its largest; an opened card pushes the last ones out.
     for (let opened = 0; opened < 30; opened += 1) {
@@ -526,7 +521,10 @@ test('an actor who wrote an MR in the inbox has the initials of their name, like
 test('"here" narrows the Inbox to the session\'s project and back', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = emptyWorld()
-  world.todos = [todo('mentioned', fields(4), 'dave', 30, '@me look'), todo('mentioned', fields(5, ALICE, { project: { fullPath: 'g/other' }, webUrl: 'https://gitlab.com/g/other/-/merge_requests/5' }), 'erin', 20, '@me too')]
+  world.todos = [
+    todo('mentioned', fields(4), 'dave', 30, '@me look'),
+    todo('mentioned', fields(5, ALICE, { project: { fullPath: 'g/other' }, webUrl: 'https://gitlab.com/g/other/-/merge_requests/5' }), 'erin', 20, '@me too'),
+  ]
   engine(on, world)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -551,31 +549,35 @@ test('"here" in a session with no repo says so in every section', async ($, on) 
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-here' })
-  expect((await ui.find({ type: 'Text', text: /^Nothing else in: Review requested \(this session has no GitLab repo\)/ }))).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Nothing else in: Review requested \(this session has no GitLab repo\)/ })).toBeDefined()
   await ui.unmount()
 })
 
-test('the Following tab lists the MRs of the people and projects the setting names, and reads two small queries for each', { options: { inboxFollow: ['@frank', 'g/lib'] } }, async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  const world = emptyWorld()
-  const theirs = (iid: number, notes: Note[]) => ({ ...open(iid, notes, { username: 'frank', name: 'Frank' }) })
-  world.followed = {
-    '@frank': { opened: { nodes: [theirs(30, [comment(41, 'gina', 15, 'is this safe?')])] }, merged: { nodes: [] } },
-    'g/lib': { opened: { nodes: [theirs(31, [system(42, 'hal', 25, 'approved')])] }, merged: { nodes: [] } },
+test(
+  'the Following tab lists the MRs of the people and projects the setting names, and reads two small queries for each',
+  { options: { inboxFollow: ['@frank', 'g/lib'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const world = emptyWorld()
+    const theirs = (iid: number, notes: Note[]) => ({ ...open(iid, notes, { username: 'frank', name: 'Frank' }) })
+    world.followed = {
+      '@frank': { opened: { nodes: [theirs(30, [comment(41, 'gina', 15, 'is this safe?')])] }, merged: { nodes: [] } },
+      'g/lib': { opened: { nodes: [theirs(31, [system(42, 'hal', 25, 'approved')])] }, merged: { nodes: [] } },
+    }
+    const gitlab = engine(on, world)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(FIRST_SYNC_MS)
+    expect(gitlab.requests).toEqual(expect.arrayContaining(['gitlab.com InboxFollowUser', 'gitlab.com InboxFollowProject']))
+    await ui.press({ key: 'tab-inbox' })
+    expect(JSON.stringify(await ui.drawn())).toContain('"Following · 2 new"')
+    await ui.press({ key: 'inbox-rule-following' })
+    expect(await ui.find({ type: 'Text', text: '💬 gina commented' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '✓ hal approved' })).toBeDefined()
+    await ui.unmount()
   }
-  const gitlab = engine(on, world)
-
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await clock.advance(FIRST_SYNC_MS)
-  expect(gitlab.requests).toEqual(expect.arrayContaining(['gitlab.com InboxFollowUser', 'gitlab.com InboxFollowProject']))
-  await ui.press({ key: 'tab-inbox' })
-  expect(JSON.stringify(await ui.drawn())).toContain('"Following · 2 new"')
-  await ui.press({ key: 'inbox-rule-following' })
-  expect(await ui.find({ type: 'Text', text: '💬 gina commented' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '✓ hal approved' })).toBeDefined()
-  await ui.unmount()
-})
+)
 
 test('with nobody followed the Following tab says how to follow', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })

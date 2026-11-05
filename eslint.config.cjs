@@ -92,7 +92,10 @@ module.exports = [
       // JSON.parse answers `any`, which is a cast in disguise. Core files read JSON through `parseJson` in decode.ts, whose
       // `unknown` result must be checked before use; the type-aware rules below hold the core to that. Outside the core
       // nothing checks an `any`, so there the call itself is refused.
-      'no-restricted-properties': ['error', { object: 'JSON', property: 'parse', message: 'JSON.parse answers `any`. Use `parseJson` from hooks/decode.ts and check what it returns.' }],
+      'no-restricted-properties': [
+        'error',
+        { object: 'JSON', property: 'parse', message: 'JSON.parse answers `any`. Use `parseJson` from hooks/decode.ts and check what it returns.' },
+      ],
     },
   },
   {
@@ -125,7 +128,9 @@ module.exports = [
     rules: {
       'local/only-importers': [
         'error',
-        { restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: "it stamps text as GitLab's, which only the reader of GitLab's answers can say" } } },
+        {
+          restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: "it stamps text as GitLab's, which only the reader of GitLab's answers can say" } },
+        },
       ],
     },
   },

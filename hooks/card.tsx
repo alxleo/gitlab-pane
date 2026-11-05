@@ -83,12 +83,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           {row.people.map(person =>
             trigger(kit, person.scope, [
               face(kit, person, withPictures),
-              <Button
-                key={scope(`person-${person.username}`)}
-                plain
-                label={person.label}
-                onPress={() => quietly($, showPersonCard($, row.key, person.username))}
-              />,
+              <Button key={scope(`person-${person.username}`)} plain label={person.label} onPress={() => quietly($, showPersonCard($, row.key, person.username))} />,
             ])
           )}
         </Box>

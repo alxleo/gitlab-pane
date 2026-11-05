@@ -25,7 +25,8 @@
 //
 // The types are made by graphql-codegen (the versions in package-lock.json) from tools/gitlab_schema.snapshot.json: the
 // part of the schema the queries use, with its nullability, so a commit needs no network. `check` compares that snapshot
-// with the live schema, which is how a change in GitLab reaches the types.
+// with the live schema, which is how a change in GitLab reaches the types. The snapshot and the types are run through Biome
+// (tools/format.ts) before they are written or compared, so `npm run format:check` has nothing to say about either.
 import { executeCodegen } from '@graphql-codegen/cli'
 import {
   buildClientSchema,
@@ -56,6 +57,7 @@ import { parseArgs } from 'node:util'
 
 import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
 import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
+import { formatted } from './format.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
@@ -485,10 +487,17 @@ function sorted(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sorted)
   }
-  return isRecord(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, sorted(value[key])])) : value
+  return isRecord(value)
+    ? Object.fromEntries(
+        Object.keys(value)
+          .sort()
+          .map(key => [key, sorted(value[key])])
+      )
+    : value
 }
 
-const dump = (snapshot: unknown): string => `${JSON.stringify(sorted(snapshot), null, 1)}\n`
+/** The snapshot as it is written: sorted, and formatted as Biome formats the file, so `npm run format:check` leaves it alone. */
+const dump = (snapshot: unknown): string => formatted(`${JSON.stringify(sorted(snapshot), null, 1)}\n`, SNAPSHOT)
 
 // ---- the generated types ------------------------------------------------------------------------------------------------
 
@@ -518,7 +527,7 @@ async function generate(schemaFile: string): Promise<string> {
   if (error !== null || made === undefined) {
     throw new SchemaError(`graphql-codegen failed: ${error === null ? 'it made no file' : messageOf(error)}`)
   }
-  return made.content
+  return formatted(made.content, TYPES)
 }
 
 function stale(file: string, now: string): Finding | null {

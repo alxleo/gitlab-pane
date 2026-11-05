@@ -1,12 +1,9 @@
 // The rules ESLint has no built-in for, written here so that what each forbids and what it allows is in one place, and
 // the allowance is an option of the rule in eslint.config.cjs, with its reason, never a comment next to the code.
 
-const MUTATORS = new Set([
-  'push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse', 'fill', 'copyWithin', 'set', 'add', 'delete', 'clear',
-])
+const MUTATORS = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse', 'fill', 'copyWithin', 'set', 'add', 'delete', 'clear'])
 
-const isFunction = node =>
-  node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression'
+const isFunction = node => node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression'
 
 /** Calls `enter` on `node` and everything under it; `enter` answers false to skip a node's children. */
 function walk(node, keys, enter) {
@@ -27,11 +24,7 @@ function enclosingName(node) {
     if (each.type === 'FunctionDeclaration' && each.id) {
       return { name: each.id.name, isExported: each.parent.type.startsWith('Export') }
     }
-    if (
-      (each.type === 'ArrowFunctionExpression' || each.type === 'FunctionExpression') &&
-      each.parent.type === 'VariableDeclarator' &&
-      each.parent.id.type === 'Identifier'
-    ) {
+    if ((each.type === 'ArrowFunctionExpression' || each.type === 'FunctionExpression') && each.parent.type === 'VariableDeclarator' && each.parent.id.type === 'Identifier') {
       return { name: each.parent.id.name, isExported: each.parent.parent.parent.type.startsWith('Export') }
     }
   }
@@ -64,9 +57,7 @@ function aliasesOf(identifier, source) {
   for (;;) {
     const parent = node.parent
     const isPassedThrough =
-      (parent.type === 'MemberExpression' && parent.object === node) ||
-      (parent.type === 'ConditionalExpression' && parent.test !== node) ||
-      parent.type === 'LogicalExpression'
+      (parent.type === 'MemberExpression' && parent.object === node) || (parent.type === 'ConditionalExpression' && parent.test !== node) || parent.type === 'LogicalExpression'
     if (!isPassedThrough) {
       break
     }
@@ -115,7 +106,8 @@ const noModuleState = {
     schema: [{ type: 'object', properties: { allowedModules: { type: 'object' } }, additionalProperties: false }],
     messages: {
       letting: '`{{name}}` is module-level `let`: state in a module is shared and lost on reload. Keep it in an atom or in what the caller owns.',
-      closure: '`{{name}}` is `let` in a function that runs as the module loads: a closure kept at module level is state in a module, shared and lost on reload. Keep it in an atom or in what the caller owns.',
+      closure:
+        '`{{name}}` is `let` in a function that runs as the module loads: a closure kept at module level is state in a module, shared and lost on reload. Keep it in an atom or in what the caller owns.',
       mutated: '`{{name}}` is module-level and is changed here ({{how}}): state in a module is shared and lost on reload. Keep it in an atom or in what the caller owns.',
     },
   },
@@ -230,8 +222,7 @@ function mutation(identifier) {
   return undefined
 }
 
-const textOf = callee =>
-  callee.type === 'MemberExpression' && callee.object.type === 'Identifier' && !callee.computed ? `${callee.object.name}.${callee.property.name}` : ''
+const textOf = callee => (callee.type === 'MemberExpression' && callee.object.type === 'Identifier' && !callee.computed ? `${callee.object.name}.${callee.property.name}` : '')
 
 /** Whether the subtree under `node` names `name`. */
 function mentions(node, name, keys) {
@@ -319,9 +310,10 @@ const noTypeAssertion = {
       angle: 'No `<T>x` assertion: it hides a wrong type. Narrow with a type guard or check the value.',
       second: 'A second assertion in {{name}}: the one allowed here is the only one.',
       exported: '{{name}} is exported, or not, other than the config says: a private constructor must stay private.',
-      guard: 'The guard says `{{name}} is {{type}}` but its body never tests `{{name}}` (`typeof`, `in`, `instanceof`, `Array.isArray`, or a call of another guard): that is a cast. Test the shape, or drop the annotation and let the compiler work the guard out.',
-      untyped: 'An overloaded function\'s implementation needs its return type written: it must be the signatures\' return types, no wider.',
-      wider: 'The implementation returns `{{type}}`, which is not one of its overloads\' return types: an overload that returns more than it declares is a cast.',
+      guard:
+        'The guard says `{{name}} is {{type}}` but its body never tests `{{name}}` (`typeof`, `in`, `instanceof`, `Array.isArray`, or a call of another guard): that is a cast. Test the shape, or drop the annotation and let the compiler work the guard out.',
+      untyped: "An overloaded function's implementation needs its return type written: it must be the signatures' return types, no wider.",
+      wider: "The implementation returns `{{type}}`, which is not one of its overloads' return types: an overload that returns more than it declares is a cast.",
     },
   },
   create(context) {
