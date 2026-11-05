@@ -1,6 +1,6 @@
 import type { CheckStatus, CiStatus, ReviewState } from '../types'
 
-const CI_STATUSES: Record<CiStatus, true> = {
+export const CI_STATUSES: Record<CiStatus, true> = {
   created: true,
   waiting_for_resource: true,
   preparing: true,

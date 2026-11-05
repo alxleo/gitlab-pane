@@ -29,7 +29,7 @@
       "type": "string",
       "multiple": true,
       "title": "Inbox: follow",
-      "description": "People and projects whose merge requests the Inbox's Following tab lists: @username or group/project, up to ten. Each costs two small queries per host a minute. Empty leaves the tab empty.",
+      "description": "People and projects whose merge requests the Inbox's Following tab lists: @username or group/project, up to ten. Each costs one small query per host a minute. Empty leaves the tab empty.",
       "default": []
     },
     "failureLogs": {
