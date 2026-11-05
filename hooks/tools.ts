@@ -1,5 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
+import { parseJson } from './decode'
+
 /** What a tool gave: its value, or why not in a line the pane can show. */
 export type Outcome<T> = { ok: true; value: T } | { ok: false; reason: string }
 
@@ -76,7 +78,7 @@ export async function runJson<T>(
   }
   let raw: unknown
   try {
-    raw = JSON.parse(run.stdout)
+    raw = parseJson(run.stdout)
   } catch {
     return { ok: false, reason: run.exitCode === 0 ? lastLine(run.stderr) || `${tool} printed no JSON` : failure(tool, run) }
   }

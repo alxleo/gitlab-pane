@@ -1,18 +1,13 @@
-import { field, records, text } from './decode'
+import { field, records, text } from './decode.ts'
 
 import type { Ticket } from '../types'
 
-let browse = ''
+/** The start of a ticket's link for the `jiraUrl` setting, `<site>/browse/`; empty for anything but an http(s) address, so ticket keys are not linked or read. */
+export const browseUrl = (site: unknown): string =>
+  typeof site === 'string' && /^https?:\/\/\S+$/.test(site.trim()) ? `${site.trim().replace(/\/+$/, '')}/browse/` : ''
 
-/** Takes the `jiraUrl` setting; anything but an http(s) address leaves Jira out, so ticket keys are not linked or read. */
-export function useJiraSite(site: unknown): void {
-  browse = typeof site === 'string' && /^https?:\/\/\S+$/.test(site.trim()) ? `${site.trim().replace(/\/+$/, '')}/browse/` : ''
-}
-
-/** Where a ticket key links, or null while no Jira site is set. */
-export const ticketUrl = (key: string): string | null => (browse ? `${browse}${key}` : null)
-
-export const isJiraOn = (): boolean => browse !== ''
+/** Where a ticket key links, or null while no Jira site is set (`browse` is empty). */
+export const ticketUrl = (browse: string, key: string): string | null => (browse === '' ? null : `${browse}${key}`)
 
 const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/
 

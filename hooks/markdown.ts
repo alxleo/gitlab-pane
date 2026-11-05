@@ -8,14 +8,14 @@
 export type MarkdownText = string & { readonly __brand: 'MarkdownText' }
 
 /** The one place a string becomes Markdown to draw; not exported, so only GitLab's Markdown read here gets through. */
-const asMarkdown = (text: string): MarkdownText => text as MarkdownText
+const brand = (text: string): MarkdownText => text as MarkdownText
 
 /** No Markdown. */
-export const EMPTY_MARKDOWN = asMarkdown('')
+export const EMPTY_MARKDOWN = brand('')
 
 /** The start of `markdown` that fits `room` characters, ended with `…`. */
 export const cutMarkdown = (markdown: MarkdownText, room: number): MarkdownText =>
-  markdown.length > room ? asMarkdown(`${markdown.slice(0, room - 1)}…`) : markdown
+  markdown.length > room ? brand(`${markdown.slice(0, room - 1)}…`) : markdown
 
 /**
  * The longest start of `markdown` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does.
@@ -26,7 +26,7 @@ export function cutToFit(markdown: MarkdownText, room: number, sizeOf: (text: Ma
   while (length > 0) {
     const start = markdown.slice(0, length)
     const end = [start.lastIndexOf('\n\n'), start.lastIndexOf('\n'), start.lastIndexOf(' ')].find(at => at > length / 2) ?? length
-    const cut = asMarkdown(`${start.slice(0, end).trimEnd()} …`)
+    const cut = brand(`${start.slice(0, end).trimEnd()} …`)
     if (sizeOf(cut) <= room) {
       return cut
     }
@@ -66,7 +66,7 @@ function markdownOf(text: string): string {
     .replace(/<(i|em)>([\s\S]*?)<\/\1>/gi, '*$2*')
     .replace(/<(s|del|strike)>([\s\S]*?)<\/\1>/gi, '~~$2~~')
     .replace(/<(code|kbd)>([\s\S]*?)<\/\1>/gi, '`$2`')
-    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, words: string) => (words.trim() ? `[${words.trim()}](${href})` : ''))
+    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, words: string) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
     .replace(/<hr\s*\/?>/gi, '\n\n---\n\n')
     .replace(/<\/?p\b[^>]*>/gi, '\n\n')
     .replace(/<li\b[^>]*>/gi, '\n- ')
@@ -88,27 +88,27 @@ const labelOf = (text: string): string =>
     .trim()
 
 const OPEN_TAG = /<details\b([^>]*)>/i
-const ANY_TAG = /<(\/?)details\b[^>]*>/gi
 
 /** Splits masked text at its outermost `<details>`, each fold read again for those inside it. */
 function split(masked: string, restore: (out: string) => string): Part[] {
   const parts: Part[] = []
   const text = (raw: string) => {
     const out = restore(markdownOf(raw)).trim()
-    if (out) {
-      parts.push({ text: asMarkdown(out) })
+    if (out !== '') {
+      parts.push({ text: brand(out) })
     }
   }
   let rest = masked
-  for (let open = OPEN_TAG.exec(rest); open; open = OPEN_TAG.exec(rest)) {
+  for (let open = OPEN_TAG.exec(rest); open !== null; open = OPEN_TAG.exec(rest)) {
     text(rest.slice(0, open.index))
     const start = open.index + open[0].length
-    ANY_TAG.lastIndex = start
+    const anyTag = /<(\/?)details\b[^>]*>/gi
+    anyTag.lastIndex = start
     let depth = 1
     let end = rest.length
     let after = rest.length
-    for (let tag = ANY_TAG.exec(rest); tag; tag = ANY_TAG.exec(rest)) {
-      depth += tag[1] ? -1 : 1
+    for (let tag = anyTag.exec(rest); tag !== null; tag = anyTag.exec(rest)) {
+      depth += tag[1] === '/' ? -1 : 1
       if (depth === 0) {
         end = tag.index
         after = tag.index + tag[0].length
@@ -117,9 +117,10 @@ function split(masked: string, restore: (out: string) => string): Part[] {
     }
     const inner = rest.slice(start, end)
     const summary = /^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/i.exec(inner)
+    const label = labelOf(restore(summary?.[1] ?? ''))
     parts.push({
-      summary: labelOf(restore(summary?.[1] ?? '')) || 'Details',
-      parts: split(summary ? inner.slice(summary[0].length) : inner, restore),
+      summary: label === '' ? 'Details' : label,
+      parts: split(summary !== null ? inner.slice(summary[0].length) : inner, restore),
       isOpen: /\bopen\b/i.test(open[1] ?? ''),
     })
     rest = rest.slice(after)
@@ -138,5 +139,5 @@ export function partsOf(source: string): Part[] {
 export function flatOf(source: string): MarkdownText {
   const flatten = (parts: Part[]): string =>
     parts.map(part => ('text' in part ? part.text : part.isOpen ? `▾ ${part.summary}\n\n${flatten(part.parts)}` : `▸ ${part.summary}`)).join('\n\n')
-  return asMarkdown(flatten(partsOf(source)))
+  return brand(flatten(partsOf(source)))
 }

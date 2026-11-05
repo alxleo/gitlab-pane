@@ -1,5 +1,5 @@
 // What `mr-inbox inbox --json` prints, decoded without casts; kept apart from inbox.ts, which talks to the engine.
-import { field, isRecord, records, text } from './decode'
+import { field, isRecord, records, text, textOrNull } from './decode.ts'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection, InboxState } from '../types'
 
@@ -44,7 +44,7 @@ export function readInboxJson(raw: unknown): Pick<InboxState, 'sections' | 'sync
   const sections: InboxSection[] = records(sectionsRaw).map(section => ({
     rule: text(section.rule),
     title: text(section.title),
-    note: text(section.note) || null,
+    note: textOrNull(section.note),
     items: records(section.items).map(
       (item): InboxItem => ({
         key: text(item.key),
@@ -63,7 +63,7 @@ export function readInboxJson(raw: unknown): Pick<InboxState, 'sections' | 'sync
             kind: kindOf(text(one.kind)),
             actor: text(one.actor),
             at: text(one.at),
-            url: text(one.url) || null,
+            url: textOrNull(one.url),
             excerpt: text(one.excerpt),
           })
         ),
@@ -73,7 +73,7 @@ export function readInboxJson(raw: unknown): Pick<InboxState, 'sections' | 'sync
   const sync = field(raw, 'sync')
   return {
     sections,
-    syncedAt: text(field(sync, 'finished_at')) || null,
-    syncError: field(sync, 'ok') === false ? text(field(sync, 'error')) || 'the last sync failed' : null,
+    syncedAt: textOrNull(field(sync, 'finished_at')),
+    syncError: field(sync, 'ok') === false ? (textOrNull(field(sync, 'error')) ?? 'the last sync failed') : null,
   }
 }
