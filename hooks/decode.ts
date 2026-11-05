@@ -46,7 +46,18 @@ export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (data !== undefined && data !== null && !isRecord(data)) {
     throw new Failure('bad-answer', 'GitLab answered data that is not an object')
   }
-  const errors = records(raw.errors).map(error => ({ message: text(error.message) }))
+  const errors = records(raw.errors).map(error => {
+    const extensions = isRecord(error.extensions) ? error.extensions : {}
+    const code = textOrNull(extensions.code)
+    const typeName = textOrNull(extensions.typeName)
+    const fieldName = textOrNull(extensions.fieldName)
+    return {
+      message: text(error.message),
+      ...(code !== null || typeName !== null || fieldName !== null
+        ? { extensions: { ...(code !== null ? { code } : {}), ...(typeName !== null ? { typeName } : {}), ...(fieldName !== null ? { fieldName } : {}) } }
+        : {}),
+    }
+  })
   // The one cast at the GraphQL boundary: GitLab validated this answer against the document and the schema the types
   // were generated from, so `data` has the shape of `Data`, nulls where the schema allows them.
   return { data: data === undefined ? null : (data as Data | null), ...(errors.length > 0 ? { errors } : {}) }

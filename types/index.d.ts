@@ -26,33 +26,14 @@ export type ReviewState = 'unreviewed' | 'reviewed' | 'requested_changes' | 'app
 /** Where a person stands on an MR, worked out from their review state, approval and notes. */
 export type PersonState = 'requested_changes' | 'approved' | 'reviewing' | 'commented' | 'unreviewed'
 
-/** GitLab's `DetailedMergeStatus`, with `UNKNOWN` for a verdict the pane has no name for. */
-export type MergeStatus =
-  | 'UNCHECKED'
-  | 'CHECKING'
-  | 'MERGEABLE'
-  | 'COMMITS_STATUS'
-  | 'CI_MUST_PASS'
-  | 'CI_STILL_RUNNING'
-  | 'DISCUSSIONS_NOT_RESOLVED'
-  | 'DRAFT_STATUS'
-  | 'NOT_OPEN'
-  | 'NOT_APPROVED'
-  | 'BLOCKED_STATUS'
-  | 'EXTERNAL_STATUS_CHECKS'
-  | 'PREPARING'
-  | 'JIRA_ASSOCIATION'
-  | 'CONFLICT'
-  | 'NEED_REBASE'
-  | 'APPROVALS_SYNCING'
-  | 'LOCKED_PATHS'
-  | 'LOCKED_LFS_FILES'
-  | 'MERGE_TIME'
-  | 'SECURITY_POLICIES_VIOLATIONS'
-  | 'TITLE_NOT_MATCHING'
-  | 'REQUESTED_CHANGES'
-  | 'SECURITY_POLICY_PIPELINE_CHECK'
-  | 'UNKNOWN'
+/** GitLab's `MergeabilityCheckStatus`, lower case, with `unknown` for a status the pane has no name for. */
+export type CheckStatus = 'success' | 'checking' | 'failed' | 'warning' | 'inactive' | 'unknown'
+
+/** One of GitLab's merge checks: `id` is its `MergeabilityCheckIdentifier` (`CI_MUST_PASS`), an identifier GitLab adds later included. */
+export type MergeCheck = { id: string; status: CheckStatus }
+
+/** Every merge check GitLab runs on an MR, in its own order, which is the order of its precedence. */
+export type MergeStatus = MergeCheck[]
 
 /** What `mr-inbox` matched a rule on; `unknown` is a kind the pane has no word for. */
 export type InboxKind =
@@ -146,7 +127,7 @@ export type MrCard = {
   /** Approvals still needed; a bot's approval never counts. */
   approvalsLeft: number
   approvalsRequired: number
-  /** GitLab's own verdict, under the project's merge rules; null while it was not read. */
+  /** GitLab's own merge checks, under the project's merge rules; null while they were not read. */
   mergeStatus: MergeStatus | null
   approvers: string[]
   reviewers: Reviewer[]
@@ -189,7 +170,7 @@ export type Pinned = {
 
 /** What a GitLab host's schema has of the fields that older versions lack, from its first probe. */
 export type HostFeatures = {
-  /** `MergeRequest.detailedMergeStatus` (GitLab 15.3): without it no card has a merge verdict. */
+  /** `MergeRequest.mergeabilityChecks`: without it no card has GitLab's merge checks, and the pane marks conflicts and rebases itself. */
   hasMergeVerdict: boolean
   /** `UserMergeRequestInteraction.reviewState`: without it a reviewer's state is not known. */
   hasReviewStates: boolean
@@ -335,6 +316,8 @@ declare module 'claude-code' {
       unreachable: string[]
       scrolling: Scrolling
       problems: Problems
+      /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
+      logs: boolean
     }
   }
 }
