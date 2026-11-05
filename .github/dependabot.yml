@@ -1,4 +1,4 @@
-# Keeps the pinned actions and pre-commit hooks current: one grouped pull request a month for each, and only for
+# Keeps the pinned actions and the dev-time npm packages current: one grouped pull request a month for each, and only for
 # versions out for two weeks, so a hijacked release has time to be caught before it is proposed here.
 version: 2
 updates:
@@ -15,28 +15,20 @@ updates:
       prefix: chore
       include: scope
 
-  - package-ecosystem: pre-commit
+  # The root package.json: the type-checkers, the linter, graphql-codegen, Playwright and the git hooks. The mod itself has
+  # no npm packages. typescript-eslint cannot load TypeScript past 6.0, so `typescript` (the linter's) stays on 6.x while
+  # `typescript-7` is the compiler that CI and the hooks run.
+  - package-ecosystem: npm
     directory: /
     schedule:
       interval: monthly
     cooldown:
       default-days: 14
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
-      hooks:
-        patterns: ["*"]
-    commit-message:
-      prefix: chore
-      include: scope
-
-  # The dev-time generator of hooks/gitlab.generated.ts (tools/codegen); the mod itself has no npm packages.
-  - package-ecosystem: npm
-    directory: /tools/codegen
-    schedule:
-      interval: monthly
-    cooldown:
-      default-days: 14
-    groups:
-      codegen:
+      tooling:
         patterns: ["*"]
     commit-message:
       prefix: chore
