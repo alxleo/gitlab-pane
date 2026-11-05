@@ -1,7 +1,7 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import { CHROME_SIZE, DRAWING_BUDGET, LINK, ago, measure, plural, shortHash, verdictOf } from './ci'
-import { asMarkdown, partsOf } from './markdown'
+import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { toggleFold } from './read'
 
 import type { MarkdownText, Part } from './markdown'
@@ -130,7 +130,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       room -= size
       continue
     }
-    const cut = 'text' in part ? cutToFit(part.text, room, text => measure(markdown(text))) : asMarkdown('')
+    const cut = 'text' in part ? cutToFit(part.text, room, text => measure(markdown(text))) : EMPTY_MARKDOWN
     if (cut) {
       described.push(markdown(cut))
     }
@@ -145,19 +145,4 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     ...kept,
     ...(kept.length < blocks.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of the threads are on GitLab`}</Link>] : []),
   ]
-}
-
-/** The longest start of `text` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does. */
-function cutToFit(text: MarkdownText, room: number, sizeOf: (text: MarkdownText) => number): MarkdownText {
-  let length = Math.min(text.length, room)
-  while (length > 0) {
-    const start = text.slice(0, length)
-    const end = [start.lastIndexOf('\n\n'), start.lastIndexOf('\n'), start.lastIndexOf(' ')].find(at => at > length / 2) ?? length
-    const cut = asMarkdown(`${start.slice(0, end).trimEnd()} …`)
-    if (sizeOf(cut) <= room) {
-      return cut
-    }
-    length = Math.floor(length * 0.8)
-  }
-  return asMarkdown('')
 }

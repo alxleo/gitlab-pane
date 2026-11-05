@@ -1,4 +1,4 @@
-import { asMarkdown, flatOf, type MarkdownText } from './markdown'
+import { cutMarkdown, flatOf, type MarkdownText } from './markdown'
 import { commas, dotted, foreign, line, NAME_ROOM, URL_ROOM, type ModelLine } from './model-text'
 
 import type { CiStatus, MergeStatus, MrCard, Person, Pinned, Stage, Usual } from '../types'
@@ -374,15 +374,9 @@ export function excerpt(body: string, room = 160): string {
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
 
-/** Text for Markdown, its marks escaped so a title reads as written. */
-export function markdownText(text: string): MarkdownText {
-  return asMarkdown(text.replace(/([\\`*_[\]()#<>!|~])/g, '\\$1'))
-}
-
 /** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
 export function bodyOf(text: string, room = 1_200): MarkdownText {
-  const clean = flatOf(text)
-  return clean.length > room ? asMarkdown(`${clean.slice(0, room - 1)}…`) : clean
+  return cutMarkdown(flatOf(text), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */
