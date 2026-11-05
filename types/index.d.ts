@@ -35,18 +35,19 @@ export type MergeCheck = { id: string; status: CheckStatus }
 /** Every merge check GitLab runs on an MR, in its own order, which is the order of its precedence. */
 export type MergeStatus = MergeCheck[]
 
-/** What `mr-inbox` matched a rule on; `unknown` is a kind the pane has no word for. */
+/** What happened to an MR that an inbox rule counts; each has its own glyph and word in the pane. */
 export type InboxKind =
   | 'changes_requested'
   | 'unapproved'
   | 'approved'
   | 'review'
   | 'comment'
+  | 'mentioned'
   | 'review_requested'
   | 'pushed'
-  | 'opened'
   | 'merged'
-  | 'unknown'
+  | 'build_failed'
+  | 'unmergeable'
 
 export type Job = {
   name: string
@@ -174,6 +175,8 @@ export type HostFeatures = {
   hasMergeVerdict: boolean
   /** `UserMergeRequestInteraction.reviewState`: without it a reviewer's state is not known. */
   hasReviewStates: boolean
+  /** `Todo.targetEntity` (GitLab 17.4): without it the inbox asks for `target`, which GitLab 17.4 deprecated. */
+  hasTodoEntity: boolean
 }
 
 export type Ticket = { type: string; status: string; summary: string }
@@ -201,54 +204,112 @@ export type PollState = {
   usualAt: number | null
 }
 
-/** One event `mr-inbox` matched a rule on. */
+/** One event a rule counted on an MR, as the pane draws it. */
 export type InboxActivity = {
   kind: InboxKind
   actor: string
+  /** ISO time. */
   at: string
   url: string | null
   excerpt: string
 }
 
-/** One MR a rule shows, as `mr-inbox inbox --json` gives it. */
+/** One MR a rule shows. */
 export type InboxItem = {
-  /** `group/project!iid`, what `mr-inbox seen` takes. */
+  /** `host/group/project!iid`, the card key. */
   key: string
   /** The shortest unique `repo!iid`. */
   ref: string
   title: string
   url: string
   author: string
-  /** The author's display name, as mr-inbox gives it; empty when it gives none. */
+  /** The author's display name; empty when GitLab gives none. */
   authorName: string
   /** You wrote it, so your name says nothing on its card. */
   isMine: boolean
   state: string
   isDraft: boolean
-  /** Human activity since the MR was last marked seen. */
+  /** Human activity the rule counts since the MR was last marked seen. */
   unseen: number
-  /** The rule's matching activity by kind, such as `{ approved: 2, comment: 3 }`. */
+  /** The rule's unseen activity by kind, such as `{ approved: 2, comment: 3 }`. */
   counts: Partial<Record<InboxKind, number>>
+  /** GitLab's latest notes stopped before the last seen mark, so the counts are lower bounds: drawn `30+`. */
+  isCapped: boolean
+  /** The newest few events the rule counts, seen or not. */
   activity: InboxActivity[]
 }
 
 export type InboxSection = {
   rule: string
   title: string
-  /** Why a rule shows nothing, such as needing the session's repo. */
+  /** Why the rule shows nothing, such as a host with no token or a session with no repo; null when there is no such reason. */
   note: string | null
   items: InboxItem[]
 }
 
+/** One thing that happened to an MR, kept compact because the inbox snapshot is stored. */
+export type InboxSignal = {
+  kind: InboxKind
+  actor: string
+  /** When it happened, in epoch milliseconds. */
+  at: number
+  /** The note's id when the event has a comment to link to. */
+  note: string | null
+  /** The first words of what was written, or empty. */
+  excerpt: string
+}
+
+/** An MR the inbox read, with the signals the rules may count; the rules decide where it shows. */
+export type InboxMr = {
+  host: string
+  /** `group/project`. */
+  path: string
+  iid: number
+  title: string
+  url: string
+  author: string
+  authorName: string
+  isMine: boolean
+  state: string
+  isDraft: boolean
+  /** You are a reviewer of it and have not approved it. */
+  inQueue: boolean
+  /** It is one of the people's or projects' MRs the `inboxFollow` setting names. */
+  isFollowed: boolean
+  /** When the oldest note read was written if GitLab had older ones it did not send, else null: nothing before it is counted. */
+  cutoff: number | null
+  /** Newest first. */
+  signals: InboxSignal[]
+}
+
+/** How the last read of one host went for the inbox. */
+export type InboxHost = {
+  /** The signed-in user; null while the host has never answered. */
+  user: string | null
+  /** Why the read failed in whole or in part, or null. */
+  failure: { kind: FailureKind; message: string } | null
+}
+
+/**
+ * What one read of the configured hosts found, before any rule is applied or any MR marked seen. It is what the reader's
+ * leader keeps in the plugin store for the other sessions: at most 50 MRs of 10 signals, under 128 kB as JSON.
+ */
+export type InboxSnapshot = {
+  /** When the read ended, epoch ms; 0 while there has been none. */
+  at: number
+  hosts: Record<string, InboxHost>
+  mrs: InboxMr[]
+}
+
+/** A person (`user`, without the `@`) or a project (`project`, `group/project`) the `inboxFollow` setting names. */
+export type InboxFollow = { kind: 'user' | 'project'; name: string }
+
 export type InboxState = {
-  sections: InboxSection[]
-  /** When `mr-inbox` last finished a sync, and whether that went well. */
-  syncedAt: string | null
-  syncError: string | null
+  snapshot: InboxSnapshot
+  /** When each MR was marked seen (epoch ms), by the key of its entry in the plugin store. */
+  seen: Record<string, number>
   isSyncing: boolean
   readAt: number | null
-  /** Why the last read of the inbox failed; the sections are then from an earlier read. */
-  error: string | null
 }
 
 /**
@@ -288,10 +349,14 @@ export type Scrolling = { refused: string; goingBack: string }
 declare module 'claude-code' {
   interface PluginState {
     'gitlab-ci': {
-      /** The rules `mr-inbox` evaluates over its own cache. */
+      /** What GitLab last said, and which MRs are marked seen; the built-in rules turn it into the inbox. */
       inbox: InboxState
       /** The inbox rule drawn open: one at most, as tabs. */
       inboxOpen: string[]
+      /** Whether the inbox shows only the session's own repo. */
+      inboxHere: boolean
+      /** The people and projects the Following rule lists. */
+      inboxFollow: InboxFollow[]
       /** Inbox MRs, by key, opened to their recent activity. */
       inboxCards: string[]
       /** This session's MRs, drawn first and the only ones that wake it. */
