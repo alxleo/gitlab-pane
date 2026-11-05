@@ -2,7 +2,7 @@ import { cutMarkdown, flatOf, type MarkdownText } from './markdown.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
 
-import type { GitLabMarkdown, MrCard, Stage, Usual } from '../types'
+import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 
 export const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`
@@ -58,11 +58,42 @@ export const ago = (iso: string, now: number): ModelLine => {
   return minutes < 1440 ? line`${Math.floor(minutes / 60)}h` : line`${Math.floor(minutes / 1440)}d`
 }
 
-/** Seconds any of these jobs ran, overlaps counted once, as GitLab counts a pipeline's duration. */
+/** The jobs that failed and may not, counting those a shared card leaves out of its list. */
+export const failedCount = (pipeline: NonNullable<MrCard['pipeline']>): number => pipeline.failed.length + pipeline.moreFailed
+/** The jobs that failed and may, counting those a shared card leaves out of its list. */
+export const amberCount = (pipeline: NonNullable<MrCard['pipeline']>): number => pipeline.amber.length + pipeline.moreAmber
+/** The open threads a person started, counting those a shared card leaves out of its list. */
+export const threadCount = (card: MrCard): number => card.openThreads.length + card.threadsLeft.loose + card.threadsLeft.held
+/** The open threads no person's icon holds, counting those a shared card leaves out of its list. */
+export const looseCount = (card: MrCard, held: ReadonlySet<string>): number => card.openThreads.filter(note => !held.has(note.author)).length + card.threadsLeft.loose
+
+/** Merges time spans that touch or overlap into runs, in order. */
+function merged(spans: readonly (readonly [number, number])[]): [number, number][] {
+  const runs: [number, number][] = []
+  for (const [start, end] of [...spans].sort((a, b) => a[0] - b[0])) {
+    const last = runs.at(-1)
+    if (last !== undefined && start <= last[1]) {
+      last[1] = Math.max(last[1], end)
+    } else {
+      runs.push([start, end])
+    }
+  }
+  return runs
+}
+
+/** When these jobs ran: the spans of the finished ones merged into runs, and the start of each that is still going. */
+export function ranOf(jobs: readonly Pick<Job, 'startedAt' | 'finishedAt'>[]): Ran {
+  const started = jobs.flatMap(job => (job.startedAt !== null ? [{ start: Date.parse(job.startedAt), end: job.finishedAt !== null ? Date.parse(job.finishedAt) : null }] : []))
+  return {
+    done: merged(started.flatMap(({ start, end }) => (end !== null ? [[start, end] as const] : []))),
+    running: started.flatMap(({ start, end }) => (end === null ? [start] : [])),
+  }
+}
+
+/** Seconds any of these stages' jobs ran, overlaps counted once, as GitLab counts a pipeline's duration. */
 export function ranFor(stages: readonly Stage[], now: number): number {
   const spans = stages
-    .flatMap(stage => stage.jobs)
-    .flatMap(job => (job.startedAt !== null ? [[Date.parse(job.startedAt), job.finishedAt !== null ? Date.parse(job.finishedAt) : now] as const] : []))
+    .flatMap(stage => [...stage.ran.done, ...stage.ran.running.map((start): [number, number] => [start, now])])
     .sort((a, b) => a[0] - b[0])
   let total = 0
   let reach = -Infinity
