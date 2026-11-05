@@ -12,8 +12,7 @@ const alternation = (hosts: readonly string[]): string =>
     .join('|')
 
 /** Every merge request URL on one of `hosts` in a text. */
-export const mrUrls = (hosts: readonly string[]): RegExp =>
-  new RegExp(`https://(?:${alternation(hosts)})/[\\w.\\-/]+?/-/merge_requests/\\d+`, 'gi')
+export const mrUrls = (hosts: readonly string[]): RegExp => new RegExp(`https://(?:${alternation(hosts)})/[\\w.\\-/]+?/-/merge_requests/\\d+`, 'gi')
 
 /** The MR a URL on one of `hosts` names, or null for any other address. */
 export function parseMrUrl(url: string, hosts: readonly string[]): Pinned | null {

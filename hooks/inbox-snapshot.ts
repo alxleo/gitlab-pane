@@ -38,9 +38,7 @@ export const NO_SNAPSHOT: InboxSnapshot = { at: 0, hosts: {}, mrs: [] }
 
 function signalOf(raw: Record<string, unknown>): InboxSignal[] {
   const kind = text(raw.kind)
-  return isInboxKind(kind) && typeof raw.at === 'number'
-    ? [{ kind, actor: text(raw.actor), at: raw.at, note: textOrNull(raw.note), excerpt: text(raw.excerpt) }]
-    : []
+  return isInboxKind(kind) && typeof raw.at === 'number' ? [{ kind, actor: text(raw.actor), at: raw.at, note: textOrNull(raw.note), excerpt: text(raw.excerpt) }] : []
 }
 
 function mrOf(raw: Record<string, unknown>): InboxMr[] {
@@ -100,9 +98,7 @@ export function carryOver(previous: InboxSnapshot, fresh: InboxSnapshot): InboxS
   const names = new Set(silent.map(([host]) => host))
   return {
     at: fresh.at,
-    hosts: Object.fromEntries(
-      Object.entries(fresh.hosts).map(([host, one]) => [host, names.has(host) ? { user: previous.hosts[host]?.user ?? null, failure: one.failure } : one])
-    ),
+    hosts: Object.fromEntries(Object.entries(fresh.hosts).map(([host, one]) => [host, names.has(host) ? { user: previous.hosts[host]?.user ?? null, failure: one.failure } : one])),
     mrs: [...fresh.mrs, ...previous.mrs.filter(mr => names.has(mr.host))],
   }
 }

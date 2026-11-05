@@ -379,7 +379,7 @@ export type Scrolling = { refused: string; goingBack: string }
 
 declare module 'claude-code' {
   interface PluginState {
-    'gitlab-ci': {
+    'gitlab-pane': {
       /** What GitLab last said, and which MRs are marked seen; the built-in rules turn it into the inbox. */
       inbox: InboxState
       /** The inbox rule drawn open: one at most, as tabs. */

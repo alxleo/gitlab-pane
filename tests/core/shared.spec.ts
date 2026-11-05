@@ -29,7 +29,13 @@ import { pinKey } from '../../hooks/mr-url.ts'
 
 import type { MergeStatus, MrCard, Pinned } from '../../types'
 
-const pin = (iid: number, origin?: 'raised' | 'watched'): Pinned => ({ url: `https://gitlab.com/g/p/-/merge_requests/${iid}`, host: HOST, path: 'g/p', iid, ...(origin !== undefined ? { origin } : {}) })
+const pin = (iid: number, origin?: 'raised' | 'watched'): Pinned => ({
+  url: `https://gitlab.com/g/p/-/merge_requests/${iid}`,
+  host: HOST,
+  path: 'g/p',
+  iid,
+  ...(origin !== undefined ? { origin } : {}),
+})
 
 const heavy = (iid: number): MrCard => toCard(HOST, heavyMr(iid))
 
@@ -132,7 +138,13 @@ test('the leader reads faster while a pinned pipeline runs and backs off after f
   expect(isMoving([running, settled], [pin(1)])).toBe(true)
   expect(isMoving([running, settled], [pin(2)])).toBe(false)
   expect(isMoving([running], [])).toBe(false)
-  expect([pollEvery(0, true), pollEvery(0, false), pollEvery(1, true), pollEvery(2, false), pollEvery(9, false)]).toEqual([MOVING_EVERY_MS, QUIET_EVERY_MS, 120_000, 240_000, 600_000])
+  expect([pollEvery(0, true), pollEvery(0, false), pollEvery(1, true), pollEvery(2, false), pollEvery(9, false)]).toEqual([
+    MOVING_EVERY_MS,
+    QUIET_EVERY_MS,
+    120_000,
+    240_000,
+    600_000,
+  ])
 })
 
 test('between whole reads a host is asked only for what changed since, and a whole read comes round every five minutes', () => {
@@ -193,7 +205,9 @@ const worldCard = (iid: number, mr: { version: number; isOpen: boolean; updatedA
 
 /** GitLab's verdicts, which it gives for open MRs only. */
 const verdictsOf = (world: World): Map<string, MergeStatus> =>
-  new Map([...world].filter(([, mr]) => mr.isOpen).map(([iid, mr]) => [`gitlab.com/g/p!${iid}`, [{ id: 'CI_MUST_PASS', status: (iid + mr.version) % 2 === 0 ? 'success' : 'failed' }]]))
+  new Map(
+    [...world].filter(([, mr]) => mr.isOpen).map(([iid, mr]) => [`gitlab.com/g/p!${iid}`, [{ id: 'CI_MUST_PASS', status: (iid + mr.version) % 2 === 0 ? 'success' : 'failed' }]])
+  )
 
 const rowsOf = (rows: readonly MrCard[]) => [...rows].sort((a, b) => a.key.localeCompare(b.key))
 

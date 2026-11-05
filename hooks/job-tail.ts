@@ -20,7 +20,11 @@ const ESCAPES = new RegExp(`${ESC}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${BEL}${ESC}]*(?:
 const SECTIONS = /section_(?:start|end):\d+:[^\r\n]*/g
 
 /** What a line shows once the terminal has drawn it: a carriage return starts the line over, as a progress bar does. */
-const drawn = (text: string): string => text.split('\r').filter(part => part.trim() !== '').pop() ?? ''
+const drawn = (text: string): string =>
+  text
+    .split('\r')
+    .filter(part => part.trim() !== '')
+    .pop() ?? ''
 
 /**
  * The last lines of a job's log, cleaned: escapes and section markers gone, blank lines gone, each line one line of

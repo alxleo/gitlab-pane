@@ -1,13 +1,15 @@
-// docs: holds README.md and DESIGN.md to the code, so a table there cannot drift from what the plugin does.
+// docs: holds README.md, DESIGN.md and CONTRIBUTING.md to the code, so a table there cannot drift from what the plugin does.
 //
 //   node tools/docs.ts write     read the docs' tables into tests/docs.generated.ts
-//   node tools/docs.ts check     fail if the settings table is not plugin.json's userConfig, or that file is not what the docs say
+//   node tools/docs.ts check     fail if the settings table is not plugin.json's userConfig, CONTRIBUTING's scripts table not package.json's
+//                                scripts, or that file is not what the docs say
 //
 // (`npm run docs -- <command>` is the same; `check` is part of `npm run check`.) The check is in two halves, because the tests
 // run where no file can be read and Node cannot load the engine-facing modules that hold some of the facts:
 //
 //   * here, under Node: the README's settings table against plugin.json (every userConfig key, in order, with its default),
-//     and every table below read into tests/docs.generated.ts, which must be what the docs say now
+//     CONTRIBUTING's scripts table against package.json (every script, and no other), and every table below read into
+//     tests/docs.generated.ts, which must be what the docs say now
 //   * in tests/docs.test.ts, under `claude plugin test`: that file against the code (the palette, the mark tables, the
 //     polling intervals, the commands and the tool register.tsx registers)
 //
@@ -16,10 +18,13 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
+import { formatted } from './format.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const README = join(ROOT, 'README.md')
 const DESIGN = join(ROOT, 'DESIGN.md')
+const CONTRIBUTING = join(ROOT, 'CONTRIBUTING.md')
+const PACKAGE = join(ROOT, 'package.json')
 const PLUGIN = join(ROOT, '.claude-plugin', 'plugin.json')
 const GENERATED = join(ROOT, 'tests', 'docs.generated.ts')
 
@@ -99,8 +104,7 @@ function firstTicked(where: string, cell: string | undefined): string {
 }
 
 /** Every duration a cell names (`1 min`, `30 s`, `2 h`), in milliseconds, in order. */
-const durationsOf = (cell: string | undefined): number[] =>
-  [...(cell ?? '').matchAll(DURATION)].map(found => Number(found[1]) * (UNITS[found[2] ?? ''] ?? Number.NaN))
+const durationsOf = (cell: string | undefined): number[] => [...(cell ?? '').matchAll(DURATION)].map(found => Number(found[1]) * (UNITS[found[2] ?? ''] ?? Number.NaN))
 
 /** What the docs' tables say that the tests hold to the code. */
 function readDocs() {
@@ -163,17 +167,30 @@ function checkSettings(): void {
   }
 }
 
+/** CONTRIBUTING's scripts table names every script of package.json, and no script that is not there (`npm run name …`, or `npm test`). */
+function checkScripts(): void {
+  const manifest = parseJson(readFileSync(PACKAGE, 'utf8'))
+  const scripts = isRecord(manifest) && isRecord(manifest['scripts']) ? Object.keys(manifest['scripts']) : []
+  const named = tableOf(CONTRIBUTING, ['Script', 'Checks']).rows.flatMap(row => ticked(row[0]).flatMap(command => /^npm (?:run )?([\w:-]+)/.exec(command)?.[1] ?? []))
+  const missing = scripts.filter(script => !named.includes(script))
+  const unknown = [...new Set(named.filter(name => !scripts.includes(name)))]
+  if (missing.length > 0) {
+    problems.push(`CONTRIBUTING.md's scripts table lacks package.json's ${missing.join(', ')}`)
+  }
+  if (unknown.length > 0) {
+    problems.push(`CONTRIBUTING.md's scripts table names ${unknown.join(', ')}, which package.json does not have`)
+  }
+}
+
 /** A group of tables as a constant, one row a line. */
 const constant = (name: string, tables: Record<string, readonly unknown[]>): string =>
-  [
-    `export const ${name} = {`,
-    ...Object.entries(tables).flatMap(([key, rows]) => [`  ${key}: [`, ...rows.map(row => `    ${JSON.stringify(row)},`), '  ],']),
-    '} as const',
-  ].join('\n')
+  [`export const ${name} = {`, ...Object.entries(tables).flatMap(([key, rows]) => [`  ${key}: [`, ...rows.map(row => `    ${JSON.stringify(row)},`), '  ],']), '} as const'].join(
+    '\n'
+  )
 
 function generated(): string {
   const docs = readDocs()
-  return [
+  const text = [
     '// What README.md and DESIGN.md say in their tables, read by tools/docs.ts. Never edit it: `npm run docs -- write` makes it.',
     '// `npm run docs -- check` fails while it differs from the docs, and tests/docs.test.ts while it differs from the code.',
     '',
@@ -182,6 +199,7 @@ function generated(): string {
     constant('DESIGN', docs.design),
     '',
   ].join('\n')
+  return formatted(text, GENERATED)
 }
 
 function report(): number {
@@ -205,6 +223,7 @@ function main(args: readonly string[]): number {
   }
   if (command === 'check' && args.length === 1) {
     checkSettings()
+    checkScripts()
     let current = ''
     try {
       current = readFileSync(GENERATED, 'utf8')
@@ -216,7 +235,7 @@ function main(args: readonly string[]): number {
     }
     const failed = report()
     if (failed === 0) {
-      console.log('the docs\' settings are plugin.json\'s, and their tables are in tests/docs.generated.ts')
+      console.log("the docs' settings are plugin.json's, the scripts table is package.json's, and their tables are in tests/docs.generated.ts")
     }
     return failed
   }

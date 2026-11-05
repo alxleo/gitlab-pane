@@ -125,7 +125,10 @@ export async function readAvatars($: EngineInterface, rows: readonly MrCard[]): 
     })
   )
   const failed = fetched.filter(pair => pair[1] === null)
-  await markUnreachable($, failed.map(pair => pair[0]))
+  await markUnreachable(
+    $,
+    failed.map(pair => pair[0])
+  )
   if (failed.length > 0) {
     await record($, 'avatars', new Failure('network', `${failed.length} picture${failed.length === 1 ? '' : 's'} could not be fetched`))
   } else {

@@ -42,7 +42,7 @@ test('the README names the slash commands and the tool the plugin registers, and
   expect(sorted(README.tools)).toEqual(sorted(tools))
 })
 
-test('the README\'s polling intervals are the ones the sessions poll at', () => {
+test("the README's polling intervals are the ones the sessions poll at", () => {
   expect(README.runs).toEqual([
     // The leader's read of your MRs: while a pinned pipeline runs, otherwise, the first back-off and the most; the whole list.
     [pollEvery(0, true), pollEvery(0, false), pollEvery(1, false), BACKOFF_MAX_MS, FULL_EVERY_MS],
@@ -66,25 +66,27 @@ test('the README\'s polling intervals are the ones the sessions poll at', () => 
   ])
 })
 
-test('DESIGN\'s colour table is the palette, tone for tone', () => {
+test("DESIGN's colour table is the palette, tone for tone", () => {
   expect(DESIGN.colours.length).toBe(Object.keys(STAGE_COLOURS).length)
   expect(Object.fromEntries(DESIGN.colours)).toEqual(STAGE_COLOURS)
 })
 
-test('DESIGN\'s pipeline marks are statusMark\'s, for every status GitLab sends and for no pipeline', () => {
+test("DESIGN's pipeline marks are statusMark's, for every status GitLab sends and for no pipeline", () => {
   const statuses = Object.keys(CI_STATUSES).filter((status): status is CiStatus => status in CI_STATUSES)
-  const fromCode = [...statuses.map(status => [status, statusMark(status)] as const), ['none', statusMark(undefined)] as const].map(([status, mark]) => `${status} ${mark.glyph} ${mark.tone}`)
+  const fromCode = [...statuses.map(status => [status, statusMark(status)] as const), ['none', statusMark(undefined)] as const].map(
+    ([status, mark]) => `${status} ${mark.glyph} ${mark.tone}`
+  )
   const fromDocs = DESIGN.pipelineMarks.flatMap(([glyph, tone, named]) => (named.length > 0 ? named : ['none']).map(status => `${status} ${glyph} ${tone}`))
   expect(sorted(fromDocs)).toEqual(sorted(fromCode))
 })
 
-test('DESIGN\'s merge-check tones are CHECK_TONE\'s, every check once', () => {
+test("DESIGN's merge-check tones are CHECK_TONE's, every check once", () => {
   const fromCode = Object.entries(CHECK_TONE).map(([check, tone]) => `${check} ${tone}`)
   const fromDocs = DESIGN.checkTones.flatMap(([tone, checks]) => checks.map(check => `${check} ${tone}`))
   expect(sorted(fromDocs)).toEqual(sorted(fromCode))
 })
 
-test('DESIGN\'s badges, link marks and inbox events are the code\'s, in its order', () => {
+test("DESIGN's badges, link marks and inbox events are the code's, in its order", () => {
   const states = Object.keys(REVIEW_STATE).filter((state): state is PersonState => state in REVIEW_STATE)
   expect(DESIGN.badges).toEqual(states.flatMap(state => (REVIEW_MARK[state] !== null ? [[REVIEW_MARK[state].glyph, REVIEW_STATE[state]]] : [])))
   expect(DESIGN.links).toEqual(Object.values(LINK))

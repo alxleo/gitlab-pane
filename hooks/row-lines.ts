@@ -33,8 +33,7 @@ const text = (words: string, how: { bold?: boolean; dim?: boolean; tone?: Tone }
 })
 
 /** A note's byline words: where in the code, and when. */
-const whereAndWhen = (note: NoteFacts, now: number): string =>
-  [note.where, ago(note.at, now)].filter(isFilled).join(' · ')
+const whereAndWhen = (note: NoteFacts, now: number): string => [note.where, ago(note.at, now)].filter(isFilled).join(' · ')
 
 const noteLine = (note: NoteFacts, now: number, who = note.author): Line => ({
   kind: 'note',
@@ -75,7 +74,13 @@ export function aboutLines(card: MrCard, facts: CardFacts, ctx: RowContext, tick
         ]
       : []),
     ...(facts.ticket !== null && ticketLink !== null
-      ? [text(jira !== undefined ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}` : `${facts.ticket}: ${ctx.isJiraUnavailable ? 'Jira is not available here' : 'not read from Jira yet'}`)]
+      ? [
+          text(
+            jira !== undefined
+              ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}`
+              : `${facts.ticket}: ${ctx.isJiraUnavailable ? 'Jira is not available here' : 'not read from Jira yet'}`
+          ),
+        ]
       : []),
     ...(card.project !== ctx.homeRepo ? [text(projectLabel(card.host, card.path), { dim: true })] : []),
   ]
@@ -123,12 +128,7 @@ export function personLines(person: PersonFacts, now: number): Line[] {
     {
       kind: 'hint',
       gap: latest !== undefined,
-      text:
-        person.noteCount > 1
-          ? `Click their name for all ${person.noteCount} comments.`
-          : person.noteCount === 1
-            ? 'Click their name to read it whole.'
-            : 'No comments.',
+      text: person.noteCount > 1 ? `Click their name for all ${person.noteCount} comments.` : person.noteCount === 1 ? 'Click their name to read it whole.' : 'No comments.',
     },
   ]
 }

@@ -26,7 +26,14 @@ const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filt
  * first is home. A setting with no valid host gives gitlab.com.
  */
 export function parseHosts(setting: unknown): string[] {
-  const hosts = [...new Set(strings(setting).flatMap(entry => entry.split(',')).map(bareHost).filter(isFilled))]
+  const hosts = [
+    ...new Set(
+      strings(setting)
+        .flatMap(entry => entry.split(','))
+        .map(bareHost)
+        .filter(isFilled)
+    ),
+  ]
   return hosts.length > 0 ? hosts : [DEFAULT_HOST]
 }
 

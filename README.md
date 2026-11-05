@@ -1,6 +1,6 @@
 # gitlab-pane
 
-A Claude Code plugin (`gitlab-ci`) that shows your GitLab merge requests beside the session, and wakes the session when an MR it opened fails its pipeline or can merge.
+A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests beside the session, and wakes the session when an MR it opened fails its pipeline or can merge.
 
 | Mine: your MRs, what needs you first | Inbox: reviews, mentions, failures |
 |---|---|
@@ -23,8 +23,10 @@ Each wake comes once per pipeline. MRs pinned with `watch_mr` sit on top too, bu
 ## Install
 
 ```bash
-claude plugin install gitlab-ci --marketplace alxleo/gitlab-pane
+claude plugin install gitlab-pane --marketplace alxleo/gitlab-pane
 ```
+
+Renamed from `gitlab-ci` in 0.3.0: reinstall as `gitlab-pane@gitlab-pane`; settings and the store (avatars, seen marks) do not carry over.
 
 Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`). Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in.
 
@@ -35,13 +37,13 @@ For a team, in the project's `.claude/settings.json`:
   "extraKnownMarketplaces": {
     "gitlab-pane": { "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "v0.2.1" } }
   },
-  "enabledPlugins": { "gitlab-ci@gitlab-pane": true }
+  "enabledPlugins": { "gitlab-pane@gitlab-pane": true }
 }
 ```
 
 - `ref` pins a [release](https://github.com/alxleo/gitlab-pane/releases); raise it to update. Without it, every update installs main, which runs with your GitLab and Jira sign-ins.
 - From the first `plugin-v*` tag, `"ref": "plugin-v<version>"` pins too, and installs only the plugin's files.
-- `claude plugin update gitlab-ci@gitlab-pane` updates; a running session keeps its copy until `/reload-plugins`.
+- `claude plugin update gitlab-pane@gitlab-pane` updates; a running session keeps its copy until `/reload-plugins`.
 
 ## Commands
 
@@ -53,7 +55,7 @@ For a team, in the project's `.claude/settings.json`:
 
 ## Settings
 
-`/plugin configure gitlab-ci`, or `claude plugin configure gitlab-ci@gitlab-pane --values-stdin`.
+`/plugin configure gitlab-pane`, or `claude plugin configure gitlab-pane@gitlab-pane --values-stdin`.
 
 | Setting | What it does | Default |
 |---|---|---|

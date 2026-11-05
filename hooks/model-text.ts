@@ -38,10 +38,7 @@ export type Sayable<T> = T extends number | ModelLine ? T : T extends string ? (
  * string literal type such as a status; a `string` from GitLab, or any branded string, does not compile and goes
  * through `foreign` first.
  */
-export function line<V extends readonly (number | string)[]>(
-  parts: TemplateStringsArray,
-  ...values: V & { [K in keyof V]: Sayable<V[K]> }
-): ModelLine {
+export function line<V extends readonly (number | string)[]>(parts: TemplateStringsArray, ...values: V & { [K in keyof V]: Sayable<V[K]> }): ModelLine {
   return brand(parts.reduce((out, text, i) => out + text + (i < values.length ? String(values[i]) : ''), ''))
 }
 
