@@ -79,7 +79,7 @@ async function tried(label: string, work: Promise<Found>): Promise<Tried> {
 }
 
 /**
- * One host's documents (three, and two more per followed person or project), asked at once: a host that times one out loses only that one. What came is kept; why the
+ * One host's documents (three, and one more per followed person or project), asked at once: a host that times one out loses only that one. What came is kept; why the
  * rest did not is the failure, with the document named unless every one failed the same way.
  */
 async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[]): Promise<HostRead> {
