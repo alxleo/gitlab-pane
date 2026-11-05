@@ -58,6 +58,15 @@ export const ago = (iso: string, now: number): ModelLine => {
   return minutes < 1440 ? line`${Math.floor(minutes / 60)}h` : line`${Math.floor(minutes / 1440)}d`
 }
 
+/** The jobs that failed and may not, counting those a shared card leaves out of its list. */
+export const failedCount = (pipeline: NonNullable<MrCard['pipeline']>): number => pipeline.failed.length + pipeline.moreFailed
+/** The jobs that failed and may, counting those a shared card leaves out of its list. */
+export const amberCount = (pipeline: NonNullable<MrCard['pipeline']>): number => pipeline.amber.length + pipeline.moreAmber
+/** The open threads a person started, counting those a shared card leaves out of its list. */
+export const threadCount = (card: MrCard): number => card.openThreads.length + card.threadsLeft.loose + card.threadsLeft.held
+/** The open threads no person's icon holds, counting those a shared card leaves out of its list. */
+export const looseCount = (card: MrCard, held: ReadonlySet<string>): number => card.openThreads.filter(note => !held.has(note.author)).length + card.threadsLeft.loose
+
 /** Merges time spans that touch or overlap into runs, in order. */
 function merged(spans: readonly (readonly [number, number])[]): [number, number][] {
   const runs: [number, number][] = []

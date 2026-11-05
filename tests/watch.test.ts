@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
-import { AVATAR_BASE64, HOST, NOW, SELF_MANAGED, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { AVATAR_BASE64, HOST, NOW, heavyMr, SELF_MANAGED, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
 import { undefinedField } from './gitlab_fake'
@@ -136,14 +136,14 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  const { opened, titles, panes, store } = fakeSession(on, { id: world.session ?? 'session-a', isBroken: () => fake.isPaneBroken === true, store: stored })
+  const { opened, titles, panes, store, writes } = fakeSession(on, { id: world.session ?? 'session-a', isBroken: () => fake.isPaneBroken === true, store: stored })
   on('tool.call', { tool: 'Bash' }, () => {
     const text = `Creating merge request for thing into main in g/p\n\n${PINNED_URL}\n`
     return { result: { stdout: text, stderr: '', interrupted: false }, text }
   })
   on('ui.toast', () => ({ value: undefined }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { woken, reads, avatars, jiraReads, shells, opened, titles, gitlab, panes, store }
+  return { woken, reads, avatars, jiraReads, shells, opened, titles, gitlab, panes, store, writes }
 }
 
 /** Runs `glab mr create` as the session would; the engine fake answers with the new MR's address. */
@@ -179,8 +179,8 @@ test('only an MR this session raised wakes it, once, in one short line with no c
   expect(reads.filter(read => read.startsWith('Pinned'))).toEqual(single)
 })
 
-/** The most characters the snapshot of fifty of the fixtures' heaviest MRs may take: about a quarter of the store. */
-const SNAPSHOT_BUDGET = 1_000_000
+/** The most characters the snapshot of fifty MRs may take: the realistic heavy ones (shared.test.ts) take 270,000; the worst the fixtures make (180 failed jobs each, 324,000 for fifty, from 967,000) are bounded by the few a card names. */
+const SNAPSHOT_BUDGET = 340_000
 
 /** State the MR list is not drawn from: the reads' own clock, and the inbox, which has its own timer. */
 const NOT_THE_LIST = ['reads', 'inbox']
@@ -1051,9 +1051,23 @@ test('a session publishes its own pins under a key of its own, with a beat, and 
   await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
   expect(store.get('pins:session-a')).toMatchObject({ session: 'session-a', at: NOW, pins: [{ iid: 12, origin: 'watched' }] })
   // Silent beats are renewed, not rewritten when nothing changed.
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 7; i++) {
     store.set('lease', { owner: 'other', renewedAt: clock.now() })
     await clock.advance(10_000)
   }
-  expect(store.get('pins:session-a')).toMatchObject({ at: NOW + 30_000 })
+  expect(store.get('pins:session-a')).toMatchObject({ at: NOW + 60_000 })
+})
+
+test('a quiet leader keeps the store it rewrites whole small, and rewrites it only as often as it must', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { writes } = engine(on, { mrs: Array.from({ length: 50 }, (_, i) => heavyMr(2000 + i)), isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const first = { ...writes }
+  await clock.advance(5 * 60_000)
+  // Every write rewrites the whole file, which holds the leader's snapshot of fifty heavy MRs. A quiet leader writes only its
+  // lease, four times a minute (it wrote it fifteen times, and the whole snapshot at every poll, which was 5.8 MB a minute).
+  const perMinute = { count: (writes.count - first.count) / 5, bytes: (writes.bytes - first.bytes) / 5 }
+  expect(perMinute.count).toBeLessThanOrEqual(4)
+  expect(perMinute.bytes).toBeLessThan(1_200_000)
 })

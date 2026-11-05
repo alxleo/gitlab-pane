@@ -1,5 +1,5 @@
 import type { MergeabilityCheckIdentifier } from './gitlab.generated.ts'
-import { plural } from './format.ts'
+import { amberCount, failedCount, looseCount, plural, threadCount } from './format.ts'
 import { firstDifference } from './order.ts'
 import { isSettled, type Tone } from './status.ts'
 
@@ -13,7 +13,7 @@ export function rank(card: MrCard): number {
     card.hasConflicts ||
     card.needsRebase ||
     card.changesRequestedBy.length > 0 ||
-    card.openThreads.length > 0
+    threadCount(card) > 0
   ) {
     return 0
   }
@@ -131,8 +131,8 @@ export function badges(card: MrCard): Badge[] {
   const list: Badge[] = []
   const add = (kind: BadgeKind, glyph: string, tone: Tone, count: string, words: string, check?: string) =>
     list.push({ kind, glyph, tone, count, words, ...(check !== undefined ? { check } : {}) })
-  if (pipeline !== undefined && pipeline.failed.length > 0) {
-    add('failed', '✗', 'error', String(pipeline.failed.length), plural(pipeline.failed.length, 'job failed', 'jobs failed'), 'CI_MUST_PASS')
+  if (pipeline !== undefined && failedCount(pipeline) > 0) {
+    add('failed', '✗', 'error', String(failedCount(pipeline)), plural(failedCount(pipeline), 'job failed', 'jobs failed'), 'CI_MUST_PASS')
   }
   if (checks === null && card.hasConflicts) {
     add('conflicts', '⇄', 'error', '', 'conflicts')
@@ -140,8 +140,8 @@ export function badges(card: MrCard): Badge[] {
   if (card.changesRequestedBy.length > 0) {
     add('changes', '✋', 'error', String(card.changesRequestedBy.length), `changes requested by ${card.changesRequestedBy.join(', ')}`, 'REQUESTED_CHANGES')
   }
-  if (card.openThreads.length > 0) {
-    add('threads', '💬', 'warning', String(card.openThreads.length), plural(card.openThreads.length, 'open thread'), 'DISCUSSIONS_NOT_RESOLVED')
+  if (threadCount(card) > 0) {
+    add('threads', '💬', 'warning', String(threadCount(card)), plural(threadCount(card), 'open thread'), 'DISCUSSIONS_NOT_RESOLVED')
   }
   if (checks === null && card.needsRebase) {
     add('rebase', '↻', 'warning', '', 'needs rebase')
@@ -149,8 +149,9 @@ export function badges(card: MrCard): Badge[] {
   if (pipeline !== undefined && pipeline.blockedOn.length > 0) {
     add('manual', '⏸', 'warning', '', `waiting on ${pipeline.blockedOn.join(', ')}`)
   }
-  if (pipeline !== undefined && pipeline.amber.length > 0) {
-    add('amber', '⚠', 'warning', String(pipeline.amber.length), `amber: ${pipeline.amber.map(job => job.name).join(', ')}`)
+  if (pipeline !== undefined && amberCount(pipeline) > 0) {
+    const left = pipeline.moreAmber > 0 ? ` +${pipeline.moreAmber} more` : ''
+    add('amber', '⚠', 'warning', String(amberCount(pipeline)), `amber: ${pipeline.amber.map(job => job.name).join(', ')}${left}`)
   }
   const holding = botsHolding(card)
   if (holding.length > 0) {
@@ -186,7 +187,7 @@ export function badges(card: MrCard): Badge[] {
  */
 export function rowBadges(card: MrCard): Badge[] {
   const held = new Set(card.people.map(person => person.username))
-  const loose = card.openThreads.filter(note => !held.has(note.author)).length
+  const loose = looseCount(card, held)
   const checkOf = (id: string): Badge[] =>
     standing(card.mergeStatus)
       .filter(check => check.id === id)

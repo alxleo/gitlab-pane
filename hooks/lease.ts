@@ -9,11 +9,16 @@ import type { Role } from '../types'
 //
 // This file only decides, from plain data. lease-store.ts reads the record, asks `decide`, and writes what it answers.
 
-/** How often a renewing leader writes its record: Firestore's primary lease renews at the same pace. */
-export const RENEW_MS = 4_000
+// Every write to the store rewrites the whole file, which holds the leader's snapshot, so a renewal costs the size of the
+// store. A renewal every 4 s rewrote a 260 KB store fifteen times a minute for nothing: a leader that goes without a
+// release (its process killed, the machine asleep) is the only case a long expiry slows, and a pane no one is looking at
+// can wait 45 s to change hands. A pane closed on purpose releases the lease at once, and the next tick takes it.
+
+/** How often a renewing leader writes its record. */
+export const RENEW_MS = 15_000
 /** A record not renewed for this long is dead, whoever wrote it: three renewals missed. */
-export const EXPIRY_MS = 12_000
-/** How often a session runs `decide`: no longer than a renew period, so a double leader is resolved within one. */
+export const EXPIRY_MS = 45_000
+/** How often a session runs `decide`: much shorter than a renew period, so a release is taken up, and a double leader resolved, within seconds. */
 export const TICK_MS = 2_000
 
 /** The lease as stored: who holds it and when they last said so, on the clock every session on the machine shares. */

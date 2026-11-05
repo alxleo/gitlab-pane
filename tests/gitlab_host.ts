@@ -17,6 +17,12 @@ export const ran = (stdout: string, exitCode = 0, stderr = '') => ({
  */
 export function fakeSession(on: On, options: { id?: string; isBroken?: () => boolean; store?: Record<string, unknown> } = {}) {
   const store = new Map<string, unknown>(Object.entries(options.store ?? {}))
+  // The engine rewrites the whole file for every set and delete, so what is written is the size of the file after each.
+  const writes = { count: 0, bytes: 0 }
+  const rewrite = () => {
+    writes.count += 1
+    writes.bytes += JSON.stringify(Object.fromEntries(store)).length
+  }
   const json = (value: unknown): unknown => (value === undefined ? undefined : parseJson(JSON.stringify(value)))
   on('store.get', (_, e) => ({ value: json(store.get(e.key)) }))
   on('store.set', (_, e) => {
@@ -25,10 +31,12 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
       throw new Error('the store would pass 4 MiB')
     }
     store.set(e.key, json(e.value))
+    rewrite()
     return { value: undefined }
   })
   on('store.delete', (_, e) => {
     store.delete(e.key)
+    rewrite()
     return { value: undefined }
   })
   on('store.keys', () => ({ value: [...store.keys()] }))
@@ -51,7 +59,7 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: [...panes].map(id => ({ id, title: 'GitLab', isShown: true, isFocused: false, isPlaced: true })) }))
-  return { opened, titles, panes, store }
+  return { opened, titles, panes, store, writes }
 }
 
 /** The most the engine's store holds, in characters of JSON. */

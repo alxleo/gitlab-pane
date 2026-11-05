@@ -86,13 +86,14 @@ export function blockerLines(card: MrCard, facts: CardFacts, badge: Badge, now: 
   const pipeline = card.pipeline
   const head = (words: string): Line => text(`${badge.glyph} ${words}`, { bold: true, ...(badge.tone === 'subtle' ? {} : { tone: badge.tone }) })
   const links = (jobs: readonly { name: string; url: string }[]): Line[] => jobs.map(job => ({ kind: 'link', href: job.url, text: job.name }))
+  const more = (count: number): Line[] => (count > 0 ? [text(`+${count} more`, { dim: true })] : [])
   switch (badge.kind) {
     case 'threads':
-      return [head(plural(facts.loose.length, 'open thread')), ...facts.loose.slice(0, 3).map(note => noteLine(note, now))]
+      return [head(plural(facts.loose.length + card.threadsLeft.loose, 'open thread')), ...facts.loose.slice(0, 3).map(note => noteLine(note, now))]
     case 'failed':
-      return [head('Failed jobs'), ...links(pipeline?.failed ?? [])]
+      return [head('Failed jobs'), ...links(pipeline?.failed ?? []), ...more(pipeline?.moreFailed ?? 0)]
     case 'amber':
-      return [head('Failed, allowed to fail'), ...links(pipeline?.amber ?? [])]
+      return [head('Failed, allowed to fail'), ...links(pipeline?.amber ?? []), ...more(pipeline?.moreAmber ?? 0)]
     case 'manual':
       return [head(`Waiting on ${pipeline?.blockedOn.join(', ') ?? 'a manual job'}`)]
     case 'check':
@@ -156,11 +157,12 @@ export function detailOf(card: MrCard, facts: CardFacts, focus: PersonFacts | un
   }
   const pipeline = card.pipeline
   const jobs = pipeline === undefined ? [] : [...pipeline.failed.map(job => ({ job, glyph: '✗' })), ...pipeline.amber.map(job => ({ job, glyph: '⚠' }))]
+  const left = (pipeline?.moreFailed ?? 0) + (pipeline?.moreAmber ?? 0)
   return {
     kind: 'mr',
     description: facts.detail,
     jobs: jobs.slice(0, JOBS_SHOWN).map(({ job, glyph }) => ({ glyph, name: job.name, href: job.url })),
-    more: pipeline !== undefined && jobs.length > JOBS_SHOWN ? { text: `+${jobs.length - JOBS_SHOWN} more`, href: pipeline.url } : null,
+    more: pipeline !== undefined && jobs.length + left > JOBS_SHOWN ? { text: `+${jobs.length + left - JOBS_SHOWN} more`, href: pipeline.url } : null,
     threads: facts.threads.map(note => ({ who: note.author, where: whereAndWhen(note, now), url: note.url, body: note.thread })),
     hasPeople: card.people.length > 0,
   }

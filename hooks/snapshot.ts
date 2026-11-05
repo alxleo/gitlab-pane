@@ -12,17 +12,17 @@ import { isSettled } from './status.ts'
 import type { HostStatus, MrCard, Pinned } from '../types'
 
 /** The shape of the snapshot; a snapshot of another is ignored, as the store keeps whatever any version of the mod wrote. */
-export const FORMAT = 1
+export const FORMAT = 2
 export const SNAPSHOT_KEY = 'snapshot'
 /** A session's pins are under `pins:<session id>`. */
 export const PINS_PREFIX = 'pins:'
 /** A counter a session raises to ask the leader for a read now. */
 export const REFRESH_KEY = 'refresh'
 
-/** How often a session says it is alive and what it pinned. */
-export const PINS_BEAT_MS = 30_000
+/** How often a session says it is alive and what it pinned: each beat rewrites the store, so it is a minute. */
+export const PINS_BEAT_MS = 60_000
 /** Pins of a session silent this long are dropped: three beats missed. */
-export const PINS_EXPIRY_MS = 90_000
+export const PINS_EXPIRY_MS = 180_000
 
 /**
  * A poll that finds nothing new redraws no pane, so the footer's "updated 3m ago" would only be as true as the last
@@ -94,7 +94,8 @@ function isCard(value: unknown): value is MrCard {
     Array.isArray(value.reviewers) &&
     Array.isArray(value.people) &&
     Array.isArray(value.openThreads) &&
-    (value.pipeline === undefined || (isRecord(value.pipeline) && Array.isArray(value.pipeline.stages) && Array.isArray(value.pipeline.failed)))
+    isRecord(value.threadsLeft) &&
+    (value.pipeline === undefined || (isRecord(value.pipeline) && Array.isArray(value.pipeline.stages) && Array.isArray(value.pipeline.failed) && typeof value.pipeline.moreFailed === 'number'))
   )
 }
 
@@ -169,6 +170,17 @@ export const isMoving = (rows: readonly MrCard[], pinned: readonly Pinned[]): bo
 /** How long the leader waits between reads: shorter while a pinned pipeline runs, longer after failures. */
 export const pollEvery = (failures: number, moving: boolean): number =>
   failures > 0 ? Math.min(BACKOFF_MAX_MS, QUIET_EVERY_MS * 2 ** failures) : moving ? MOVING_EVERY_MS : QUIET_EVERY_MS
+
+const fullAts = (snapshot: Snapshot): Record<string, number> => Object.fromEntries(Object.entries(snapshot.cursors).map(([host, cursor]) => [host, cursor.fullAt]))
+
+/**
+ * Whether a snapshot is worth a rewrite of the store, which is a rewrite of every other key with it. The version says
+ * something a session draws changed; the pins asked for, the cards read one by one and the time of each whole read are what
+ * the next leader needs to carry on. When a read found only that the moment passed (the time it was made, where the next
+ * delta starts), the store keeps the older snapshot: the next delta just starts a little earlier.
+ */
+export const needsSave = (previous: Snapshot | null, next: Snapshot): boolean =>
+  previous === null || previous.version !== next.version || !isEqual(previous.pinned, next.pinned) || !isEqual(previous.extras, next.extras) || !isEqual(fullAts(previous), fullAts(next))
 
 /** What a read found, before it becomes a snapshot. */
 export type ReadResult = {

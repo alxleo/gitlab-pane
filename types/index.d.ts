@@ -162,9 +162,14 @@ export type MrCard = {
     blockedOn: string[]
     /** Jobs worth listing that a card shared between sessions leaves out of its stages. */
     moreJobs: number
+    /** Failed jobs and allowed-to-fail ones that a shared card leaves out of `failed` and `amber`, which keep the first few. */
+    moreFailed: number
+    moreAmber: number
   }
   /** The opening note of each unresolved thread a person, not a bot, started; a shared card keeps an excerpt of each and no replies. */
   openThreads: Note[]
+  /** Open threads a shared card leaves out of `openThreads`, which keeps the first few: those no person's icon holds, and the rest. */
+  threadsLeft: { loose: number; held: number }
 }
 
 /** How long a successful MR pipeline in a project runs, the middle half of the recent ones, in seconds. */

@@ -7,7 +7,7 @@ import type { AuthoredScope } from './gitlab-documents'
 import { askVariant } from './graphql'
 import { cursorAfter, mergeReads, MOVING_MAX, movingRows, scopeFor } from './incremental'
 import { pinKey } from './mr-url'
-import { slimCard } from './slim'
+import { slimCard, slimChecks } from './slim'
 import type { Cursor } from './snapshot'
 
 import type { MrCard, Pinned } from '../types'
@@ -61,7 +61,7 @@ export async function readHost($: EngineInterface, input: HostAsk): Promise<Host
   const [authored, verdicts] = await Promise.all([
     askVariant($, host, features => authoredQuery(features, scope)),
     askVariant($, host, mergeStatusQuery)
-      .then(answer => (answer !== null ? readMergeStatus(host, answer) : null))
+      .then(answer => (answer !== null ? new Map([...readMergeStatus(host, answer)].map(([key, checks]) => [key, slimChecks(checks) ?? checks])) : null))
       .catch((error: unknown) => {
         notes.push(asFailure(error, message => `merge status: ${message}`))
         return null

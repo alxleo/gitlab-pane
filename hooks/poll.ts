@@ -33,7 +33,7 @@ import { readFailures } from './job-failures'
 import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
-import { isMoving, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
+import { isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
 import type { Cursor, ReadResult, Snapshot } from './snapshot'
 
 import type { MrCard, Pinned, PollState } from '../types'
@@ -172,9 +172,13 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
     extras: [...answers.flatMap(answer => answer.extras), ...[...extras].filter(key => reads.some(read => 'failure' in read && key.startsWith(`${read.host}/`)))],
   }
   const snapshot = nextSnapshot(previous, result, me, now)
-  await share($, snapshot)
+  if (needsSave(previous, snapshot)) {
+    await share($, snapshot)
+  }
   await changeReads($, state => ({ ...state, failures: 0 }))
-  await adopt($, snapshot, true)
+  if (snapshot.version !== (await readReads($)).adopted) {
+    await adopt($, snapshot, true)
+  }
   quietly($, readUsualTimes($, snapshot.rows.filter(row => row.isOpen), now), 'usual')
   quietly($, readAvatars($, snapshot.rows.filter(row => row.isOpen)), 'avatars')
 }

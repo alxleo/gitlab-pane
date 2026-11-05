@@ -299,6 +299,8 @@ export function toCard(host: string, raw: RawMr): MrCard {
             amber: jobs.filter(job => job.status === 'failed' && job.allowFailure).map(jobLink),
             blockedOn: jobs.filter(job => job.status === 'manual' && !job.allowFailure).map(job => job.name),
             moreJobs: 0,
+            moreFailed: 0,
+            moreAmber: 0,
           },
         }
       : {}),
@@ -308,6 +310,7 @@ export function toCard(host: string, raw: RawMr): MrCard {
         ...toNote(thread.first, host, path, true, mrUrl),
         replies: thread.notes.slice(1).map(one => toNote(one, host, path, true, mrUrl)),
       })),
+    threadsLeft: { loose: 0, held: 0 },
   }
 }
 

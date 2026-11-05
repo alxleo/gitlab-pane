@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { NOW, HOST, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
+import { NOW, HOST, heavyMr, pipe, project, rawMr } from './fixtures'
 import { parseJson } from '../hooks/decode'
+import { failedCount, threadCount } from '../hooks/format'
 import { cardFacts } from '../hooks/row-facts'
 import { toCard } from '../hooks/gitlab'
 import { cursorAfter, FULL_EVERY_MS, mergeReads, movingRows, OVERLAP_MS, scopeFor } from '../hooks/incremental'
@@ -29,26 +30,10 @@ import type { MrCard, Pinned } from '../types'
 
 const pin = (iid: number, origin?: 'raised' | 'watched'): Pinned => ({ url: `https://gitlab.com/g/p/-/merge_requests/${iid}`, host: HOST, path: 'g/p', iid, ...(origin !== undefined ? { origin } : {}) })
 
-/** An MR as heavy as the pane meets: nine stages of twenty jobs, a few failing, six long threads, several people. */
-const heavy = (iid: number): MrCard =>
-  toCard(
-    HOST,
-    rawMr(iid, {
-      description: `## What\n\n${'This change does a careful thing. '.repeat(60)}`,
-      headPipeline: pipe('FAILED', {
-        stages: {
-          nodes: Array.from({ length: 9 }, (_, s) =>
-            stage(`stage-${s}-with-a-long-name`, s === 4 ? 'FAILED' : 'SUCCESS', Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS')))
-          ),
-        },
-      }),
-      reviewers: { nodes: [reviewer('first.reviewer', 'REQUESTED_CHANGES'), reviewer('second.reviewer', 'APPROVED'), reviewer('third.reviewer', 'UNREVIEWED')] },
-      discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 === 1 ? 'first.reviewer' : 'second.reviewer')) },
-    })
-  )
+const heavy = (iid: number): MrCard => toCard(HOST, heavyMr(iid))
 
-/** The most characters the snapshot of fifty such MRs may take: a tenth of the store. */
-const SNAPSHOT_BUDGET = 400_000
+/** The most characters the snapshot of fifty such MRs may take: about a sixth of the store. */
+const SNAPSHOT_BUDGET = 270_000
 
 const read = (rows: MrCard[], over: Partial<ReadResult> = {}): ReadResult => ({
   rows,
@@ -79,7 +64,13 @@ test('fifty heavy MRs share a snapshot well under the store, and a slim card say
   const whole = cardFacts(one, {})
   const quick = cardFacts(shared, {})
   expect({ ...quick, detail: null, threads: [], loose: [], people: [] }).toEqual({ ...whole, detail: null, threads: [], loose: [], people: [] })
-  expect(quick.threads.map(note => note.excerpt)).toEqual(whole.threads.map(note => note.excerpt))
+  // The first threads stay, and the rest are counted: the row says the same of how many there are.
+  expect(quick.threads.map(note => note.excerpt)).toEqual(whole.threads.slice(0, quick.threads.length).map(note => note.excerpt))
+  expect(threadCount(shared)).toBe(threadCount(one))
+  if (shared.pipeline === undefined || one.pipeline === undefined) {
+    throw new Error('no pipeline')
+  }
+  expect(failedCount(shared.pipeline)).toBe(failedCount(one.pipeline))
   expect(quick.people.map(person => [person.standing, person.noteCount, person.notes[0]?.excerpt])).toEqual(
     whole.people.map(person => [person.standing, person.noteCount, person.notes[0]?.excerpt])
   )
