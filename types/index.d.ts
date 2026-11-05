@@ -78,10 +78,13 @@ export type Job = {
 
 export type Stage = { name: string; status: CiStatus; jobs: Job[] }
 
+/** Markdown as GitLab sent it for a description or a note: the only text `markdown.ts` reads to draw. Made by `fromGitLab` in `markdown.ts`. */
+export type GitLabMarkdown = string & { readonly __brand: 'GitLabMarkdown' }
+
 export type Note = {
   author: string
   /** Markdown, cleaned of HTML and hidden markers. */
-  body: string
+  body: GitLabMarkdown
   url: string
   at: string
   /** `path:line` of a note on the diff. */
@@ -125,7 +128,7 @@ export type MrCard = {
   iid: number
   title: string
   author: string
-  description: string
+  description: GitLabMarkdown
   branch: { source: string; target: string }
   diff: { additions: number; deletions: number; files: number } | null
   isDraft: boolean
@@ -244,8 +247,29 @@ export type InboxState = {
 /** What a background job reports failing, by where it ran. */
 export type ProblemSource = 'gitlab' | 'jira' | 'usual' | 'avatars' | 'inbox' | 'pane'
 
-/** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
-export type Problems = { [Source in ProblemSource]?: { message: string; at: number } }
+/** Why a source failed, which decides what the pane tells the person to do about it. */
+export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server'
+
+/** The last failure of each source, for `/gitlab` to list; a source that works again has none. `kind` is absent where the failure was not classified. */
+export type Problems = { [Source in ProblemSource]?: { message: string; at: number; kind?: FailureKind } }
+
+/** What the person chose in the pane: one value, so a drawing reads it once and a choice that touches two things redraws once. */
+export type Choices = {
+  /** Card keys drawn open, `drafts` and `more` when those folds are open. */
+  expanded: string[]
+  /** Per open card key, the one person whose comments it shows. */
+  person: Record<string, string>
+  /** `<details>` folds drawn the other way from how GitLab first shows them, as `<card key>#<where>`. */
+  folds: string[]
+  /** A project path the list is narrowed to; empty shows every repo. */
+  repoFilter: string
+  /** The pane's open tab: `mine` (the MR list) or `inbox`. */
+  tab: string
+  /** The card key of the MR read whole on a page of its own, over the open tab; empty when none. */
+  reading: string
+  /** Whether a pinned MR's news wakes the session. */
+  wake: boolean
+}
 
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }
@@ -268,21 +292,10 @@ declare module 'claude-code' {
       usual: Record<string, Usual>
       /** Small avatar pictures as `data:` URIs, by the avatar URL GitLab gave. */
       avatars: Record<string, string>
-      /** Card keys drawn open, `drafts` and `more` when those folds are open. */
-      expanded: string[]
-      /** Per open card key, the one person whose comments it shows. */
-      person: Record<string, string>
-      /** `<details>` folds drawn the other way from how GitLab first shows them, as `<card key>#<where>`. */
-      folds: string[]
-      /** A project path the list is narrowed to; empty shows every repo. */
-      repoFilter: string
-      /** The pane's open tab: `mine` (the MR list) or `inbox`. */
-      tab: string
-      /** The card key of the MR read whole on a page of its own, over the open tab; empty when none. */
-      reading: string
+      /** What the person chose in the pane. */
+      choices: Choices
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
-      wake: boolean
       poll: PollState
       /** The base of ticket links (`<jiraUrl>/browse/`); empty while no Jira site is set. */
       jira: string

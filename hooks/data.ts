@@ -1,8 +1,10 @@
-import { atom, read, update } from 'claude-code'
+import { atom, derive, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import { isEqual } from './equal.ts'
 import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { cardFacts } from './row-facts.ts'
 
 import type { MrCard, Pinned, PollState, Ticket, Usual } from '../types'
 
@@ -25,18 +27,24 @@ const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
   usualAt: null,
 } satisfies PollState)
 
+// The rows with what each says by itself (badges, verdict, words, the Markdown cut from its text, its faces with their
+// pictures), made again only when the rows or the pictures change, not for every drawing.
+const drawnRowsOf = derive([rowsAtom, avatarsAtom], (rows, avatars) => ({
+  rows,
+  facts: Object.fromEntries(rows.map(row => [row.key, cardFacts(row, avatars)])),
+}))
+
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnData($: EngineInterface) {
-  const [pinned, rows, tickets, usual, avatars, poll, browse] = await Promise.all([
+  const [pinned, drawn, tickets, usual, poll, browse] = await Promise.all([
     read($, pinnedAtom),
-    read($, rowsAtom),
+    read($, drawnRowsOf),
     read($, ticketsAtom),
     read($, usualAtom),
-    read($, avatarsAtom),
     read($, pollAtom),
     read($, jiraAtom),
   ])
-  return { pinned, rows, tickets, usual, avatars, poll, browse }
+  return { pinned, rows: drawn.rows, facts: drawn.facts, tickets, usual, poll, browse }
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
@@ -87,31 +95,49 @@ export async function unpinKeys($: EngineInterface, keys: readonly string[]): Pr
   await update($, pinnedAtom, list => list.filter(each => !keys.includes(pinKey(each))))
 }
 
-export function setRows($: EngineInterface, rows: MrCard[]): Promise<void> {
-  return update($, rowsAtom, () => rows).then(() => undefined)
+// A write redraws every reader, changed or not, so each setter below writes only what differs from what the atom holds.
+export async function setRows($: EngineInterface, rows: MrCard[]): Promise<void> {
+  if (!isEqual(await read($, rowsAtom), rows)) {
+    await update($, rowsAtom, () => rows)
+  }
 }
-export function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {
-  return update($, announcedAtom, () => announced).then(() => undefined)
+export async function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {
+  if (!isEqual(await read($, announcedAtom), announced)) {
+    await update($, announcedAtom, () => announced)
+  }
 }
-export function setAvatars($: EngineInterface, kept: Record<string, string>): Promise<void> {
-  return update($, avatarsAtom, () => kept).then(() => undefined)
+export async function setAvatars($: EngineInterface, kept: Record<string, string>): Promise<void> {
+  if (!isEqual(await read($, avatarsAtom), kept)) {
+    await update($, avatarsAtom, () => kept)
+  }
 }
-export function markUnreachable($: EngineInterface, urls: readonly string[]): Promise<void> {
-  return update($, unreachableAtom, list => [...list, ...urls]).then(() => undefined)
+export async function markUnreachable($: EngineInterface, urls: readonly string[]): Promise<void> {
+  if (urls.length > 0) {
+    await update($, unreachableAtom, list => [...list, ...urls])
+  }
 }
 
 /** Adds what Jira said about tickets, and when it was asked. */
 export async function mergeTickets($: EngineInterface, found: Record<string, Ticket>, at: number): Promise<void> {
-  await update($, ticketsAtom, previous => ({ ...previous, ...found }))
-  await update($, pollAtom, previous => ({ ...previous, ticketsAt: at }))
+  const known = await read($, ticketsAtom)
+  if (!isEqual(known, { ...known, ...found })) {
+    await update($, ticketsAtom, previous => ({ ...previous, ...found }))
+  }
+  await changePoll($, poll => ({ ...poll, ticketsAt: at }))
 }
 
 /** Adds the pipeline run times read per project, and when they were asked. */
 export async function mergeUsual($: EngineInterface, usual: Record<string, Usual>, at: number): Promise<void> {
-  await update($, usualAtom, previous => ({ ...previous, ...usual }))
-  await update($, pollAtom, previous => ({ ...previous, usualAt: at }))
+  const known = await read($, usualAtom)
+  if (!isEqual(known, { ...known, ...usual })) {
+    await update($, usualAtom, previous => ({ ...previous, ...usual }))
+  }
+  await changePoll($, poll => ({ ...poll, usualAt: at }))
 }
 
-export function changePoll($: EngineInterface, change: (poll: PollState) => PollState): Promise<void> {
-  return update($, pollAtom, change).then(() => undefined)
+export async function changePoll($: EngineInterface, change: (poll: PollState) => PollState): Promise<void> {
+  const previous = await read($, pollAtom)
+  if (!isEqual(previous, change(previous))) {
+    await update($, pollAtom, change)
+  }
 }
