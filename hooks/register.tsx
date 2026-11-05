@@ -5,7 +5,7 @@ import { field, isFilled } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
-import { hostsLine, parseHosts } from './hosts'
+import { hostsLine, namedHosts, parseHosts } from './hosts'
 import { briefCommand, setFollow } from './inbox'
 import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
@@ -32,7 +32,7 @@ export const register: Register = (on, options) => {
     await Promise.all([
       startData($, options.jiraUrl, hosts),
       setFollow($, options.inboxFollow),
-      rememberSettings(options.gitlabTokens, hosts),
+      rememberSettings(options.gitlabTokens, hosts, namedHosts(options.gitlabHosts)[0]),
       rememberLogs($, options.failureLogs),
       forgetProblems($),
       forgetScrolling($),

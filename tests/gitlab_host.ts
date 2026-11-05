@@ -76,7 +76,7 @@ export type FakeHost = {
 export type FakeWorld = {
   /** Environment variables the session has; `SHELL` is a stale path, so the tools must fall back to sh. */
   env?: Record<string, string>
-  /** The token `glab config get token --host <host>` prints, by host; a host not listed prints nothing. */
+  /** The token glab stored, which `glab config get token --host <host>` prints when its environment holds none; a host not listed prints nothing. */
   glab?: Record<string, string>
   /** An HTTP status to answer the next request with instead of GitLab's own, once; an edge that fails now and then. */
   glitch?: () => number | undefined
@@ -131,7 +131,11 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
     }
     const host = argv[at + 5] ?? ''
     glabAsked.push(host)
-    return ran(world.glab?.[host] !== undefined ? `${world.glab[host]}\n` : '')
+    // As the real glab does: a token in its environment answers for whatever host is asked, unless `env -u` took it away.
+    const isUnset = (name: string) => argv.slice(0, at).some((arg, i) => arg === '-u' && argv[i + 1] === name)
+    const inherited = ['GITLAB_TOKEN', 'GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN'].map(name => (isUnset(name) ? undefined : world.env?.[name])).find(value => value !== undefined)
+    const token = inherited ?? world.glab?.[host]
+    return ran(token !== undefined ? `${token}\n` : '')
   }
   return { requests, glabAsked, tokens, glab }
 }

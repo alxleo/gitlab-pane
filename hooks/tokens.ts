@@ -16,26 +16,35 @@ const present = (value: string | undefined): string | null => (value !== undefin
 /**
  * The token glab reads from its environment, for the host glab would talk to: `GITLAB_HOST` (or `GL_HOST`), else the
  * first host the settings name. The variable names are the ones glab reads, in its order; the engine takes a name only as
- * a literal, so no host has a variable of its own.
+ * a literal, so no host has a variable of its own. A host variable the pane cannot read as a bare host (one with a path,
+ * say) names no host here, rather than letting the token fall to the first.
  */
 async function fromEnvironment($: EngineInterface, host: string, hosts: readonly string[]): Promise<string | null> {
-  const named = [await $.env.get('GITLAB_HOST'), await $.env.get('GL_HOST')].map(value => bareHost(value ?? '')).find(value => value !== '')
-  if ((named ?? hosts[0]) !== host) {
+  const named = [await $.env.get('GITLAB_HOST'), await $.env.get('GL_HOST')].map(value => value?.trim() ?? '').find(value => value !== '')
+  if ((named === undefined ? hosts[0] : bareHost(named)) !== host) {
     return null
   }
   const values = [await $.env.get('GITLAB_TOKEN'), await $.env.get('GITLAB_ACCESS_TOKEN'), await $.env.get('OAUTH_TOKEN')]
   return values.map(present).find(value => value !== null) ?? null
 }
 
-/** The token glab holds for the host: its environment, its config file or the keyring, whichever `glab config get` finds. */
+/**
+ * The variables glab takes a token or a host from. glab answers `config get token --host <host>` from its environment
+ * before its config, whatever host is asked, so a token meant for one host would come back for every other; they are
+ * unset for that question, leaving only what glab stored for the host itself. `fromEnvironment` reads them instead.
+ */
+const GLAB_VARIABLES = ['GITLAB_TOKEN', 'GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN', 'GITLAB_HOST', 'GL_HOST'] as const
+
+/** The token glab stored for the host, in its config file or the keyring; never one from its environment. */
 async function fromGlab($: EngineInterface, host: string): Promise<string | null> {
-  const ran = await runText($, 'glab', ['config', 'get', 'token', '--host', host], { timeoutMs: 15_000 })
+  const unset = GLAB_VARIABLES.flatMap(name => ['-u', name])
+  const ran = await runText($, 'env', [...unset, 'glab', 'config', 'get', 'token', '--host', host], { timeoutMs: 15_000 })
   return ran.ok ? present(ran.value) : null
 }
 
 /** Puts the tokens the settings hold in memory, for `tokenFor` to find. They are in no atom or store. */
-export async function rememberSettings(setting: unknown, hosts: readonly string[]): Promise<void> {
-  await Promise.all(Object.entries(parseTokens(setting, hosts)).map(([host, token]) => remembered(`setting:${host}`, async () => token)))
+export async function rememberSettings(setting: unknown, hosts: readonly string[], home: string | undefined): Promise<void> {
+  await Promise.all(Object.entries(parseTokens(setting, hosts, home)).map(([host, token]) => remembered(`setting:${host}`, async () => token)))
 }
 
 /**

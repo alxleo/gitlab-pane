@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { bareHost, parseHosts, parseTokens, projectLabel, redact } from '../../hooks/hosts.ts'
+import { bareHost, namedHosts, parseHosts, parseTokens, projectLabel, redact } from '../../hooks/hosts.ts'
 import { mrUrls, parseMrUrl, pinKey } from '../../hooks/mr-url.ts'
 
 test('hosts are bare names, home first; an address is an MR only on a host the settings name; a token never survives into words', async () => {
@@ -22,7 +22,12 @@ test('hosts are bare names, home first; an address is an MR only on a host the s
     'Opened https://git.corp.com/g/p/-/merge_requests/4 and https://gitlab.com/x/-/merge_requests/5 not https://evil.example/g/-/merge_requests/6'.match(mrUrls(hosts))
   ).toEqual(['https://git.corp.com/g/p/-/merge_requests/4', 'https://gitlab.com/x/-/merge_requests/5'])
   expect([projectLabel('gitlab.com', 'g/p'), projectLabel('git.corp.com', 'g/p')]).toEqual(['g/p', 'git.corp.com/g/p'])
-  expect(parseTokens(['git.corp.com=glpat-abc', 'gitlab.com=glpat-def', 'x.example=nope'], hosts)).toEqual({ 'git.corp.com': 'glpat-abc', 'gitlab.com': 'glpat-def' })
-  expect(parseTokens(['glpat-first'], hosts)).toEqual({ 'git.corp.com': 'glpat-first' })
+  expect(parseTokens(['git.corp.com=glpat-abc', 'gitlab.com=glpat-def', 'x.example=nope'], hosts, hosts[0])).toEqual({ 'git.corp.com': 'glpat-abc', 'gitlab.com': 'glpat-def' })
+  expect(parseTokens(['glpat-first'], hosts, hosts[0])).toEqual({ 'git.corp.com': 'glpat-first' })
+  // A hosts setting the pane cannot read (a path after the host) names no host: gitlab.com stands in, but the bare token
+  // meant for the unread host is not sent to it.
+  const unread = 'https://corp.example.com/gitlab'
+  expect([parseHosts([unread]), namedHosts([unread])]).toEqual([['gitlab.com'], []])
+  expect(parseTokens(['glpat-CORP'], parseHosts([unread]), namedHosts([unread])[0])).toEqual({})
   expect(redact('failed with Bearer abc123 and glpat-xyz_1 and s3cret', ['s3cret'])).toBe('failed with Bearer [token] and [token] and [token]')
 })
