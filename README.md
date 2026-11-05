@@ -20,7 +20,7 @@ An opened card shows the description, failed jobs and open threads, and `read wh
 
 The screenshots use made-up data.
 
-Needs `glab` signed in to gitlab.com. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
+Needs a GitLab token for each host (see Settings), which can be the one `glab` holds. Works on gitlab.com, self-managed and Dedicated GitLab, several at once, and where `glab` is not installed. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
 
 ## Install
 
@@ -61,6 +61,8 @@ Claude Code installs a new copy only when the plugin's version has changed. To g
 
 | Setting | What it does |
 |---|---|
+| `gitlabHosts` | The GitLab hosts to read, default `gitlab.com`; add self-managed ones such as `git.example.com`. The first is home: its projects show without the host. Merge request addresses on any of them can be pinned. |
+| `gitlabTokens` | Sensitive; the last place a token is looked for, as `host=token` entries (a bare token is for the first host). It needs the `read_api` scope. |
 | `jiraUrl` | Your Jira address, such as `https://example.atlassian.net`. Ticket keys in MR titles link there, and their details are read with `acli`. Empty leaves Jira out: keys show as plain text. |
 
 Set it with `/plugin configure gitlab-ci` in a terminal session, or:
@@ -71,12 +73,13 @@ echo '{"jiraUrl":"https://example.atlassian.net"}' | claude plugin configure git
 
 ## What it runs on your machine
 
-The pane changes nothing on GitLab or Jira and needs no token of its own: `glab`, `acli` and `mr-inbox` use the sign-ins you already have. It runs them through a login shell, so they are found wherever your own shell finds them and your shell's start-up files run each time: your `$SHELL` when it is bash, zsh or fish, else `/bin/zsh` where there is one, else `/bin/sh`.
+The pane changes nothing on GitLab or Jira. A host's token is the first of: `GITLAB_TOKEN` (or `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`; for `GITLAB_HOST` if set, else the first host), the one `glab` holds for that host (asked once per host per session, kept in memory only), the `gitlabTokens` setting. With none, the pane says which host has no token. A token is never logged or shown. `acli` and `mr-inbox` use the sign-ins you already have; they run through a login shell, so they are found wherever your own shell finds them and your shell's start-up files run each time: your `$SHELL` when it is bash, zsh or fish and exists, else `/bin/zsh` where there is one, else `/bin/sh`.
 
 | Runs | How often | For | Writes |
 |---|---|---|---|
-| `glab api graphql` | every minute while a pinned pipeline runs, every 3 min otherwise, slower after errors | your MRs and the ones you pin: pipelines, reviewers, comments, and how long each repo's pipelines usually take; as you, on gitlab.com | nothing: queries only |
-| `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (gitlab.com or Gravatar), https only | nothing; the pictures are kept in the plugin's own store |
+| HTTPS POST to `https://<host>/api/graphql` for each configured host | every minute while a pinned pipeline runs, every 3 min otherwise, slower after errors | your MRs and the ones you pin: pipelines, reviewers, comments, and how long each repo's pipelines usually take; as you; the first read of a host also asks its schema which of a few newer fields it has | nothing: queries only |
+| `glab config get token --host <host>` | once per host per session, when no environment token applies | the token `glab` holds | nothing |
+| `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (a configured host or Gravatar), https only, no token sent; the engine's HTTP returns text, not bytes | nothing; the pictures are kept in the plugin's own store |
 | `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
 | `mr-inbox` | every minute, when installed | the inbox | its own cache, and what you mark seen |
 

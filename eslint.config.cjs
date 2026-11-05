@@ -128,7 +128,7 @@ module.exports = [
               message: 'The core runs on plain data and imports nothing from the engine. Put engine code in a file outside the core.',
             },
             {
-              // Relative imports must name a core file with its .ts extension (tools/gitlab_queries.ts runs gitlab.ts under
+              // Relative imports must name a core file with its .ts extension (tools/gitlab_queries.ts runs gitlab-documents.ts under
               // plain Node, which needs it), or be the types contract. Anything else is not the core or is spelled wrong.
               regex: `^\\.{1,2}/(?!(?:(?:hooks|tests)/)?(?:${CORE_NAMES})\\.ts$|types$)`,
               message: 'The core imports only core files, each with its .ts extension, and ../types. If this module is pure, add it to tsconfig.core.json.',

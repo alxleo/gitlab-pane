@@ -10,9 +10,9 @@ import type { Mounted } from 'claude-code/testing'
 
 import { isFilled, isRecord } from '../../hooks/decode'
 import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.generated'
-import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
+import { NOW, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
-import { answered } from '../../tests/gitlab_fake'
+import { fakeGitLab, ran } from '../../tests/gitlab_host'
 
 
 const PANE = {
@@ -25,10 +25,6 @@ const PANE = {
 const FIRST_SYNC_MS = 2_000
 
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
-
-const ran = (stdout: string, exitCode = 0, stderr = '') => ({
-  value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
-})
 
 /** A reviewer with no picture, so the pane draws their initials as it does for anyone GitLab has no picture of. */
 const who = (username: string, state: MergeRequestReviewState) => ({ ...reviewer(username, state), avatarUrl: null })
@@ -253,6 +249,20 @@ const inboxSections = () => [
 function engine(on: On, mrs: Mr[]) {
   mock.store(on, {})
   const titles: string[] = []
+  fakeGitLab(
+    on,
+    {
+      'gitlab.com': {
+        answers: {
+          Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
+          MergeStatus: () => mergeStatuses(mrs),
+          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+        },
+        accepts: 'scene-token',
+      },
+    },
+    { env: { GITLAB_TOKEN: 'scene-token' } }
+  )
   on('process.run', (_, e) => {
     const at = e.argv.indexOf('mr-inbox')
     if (at >= 0) {
@@ -262,15 +272,7 @@ function engine(on: On, mrs: Mr[]) {
       }
       return ran('{"ok": true}')
     }
-    const text = answered(e.argv, {
-      Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
-      MergeStatus: () => {
-        const nodes = mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus ?? null }))
-        return { data: { currentUser: { authoredMergeRequests: { nodes } } } }
-      },
-      Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
-    })
-    return text === undefined ? ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`) : ran(text)
+    return ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`)
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))

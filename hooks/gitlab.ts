@@ -1,124 +1,45 @@
-import type { AuthoredQuery, AuthoredQueryVariables, MergeStatusQuery, MrFieldsFragment, NoteFieldsFragment, PinnedQuery, PinnedQueryVariables, UsualQuery, UsualQueryVariables } from './gitlab.generated.ts'
+import type {
+  AuthoredPlainQuery,
+  AuthoredQuery,
+  MergeStatusQuery,
+  MrFieldsFragment,
+  NoteFieldsFragment,
+  PinnedPlainQuery,
+  PinnedQuery,
+  ProbeQuery,
+  ReviewerFieldsFragment,
+  ReviewerPlainFragment,
+  UsualQuery,
+} from './gitlab.generated.ts'
+import type { RawResponse } from './gitlab-documents.ts'
 import { isFilled, isSome } from './decode.ts'
+import { Failure } from './failure.ts'
 import { ciStatusOf, mergeStatusOf, reviewStateOf } from './gitlab-status.ts'
+import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { initials } from './identity.ts'
 import { firstDifference } from './order.ts'
 
-import type { CiStatus, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
+import type { CiStatus, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
-const GITLAB = 'https://gitlab.com'
-
-/**
- * Every document the pane sends is a static GraphQL text with its values passed as variables, never spliced in. The
- * GraphQL comment before each is how the type generator finds it. A document names the fragments it uses and only
- * those, as GitLab refuses an unused one.
- */
-const NOTE_FRAGMENT = /* GraphQL */ `
-  fragment NoteFields on Note {
-    body system url createdAt
-    author { username name bot avatarUrl }
-    position { filePath newLine oldLine }
+/** What the probe's answer says the host has; a type the host does not have has none of its fields. */
+export function readFeatures(response: RawResponse<ProbeQuery>): HostFeatures {
+  const names = (type: { fields?: ({ name: string } | null)[] | null } | null | undefined): string[] => present(type?.fields).map(field => field.name)
+  const data = dataOf(response)
+  return {
+    hasMergeVerdict: names(data.mergeRequest).includes('detailedMergeStatus'),
+    hasReviewStates: names(data.interaction).includes('reviewState'),
   }
-`
-
-// Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
-const MR_FRAGMENT = /* GraphQL */ `
-  fragment MrFields on MergeRequest {
-    iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired updatedAt
-    description sourceBranch targetBranch
-    author { username }
-    diffStatsSummary { additions deletions fileCount }
-    project { fullPath name webUrl }
-    approvedBy { nodes { username name bot avatarUrl } }
-    reviewers { nodes { username name bot avatarUrl mergeRequestInteraction { reviewState } } }
-    headPipeline {
-      id status duration startedAt finishedAt path
-      stages { nodes { name status jobs { nodes { name status allowFailure startedAt finishedAt webPath } } } }
-    }
-    discussions(first: 100) { nodes { resolvable resolved notes(first: 20) { nodes { ...NoteFields } } } }
-  }
-`
-
-const AUTHORED = /* GraphQL */ `
-  query Authored {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields } } }
-  }
-`
-
-const MERGE_STATUS = /* GraphQL */ `
-  query MergeStatus {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } }
-  }
-`
-
-const PINNED = /* GraphQL */ `
-  query Pinned($path: ID!, $iid: String!) {
-    project(fullPath: $path) { mergeRequest(iid: $iid) { ...MrFields } }
-  }
-`
-
-const USUAL = /* GraphQL */ `
-  query Usual($path: ID!) {
-    project(fullPath: $path) { pipelines(source: "merge_request_event", status: SUCCESS, first: 20) { nodes { duration } } }
-  }
-`
-
-/**
- * A document and its variables, and (in the type alone, never set) what GitLab answers it with. `glab` sends the
- * variables as strings (`-f`, as `-F` would turn `12` into a number).
- */
-export type Request<Data> = { query: string; variables: Record<string, string>; readonly answer?: Data }
-
-/** `glab api graphql`'s answer to a document: its data, or none, and the errors beside either. */
-export type RawResponse<Data> = { data?: Data | null; errors?: { message: string }[] }
-
-/** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
-export type Operations = {
-  Authored: { variables: AuthoredQueryVariables; data: AuthoredQuery }
-  MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
-  Pinned: { variables: PinnedQueryVariables; data: PinnedQuery }
-  Usual: { variables: UsualQueryVariables; data: UsualQuery }
 }
 
-/** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
-export const DOCUMENTS = {
-  Authored: AUTHORED + MR_FRAGMENT + NOTE_FRAGMENT,
-  MergeStatus: MERGE_STATUS,
-  Pinned: PINNED + MR_FRAGMENT + NOTE_FRAGMENT,
-  Usual: USUAL,
-} as const
-
-/** Every open MR the user authored; GitLab scores it 158 of the 250 a query may cost. */
-export const authoredQuery = (): Request<AuthoredQuery> => ({ query: DOCUMENTS.Authored, variables: {} })
-
-/**
- * GitLab's merge verdict for the same MRs, asked on its own: inside the authored query it answered CONFLICT, twice in a
- * row, for MRs that this query and each MR's own lookup called MERGEABLE.
- */
-export const mergeStatusQuery = (): Request<MergeStatusQuery> => ({ query: DOCUMENTS.MergeStatus, variables: {} })
-
 /** Each MR's verdict by card key; an MR missing from the answer has none. */
-export function readMergeStatus(response: RawResponse<MergeStatusQuery>): Map<string, MergeStatus> {
+export function readMergeStatus(host: string, response: RawResponse<MergeStatusQuery>): Map<string, MergeStatus> {
   const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
   return new Map(
     nodes.flatMap(node =>
-      isFilled(node?.detailedMergeStatus) ? [[`${node.project.fullPath}!${node.iid}`, mergeStatusOf(node.detailedMergeStatus)] as const] : []
+      isFilled(node?.detailedMergeStatus) ? [[cardKey(host, node.project.fullPath, node.iid), mergeStatusOf(node.detailedMergeStatus)] as const] : []
     )
   )
 }
-
-/**
- * A pinned MR the authored list lacks (someone else's, or merged), one query each. It costs about 103 of the 250 a query
- * may, so two would fit, but one per query needs no aliases that change with how many are pinned, and a project out of
- * reach loses its own MR and no other.
- */
-export const pinnedQuery = (pin: Pinned): Request<PinnedQuery> => ({
-  query: DOCUMENTS.Pinned,
-  variables: { path: pin.project, iid: String(pin.iid) } satisfies PinnedQueryVariables,
-})
-
-/** The recent successful MR pipelines of a project, for how long one usually runs; it costs 11, so one query each is cheap. */
-export const usualQuery = (project: string): Request<UsualQuery> => ({ query: DOCUMENTS.Usual, variables: { path: project } satisfies UsualQueryVariables })
 
 /** GitLab's `duration` counts only the time jobs ran, so a manual gate left waiting does not stretch it. */
 export function readUsual(response: RawResponse<UsualQuery>): Usual | null {
@@ -140,33 +61,40 @@ type NodeOf<Connection> = Connection extends { nodes: Array<infer Node> | null }
 
 // The shapes below are the generated types of MrFields and NoteFields (gitlab.generated.ts), which carry the schema's
 // nullability: what the schema lets be null is null here too.
-export type RawMr = MrFieldsFragment
+export type RawReviewer = ReviewerFieldsFragment | ReviewerPlainFragment
+/** An MR as either variant of the documents gives it: its reviewers come with their review state, or without. */
+export type RawMr = MrFieldsFragment & { reviewers?: { nodes?: Array<RawReviewer | null> | null } | null }
 export type RawNote = NoteFieldsFragment
 type RawUser = NodeOf<RawMr['approvedBy']>
-type RawReviewer = NodeOf<RawMr['reviewers']>
 export type RawPipeline = NonNullable<RawMr['headPipeline']>
 export type RawStage = NodeOf<RawPipeline['stages']>
 export type RawJob = NodeOf<RawStage['jobs']>
 
 /** GitLab gives an uploaded avatar as a path on its own host and a Gravatar one as a full URL. */
-const absolute = (url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${GITLAB}${url}` : url) : null)
+const absolute = (host: string, url: string | null | undefined): string | null =>
+  isFilled(url) ? (url.startsWith('/') ? `${siteOf(host)}${url}` : url) : null
+
+/** A reviewer's review state; a host without the field gives none, which reads as not yet reviewed. */
+const reviewOf = (reviewer: RawReviewer): ReviewState =>
+  reviewStateOf('mergeRequestInteraction' in reviewer ? reviewer.mergeRequestInteraction?.reviewState : undefined)
 
 /** Markdown as GitLab stores it, HTML and all, its links made absolute; markdown.ts makes it drawable. */
-export function cleanBody(body: string, project: string): string {
+export function cleanBody(body: string, host: string, path: string): string {
+  const site = siteOf(host)
   return body
-    .replace(/\]\(\/uploads\//g, `](${GITLAB}/${project}/uploads/`)
-    .replace(/\]\(\//g, `](${GITLAB}/`)
+    .replace(/\]\(\/uploads\//g, `](${site}/${path}/uploads/`)
+    .replace(/\]\(\//g, `](${site}/`)
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
 /** A note without an address of its own links to its MR. */
-const toNote = (raw: RawNote, project: string, isOpen: boolean, mrUrl: string): Note => {
+const toNote = (raw: RawNote, host: string, path: string, isOpen: boolean, mrUrl: string): Note => {
   const line = raw.position?.newLine ?? raw.position?.oldLine
   return {
     author: raw.author?.username ?? 'someone',
-    body: cleanBody(raw.body, project),
+    body: cleanBody(raw.body, host, path),
     url: raw.url ?? mrUrl,
     at: raw.createdAt,
     ...(isSome(raw.position) ? { where: `${raw.position.filePath}${(line ?? 0) > 0 ? `:${line}` : ''}` } : {}),
@@ -177,11 +105,11 @@ const toNote = (raw: RawNote, project: string, isOpen: boolean, mrUrl: string): 
 const UNNAMED = '(unnamed)'
 
 /** A job without a path of its own links to its pipeline. */
-const toJob = (job: RawJob, pipelineUrl: string): Job => ({
+const toJob = (host: string, job: RawJob, pipelineUrl: string): Job => ({
   name: job.name ?? UNNAMED,
   status: ciStatusOf(job.status ?? ''),
   allowFailure: job.allowFailure,
-  url: isFilled(job.webPath) ? `${GITLAB}${job.webPath}` : pipelineUrl,
+  url: isFilled(job.webPath) ? `${siteOf(host)}${job.webPath}` : pipelineUrl,
   startedAt: job.startedAt,
   finishedAt: job.finishedAt,
 })
@@ -202,7 +130,7 @@ const STATE_RANK: Record<PersonState | 'open', number> = {
 const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=identicon\b/.test(url)
 
 /** Who to talk to, most pressing first: asked for changes, has open threads, approved, then the rest; bots after people. */
-function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen: boolean; notes: RawNote[] }[]): Person[] {
+function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads: { isOpen: boolean; notes: RawNote[] }[]): Person[] {
   const author = raw.author?.username
   const byName = new Map<
     string,
@@ -212,7 +140,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
     if (user === null || user.username === author) {
       return undefined
     }
-    const avatarUrl = absolute(user.avatarUrl)
+    const avatarUrl = absolute(host, user.avatarUrl)
     const known = byName.get(user.username) ?? {
       name: user.name,
       isBot: user.bot,
@@ -228,7 +156,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
   present(raw.reviewers?.nodes).forEach((reviewer: RawReviewer) => {
     const person = meet(reviewer)
     if (person !== undefined) {
-      person.review = reviewStateOf(reviewer.mergeRequestInteraction?.reviewState)
+      person.review = reviewOf(reviewer)
     }
   })
   present(raw.approvedBy?.nodes).forEach(user => {
@@ -240,7 +168,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
   threads.forEach(thread =>
     thread.notes.forEach((one, i) => {
       const person = meet(one.author)
-      person?.notes.push(toNote(one, project, thread.isOpen, mrUrl))
+      person?.notes.push(toNote(one, host, path, thread.isOpen, mrUrl))
       if (person !== undefined && i === 0 && thread.isOpen) {
         person.openThreads += 1
       }
@@ -279,10 +207,11 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
     .sort((a, b) => firstDifference(Number(a.isBot) - Number(b.isBot), order(a) - order(b), a.name.localeCompare(b.name)))
 }
 
-export function toCard(raw: RawMr): MrCard {
-  const project = raw.project.fullPath
+/** The card for an MR read from `host`. */
+export function toCard(host: string, raw: RawMr): MrCard {
+  const path = raw.project.fullPath
   const pipeline = raw.headPipeline
-  const mrUrl = raw.webUrl ?? `${GITLAB}/${project}/-/merge_requests/${raw.iid}`
+  const mrUrl = raw.webUrl ?? `${siteOf(host)}/${path}/-/merge_requests/${raw.iid}`
   const isBot = (note: RawNote) => note.author?.bot === true
   const threads = present(raw.discussions.nodes).flatMap(thread => {
     const notes = present(thread.notes.nodes).filter(one => !one.system)
@@ -293,25 +222,27 @@ export function toCard(raw: RawMr): MrCard {
   const reviewers = present(raw.reviewers?.nodes).map(reviewer => ({
     username: reviewer.username,
     isBot: reviewer.bot,
-    state: reviewStateOf(reviewer.mergeRequestInteraction?.reviewState),
+    state: reviewOf(reviewer),
   }))
   const requested = reviewers.filter(reviewer => reviewer.state === 'requested_changes')
-  const pipelineUrl = isFilled(pipeline?.path) ? `${GITLAB}${pipeline.path}` : mrUrl
+  const pipelineUrl = isFilled(pipeline?.path) ? `${siteOf(host)}${pipeline.path}` : mrUrl
   const stages = present(pipeline?.stages?.nodes).map(stage => ({
     name: stage.name ?? UNNAMED,
     status: ciStatusOf(stage.status ?? ''),
-    jobs: present(stage.jobs?.nodes).map(job => toJob(job, pipelineUrl)),
+    jobs: present(stage.jobs?.nodes).map(job => toJob(host, job, pipelineUrl)),
   }))
   const jobs = stages.flatMap(stage => stage.jobs)
   return {
-    key: `${project}!${raw.iid}`,
+    key: cardKey(host, path, raw.iid),
     url: mrUrl,
-    project,
-    repo: { name: raw.project.name, url: raw.project.webUrl ?? `${GITLAB}/${project}` },
+    host,
+    path,
+    project: projectOf(host, path),
+    repo: { name: raw.project.name, url: raw.project.webUrl ?? `${siteOf(host)}/${path}` },
     iid: Number(raw.iid),
     title: raw.title,
     author: raw.author?.username ?? '',
-    description: cleanBody(raw.description ?? '', project),
+    description: cleanBody(raw.description ?? '', host, path),
     branch: { source: raw.sourceBranch, target: raw.targetBranch },
     diff: isSome(raw.diffStatsSummary)
       ? {
@@ -332,7 +263,7 @@ export function toCard(raw: RawMr): MrCard {
     mergeStatus: null,
     approvers: present(raw.approvedBy?.nodes).filter(user => !user.bot).map(user => user.username),
     reviewers,
-    people: toPeople(raw, project, mrUrl, threads),
+    people: toPeople(raw, host, path, mrUrl, threads),
     ...(isSome(pipeline)
       ? {
           pipeline: {
@@ -352,31 +283,31 @@ export function toCard(raw: RawMr): MrCard {
     openThreads: open
       .filter(thread => !isBot(thread.first))
       .map(thread => ({
-        ...toNote(thread.first, project, true, mrUrl),
-        replies: thread.notes.slice(1).map(one => toNote(one, project, true, mrUrl)),
+        ...toNote(thread.first, host, path, true, mrUrl),
+        replies: thread.notes.slice(1).map(one => toNote(one, host, path, true, mrUrl)),
       })),
   }
 }
 
 /** How many of the authored MRs GitLab sent back null: parts of a heavy query it timed out. */
-export const lostIn = (response: RawResponse<AuthoredQuery>): number =>
+export const lostIn = (response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
 
 const dataOf = <Data>(response: RawResponse<Data>): Data => {
   const { data } = response
   if (!isSome(data)) {
     const reason = (response.errors ?? []).map(error => error.message).join('; ')
-    throw new Error(reason === '' ? 'GitLab sent no data' : reason)
+    throw reason === '' ? new Failure('bad-answer', 'GitLab sent no data') : new Failure('server', reason)
   }
   return data
 }
 
 /** The authored MRs as cards. A read with no data at all throws; a partial one keeps what came back. */
-export const readResponse = (response: RawResponse<AuthoredQuery>): MrCard[] =>
-  present(dataOf(response).currentUser?.authoredMergeRequests?.nodes).map(toCard)
+export const readResponse = (host: string, response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): MrCard[] =>
+  present(dataOf(response).currentUser?.authoredMergeRequests?.nodes).map(raw => toCard(host, raw))
 
 /** The one pinned MR as a card, or none when GitLab named no such MR or project (out of reach). */
-export const readPinned = (response: RawResponse<PinnedQuery>): MrCard[] => {
+export const readPinned = (host: string, response: RawResponse<PinnedQuery | PinnedPlainQuery>): MrCard[] => {
   const raw = dataOf(response).project?.mergeRequest
-  return isSome(raw) ? [toCard(raw)] : []
+  return isSome(raw) ? [toCard(host, raw)] : []
 }
