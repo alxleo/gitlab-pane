@@ -3,7 +3,7 @@ import type { Register } from 'claude-code'
 import { readHosts, startData } from './data'
 import { field, isFilled } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
-import { drawn, forgetFound } from './in-flight'
+import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { parseHosts } from './hosts'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import type { ModelLine } from './model-text'
@@ -30,6 +30,7 @@ export const register: Register = (on, options) => {
   // render hook that keeps it may not write an atom (the engine denies a write while drawing); a reload starts it over.
   const health = { loadedAt: '', draws: 0, last: 'never asked to draw' }
   on('session.start', async ($, e, next) => {
+    forgetProbed()
     const hosts = parseHosts(options.gitlabHosts)
     await Promise.all([startData($, options.jiraUrl, hosts), rememberSettings(options.gitlabTokens, hosts), forgetProblems($), forgetScrolling($)])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)

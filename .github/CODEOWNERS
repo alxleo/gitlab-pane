@@ -1,0 +1,11 @@
+# Whoever is named here must approve a change to the files below, once branch protection requires code-owner review.
+# These are the files that run on a contributor's machine or in CI, or that decide what ships.
+*                         @alxleo
+/.claude/                 @alxleo
+/.github/                 @alxleo
+/tools/                   @alxleo
+/release/                 @alxleo
+/package.json             @alxleo
+/package-lock.json        @alxleo
+/eslint.config.cjs        @alxleo
+/tsconfig*.json          @alxleo
