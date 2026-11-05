@@ -18,10 +18,12 @@ import {
   ticketOf,
   verdictOf,
 } from '../hooks/ci'
+import { discMarks, discSource } from '../hooks/avatar'
 import { ciStatusOf, cleanBody, mergeStatusOf, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
 import { readTickets, ticketQuery } from '../hooks/jira'
 import { flatOf } from '../hooks/markdown'
 import { foreign } from '../hooks/model-text'
+import { raw, svg } from '../hooks/svg'
 import { NOW, job, note, pipe, rawMr, reviewer, stage, thread, user } from './fixtures'
 
 import type { CiStatus, MergeStatus } from '../types'
@@ -344,4 +346,18 @@ test('a long name is capped, and a link keeps its room', async () => {
   expect(text.endsWith('…')).toBe(true)
   expect(foreign('y'.repeat(200), 300)).toHaveLength(200)
   expect(wakeLine(failedWith('z'.repeat(255)), 'failed', NOW)).not.toContain('z'.repeat(81))
+})
+
+test('svg escapes every value, in text and in either kind of quote, and leaves a raw fragment alone', async () => {
+  const hostile = `</title><b>' onload='1" a="2&`
+  const escaped = '&lt;/title&gt;&lt;b&gt;&apos; onload=&apos;1&quot; a=&quot;2&amp;'
+  expect(svg`<title>${hostile}</title>`).toBe(`<title>${escaped}</title>`)
+  expect(svg`<a b='${hostile}' c="${hostile}"/>`).toBe(`<a b='${escaped}' c="${escaped}"/>`)
+  expect(svg`<g x='${12.5}'>${raw(svg`<i/>`)}${raw([svg`<b/>`, svg`<u/>`])}</g>`).toBe("<g x='12.5'><i/><b/><u/></g>")
+  expect(svg`<g>${svg`<i/>`}</g>`).toBe('<g>&lt;i/&gt;</g>')
+})
+
+test('a disc draws letters only, and a hostile name adds no markup', async () => {
+  expect(discMarks('x', 16, `<b/>A'"`)).toContain('>bA</text>')
+  expect(discSource('tessa').startsWith("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle")).toBe(true)
 })

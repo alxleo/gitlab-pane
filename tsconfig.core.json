@@ -25,6 +25,7 @@
     "hooks/markdown.ts",
     "hooks/model-text.ts",
     "hooks/reconcile.ts",
+    "hooks/svg.ts",
     "types/index.d.ts"
   ]
 }

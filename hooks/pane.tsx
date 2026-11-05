@@ -34,6 +34,7 @@ import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
 import { filterRepo, leaveReading, openReading, openTab, quietly, refresh, showPerson, toggle, toggleWake, view } from './read'
 import { drawReading } from './reading'
+import { raw, svg } from './svg'
 
 import type { Badge, Tone } from './ci'
 import type { CiStatus, Job, MrCard, Note, Person, PersonState, Stage } from '../types'
@@ -103,9 +104,6 @@ const jobMark = (job: Job): { glyph: string; tone: Tone } =>
 
 const JOBS_SHOWN = 6
 const MINE_SHOWN = 10
-
-const xml = (text: string): string =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&apos;')
 
 /** An open thread's words in its card; its 💬 link opens it whole. */
 const THREAD_ROOM = 500
@@ -280,15 +278,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const marks = stages
       .map((stage, i) => {
         if (!passed(stage)) {
-          return `<use href='#s' x='${i * 12}' fill='${STAGE_COLOURS[stageTone(stage.status)]}'><title>${xml(stageLine(stage))}</title></use>`
+          return svg`<use href='#s' x='${i * 12}' fill='${STAGE_COLOURS[stageTone(stage.status)]}'><title>${stageLine(stage)}</title></use>`
         }
         if (passed(stages[i - 1])) {
-          return ''
+          return svg``
         }
         const run = stages.slice(i).findIndex(next => !passed(next))
-        return `<rect x='${i * 12}' width='${(run === -1 ? stages.length - i : run) * 12}' height='10' fill='url(#p)'/>`
+        return svg`<rect x='${i * 12}' width='${(run === -1 ? stages.length - i : run) * 12}' height='10' fill='url(#p)'/>`
       })
-      .join('')
     const count = stages.filter(passed).length
     const width = stages.length * 12
     return (
@@ -297,7 +294,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         width={width}
         height={10}
         alt={`${stages.length} stages`}
-        source={`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${count > 0 ? `<title>${plural(count, 'stage')} passed</title>` : ''}<defs><rect id='s' width='10' height='10' rx='2'/><pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' fill='${STAGE_COLOURS.success}'/></pattern></defs>${marks}</svg>`}
+        source={svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${raw(count > 0 ? svg`<title>${plural(count, 'stage')} passed</title>` : svg``)}<defs><rect id='s' width='10' height='10' rx='2'/><pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' fill='${STAGE_COLOURS.success}'/></pattern></defs>${raw(marks)}</svg>`}
       />
     )
   }
@@ -316,23 +313,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
     // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
     const inner = picture
-      ? `<clipPath id='c'><circle cx='8' cy='8' r='8'/></clipPath><image href='${picture}' width='16' height='16' clip-path='url(#c)'/>`
+      ? svg`<clipPath id='c'><circle cx='8' cy='8' r='8'/></clipPath><image href='${picture}' width='16' height='16' clip-path='url(#c)'/>`
       : person.isBot
         ? BOT_MARKS
         : discMarks(person.username, 16, person.initials)
     const ring =
       tone === 'subtle'
-        ? `<circle cx='8' cy='8' r='9' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='1.5'/>`
-        : `<circle cx='8' cy='8' r='9.5' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='3'/>`
+        ? svg`<circle cx='8' cy='8' r='9' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='1.5'/>`
+        : svg`<circle cx='8' cy='8' r='9.5' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='3'/>`
     const mark = badge
-      ? `<circle cx='14.75' cy='14.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
-      : ''
+      ? svg`<circle cx='14.75' cy='14.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
+      : svg``
     return (
       <Svg
         width={22}
         height={22}
         alt={badge ? `${person.name}, ${REVIEW_STATE[person.state]}` : person.name}
-        source={`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${inner}${ring}${mark}</svg>`}
+        source={svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${raw(inner)}${raw(ring)}${raw(mark)}</svg>`}
       />
     )
   }
