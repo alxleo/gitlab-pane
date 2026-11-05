@@ -22,7 +22,7 @@ import { decodeGraphql, parseJson } from '../hooks/decode'
 import type { PinnedQuery } from '../hooks/gitlab.generated'
 import { readInboxJson } from '../hooks/inbox-json'
 import { readTickets, ticketQuery } from '../hooks/jira'
-import { flatOf, fromGitLab } from '../hooks/markdown'
+import { flatOf } from '../hooks/markdown'
 import type { MarkdownText } from '../hooks/markdown'
 import { foreign } from '../hooks/model-text'
 import type { ModelLine, Sayable } from '../hooks/model-text'
@@ -500,7 +500,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       repoFilter: '',
       view: 'mine',
       news: 0,
-      poll: { fetchedAt: NOW, attemptedAt: NOW, error: null, failures: 0, ticketsAt: null, usualAt: null },
+      poll: { fetchedAt: NOW, attemptedAt: NOW, error: null, hosts: {}, failures: 0, ticketsAt: null, usualAt: null },
       isWaking: true,
       failures: {},
       ...over,
@@ -560,14 +560,14 @@ test('the model fills the room by what needs you: rows, then hover cards; rows p
   expect(drawn.filter(row => row.fit.hasCards).length).toBe(1)
   // An opened row takes its place before any other: the last, passing one is drawn because it was opened.
   const key = cards[11]?.key ?? ''
-  const withDescription = cards.map(card => ({ ...card, description: fromGitLab('Does it.') }))
+  const withDescription = cards.map(card => ({ ...card, description: cleanBody('Does it.', HOST, 'g/p') }))
   const first = modelOf(withDescription, { expanded: ['more', key] }, cost)
   expect(first.mine.rows.find(row => row.key === key)?.fit.isDrawn).toBe(true)
   expect(first.mine.rows.filter(row => row.fit.isDrawn).length).toBe(7)
 })
 
 test('an opened row too big for the room is drawn without its detail, and each piece is measured once', async () => {
-  const card = { ...toCard(HOST, rawMr(5)), description: fromGitLab('Does the thing.') }
+  const card = { ...toCard(HOST, rawMr(5)), description: cleanBody('Does the thing.', HOST, 'g/p') }
   const asked: string[] = []
   const model = modelOf([card], { expanded: [card.key] }, piece => {
     asked.push(piece)
@@ -591,7 +591,7 @@ test('while nothing has been read, one line per failing source says what to do, 
   ])
   // Once something has been read the pane has cards to show and the footer says the rest.
   expect(firstRunLines(failures, true)).toEqual([])
-  const unread = { fetchedAt: null, attemptedAt: NOW, error: 'x', failures: 1, ticketsAt: null, usualAt: null }
+  const unread = { fetchedAt: null, attemptedAt: NOW, error: 'x', hosts: {}, failures: 1, ticketsAt: null, usualAt: null }
   expect(modelOf([], { failures, poll: unread }).firstRun.length).toBe(2)
 })
 
