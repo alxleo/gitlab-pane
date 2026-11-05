@@ -28,6 +28,7 @@ claude --plugin-dir .
 | `npm run types` | The engine's declarations (`node tools/engine_types.ts`), then TypeScript 7 over the four configs: `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tsconfig.tools.json`. |
 | `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the schema snapshot and the queries. |
 | `npm run release-tree -- check` | The release tree builds from `release/files` and every module it loads resolves inside it. |
+| `npm run docs -- check` | README.md's settings table is plugin.json's `userConfig`, and `tests/docs.generated.ts` holds what the README's and DESIGN.md's tables say, which `tests/docs.test.ts` holds to the code. After changing either table, run `npm run docs -- write` (`tools/docs.ts`). |
 | `npm run validate` | `claude plugin validate --strict` on the plugin and on the dev-only store probe. |
 | `npm run scan` | gitleaks (every commit), actionlint and zizmor, each only if it is installed here; a missing one is named as skipped. |
 | `npm test` | `claude plugin test .`, the mod's tests. |

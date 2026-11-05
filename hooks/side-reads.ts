@@ -32,8 +32,8 @@ import type { MrCard } from '../types'
 // people's pictures. The tickets and run times stay in this session's state; the pictures go to the store, for the sessions
 // that only draw to find there.
 
-const TICKETS_EVERY_MS = 15 * 60_000
-const USUAL_EVERY_MS = 30 * 60_000
+export const TICKETS_EVERY_MS = 15 * 60_000
+export const USUAL_EVERY_MS = 30 * 60_000
 
 /**
  * Jira's view of the tickets the titles name, every 15 minutes or when a new one appears, while a Jira site is set; a
