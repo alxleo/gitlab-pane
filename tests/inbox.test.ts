@@ -2,10 +2,12 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { shortHash as hashOf } from '../hooks/identity'
+import { readSnapshot } from '../hooks/inbox-snapshot'
+import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
 import { NOW, mergeStatuses } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
-import { fakeGitLab, ran } from './gitlab_host'
+import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 
 const PANE = {
   plugin: 'gitlab-ci',
@@ -24,25 +26,10 @@ const PANE = {
 const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
-/** The plugin's store in memory, to look into after: the marks are in it and nowhere else. */
-function memory(on: On): Map<string, unknown> {
-  const held = new Map<string, unknown>()
-  on('store.get', (_, e) => ({ value: held.get(e.key) }))
-  on('store.set', (_, e) => {
-    held.set(e.key, e.value)
-    return { value: undefined }
-  })
-  on('store.delete', (_, e) => {
-    held.delete(e.key)
-    return { value: undefined }
-  })
-  on('store.keys', () => ({ value: [...held.keys()] }))
-  return held
-}
-
 /** The host with `world` behind it; every call is in `requests`. The token comes from the environment. */
 function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE) {
-  const store = memory(on)
+  // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
+  const { store } = fakeSession(on)
   const gitlab = fakeGitLab(
     on,
     {
@@ -57,10 +44,8 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('session.repo', () => ({ value: remote === null ? null : { root: '/r', remote, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { ...gitlab, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
+  return { ...gitlab, store, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }
 
 /** The inbox's first read waits this long after the session starts. */
@@ -226,6 +211,71 @@ test('the mark outlives the pane, and an MR that has left the inbox loses its ma
   world.opened = []
   await ui.press({ key: 'inbox-sync' })
   expect(gitlab.marks().length).toBe(0)
+  await ui.unmount()
+})
+
+test('a session that only draws shows the inbox the leader shared, asks GitLab for nothing, and keeps the ✓ made there', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kit = engine(on, busyWorld())
+  const shared = {
+    at: NOW,
+    hosts: { 'gitlab.com': { user: 'me', failure: null } },
+    mrs: [
+      {
+        host: 'gitlab.com',
+        path: 'g/p',
+        iid: 1,
+        title: 'thing 1',
+        url: 'https://gitlab.com/g/p/-/merge_requests/1',
+        author: 'me',
+        authorName: 'Me',
+        isMine: true,
+        state: 'opened',
+        isDraft: false,
+        inQueue: false,
+        isFollowed: false,
+        cutoff: null,
+        signals: [{ kind: 'comment', actor: 'carol', at: NOW - 60_000, note: null, excerpt: 'please rename' }],
+      },
+    ],
+  }
+  kit.store.set('lease', { owner: 'other', renewedAt: NOW })
+  kit.store.set('inbox-snapshot', shared)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(10_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'tab-inbox' })
+  await ui.press({ key: 'inbox-rule-on-my-mrs' })
+  expect(await titleOf(ui, 1)).toBe('▸ thing 1')
+  // The ✓ is kept in the store by this session; the leader's next read of it, and the mark, are not lost to each other.
+  await ui.press({ key: `inbox-seen-${hashOf('gitlab.com/g/p!1')}` })
+  expect(kit.marks()).toHaveLength(1)
+  expect(await titleOf(ui, 1)).toBeUndefined()
+  expect(kit.requests).toEqual([])
+  await ui.unmount()
+})
+
+test('the leader prunes the marks of MRs that left the inbox without losing one made in another session', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kit = engine(on, busyWorld())
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  const shared = readSnapshot(kit.store.get('inbox-snapshot'))
+  const mine = shared?.mrs.find(mr => mr.iid === 1)
+  if (shared === null || mine === undefined) {
+    throw new Error('the leader shared no inbox')
+  }
+  // Another session marked the MR seen; a mark for an MR GitLab no longer lists is left from before.
+  kit.store.set(seenKeyOf(shared, mine) ?? '', NOW)
+  kit.store.set(seenKey('gitlab.com', 'me', 'g/gone', 9), NOW)
+  await ui.press({ key: 'tab-inbox' })
+  await ui.press({ key: 'inbox-sync' })
+  expect(kit.marks().map(([key]) => key)).toEqual([seenKeyOf(shared, mine)])
+  // Seen, the MR is no longer news, so the rule that listed it has nothing to open.
+  expect(await ui.find({ type: 'Button', key: 'inbox-rule-on-my-mrs' })).toBeUndefined()
   await ui.unmount()
 })
 

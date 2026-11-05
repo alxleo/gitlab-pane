@@ -5,8 +5,9 @@ import { isFilled } from './decode'
 import { ago, shortTitle } from './format'
 import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
-import { reported } from './failures'
-import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleHere, toggleRule } from './inbox'
+import { quietly, reported } from './failures'
+import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
+import { refresh } from './poll'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
 
@@ -254,7 +255,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key="inbox-sync"
           plain
           label={inbox.isSyncing ? 'syncing…' : 'sync'}
-          onPress={() => syncInbox($).catch(reported($, 'inbox'))}
+          onPress={() => quietly($, refresh($), 'inbox')}
         />
       </Box>
       {shown.length > 0 && (

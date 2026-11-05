@@ -202,7 +202,14 @@ type Cost = { readonly score: number; readonly limit: number }
 const isCost = (value: unknown): value is Cost => isRecord(value) && typeof value['score'] === 'number' && typeof value['limit'] === 'number'
 
 /** Values for the documents' variables: GitLab scores a document before it runs, so any project and number do. */
-const SAMPLE_VARIABLES: Readonly<Record<string, string>> = { path: 'gitlab-org/gitlab', iid: '1', since: '2026-01-01T00:00:00Z', username: 'root' }
+const SAMPLE_VARIABLES: Readonly<Record<string, string>> = {
+  path: 'gitlab-org/gitlab',
+  iid: '1',
+  since: '2026-01-01T00:00:00Z',
+  after: '2026-01-01T00:00:00Z',
+  state: 'opened',
+  username: 'root',
+}
 
 /** GitLab refuses a burst of requests with 429; the schedule is weekly, so waiting out a few is cheap. */
 const RATE_LIMIT_TRIES = 4
@@ -579,6 +586,15 @@ async function types(checking: boolean): Promise<number> {
   if (found !== null) {
     console.log(`✗ ${found.query}: ${found.problem}`)
     return 1
+  }
+  // The weekly check sends every document with sample variables; a variable without one would fail only there.
+  for (const [name, text] of Object.entries(DOCUMENTS)) {
+    try {
+      scored(text)
+    } catch (error) {
+      console.log(`✗ ${name}: ${error instanceof Error ? error.message : String(error)}`)
+      return 1
+    }
   }
   console.log(`${relativeToRoot(TYPES)} is what the snapshot and queries give.`)
   return 0

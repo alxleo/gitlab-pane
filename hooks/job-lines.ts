@@ -41,14 +41,19 @@ const ranLine = (job: Job, now: number): string =>
 
 export type JobLine = { glyph: string; tone: Tone; name: string; href: string; ran: string }
 
-/** The jobs worth opening across the pipeline: what failed, runs or waits on a person, each linked; `more` are left out. */
-export function pipelineJobs(stages: Stage[], now: number): { jobs: JobLine[]; more: number } {
-  const open = stages
+/** The jobs worth opening across the pipeline, most pressing first: what failed, runs or waits on a person. */
+export function listedJobs(stages: readonly Stage[]): Job[] {
+  return stages
     .flatMap(stage => stage.jobs)
     .filter(job => ['failed', 'running'].includes(job.status) || (job.status === 'manual' && !job.allowFailure))
     .sort((a, b) => JOB_RANK[jobKind(a)] - JOB_RANK[jobKind(b)])
+}
+
+/** The jobs worth opening across the pipeline, each linked; `more` are left out, `unlisted` of them by a shared card that kept the first few alone. */
+export function pipelineJobs(stages: readonly Stage[], now: number, unlisted = 0): { jobs: JobLine[]; more: number } {
+  const open = listedJobs(stages)
   return {
     jobs: open.slice(0, JOBS_SHOWN).map(job => ({ ...jobMark(job), name: job.name, href: job.url, ran: ranLine(job, now) })),
-    more: Math.max(0, open.length - JOBS_SHOWN),
+    more: Math.max(0, open.length - JOBS_SHOWN) + unlisted,
   }
 }

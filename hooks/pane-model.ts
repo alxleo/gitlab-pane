@@ -2,7 +2,7 @@
 // colours and links, which are open, and how much of each fits the drawing's room. The draw files only map this to
 // elements. Pure: the one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to,
 // which it asks once for each piece it needs and never for a piece it will not use.
-import { hasLeft } from './attention.ts'
+import { hasLeft, rank } from './attention.ts'
 import { firstDifference } from './order.ts'
 import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
@@ -12,6 +12,7 @@ import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { aboutLines, blockerLines, detailOf, personLines } from './row-lines.ts'
 import type { DetailModel, Line, RowContext } from './row-lines.ts'
+import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
 import { stripModel } from './strip-model.ts'
@@ -79,7 +80,8 @@ export type SizeOf = (row: RowModel, piece: Piece) => number
 
 export type PaneInput = {
   cards: readonly MrCard[]
-  facts: Readonly<Record<string, CardFacts>>
+  /** The small pictures kept by URL, which a face is drawn with where there is room. */
+  avatars: Readonly<Record<string, string>>
   pinned: readonly Pinned[]
   tickets: RowContext['tickets']
   usual: RowContext['usual']
@@ -113,8 +115,8 @@ export type PaneModel = {
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
-const byFacts = (facts: Readonly<Record<string, CardFacts>>) => (a: MrCard, b: MrCard) =>
-  firstDifference((facts[a.key]?.rank ?? 3) - (facts[b.key]?.rank ?? 3), b.updatedAt.localeCompare(a.updatedAt))
+const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
+  firstDifference((ranks.get(a.key) ?? 3) - (ranks.get(b.key) ?? 3), b.updatedAt.localeCompare(a.updatedAt))
 
 function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['footer'] {
   const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
@@ -208,7 +210,9 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
   const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
-  const order = byFacts(input.facts)
+  // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
+  // worked out below for the rows that are drawn, once each.
+  const order = byRank(new Map(rows.map(row => [row.key, rank(row)])))
   const session = shown.filter(row => pinnedKeys.has(row.key)).sort(order)
   const mine = shown.filter(row => !pinnedKeys.has(row.key) && !row.isDraft).sort(order)
   const drafts = shown.filter(row => !pinnedKeys.has(row.key) && row.isDraft).sort(order)
@@ -225,9 +229,9 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   }
 
   const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showDrafts ? drafts : [])] : []
-  const built = wanted.flatMap(card => {
-    const facts = input.facts[card.key]
-    return facts !== undefined ? [{ card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }] : []
+  const built = wanted.map(card => {
+    const facts = cardFacts(card, input.avatars)
+    return { card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }
   })
 
   // Each piece is measured at most once, and a row not tried is never drawn.

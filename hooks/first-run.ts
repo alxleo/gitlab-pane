@@ -9,6 +9,7 @@ const NAMES: Record<ProblemSource, string> = {
   avatars: 'Pictures',
   inbox: 'Inbox',
   pane: 'Pane',
+  store: 'Shared store',
 }
 
 /** The sources whose failure keeps the pane empty, in the order they are told. */

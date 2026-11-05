@@ -68,3 +68,13 @@ hooks/row-facts.ts
 hooks/row-lines.ts
 hooks/strip-model.ts
 hooks/first-run.ts
+hooks/detail.ts
+hooks/incremental.ts
+hooks/lease.ts
+hooks/lease-store.ts
+hooks/read-gitlab.ts
+hooks/shared.ts
+hooks/side-reads.ts
+hooks/slim.ts
+hooks/snapshot.ts
+hooks/authored-request.ts

@@ -2,12 +2,14 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { isEqual } from './equal'
-import { problemLines, withoutProblem, withoutTime, withProblem } from './problems'
+import { leaderProblems, problemLines, reportedProblems, withoutProblem, withoutTime, withProblem } from './problems'
 
 import type { Problems, ProblemSource } from '../types'
 
 // Where background failures go instead of vanishing: the last one per source, for `/gitlab` to list.
 const problemsAtom = atom({ plugin: 'gitlab-ci', key: 'problems' } as const, {})
+// What the session that reads GitLab failed with, as it told this one in its snapshot; this session's own are above.
+const reportedAtom = atom({ plugin: 'gitlab-ci', key: 'reported' } as const, {})
 
 /**
  * Keeps `error` as the source's last, replacing an older one. An optional tool that is not installed is kept too, as
@@ -31,8 +33,22 @@ export async function clear($: EngineInterface, source: ProblemSource): Promise<
 }
 
 /** What the pane draws its first-run lines from; reading it here makes the pane redraw when a source fails or recovers. */
-export function drawnProblems($: EngineInterface): Promise<Problems> {
-  return read($, problemsAtom)
+export async function drawnProblems($: EngineInterface): Promise<Problems> {
+  const [own, reported] = await Promise.all([read($, problemsAtom), read($, reportedAtom)])
+  return { ...reported, ...own }
+}
+
+/** What this session's own reads failed with, for the leader to tell the others. */
+export async function readLeaderProblems($: EngineInterface) {
+  return leaderProblems(await read($, problemsAtom))
+}
+
+/** What the session that reads GitLab says it failed with; none when this session is that one. */
+export async function setReportedProblems($: EngineInterface, shared: Parameters<typeof reportedProblems>[0], at: number): Promise<void> {
+  const next = reportedProblems(shared, at)
+  if (!isEqual(await read($, reportedAtom), next)) {
+    await update($, reportedAtom, () => next)
+  }
 }
 
 /** A mod loading starts with no failures, as it starts with nothing else the pane says about itself. */
@@ -58,5 +74,7 @@ export function quietly($: EngineInterface, work: Promise<unknown>, source: Prob
 
 /** One line per source that last failed. */
 export async function problems($: EngineInterface): Promise<string[]> {
-  return problemLines(await read($, problemsAtom))
+  const [own, reported] = await Promise.all([read($, problemsAtom), read($, reportedAtom)])
+  const others = Object.fromEntries(Object.entries(reported).filter(([source]) => !(source in own)))
+  return [...problemLines(own), ...problemLines(others, ', reported by the session that reads GitLab')]
 }
