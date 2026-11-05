@@ -14,6 +14,20 @@ The pane should answer:
 - Is there a decision or action I need to take?
 - Can I hand this off and continue working?
 
+## Acceptance gate before presenting a screen
+
+Check every screen against these requirements. Fix or discard failures yourself before showing the user.
+
+- Every visible fact changes the developer's decision. The pane exists to reduce attention; Claude does the fixing.
+- Technical repair details travel with the task to Claude. Show them to the developer only when Claude needs a specific human decision, and only enough to answer it.
+- Each MR has at most one obvious next move, or none. Contextual alternatives in an opened human comment must not become equally prominent actions throughout the MR list.
+- Healthy, waiting and Claude-handled work stay quiet.
+- No fact is repeated in two places.
+- Human feedback always surfaces, even after approval. Bot feedback stays quiet unless it blocks.
+- Delegated work follows blocked → one-click delegate → quiet while running → a one-line result: fixed or needs you. Intermediate work demands no attention.
+
+Surfacing human feedback does not automatically make it an obligation: the developer judges whether it needs a change, a reply or no further action. Reading must not silently resolve it.
+
 ## What the developer should be able to forget
 
 Which MR belongs to which session and worktree; assembling routine repair instructions; tracking delegated work; remembering when reviews were requested; repeatedly checking whether operations succeeded.
@@ -48,7 +62,7 @@ Provide enough context to delegate, reply briefly, or open the precise GitLab de
 
 Read, replied, delegated, resolved and completed are distinct. Reading does not resolve a thread; replying does not complete code work; delegation does not imply success. New human feedback still surfaces while Claude works.
 
-Bot feedback has a separate attention policy. Routine successes and repeated summaries stay quiet. Actionable failures or relevant findings can surface without treating all automated activity like a person's feedback.
+Bot feedback stays quiet unless it blocks. Routine successes, repeated summaries and nonblocking findings must not compete with human feedback.
 
 ## Almost transparent delegation
 
@@ -60,11 +74,11 @@ Provide compact reassurance about the destination and a direct route back to the
 
 ## Results close the loop
 
-Surface understandable outcomes: fixed, conflicts cleared, checks still running, or a specific decision needed. Agent completion, pushed code and verified GitLab state are distinct. Track those distinctions internally and present an honest concise result, not a technical tracking dashboard.
+Surface a one-line result: fixed or needs you. Agent completion, pushed code and verified GitLab state are distinct. Track those distinctions internally; checks still running are quiet progress, not another attention-demanding outcome. A needs-you result states the specific decision required.
 
 The exact merge conflict, raw logs, branch topology and worktree instructions normally belong in Claude's task payload. They only become relevant to the developer when they help answer a decision Claude cannot make. The developer is not the default repair operator.
 
-Once work is being handled, the original problem loses its demand for attention. Once verified fixed, stale failure indicators disappear. Do not repeat the same issue loudly in multiple places. Surface the result without making the developer supervise each intermediate step. A successful repair does not itself mean the MR can merge.
+Once work is being handled, the original problem loses its demand for attention. Once verified fixed, stale failure indicators disappear. Do not repeat a fact in multiple places. Surface the result without making the developer supervise each intermediate step. A successful repair does not itself mean the MR can merge.
 
 ## Whole experience
 
@@ -94,7 +108,11 @@ Judge the whole workload: can the developer glance, recognise where needed, move
 
 The design drifted into a full review workspace, exposed implementation details, and made the developer inspect the repair process. Subsequent attempts substituted links for buttons, then introduced connected-work graphs, diagnostic gutters and branch diagrams. The user rejected these as off target: the exact conflict is irrelevant when the LLM handles it.
 
-Do not treat Penpot pages 10 or 11, their research rules, or the graphical A/B/C studies as approved designs. Page 09 was closer, but not final approval of the whole experience. Do not ask the user to choose among these rejected alternatives again.
+The approved-nit screen—Maya's comment with Delegate / Reply / Open in GitLab—is the best result so far and the starting point for continuation. This does not approve every part of page 09 or the whole experience. Do not restart the visual direction.
+
+Do not treat Penpot pages 10 or 11, their research rules, or the graphical A/B/C studies as approved designs. Do not ask the user to choose among these rejected alternatives again.
+
+The failure was gating, not missing context: the right premise had been stated but was not used to reject designs. Corrections were applied as styling changes while the wrong premise remained. Apply the acceptance gate to the actual screen, not merely to the explanation accompanying it.
 
 Taste Classics was explicitly rejected. Impeccable and Vercel guidance were consulted, but no skill or reference overrides this product purpose. Research should challenge assumptions about user work, not justify component choices after the fact.
 
@@ -102,7 +120,9 @@ Taste Classics was explicitly rejected. Impeccable and Vercel guidance were cons
 
 Penpot editing and product implementation are stopped. The user requested this rebuilt brief so future sessions can continue without re-explanation. No production redesign code was changed in the design session.
 
-Before further drawing, establish the whole experience against this attention brief. When the user authorises design continuation: work in small Penpot workflow slices, delegate the clicking, retain product/visual judgement, critique before presenting, and show the integrated experience before implementation. Do not mistake successful prototype navigation for product fit or real integration.
+Before further drawing, establish the whole experience against this attention brief. When the user authorises design continuation: work in small Penpot workflow slices from the approved-nit baseline, delegate the clicking, retain product/visual judgement, enforce the acceptance gate before presenting, and show the integrated experience before implementation. Do not mistake successful prototype navigation for product fit or real integration.
+
+Bring one recommendation that has passed the gate, plus what was rejected and why. Do not restart with A/B/C option sets. Start research only when a specific unanswered question blocks a decision. Treat corrections as statements of principle: identify the principle they imply before redrawing, and apply it throughout the experience.
 
 The pending workflow request was pipeline failure and conflict handling through Claude work to surfaced results. Its visual exploration was rejected; the complete lifecycle is not delivered. Resume only under the corrected brief and the next user's instruction.
 
