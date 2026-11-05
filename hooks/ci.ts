@@ -1,4 +1,5 @@
 import { flatOf } from './markdown'
+import { commas, dotted, foreign, line, NAME_ROOM, URL_ROOM, type ModelLine } from './model-text'
 
 import type { CiStatus, MergeStatus, MrCard, Person, Pinned, Stage, Usual } from '../types'
 
@@ -68,14 +69,15 @@ export function advance(
 }
 
 /** The one line a wake says: `!1395 can merge: pipeline passed in 17m`; a failure carries the pipeline's link. */
-export function wakeLine(card: MrCard, due: Due, now: number): string {
+export function wakeLine(card: MrCard, due: Due, now: number): ModelLine {
   const pipeline = card.pipeline
+  const time = foreign(pipelineTime(card, now))
   if (due === 'mergeable') {
-    return `!${card.iid} can merge${pipeline?.status === 'success' ? `: pipeline passed in ${pipelineTime(card, now)}` : ''}`
+    return line`!${card.iid} can merge${pipeline?.status === 'success' ? line`: pipeline passed in ${time}` : foreign('')}`
   }
-  const jobs = pipeline?.failed.map(job => job.name).join(', ') ?? ''
-  const when = pipeline && isSettled(pipeline.status) ? `pipeline failed in ${pipelineTime(card, now)}` : 'a job failed while the pipeline runs'
-  return `!${card.iid} ${when}${jobs ? `: ${jobs}` : ''} · ${pipeline?.url ?? card.url}`
+  const jobs = commas(pipeline?.failed.map(job => foreign(job.name)) ?? [])
+  const when = pipeline && isSettled(pipeline.status) ? line`pipeline failed in ${time}` : foreign('a job failed while the pipeline runs')
+  return line`!${card.iid} ${when}${jobs ? line`: ${jobs}` : foreign('')} · ${foreign(pipeline?.url ?? card.url, URL_ROOM)}`
 }
 
 /** 0 needs you now, 1 is moving, 2 waits on others, 3 is ready. */
@@ -471,18 +473,16 @@ export const shortTitle = (title: string): string =>
     .replace(/\[([A-Z]+-\d+|NO-JIRA)\]\s*/, '')
 
 /** One line a model or a toast reads; never another person's words, only who and where. */
-export function describe(card: MrCard, now: number): string {
+export function describe(card: MrCard, now: number): ModelLine {
   const { glyph } = statusMark(card.pipeline?.status)
   const ticket = ticketOf(card.title)
-  const failed = card.pipeline?.failed.map(job => job.name) ?? []
-  return [
-    `!${card.iid}${ticket ? ` (${ticket})` : ''} ${glyph} ${card.pipeline?.status ?? 'no pipeline'} ${pipelineTime(card, now)}`,
+  const failed = card.pipeline?.failed.map(job => foreign(job.name)) ?? []
+  return dotted([
+    line`!${card.iid}${ticket ? line` (${foreign(ticket)})` : foreign('')} ${foreign(glyph)} ${foreign(card.pipeline?.status ?? 'no pipeline')} ${foreign(pipelineTime(card, now))}`,
     ...badges(card)
       .filter(badge => badge.kind !== 'failed' && badge.words !== 'approved')
-      .map(badge => badge.words),
-    failed.length > 0 ? `failed: ${failed.join(', ')}` : '',
-    card.pipeline?.url ?? card.url,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+      .map(badge => foreign(badge.words, NAME_ROOM)),
+    failed.length > 0 ? line`failed: ${commas(failed)}` : foreign(''),
+    foreign(card.pipeline?.url ?? card.url, URL_ROOM),
+  ])
 }

@@ -1,4 +1,5 @@
 import { advance, pinKey, wakeLine } from './ci'
+import type { ModelLine } from './model-text'
 
 import type { MrCard, Pinned } from '../types'
 
@@ -10,7 +11,7 @@ export type Reconciled = {
   /** Every pin's news and every pin that ended, for the user to see. */
   toasts: string[]
   /** What wakes the session: only news of an MR it raised. */
-  wakes: string[]
+  wakes: ModelLine[]
   /** Keys of pinned MRs that are closed or merged. */
   unpinned: string[]
 }
@@ -27,7 +28,7 @@ export function reconcile(input: {
 }): Reconciled {
   const announced: Record<string, string[]> = Object.fromEntries(Object.entries(input.announced).map(([key, told]) => [key, [...told]]))
   const toasts: string[] = []
-  const wakes: string[] = []
+  const wakes: ModelLine[] = []
   const unpinned: string[] = []
   for (const pin of input.pinned) {
     const row = input.rows.find(each => each.key === pinKey(pin))

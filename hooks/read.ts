@@ -15,6 +15,7 @@ import {
   usualQuery,
 } from './gitlab'
 import type { RawResponse } from './gitlab'
+import { dotted, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
 import { reconcile } from './reconcile'
 
@@ -339,6 +340,11 @@ export function refresh($: EngineInterface): Promise<void> {
   return queued
 }
 
+/** The only way text reaches the model unasked: lines built by model-text.ts, so a foreign value cannot arrive raw. */
+function wake($: EngineInterface, news: readonly ModelLine[]) {
+  return $.prompt.submit({ text: lines(news) })
+}
+
 /** One GitLab read for every row; wakes the session for a pinned MR's new result. */
 async function readOnce($: EngineInterface): Promise<void> {
   const pinned = await read($, pinnedAtom)
@@ -384,7 +390,7 @@ async function readOnce($: EngineInterface): Promise<void> {
       .join('  ') || undefined
   )
   if (reconciled.wakes.length > 0 && (await read($, wakeAtom))) {
-    quietly($.prompt.submit({ text: reconciled.wakes.join('\n') }))
+    quietly(wake($, reconciled.wakes))
   }
   quietly(readJira($, open, now))
   quietly(readUsualTimes($, open, now))
@@ -408,7 +414,7 @@ export async function tick($: EngineInterface): Promise<void> {
 }
 
 /** Pins an MR to this session and answers what it looks like now, saying so when that is stale. */
-export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<string> {
+export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<ModelLine> {
   const parsed = parseMrUrl(url)
   if (!parsed) {
     throw new Error(`Not a gitlab.com merge request URL: ${url}`)
@@ -421,12 +427,14 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
   await refresh($)
   const [rows, poll, now] = await Promise.all([read($, rowsAtom), read($, pollAtom), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
-  const stale =
+  const stale = foreign(
     poll.error !== null
       ? `GitLab could not be read (${poll.error})${poll.fetchedAt ? `; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : ''}`
-      : ''
+      : '',
+    URL_ROOM
+  )
   if (row) {
-    return stale ? `${describe(row, now)} · ${stale}` : describe(row, now)
+    return stale ? dotted([describe(row, now), stale]) : describe(row, now)
   }
-  return `Pinned !${parsed.iid}; ${stale || 'GitLab did not return it.'}`
+  return line`Pinned !${parsed.iid}; ${stale || foreign('GitLab did not return it.')}`
 }
