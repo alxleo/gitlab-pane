@@ -1,7 +1,9 @@
-/** What a fake `glab api graphql` answers with: the operation it was asked for, and the variables sent beside it. */
+import type { Operations, RawResponse } from '../hooks/gitlab.ts'
+
+/** The operation a `glab api graphql` command line asks for, and the variables sent beside it. */
 export type Asked = { operation: string; variables: Record<string, string> }
 
-/** The operation a `glab api graphql` command line names, or undefined for any other command. */
+/** What a command line asks of GitLab, or undefined for any other command. */
 export function asked(argv: readonly string[]): Asked | undefined {
   const query = argv.find(arg => arg.startsWith('query='))
   if (!argv.includes('glab') || !query) {
@@ -21,8 +23,25 @@ export function asked(argv: readonly string[]): Asked | undefined {
   return { operation, variables }
 }
 
-/** One answer per operation, by its name. An operation the test did not set an answer for fails the test. */
-export type Answers = Record<string, (variables: Record<string, string>) => unknown>
+/** GitLab's answer to each operation the pane sends, typed by the document's generated types. A test sets the ones it needs. */
+export type Answers = {
+  [Name in keyof Operations]?: (variables: Operations[Name]['variables']) => RawResponse<Operations[Name]['data']>
+}
+
+const need = (variables: Record<string, string>, name: string): string => {
+  const value = variables[name]
+  if (value === undefined) {
+    throw new Error(`the request left out the ${name} variable`)
+  }
+  return value
+}
+
+const set = <Handler>(handler: Handler | undefined, operation: string): Handler => {
+  if (!handler) {
+    throw new Error(`the test set no answer for the ${operation} operation`)
+  }
+  return handler
+}
 
 /** The JSON text GitLab would print for the command line, or undefined when it is not a GraphQL one. */
 export function answered(argv: readonly string[], answers: Answers): string | undefined {
@@ -30,9 +49,17 @@ export function answered(argv: readonly string[], answers: Answers): string | un
   if (!request) {
     return undefined
   }
-  const answer = answers[request.operation]
-  if (!answer) {
-    throw new Error(`nothing answers the ${request.operation} operation`)
+  const { operation, variables } = request
+  switch (operation) {
+    case 'Authored':
+      return JSON.stringify(set(answers.Authored, operation)({}))
+    case 'MergeStatus':
+      return JSON.stringify(set(answers.MergeStatus, operation)({}))
+    case 'Pinned':
+      return JSON.stringify(set(answers.Pinned, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
+    case 'Usual':
+      return JSON.stringify(set(answers.Usual, operation)({ path: need(variables, 'path') }))
+    default:
+      throw new Error(`the pane sent an operation the fake does not know: ${operation}`)
   }
-  return JSON.stringify(answer(request.variables))
 }

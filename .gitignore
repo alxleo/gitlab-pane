@@ -2,3 +2,4 @@
 .claude/worktrees/
 .DS_Store
 *.log
+tools/codegen/node_modules/

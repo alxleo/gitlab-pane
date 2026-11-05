@@ -9,9 +9,9 @@ import type { On } from 'claude-code'
 import type { Mounted } from 'claude-code/testing'
 
 import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
+import type { Mr } from '../../tests/fixtures'
 import { answered } from '../../tests/gitlab_fake'
 
-import type { RawMr } from '../../hooks/gitlab'
 
 const PANE = {
   plugin: 'gitlab-ci',
@@ -69,7 +69,7 @@ const withThread = (body: string, author: string, repo: string, iid: number, fil
 }
 
 /** The merge requests Dana has open, with every state the pane has a word or a colour for. */
-const mine = (): RawMr[] => [
+const mine = (): Mr[] => [
   rawMr(482, {
     title: 'feat: [SHOP-214] Save cards at checkout',
     webUrl: url('acme-corp/storefront', 482),
@@ -248,7 +248,7 @@ const inboxSections = () => [
 ]
 
 /** GitLab and mr-inbox as the scenes set them; every command not listed here fails, so nothing real is ever asked. */
-function engine(on: On, mrs: RawMr[]) {
+function engine(on: On, mrs: Mr[]) {
   mock.store(on, {})
   const titles: string[] = []
   on('process.run', (_, e) => {
@@ -263,7 +263,7 @@ function engine(on: On, mrs: RawMr[]) {
     const text = answered(e.argv, {
       Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
       MergeStatus: () => {
-        const nodes = mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus }))
+        const nodes = mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus ?? null }))
         return { data: { currentUser: { authoredMergeRequests: { nodes } } } }
       },
       Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),

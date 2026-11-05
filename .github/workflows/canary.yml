@@ -3,7 +3,8 @@
 #
 # Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an
 # empty setup as a teammate would, and checks every query the pane sends against gitlab.com's live schema
-# (tools/gitlab_schema.py). A failure opens an issue, or comments on the one already open, so it reaches whoever watches
+# (tools/gitlab_schema.py), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
+# A failure opens an issue, or comments on the one already open, so it reaches whoever watches
 # the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
 # check.yml and screens.yml to match.
 #
@@ -17,6 +18,9 @@ on:
   pull_request:
     paths:
       - hooks/gitlab.ts
+      - hooks/gitlab.generated.ts
+      - tools/codegen/**
+      - tools/gitlab_schema.snapshot.json
       - tools/gitlab_queries.ts
       - tools/gitlab_schema.py
       - tools/gitlab_schema.py.lock
@@ -63,7 +67,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Node 24 runs tools/gitlab_queries.ts as it is, types stripped.
+      # Node 24 runs tools/gitlab_queries.ts as it is, types stripped, and graphql-codegen (tools/codegen).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24

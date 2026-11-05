@@ -3,10 +3,10 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import type { Mr } from './fixtures'
 import { answered } from './gitlab_fake'
 
 import { STAGE_COLOURS } from '../hooks/ci'
-import type { RawMr } from '../hooks/gitlab'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
 
@@ -42,7 +42,7 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
-type Fake = { mrs: RawMr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
+type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
 
 function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)

@@ -8,6 +8,7 @@ import {
   mergeStatusQuery,
   pinnedQuery,
   readMergeStatus,
+  readPinned,
   readResponse,
   readUsual,
   usualQuery,
@@ -201,9 +202,9 @@ const USUAL_EVERY_MS = 30 * 60_000
 /** GitLab.com's edge answers 52x or drops the stream now and then; one retry rides that out. */
 const isTransient = (stderr: string): boolean => /HTTP 5\d\d|stream error/i.test(stderr)
 
-async function ask($: EngineInterface, { query, variables }: Request): Promise<RawResponse> {
+async function ask<Data>($: EngineInterface, { query, variables }: Request<Data>): Promise<RawResponse<Data>> {
   const fields = Object.entries(variables).flatMap(([name, value]) => ['-f', `${name}=${value}`])
-  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`, ...fields], decodeGraphql, {
+  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`, ...fields], raw => decodeGraphql<Data>(raw), {
     timeoutMs: 90_000,
     retryIf: isTransient,
     isPartialOk: true,
@@ -232,7 +233,7 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
   const rows = readResponse(authored).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
   for (const pin of missing) {
-    rows.push(...readResponse(await ask($, pinnedQuery(pin))))
+    rows.push(...readPinned(await ask($, pinnedQuery(pin))))
   }
   return { rows, lost: lostIn(authored) }
 }
