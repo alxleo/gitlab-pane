@@ -158,6 +158,12 @@ module.exports = [
     languageOptions: { parserOptions: { project: './tools/store-probe/tsconfig.json', tsconfigRootDir: __dirname } },
     rules: TYPE_AWARE,
   },
+  // The dev tools are one-shot Node processes, not modules a reload restarts or a second session shares: the reasons for the
+  // module-state rule do not apply, and their `main()` is what "runs as the module loads". Everything else holds for them.
+  {
+    files: TOOLS,
+    rules: { 'local/no-module-state': 'off' },
+  },
   // The dev tools: their own tsconfig, with Node's declarations and none of the engine's.
   {
     files: TOOLS,

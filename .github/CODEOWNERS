@@ -8,4 +8,4 @@
 /package.json             @alxleo
 /package-lock.json        @alxleo
 /eslint.config.cjs        @alxleo
-/.pre-commit-config.yaml  @alxleo
+/tsconfig*.json          @alxleo
