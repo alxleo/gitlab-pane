@@ -43,6 +43,8 @@ const read = (rows: MrCard[], over: Partial<ReadResult> = {}): ReadResult => ({
   cursors: {},
   pinned: [],
   extras: [],
+  failures: {},
+  problems: {},
   ...over,
 })
 

@@ -6,13 +6,16 @@ import { isRecord } from './decode.ts'
 import { isEqual } from './equal.ts'
 import { hostStatuses } from './hosts.ts'
 import type { HostRead } from './hosts.ts'
+import { tailOf } from './job-tail.ts'
+import { foreign } from './model-text.ts'
 import { pinKey } from './mr-url.ts'
 import { isSettled } from './status.ts'
+import type { Failures } from './wake.ts'
 
-import type { HostStatus, MrCard, Pinned } from '../types'
+import type { FailureKind, HostStatus, MrCard, Pinned } from '../types'
 
 /** The shape of the snapshot; a snapshot of another is ignored, as the store keeps whatever any version of the mod wrote. */
-export const FORMAT = 2
+export const FORMAT = 3
 export const SNAPSHOT_KEY = 'snapshot'
 /** A session's pins are under `pins:<session id>`. */
 export const PINS_PREFIX = 'pins:'
@@ -45,6 +48,12 @@ export const WAKE_ONLY_EVERY_MS = 300_000
 /** Where a host's next read starts, and when its last whole read was. */
 export type Cursor = { after: string; fullAt: number }
 
+/** Why a failed job failed, as the leader fetched and cleaned it: GitLab's message, and the end of the log, one line to an entry. */
+export type SharedFailure = { reason: string | null; tail: string[] }
+
+/** A failure of a source only the leader works for, as it tells the others. */
+export type SharedProblem = { message: string; kind: FailureKind }
+
 /** What the leader last read, as every session draws it. */
 export type Snapshot = {
   format: typeof FORMAT
@@ -63,6 +72,10 @@ export type Snapshot = {
   pinned: string[]
   /** Keys of the cards the last read had to ask for one by one (pinned MRs the authored list lacks). */
   extras: string[]
+  /** Why the failed jobs of a raised MR's failed pipeline failed, by pipeline number then job number: fetched once, by the leader, for every session's wakes. */
+  failures: Record<string, Record<string, SharedFailure>>
+  /** What the leader's own reads last failed with, so a session that reads nothing can say why its pane is empty. */
+  problems: Record<string, SharedProblem>
   /** Slim cards, open ones and the pinned ones that closed; each session decides from them what is news for its own pins. */
   rows: MrCard[]
 }
@@ -124,13 +137,15 @@ export function readSnapshot(value: unknown): Snapshot | null {
     !isCursors(value.cursors) ||
     !isStrings(value.pinned) ||
     !isStrings(value.extras) ||
+    !isRecord(value.failures) ||
+    !isRecord(value.problems) ||
     !Array.isArray(value.rows) ||
     !value.rows.every(isCard)
   ) {
     return null
   }
-  const { version, by, fetchedAt, attemptedAt, error, hosts, kept, cursors, pinned, extras, rows } = value
-  return { format: FORMAT, version, by, fetchedAt, attemptedAt, error, hosts, kept, cursors, pinned, extras, rows }
+  const { version, by, fetchedAt, attemptedAt, error, hosts, kept, cursors, pinned, extras, rows, failures, problems } = value
+  return { format: FORMAT, version, by, fetchedAt, attemptedAt, error, hosts, kept, cursors, pinned, extras, rows, failures: sharedFailures(failures), problems: sharedProblems(problems) }
 }
 
 const isPin = (value: unknown): value is Pinned =>
@@ -148,6 +163,51 @@ export function readPinsRecord(value: unknown): PinsRecord | null {
   }
   return { session: value.session, at: value.at, pins: value.pins }
 }
+
+const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string')
+
+/** The failures a stored value holds; whatever is not an entry is left out. */
+function sharedFailures(value: Record<string, unknown>): Snapshot['failures'] {
+  return Object.fromEntries(
+    Object.entries(value).map(([pipeline, jobs]) => [
+      pipeline,
+      Object.fromEntries(
+        Object.entries(isRecord(jobs) ? jobs : {}).flatMap(([job, one]): [string, SharedFailure][] =>
+          isRecord(one) && (one.reason === null || typeof one.reason === 'string') && isStringList(one.tail) ? [[job, { reason: one.reason, tail: one.tail }]] : []
+        )
+      ),
+    ])
+  )
+}
+
+const FAILURE_KINDS: Record<FailureKind, true> = {
+  'not-installed': true,
+  'no-token': true,
+  unauthorized: true,
+  network: true,
+  timeout: true,
+  'bad-answer': true,
+  server: true,
+  failed: true,
+  unknown: true,
+}
+const isFailureKind = (kind: unknown): kind is FailureKind => typeof kind === 'string' && Object.hasOwn(FAILURE_KINDS, kind)
+
+/** The problems a stored value holds; whatever is not one is left out. */
+function sharedProblems(value: Record<string, unknown>): Snapshot['problems'] {
+  return Object.fromEntries(Object.entries(value).flatMap(([source, one]): [string, SharedProblem][] => (isRecord(one) && typeof one.message === 'string' && isFailureKind(one.kind) ? [[source, { message: one.message, kind: one.kind }]] : [])))
+}
+
+/** What the leader fetched of a failed pipeline, as it travels: one entry per job, the lines already cleaned. */
+export const toShared = (failures: Failures): Record<string, SharedFailure> =>
+  Object.fromEntries([...failures].map(([job, one]) => [String(job), { reason: one.reason, tail: [...one.tail] }]))
+
+/**
+ * A pipeline's failures from the snapshot, for a wake. Every line goes through the cleaning again on the way out, so the
+ * store, which any process of the user can write, cannot put into a wake what `foreign` and `tailOf` would not let through.
+ */
+export const failuresFrom = (shared: Readonly<Record<string, SharedFailure>> | undefined): Failures =>
+  new Map(Object.entries(shared ?? {}).flatMap(([job, one]) => (Number.isInteger(Number(job)) ? [[Number(job), { reason: one.reason !== null ? foreign(one.reason) : null, tail: tailOf(one.tail.join('\n')) }] as const] : [])))
 
 /** Whether a stored record still stands for its session. A beat stamped ahead of this clock is no proof of life, as for the lease. */
 export const isAlive = (record: PinsRecord, now: number): boolean => Math.abs(now - record.at) < PINS_EXPIRY_MS
@@ -193,6 +253,8 @@ export type ReadResult = {
   cursors: Record<string, Cursor>
   pinned: string[]
   extras: string[]
+  failures: Snapshot['failures']
+  problems: Snapshot['problems']
 }
 
 const errorsOf = (hosts: Readonly<Record<string, HostStatus>>): Record<string, string | null> => Object.fromEntries(Object.entries(hosts).map(([host, status]) => [host, status.error]))
@@ -204,11 +266,13 @@ const errorsOf = (hosts: Readonly<Record<string, HostStatus>>): Record<string, s
  */
 export function nextSnapshot(previous: Snapshot | null, read: ReadResult, me: string, now: number): Snapshot {
   const hosts = hostStatuses(previous?.hosts ?? {}, read.outcomes, now)
-  const bookkeeping = { format: FORMAT, by: me, attemptedAt: now, error: read.error, kept: read.kept, cursors: read.cursors, pinned: read.pinned, extras: read.extras, rows: read.rows } as const
+  const bookkeeping = { format: FORMAT, by: me, attemptedAt: now, error: read.error, kept: read.kept, cursors: read.cursors, pinned: read.pinned, extras: read.extras, rows: read.rows, failures: read.failures, problems: read.problems } as const
   if (
     previous !== null &&
     previous.error === read.error &&
     previous.kept === read.kept &&
+    isEqual(previous.failures, read.failures) &&
+    isEqual(previous.problems, read.problems) &&
     isEqual(previous.rows, read.rows) &&
     isEqual(errorsOf(previous.hosts), errorsOf(hosts)) &&
     now - (previous.fetchedAt ?? -Infinity) < FOOTER_MS

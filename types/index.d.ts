@@ -423,6 +423,8 @@ declare module 'claude-code' {
       unreachable: string[]
       scrolling: Scrolling
       problems: Problems
+      /** What the session that reads GitLab last failed with, as its snapshot says. */
+      reported: Problems
       /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
       logs: boolean
     }

@@ -19,7 +19,7 @@ import {
 } from './data'
 import { refreshDetails } from './detail'
 import { Failure, together } from './failure'
-import { clear, quietly, record } from './failures'
+import { clear, quietly, readLeaderProblems, record, setReportedProblems } from './failures'
 import { serialised } from './in-flight'
 import { leaseTick } from './lease-store'
 import { ago } from './format'
@@ -30,12 +30,15 @@ import { isPaneDrawn, openPane } from './panes'
 import { readGitLab, readRaised, readSingle } from './read-gitlab'
 import type { HostAsk } from './read-gitlab'
 import { readFailures } from './job-failures'
+import { TAIL_JOBS } from './job-tail'
 import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
 import { followInbox, leadInbox, sharedInboxAt } from './inbox'
 import { INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
+import { failuresFrom, toShared } from './snapshot'
 import type { Cursor, ReadResult, Snapshot } from './snapshot'
+import type { FailureReader } from './reconcile'
 
 import type { MrCard, Pinned, PollState } from '../types'
 
@@ -57,9 +60,9 @@ const isRaised = (pin: Pinned): boolean => pin.origin !== 'watched'
  * What a session does with cards it was given: toasts and wakes for its own pins' news, the open cards for the pane, the
  * pins that ended. `cards` are open ones and the pinned ones that closed. Gives the open cards.
  */
-async function applyCards($: EngineInterface, cards: readonly MrCard[], now: number): Promise<MrCard[]> {
+async function applyCards($: EngineInterface, cards: readonly MrCard[], now: number, failures: FailureReader): Promise<MrCard[]> {
   const [pinned, announced] = await Promise.all([readPins($), readAnnounced($)])
-  const reconciled = await reconcile({ pinned, rows: cards, announced, now, failures: (card, jobs) => readFailures($, card, jobs) })
+  const reconciled = await reconcile({ pinned, rows: cards, announced, now, failures })
   reconciled.toasts.forEach(text => $.ui.toast(text))
   const open = reconciled.rows
   const isShown = (key: string) => open.some(row => row.key === key)
@@ -102,7 +105,9 @@ async function adopt($: EngineInterface, snapshot: Snapshot, isLeader = false): 
     await loadShared($)
   }
   await setPoll($, pollOf(snapshot))
-  const open = await applyCards($, [...snapshot.rows, ...waiting], now)
+  // The reasons its failed jobs failed were fetched once, by the leader, and come with the snapshot: this session fetches none.
+  const open = await applyCards($, [...snapshot.rows, ...waiting], now, async card => failuresFrom(snapshot.failures[String(card.pipeline?.id ?? 0)]))
+  await setReportedProblems($, isLeader ? {} : snapshot.problems, snapshot.fetchedAt ?? snapshot.attemptedAt)
   await changeReads($, reads => ({ ...reads, adopted: snapshot.version }))
   quietly($, readJira($, open, now), 'jira')
 }
@@ -115,6 +120,19 @@ async function share($: EngineInterface, snapshot: Snapshot): Promise<void> {
   } catch (error) {
     await record($, 'store', error)
   }
+}
+
+/**
+ * Why the failed jobs of every raised MR's failed pipeline failed: fetched here, once for each pipeline, whichever session
+ * raised the MR, and carried in the snapshot for every session's wake. A pipeline that is no longer any card's is forgotten.
+ */
+async function reasonsFor($: EngineInterface, rows: readonly MrCard[], pins: readonly Pinned[], known: Snapshot['failures']): Promise<Snapshot['failures']> {
+  const raised = new Set(pins.filter(isRaised).map(pinKey))
+  const pipelines = new Set(rows.flatMap(row => (row.pipeline !== undefined ? [String(row.pipeline.id)] : [])))
+  const kept = Object.fromEntries(Object.entries(known).filter(([id]) => pipelines.has(id)))
+  const wanted = rows.flatMap(row => (raised.has(row.key) && row.isOpen && row.pipeline !== undefined && row.pipeline.failed.length > 0 && !(String(row.pipeline.id) in kept) ? [{ row, pipeline: row.pipeline }] : []))
+  const fetched = await Promise.all(wanted.map(async ({ row, pipeline }) => [String(pipeline.id), toShared(await readFailures($, row, pipeline.failed.slice(0, TAIL_JOBS)))] as const))
+  return { ...kept, ...Object.fromEntries(fetched) }
 }
 
 /** The leader's one read of the inbox, when it is due (the pace, or a person asked for a read): shared in the store, and drawn here. */
@@ -156,7 +174,7 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
     const all = together(failures)
     await record($, 'gitlab', all)
     await changeReads($, state => ({ ...state, failures: state.failures + 1 }))
-    const failed = nextSnapshot(previous, { rows: base, outcomes, error: all.message, kept: previous?.kept ?? 0, cursors: previous?.cursors ?? {}, pinned: pins.map(pinKey), extras: [...extras] }, me, now)
+    const failed = nextSnapshot(previous, { rows: base, outcomes, error: all.message, kept: previous?.kept ?? 0, cursors: previous?.cursors ?? {}, pinned: pins.map(pinKey), extras: [...extras], failures: previous?.failures ?? {}, problems: await readLeaderProblems($) }, me, now)
     await share($, failed)
     await adopt($, failed, true)
     return
@@ -171,14 +189,17 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
     await record($, 'gitlab', together([...failures, ...notes]))
   }
   const answeredCursors = Object.fromEntries(answers.map((answer): [string, Cursor] => [answer.host, answer.cursor]))
+  const rows = [...fresh, ...kept]
   const result: ReadResult = {
-    rows: [...fresh, ...kept],
+    rows,
     outcomes,
     error: failures.length > 0 ? together(failures).message : null,
     kept: kept.length + lostInDelta,
     cursors: { ...Object.fromEntries(Object.entries(previous?.cursors ?? {}).filter(([host]) => hosts.includes(host))), ...answeredCursors },
     pinned: pins.map(pinKey),
     extras: [...answers.flatMap(answer => answer.extras), ...[...extras].filter(key => reads.some(read => 'failure' in read && key.startsWith(`${read.host}/`)))],
+    failures: await reasonsFor($, rows, pins, previous?.failures ?? {}),
+    problems: await readLeaderProblems($),
   }
   const snapshot = nextSnapshot(previous, result, me, now)
   if (needsSave(previous, snapshot)) {
@@ -242,7 +263,7 @@ async function watchTick($: EngineInterface, own: readonly Pinned[]): Promise<vo
     await clear($, 'gitlab')
   }
   await changeReads($, state => ({ ...state, failures: failures.length > 0 ? state.failures + 1 : 0 }))
-  await applyCards($, cards, now)
+  await applyCards($, cards, now, (card, jobs) => readFailures($, card, jobs))
 }
 
 /**
@@ -304,7 +325,7 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
   }
   // What this session knows of the MR now, seen for the first time: its news from here on is news.
   const known = (await readRows($)).filter(row => row.key !== card?.key)
-  await applyCards($, card !== null ? [...known, card] : known, await $.clock.now())
+  await applyCards($, card !== null ? [...known, card] : known, await $.clock.now(), (one, jobs) => readFailures($, one, jobs))
   const [rows, poll, now] = await Promise.all([readRows($), readPoll($), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
   // Only the MR's own host is told of: another host failing says nothing of this answer.
