@@ -23,6 +23,7 @@
     "hooks/gitlab.ts",
     "hooks/jira.ts",
     "hooks/markdown.ts",
+    "hooks/reconcile.ts",
     "types/index.d.ts"
   ]
 }

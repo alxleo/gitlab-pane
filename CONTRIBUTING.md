@@ -27,7 +27,7 @@ pre-commit install
 - **Files:** JSON and YAML parse; no private keys, conflict markers or large files.
 - **Addresses:** CI fails any commit whose author or committer is not a GitHub noreply address, so nobody's own email is published here. Set yours from https://github.com/settings/emails, and turn on "Keep my email addresses private" there so merges you make on GitHub use it too.
 - **The plugin:** `claude plugin validate --strict .` on each commit that touches it, and `claude plugin test .` before each push.
-- **Types, the core:** `tsc -p tsconfig.core.json`, with TypeScript pinned in `.pre-commit-config.yaml`, strictly checks the files that run on plain data: `avatar.ts`, `ci.ts`, `gitlab.ts`, `jira.ts` and `markdown.ts` in `hooks/`, over the types in `types/index.d.ts`. That config has no engine types, so a file there that imports `claude-code` does not compile: code that talks to the engine stays out of the core, and new pure code goes in it.
+- **Types, the core:** `tsc -p tsconfig.core.json`, with TypeScript pinned in `.pre-commit-config.yaml`, strictly checks the files that run on plain data: `avatar.ts`, `ci.ts`, `gitlab.ts`, `jira.ts`, `markdown.ts` and `reconcile.ts` in `hooks/`, over the types in `types/index.d.ts`. That config has no engine types, so a file there that imports `claude-code` does not compile: code that talks to the engine stays out of the core, and new pure code goes in it.
 - **Commit messages:** each one says what it is, such as `feat: …`, `fix(jira): …` or `docs: …`, because releases are worked out from them. A pull request's title follows the same rule; merge with a squash, so the title becomes the commit on main.
 
 To run the checks by hand:
