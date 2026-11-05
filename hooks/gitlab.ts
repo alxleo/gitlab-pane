@@ -426,14 +426,14 @@ export function toCard(raw: RawMr): MrCard {
   }
 }
 
-/**
- * Authored and pinned MRs, each once. A read with no data at all throws; a partial one
- * (a pinned project out of reach) keeps what came back.
- */
 /** How many of the authored MRs GitLab sent back null: parts of a heavy query it timed out. */
 export const lostIn = (response: RawResponse): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
 
+/**
+ * Authored and pinned MRs, each once. A read with no data at all throws; a partial one
+ * (a pinned project out of reach) keeps what came back.
+ */
 export function readResponse(response: RawResponse, pinnedCount: number): MrCard[] {
   if (!response.data) {
     throw new Error(response.errors?.map(error => error.message).join('; ') || 'GitLab sent no data')

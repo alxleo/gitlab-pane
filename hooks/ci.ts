@@ -167,12 +167,12 @@ export const DRAWING_BUDGET = 85_000
 /** What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos. */
 export const CHROME_SIZE = 6_000
 
-/** A tree's size as the app receives it. */
-export const measure = (tree: unknown): number => {
+/** A tree's size as the app receives it; one that cannot be serialized counts as `unreadable`, a whole budget by default. */
+export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
   try {
     return JSON.stringify(tree)?.length ?? 0
   } catch {
-    return DRAWING_BUDGET
+    return unreadable
   }
 }
 

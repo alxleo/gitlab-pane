@@ -1,7 +1,7 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import { discSource } from './avatar'
-import { ago, shortTitle } from './ci'
+import { ago, measure, shortHash, shortTitle } from './ci'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -28,17 +28,6 @@ const KINDS = Object.keys(VERB) as InboxKind[]
  */
 const INBOX_BUDGET = 70_000
 const ITEMS_SHOWN = 30
-
-const measure = (tree: unknown): number => {
-  try {
-    return JSON.stringify(tree)?.length ?? 0
-  } catch {
-    return INBOX_BUDGET
-  }
-}
-
-const hashOf = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
 /** `Tessa.Ravensworth` is Tessa; a handle with no separator stays whole. */
 const firstName = (username: string): string => username.split(/[._]/)[0] || username
@@ -77,7 +66,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const when = ago(one.at, now)
     const said = one.excerpt ? `“${one.excerpt}”` : ''
     return (
-      <Box key={`ev-${hashOf(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
+      <Box key={`ev-${shortHash(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
           {avatar(one.actor)}
           <Box flexShrink={0}>
@@ -123,7 +112,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const isOpen = canOpen && cards.includes(item.key)
     return (
       <Box
-        key={`ib-${hashOf(item.key)}`}
+        key={`ib-${shortHash(item.key)}`}
         flexDirection="column"
         borderStyle="round"
         borderColor={item.unseen > 0 ? 'warning' : 'subtle'}
@@ -135,7 +124,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}
             {canOpen ? (
               <Button
-                key={`inbox-open-${hashOf(item.key)}`}
+                key={`inbox-open-${shortHash(item.key)}`}
                 plain
                 label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`}
                 onPress={() => toggleCard($, item.key)}
@@ -153,7 +142,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           )}
           <Box flexShrink={0}>
             <Button
-              key={`inbox-seen-${hashOf(item.key)}`}
+              key={`inbox-seen-${shortHash(item.key)}`}
               plain
               label="✓"
               onPress={() => markSeen($, { key: item.key }).catch(() => undefined)}
@@ -174,7 +163,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           ? item.activity.map(one => event(one, true))
           : item.activity[0] && event(item.activity[0], false)}
         {isOpen && (
-          <Button key={`inbox-less-${hashOf(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
+          <Button key={`inbox-less-${shortHash(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
         )}
       </Box>
     )
@@ -211,7 +200,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   // The tabs always draw; the open rule's cards take what is left of the budget.
-  let room = INBOX_BUDGET - measure(shown.map(tab)) - 1_500
+  let room = INBOX_BUDGET - measure(shown.map(tab), INBOX_BUDGET) - 1_500
   const body = (section: InboxSection) => {
     if (open[0] !== section.rule) {
       return []
@@ -219,7 +208,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const lines = []
     for (const item of section.items.slice(0, ITEMS_SHOWN)) {
       const line = itemCard(item)
-      const size = measure(line)
+      const size = measure(line, INBOX_BUDGET)
       if (size > room) {
         break
       }
