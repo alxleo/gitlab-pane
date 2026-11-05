@@ -1,8 +1,9 @@
 # Catches what breaks the pane while this repository stands still: a new Claude Code, or a change to GitLab's API.
 # check.yml tests one pinned Claude Code, and the tests answer for GitLab with made-up data, so neither can see these.
 #
-# Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an
-# empty setup as a teammate would, and checks every query the pane sends against gitlab.com's live schema
+# Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub (its
+# release branch, see check.yml) into an empty setup as a teammate would and checks that only the plugin's files arrive,
+# and checks every query the pane sends against gitlab.com's live schema
 # (tools/gitlab_schema.py), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
 # the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
@@ -57,6 +58,15 @@ jobs:
           claude plugin marketplace add "$GITHUB_REPOSITORY"
           claude plugin install gitlab-ci@gitlab-pane
           claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
+          # The marketplace installs the release branch's tree, the plugin's files and nothing else: no tools, tests or screenshots.
+          installed=$(jq -r '.plugins["gitlab-ci@gitlab-pane"][0].installPath' "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json")
+          test -f "$installed/hooks/hooks.json"
+          for dev in tools tests docs .github CONTRIBUTING.md release; do
+            if [ -e "$installed/$dev" ]; then
+              echo "::error::The installed plugin holds $dev, which is a development file"
+              exit 1
+            fi
+          done
 
   schema:
     runs-on: ubuntu-latest
