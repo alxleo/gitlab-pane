@@ -1,6 +1,7 @@
 // Small hand-written decoders for what the outside tools print: each takes `unknown` and gives a typed value or throws
 // with a message the pane can show. No library, since a mod's npm packages cannot be relied on at runtime.
-import type { RawResponse } from './gitlab.ts'
+import { Failure } from './failure.ts'
+import type { RawResponse } from './gitlab-documents.ts'
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -34,16 +35,16 @@ export const records = (value: unknown): Record<string, unknown>[] => (Array.isA
 export const field = (value: unknown, key: string): unknown => (isRecord(value) ? value[key] : undefined)
 
 /**
- * `glab api graphql`'s answer: an object with `data` (an object or null) and perhaps `errors`. What is inside `data` is
+ * GitLab's GraphQL answer: an object with `data` (an object or null) and perhaps `errors`. What is inside `data` is
  * read where it is used, by gitlab.ts, which owns the documents.
  */
 export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (!isRecord(raw)) {
-    throw new Error('glab answered something other than an object')
+    throw new Failure('bad-answer', 'GitLab answered something other than an object')
   }
   const { data } = raw
   if (data !== undefined && data !== null && !isRecord(data)) {
-    throw new Error('glab answered data that is not an object')
+    throw new Failure('bad-answer', 'GitLab answered data that is not an object')
   }
   const errors = records(raw.errors).map(error => ({ message: text(error.message) }))
   // The one cast at the GraphQL boundary: GitLab validated this answer against the document and the schema the types

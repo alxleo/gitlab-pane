@@ -4,11 +4,13 @@ import type { EngineInterface } from 'claude-code'
 import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 
-import type { MrCard, Pinned, PollState, Ticket, Usual } from '../types'
+import type { HostFeatures, MrCard, Pinned, PollState, Ticket, Usual } from '../types'
 
 // What GitLab, Jira and avatar fetches gave, and the polling's bookkeeping. The engine reads an atom only in the file that
 // declares it, so everything that reads or writes these goes through the functions below.
 const pinnedAtom = atom({ plugin: 'gitlab-ci', key: 'pinned' } as const, [])
+const hostsAtom = atom({ plugin: 'gitlab-ci', key: 'hosts' } as const, ['gitlab.com'])
+const featuresAtom = atom({ plugin: 'gitlab-ci', key: 'features' } as const, {})
 const rowsAtom = atom({ plugin: 'gitlab-ci', key: 'rows' } as const, [])
 const ticketsAtom = atom({ plugin: 'gitlab-ci', key: 'tickets' } as const, {})
 const usualAtom = atom({ plugin: 'gitlab-ci', key: 'usual' } as const, {})
@@ -42,6 +44,17 @@ export async function drawnData($: EngineInterface) {
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
   return read($, pinnedAtom)
 }
+/** The GitLab hosts the settings name, home first. */
+export function readHosts($: EngineInterface): Promise<string[]> {
+  return read($, hostsAtom)
+}
+/** What each probed host's schema has. */
+export function readFeaturesKnown($: EngineInterface): Promise<Record<string, HostFeatures>> {
+  return read($, featuresAtom)
+}
+export function setFeatures($: EngineInterface, host: string, features: HostFeatures): Promise<void> {
+  return update($, featuresAtom, known => ({ ...known, [host]: features })).then(() => undefined)
+}
 export function readRows($: EngineInterface): Promise<MrCard[]> {
   return read($, rowsAtom)
 }
@@ -68,9 +81,11 @@ export function readBrowse($: EngineInterface): Promise<string> {
   return read($, jiraAtom)
 }
 
-/** A mod loading takes its settings and forgets which pictures failed, so each is tried again. */
-export async function startData($: EngineInterface, jiraSite: unknown): Promise<void> {
+/** A mod loading takes its settings, and forgets which pictures failed and what each host's schema had, so each is tried again. */
+export async function startData($: EngineInterface, jiraSite: unknown, hosts: readonly string[]): Promise<void> {
   await update($, jiraAtom, () => browseUrl(jiraSite))
+  await update($, hostsAtom, () => [...hosts])
+  await update($, featuresAtom, () => ({}))
   await update($, unreachableAtom, () => [])
 }
 
@@ -106,9 +121,13 @@ export async function mergeTickets($: EngineInterface, found: Record<string, Tic
   await update($, pollAtom, previous => ({ ...previous, ticketsAt: at }))
 }
 
-/** Adds the pipeline run times read per project, and when they were asked. */
-export async function mergeUsual($: EngineInterface, usual: Record<string, Usual>, at: number): Promise<void> {
+/** Adds the pipeline run times read for projects, by `host/group/project`. */
+export async function mergeUsual($: EngineInterface, usual: Record<string, Usual>): Promise<void> {
   await update($, usualAtom, previous => ({ ...previous, ...usual }))
+}
+
+/** Records when a pass over the projects' run times ended. */
+export async function markUsualRead($: EngineInterface, at: number): Promise<void> {
   await update($, pollAtom, previous => ({ ...previous, usualAt: at }))
 }
 

@@ -2,10 +2,13 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
-import { AVATAR_BASE64, NOW, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { AVATAR_BASE64, NOW, SELF_MANAGED, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
-import { answered } from './gitlab_fake'
+import { OLDER } from './gitlab_fake'
+import type { Answers } from './gitlab_fake'
+import { fakeGitLab, ran } from './gitlab_host'
+import type { FakeHost } from './gitlab_host'
 
 import { STAGE_COLOURS } from '../hooks/status'
 
@@ -37,23 +40,62 @@ const boxesOf = (node: unknown): Drawn[] => elementsOf(node).filter(element => e
 /** Whether an element's `key` starts with `prefix`. */
 const keyed = (prefix: string) => (element: FoundElement) => element.key?.startsWith(prefix) === true
 
-const ran = (stdout: string, exitCode = 0, stderr = '') => ({
-  value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false },
-})
+/** The token the made-up GitLab accepts, which the session has in its environment as GITLAB_TOKEN. */
+const TOKEN = 'glpat-test-token'
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
 type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean; isPaneBroken?: boolean }
 
-function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
+/** What a current GitLab answers for the MRs `fake` holds; `reads` hears of each operation but the run times. */
+function answersFor(fake: () => Mr[], lost: () => string[], reads: string[]): Answers {
+  const authored = () => {
+    reads.push('Authored')
+    const open = fake().filter(mr => mr.state === 'opened')
+    // GitLab times parts of a heavy query out: those MRs come back null beside an error each.
+    const nodes = open.map(mr => (lost().includes(mr.iid) ? null : mr))
+    const errors = lost().map(() => ({ message: 'Timeout on validation of query' }))
+    return { data: { currentUser: { authoredMergeRequests: { nodes } } }, ...(errors.length > 0 ? { errors } : {}) }
+  }
+  const pinned = ({ path, iid }: { path: string; iid: string }) => {
+    reads.push(`Pinned ${path}!${iid}`)
+    return { data: { project: { mergeRequest: fake().find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } } }
+  }
+  return {
+    Usual: () => ({ data: { project: { pipelines: { nodes: [600, 660, 720, 780, 840, 900].map(duration => ({ duration })) } } } }),
+    MergeStatus: () => {
+      reads.push('MergeStatus')
+      return mergeStatuses(fake().filter(mr => mr.state === 'opened'))
+    },
+    Authored: authored,
+    Pinned: pinned,
+    // An older GitLab has no reviewState: the same MRs, their reviewers without it.
+    AuthoredPlain: () => {
+      const { data, errors } = authored()
+      return { data: { currentUser: { authoredMergeRequests: { nodes: data.currentUser.authoredMergeRequests.nodes.map(plain) } } }, ...(errors !== undefined ? { errors } : {}) }
+    },
+    PinnedPlain: variables => ({ data: { project: { mergeRequest: plain(pinned(variables).data.project.mergeRequest) } } }),
+  }
+}
+
+/** The MR as a GitLab without `reviewState` sends it: its reviewers carry no `mergeRequestInteraction`. */
+const plain = (mr: Mr | null) =>
+  mr === null
+    ? null
+    : { ...mr, reviewers: { nodes: (mr.reviewers?.nodes ?? []).map(one => (one === null ? null : { username: one.username, name: one.name, bot: one.bot, avatarUrl: one.avatarUrl })) } }
+
+function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others: Record<string, FakeHost> = {}, world: { glab?: Record<string, string> } = {}) {
   mock.store(on, stored)
   const woken: string[] = []
   /** The operations asked for, but for the run times. */
   const reads: string[] = []
   const avatars: string[] = []
   const jiraReads: string[] = []
+  const shells: string[] = []
+  const gitlab = fakeGitLab(on, { 'gitlab.com': { answers: answersFor(() => fake.mrs, () => fake.lost ?? [], reads), accepts: TOKEN }, ...others }, { env: { GITLAB_TOKEN: TOKEN }, isDown: () => fake.isDown, ...world })
   on('process.run', (_, e) => {
     if (e.argv.includes('acli')) {
       jiraReads.push(e.argv.at(-1) ?? '')
+      shells.push(e.argv[0] ?? '')
       if (fake.isJiraMissing === true) {
         return ran('', 127, 'zsh: command not found: acli')
       }
@@ -67,30 +109,7 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
     if (e.argv.includes('mr-inbox')) {
       return ran(JSON.stringify({ sync: { ok: true, finished_at: null }, sections: [] }))
     }
-    if (fake.isDown) {
-      return ran('', 1, 'glab: connection refused')
-    }
-    const text = answered(e.argv, {
-      Usual: () => ({ data: { project: { pipelines: { nodes: [600, 660, 720, 780, 840, 900].map(duration => ({ duration })) } } } }),
-      MergeStatus: () => {
-        reads.push('MergeStatus')
-        return mergeStatuses(fake.mrs.filter(mr => mr.state === 'opened'))
-      },
-      Authored: () => {
-        reads.push('Authored')
-        const open = fake.mrs.filter(mr => mr.state === 'opened')
-        // GitLab times parts of a heavy query out: those MRs come back null beside an error each.
-        const lost = fake.lost ?? []
-        const nodes = open.map(mr => (lost.includes(mr.iid) ? null : mr))
-        const errors = lost.map(() => ({ message: 'Timeout on validation of query' }))
-        return { data: { currentUser: { authoredMergeRequests: { nodes } } }, ...(errors.length > 0 ? { errors } : {}) }
-      },
-      Pinned: ({ path, iid }) => {
-        reads.push(`Pinned ${path}!${iid}`)
-        return { data: { project: { mergeRequest: fake.mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } } }
-      },
-    })
-    return ran(text ?? '', text === undefined ? 1 : 0, text === undefined ? `nothing answers ${e.argv.join(' ')}` : '')
+    return gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`)
   })
   on('prompt.submit', (_, e) => {
     woken.push(e.text)
@@ -117,7 +136,7 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { woken, reads, avatars, jiraReads, opened, titles }
+  return { woken, reads, avatars, jiraReads, shells, opened, titles, gitlab }
 }
 
 /** Runs `glab mr create` as the session would; the engine fake answers with the new MR's address. */
@@ -150,21 +169,56 @@ test('only an MR this session raised wakes it, once, in one short line with no c
   expect(reads.filter(read => read.startsWith('Pinned'))).toEqual([])
 })
 
-test('an MR watched with watch_mr is pinned and answered, but never wakes the session', async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false }
-  const { woken } = engine(on, fake)
+const HOSTS = ['gitlab.com', SELF_MANAGED, 'git.empty.example']
 
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  const pinned = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
-  expect(String(pinned.result)).toBe('!12 (ABC-1) ● running 20m so far · needs 1 approval · https://gitlab.com/g/p/-/pipelines/99')
-  fake.mrs = [rawMr(12, { headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } }) })]
-  await clock.advance(240_000)
-  expect(woken).toEqual([])
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
-  await ui.unmount()
-})
+test(
+  'an MR watched with watch_mr is pinned and answered on any configured host, never wakes the session, and a host with no token says so',
+  { options: { gitlabHosts: HOSTS } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false }
+    // A self-managed GitLab too old for reviewState and detailedMergeStatus, holding an MR with the same path and number.
+    const corpMrs = [
+      rawMr(12, { headPipeline: pipe('RUNNING'), webUrl: `https://${SELF_MANAGED}/g/p/-/merge_requests/12`, project: project('g/p', SELF_MANAGED), reviewers: { nodes: [reviewer('tim', 'APPROVED')] } }),
+    ]
+    const corpReads: string[] = []
+    const corp = { answers: { ...answersFor(() => corpMrs, () => [], corpReads), Probe: () => ({ data: OLDER }) }, accepts: 'corp-token' }
+    const { woken, gitlab } = engine(on, fake, {}, { [SELF_MANAGED]: corp, 'git.empty.example': { answers: {} } }, { glab: { [SELF_MANAGED]: 'corp-token' } })
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    const pinned = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+    // The host with no token is told beside the answer, which is from the hosts that could be read.
+    expect(String(pinned.result)).toMatch(/^!12 \(ABC-1\) ● running 20m so far · needs 1 approval · https:\/\/gitlab\.com\/g\/p\/-\/pipelines\/99 · GitLab could not be read \(git\.empty\.example: no GitLab token/)
+    const other = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: `https://${SELF_MANAGED}/g/p/-/merge_requests/12` })
+    expect(String(other.result)).toContain(`!12 (ABC-1) ● running 20m so far · needs 1 approval · https://${SELF_MANAGED}/g/p/-/pipelines/99`)
+    const stranger = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: 'https://elsewhere.example/g/p/-/merge_requests/12' })
+    expect(JSON.stringify(stranger)).toContain(`Not a merge request URL on ${HOSTS.join(', ')}`)
+
+    fake.mrs = [rawMr(12, { headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } }) })]
+    await clock.advance(240_000)
+    expect(woken).toEqual([])
+
+    // Each host is asked with its own token: the environment's for the first host, glab's, asked once, for the next.
+    expect(new Set(gitlab.tokens)).toEqual(new Set([`gitlab.com ${TOKEN}`, `${SELF_MANAGED} corp-token`]))
+    expect(gitlab.glabAsked).toEqual([SELF_MANAGED, 'git.empty.example'])
+    // The older host is probed once, then gets the documents without review state or merge verdict; the current one gets all.
+    const asked = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
+    expect(asked(SELF_MANAGED).filter(name => name === 'Probe')).toHaveLength(1)
+    expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Probe', 'AuthoredPlain', 'Usual']))
+    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Probe', 'Authored', 'MergeStatus', 'Usual']))
+    expect(asked('git.empty.example')).toEqual([])
+
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
+    // The same project path and number on two hosts are two cards.
+    expect((await ui.findAll({ type: 'Button' })).filter(keyed('open-12-'))).toHaveLength(2)
+    expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toMatch(/^GitLab read failed: git\.empty\.example: no GitLab token for git\.empty\.example: set GITLAB_TOKEN/)
+    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    expect(answer.text).toContain('gitlab: git.empty.example: no GitLab token for git.empty.example')
+    expect(JSON.stringify(answer)).not.toContain('corp-token')
+    await ui.unmount()
+  }
+)
 
 test('a raised MR wakes when GitLab newly says it can merge, never for a passed pipeline alone', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
@@ -215,7 +269,7 @@ test('with no Jira site set, ticket keys show as plain text and Jira is never re
 test('a Jira site links each ticket key and reads its details', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12)], isDown: false }
-  const { jiraReads } = engine(on, fake)
+  const { jiraReads, shells } = engine(on, fake)
   on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -223,6 +277,8 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Link', text: '🎫 ABC-1' }))?.props.href).toBe('https://jira.example.com/browse/ABC-1')
   expect(jiraReads).toEqual(['key in (ABC-1)'])
+  // The session's $SHELL is a path that is gone, so the tools run through sh rather than fail as not installed.
+  expect(shells[0]).toBe('/bin/sh')
   // Jira is optional: with acli gone the next read keeps the last tickets, and /gitlab does not call the pane unwell.
   fake.isJiraMissing = true
   await clock.advance(20 * 60_000)
@@ -564,7 +620,7 @@ test('a failed read keeps the last cards and says how old they are', async ($, o
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
   expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toBe(
-    'GitLab read failed: glab: connection refused; showing 3m old data'
+    'GitLab read failed: gitlab.com failed: connection refused; showing 3m old data'
   )
   await ui.unmount()
 })
@@ -618,12 +674,19 @@ test('an MR that merges while read whole leaves its page, and the title follows'
 test('one transient GitLab error is retried, not shown', async ($, on) => {
   mock.clock(on, { now: NOW })
   let calls = 0
-  on('process.run', () => {
-    calls += 1
-    return calls === 1
-      ? ran('', 1, 'glab: HTTP 522')
-      : ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(13)] } } } }))
-  })
+  const reads: string[] = []
+  fakeGitLab(
+    on,
+    { 'gitlab.com': { answers: answersFor(() => [rawMr(13)], () => [], reads), accepts: TOKEN } },
+    {
+      env: { GITLAB_TOKEN: TOKEN },
+      glitch: () => {
+        calls += 1
+        return calls === 1 ? 522 : undefined
+      },
+    }
+  )
+  on('process.run', () => ran('', 1, 'nothing else is asked'))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -809,7 +872,7 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     await ui.press({ key: less?.key ?? '' })
     expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
 
-    await ui.press({ key: 'repo-g/q' })
+    await ui.press({ key: 'repo-gitlab.com/g/q' })
     expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 5')
     await ui.press({ key: 'repo-all' })
     await ui.press({ key: 'more' })

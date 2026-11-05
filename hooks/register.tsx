@@ -1,15 +1,17 @@
 import type { Register } from 'claude-code'
 
-import { startData } from './data'
+import { readHosts, startData } from './data'
 import { field, isFilled } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
-import { drawn } from './in-flight'
+import { drawn, forgetFound } from './in-flight'
+import { parseHosts } from './hosts'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import type { ModelLine } from './model-text'
-import { MR_URLS } from './mr-url'
+import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
 import { forgetScrolling, openPane, readScrolling } from './panes'
 import { pin, refresh, tick } from './poll'
+import { rememberSettings } from './tokens'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
 export const PANE = 'gitlab-ci'
@@ -28,7 +30,8 @@ export const register: Register = (on, options) => {
   // render hook that keeps it may not write an atom (the engine denies a write while drawing); a reload starts it over.
   const health = { loadedAt: '', draws: 0, last: 'never asked to draw' }
   on('session.start', async ($, e, next) => {
-    await Promise.all([startData($, options.jiraUrl), forgetProblems($), forgetScrolling($)])
+    const hosts = parseHosts(options.gitlabHosts)
+    await Promise.all([startData($, options.jiraUrl, hosts), rememberSettings(options.gitlabTokens, hosts), forgetProblems($), forgetScrolling($)])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)
     await $.command.register({
       name: 'gitlab',
@@ -40,7 +43,7 @@ export const register: Register = (on, options) => {
         'Pin a GitLab merge request to this session: answers its pipeline and merge blockers now and puts it at the top of the GitLab pane. It does not wake the session; an MR this session creates does, when its pipeline fails or it can merge.',
       inputSchema: {
         type: 'object',
-        properties: { url: { type: 'string', description: 'https://gitlab.com/<project>/-/merge_requests/<iid>' } },
+        properties: { url: { type: 'string', description: 'https://<host>/<project>/-/merge_requests/<iid>, on one of the GitLab hosts the settings name' } },
         required: ['url'],
       },
       isDeferred: false,
@@ -68,6 +71,8 @@ export const register: Register = (on, options) => {
   // One line: the MRs belong in the pane. It still says enough to explain a pane that is blank or missing.
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await openPane($)
+    // Asked by hand, so a host that had no token is looked at again: glab may have signed in since.
+    forgetFound()
     quietly($, refresh($), 'gitlab')
     const scrolling = await readScrolling($)
     const isGoingBackStuck = scrolling.goingBack !== '' && scrolling.goingBack !== 'done'
@@ -104,7 +109,7 @@ export const register: Register = (on, options) => {
     if (!/\bmr create\b|merge_request\.create/.test(command) || !isFilled(ran.text)) {
       return ran
     }
-    const urls = new Set(ran.text.match(MR_URLS) ?? [])
+    const urls = new Set(ran.text.match(mrUrls(await readHosts($))) ?? [])
     for (const url of urls) {
       await pin($, url, 'raised').catch(reported($, 'gitlab'))
     }

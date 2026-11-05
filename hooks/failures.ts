@@ -1,6 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import { kindOf } from './failure'
 import { isAbsentOptional, problemLines, withoutProblem, withProblem } from './problems'
 
 import type { ProblemSource } from '../types'
@@ -13,7 +14,7 @@ const problemsAtom = atom({ plugin: 'gitlab-ci', key: 'problems' } as const, {})
  * clears what the source last failed with, and the Inbox tab or the ticket shows it as unavailable.
  */
 export async function record($: EngineInterface, source: ProblemSource, error: unknown): Promise<void> {
-  if (isAbsentOptional(source, error)) {
+  if (isAbsentOptional(source, kindOf(error))) {
     await clear($, source)
     return
   }

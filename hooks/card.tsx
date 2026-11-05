@@ -6,6 +6,7 @@ import { showPerson, toggle } from './choices'
 import { LINK, titleKey } from './drawing'
 import { face, personCard, REVIEW_STATE } from './faces'
 import { ago, bodyOf, lead, pipelineTime, plural, shortTitle, ticketOf } from './format'
+import { projectLabel } from './hosts'
 import { firstName, shortHash } from './identity'
 import { ticketUrl } from './jira'
 import { joins, markdown, reveal, trigger } from './kit'
@@ -138,7 +139,7 @@ export function buildCard($: EngineInterface, kit: Kit, ctx: CardContext, mr: Mr
       ...(ticket !== null && ticketLink !== null
         ? [<Text>{jira !== undefined ? `${ticket} · ${jira.type} · ${jira.status}: ${jira.summary}` : `${ticket}: not read from Jira yet`}</Text>]
         : []),
-      ...(mr.project !== ctx.homeRepo ? [<Text dimColor>{mr.project}</Text>] : []),
+      ...(mr.project !== ctx.homeRepo ? [<Text dimColor>{projectLabel(mr.host, mr.path)}</Text>] : []),
     ]),
   ]
   const personScope = (person: Person) => scope(`p${shortHash(person.username)}`)
