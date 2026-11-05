@@ -37,7 +37,7 @@ const rawArb = fc.record({
 })
 
 /** The card GitLab's answer reads into. No merge checks yet (null), as the authored list gives it. */
-export const cardArb: fc.Arbitrary<MrCard> = rawArb.map(spec =>
+const cardArb: fc.Arbitrary<MrCard> = rawArb.map(spec =>
   toCard(
     HOST,
     rawMr(spec.iid, {
@@ -62,7 +62,7 @@ export const cardArb: fc.Arbitrary<MrCard> = rawArb.map(spec =>
 )
 
 /** GitLab's merge checks for a card, as GitLab would say them given what the card shows: a failing check for each thing that blocks. */
-export const checksFor = (card: MrCard): MergeStatus => {
+const checksFor = (card: MrCard): MergeStatus => {
   const status = card.pipeline?.status
   const pipelineCheck: CheckStatus = status === 'failed' || status === 'canceled' || status === 'manual' ? 'failed' : status !== undefined && status !== 'success' && status !== 'skipped' ? 'checking' : 'success'
   const threads = card.openThreads.length + card.threadsLeft.loose + card.threadsLeft.held

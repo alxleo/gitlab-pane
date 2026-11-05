@@ -25,6 +25,7 @@ claude --plugin-dir .
 | Script | What it does |
 | --- | --- |
 | `npm run files` | JSON and YAML parse; no merge-conflict markers, private keys or files over 500 kB; every text file ends with one newline and has no trailing whitespace (`tools/check_files.ts`). |
+| `npm run knip` | knip (`knip.jsonc`) fails on unused files, exports, types and dependencies; the entry points are `hooks/register.tsx`, `tools/*.ts`, the scenes, the store probe and the tests, each with its reason in the config. Delete what it names; an export only a test uses is not worth keeping. |
 | `npm run lint` | ESLint with typescript-eslint over `hooks/`, `tests/` and `tools/`, set up in `eslint.config.cjs` with two rules of its own in `tools/eslint_rules.cjs`. See below. |
 | `npm run types` | The engine's declarations (`node tools/engine_types.ts`), then TypeScript 7 over the four configs: `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tsconfig.tools.json`. |
 | `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the schema snapshot and the queries. |

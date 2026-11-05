@@ -42,7 +42,7 @@ export function reviewTone(card: MrCard): Tone {
   return card.approvalsLeft === 0 && (card.approvalsRequired > 0 || card.approvers.length > 0) ? 'success' : 'subtle'
 }
 
-export type BadgeKind =
+type BadgeKind =
   | 'failed'
   | 'check'
   | 'conflicts'
@@ -64,7 +64,7 @@ export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string;
 const ACRONYMS = /\b(ci|lfs)\b/g
 
 /** A check in words, from the identifier GitLab names it by (`CI_MUST_PASS`): a check GitLab adds later reads right with no change here. */
-export const checkWords = (id: string): string => id.toLowerCase().replaceAll('_', ' ').replace(ACRONYMS, found => found.toUpperCase())
+const checkWords = (id: string): string => id.toLowerCase().replaceAll('_', ' ').replace(ACRONYMS, found => found.toUpperCase())
 
 /** The checks that stop the merge or warn, GitLab's order within each: a failure before a warning. */
 const standing = (checks: MergeStatus | null): MergeCheck[] =>

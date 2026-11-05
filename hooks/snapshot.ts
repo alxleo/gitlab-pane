@@ -15,7 +15,7 @@ import type { Failures } from './wake.ts'
 import type { FailureKind, HostStatus, MrCard, Pinned } from '../types'
 
 /** The shape of the snapshot; a snapshot of another is ignored, as the store keeps whatever any version of the mod wrote. */
-export const FORMAT = 3
+const FORMAT = 3
 export const SNAPSHOT_KEY = 'snapshot'
 /** A session's pins are under `pins:<session id>`. */
 export const PINS_PREFIX = 'pins:'
@@ -52,7 +52,7 @@ export type Cursor = { after: string; fullAt: number }
 export type SharedFailure = { reason: string | null; tail: string[] }
 
 /** A failure of a source only the leader works for, as it tells the others. */
-export type SharedProblem = { message: string; kind: FailureKind }
+type SharedProblem = { message: string; kind: FailureKind }
 
 /** What the leader last read, as every session draws it. */
 export type Snapshot = {

@@ -4,6 +4,7 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 
 ## No debt from day one
 
+- Dead code is an error: `npm run knip` fails on an unused file, export, type or dependency, and the fix is to delete it. A path knip cannot see is configured in `knip.jsonc` with its reason, never ignored per export.
 - Whoever adds a rule fixes every violation of it, in the same change. There are no allowlists, no ratchets, no "to be split" lists, and no disable comments: `eslint-disable` is itself an error, and so is `@ts-ignore`. A rule that is wrong changes in `eslint.config.cjs`, with its reason beside it.
 - Do not hide a violation in another form (a cast in a helper, state in a const object). If the rule seems to be in the way, the code is.
 - Change existing tests before adding new ones: a behaviour that changes edits the test that names it. A bug fix starts with a test that fails for it.
@@ -46,7 +47,7 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 Run all of these; CI runs the same and has gone red when a branch skipped one.
 
 ```bash
-npm run check            # files, lint, all type-checks, GitLab types, release tree, plugin validate, scanners that are installed
+npm run check            # files, knip (no dead code), lint, all type-checks, GitLab types, release tree, plugin validate, scanners that are installed
 npm test                 # vitest run (the core), claude plugin test . (the engine), then the scenes
 ```
 

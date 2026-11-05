@@ -31,7 +31,7 @@ export type HostAsk = {
   now: number
 }
 
-export type HostRead = {
+type HostRead = {
   rows: MrCard[]
   /** Authored MRs GitLab timed out and sent back null, whose keys it therefore never said. */
   lost: number
@@ -50,7 +50,7 @@ const asPin = (card: MrCard): Pinned => ({ url: card.url, host: card.host, path:
  * that are asked for one by one: pinned ones the list lacks (someone else's, or merged) and, in a delta, those whose
  * pipeline is running, as the delta does not say that it moved.
  */
-export async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
+async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
   const { host, base, pinned, extras, cursor, now } = input
   const moving = movingRows(base)
   // Reading a running pipeline's MR one by one costs about two thirds of a whole read, so past a few, read whole.

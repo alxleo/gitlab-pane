@@ -20,7 +20,7 @@ const quoted = (note: Note, card: MrCard): Note => ({
 })
 
 /** The most jobs, and open threads, a shared card keeps by name; it counts the rest, and an opened card is read whole. */
-export const SHARED_KEPT = 3
+const SHARED_KEPT = 3
 
 /**
  * The checks a row reads: those that fail, warn or are still being made, and one that passed, which is all that tells a

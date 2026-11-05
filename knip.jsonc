@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // The entry points knip cannot find by following imports.
+  "entry": [
+    // The engine loads it through hooks/hooks.json ("modules").
+    "hooks/register.tsx",
+    // Node runs each tool by its path (package.json scripts, workflows, hooks).
+    "tools/*.ts",
+    // tools/pane_screens.ts copies it into a scratch mod as a test and runs it under the engine.
+    "tools/screens/scenes.ts",
+    // A plugin of its own, validated and loaded by the engine.
+    "tools/store-probe/hooks/probe.tsx",
+    // The engine's runner takes *.test.ts, Vitest takes tests/core/*.spec.ts.
+    "tests/*.test.ts",
+    "tests/core/*.spec.ts",
+    // Named by setupFiles in vitest.config.ts. knip would load that config to find it, and loading it needs the engine declarations tsconfig.json extends, which a fresh clone lacks.
+    "tests/core/setup.ts"
+  ],
+  "vitest": false,
+  "project": ["hooks/**/*.{ts,tsx}", "tests/**/*.ts", "tools/**/*.{ts,tsx,cjs}", "types/**/*.ts"],
+  "ignoreDependencies": [
+    // The engine provides these at runtime and its declarations are laid into .claude-plugin/types, so no package holds them.
+    "claude-code",
+    // graphql-codegen loads its plugin by the name tools/gitlab_schema.ts gives it ('typescript-operations'), which is no import.
+    "@graphql-codegen/typescript-operations"
+  ],
+  "ignoreIssues": {
+    // Written by graphql-codegen with a type for every document and fragment, used or not; the generator is checked by `schema types --check`.
+    "hooks/gitlab.generated.ts": ["types"]
+  }
+}
