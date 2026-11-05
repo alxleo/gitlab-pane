@@ -6,7 +6,6 @@
 //   node tools/pane_screens.ts render --verify             draw twice, fail unless both are byte-identical
 //   node tools/pane_screens.ts render --check              draw, and fail unless docs/screens already holds exactly these PNGs; writes nothing
 //   node tools/pane_screens.ts setup [--with-deps]         fetch the Chromium it photographs with (once per Playwright version)
-//   node tools/pane_screens.ts commit --branch NAME        commit docs/screens if it changed and push, even if the branch moved meanwhile
 //
 // (`npm run screens -- <command>` is the same.) How it works, so nobody has to remember it:
 //
@@ -16,8 +15,7 @@
 //   2. This script turns that tree into a web page (tools/screens/pane.css) and Chromium photographs it, with the fonts
 //      in tools/screens/fonts, so a Mac and a CI runner draw the same letters.
 //
-// `render` talks to no one: not GitLab, not Anthropic, nothing on the network, and it reads none of your Claude config. Only
-// `commit` reaches a remote, and only the one it is given. The page is this script's reading of the element tree, not the
+// `render` talks to no one: not GitLab, not Anthropic, nothing on the network, and it reads none of your Claude config. The page is this script's reading of the element tree, not the
 // desktop app's own paint: when the app's look changes, change pane.css.
 //
 // Same commit, same machine kind: the same bytes. A Mac and a Linux runner agree on what is drawn, not on every pixel.
@@ -624,7 +622,7 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
 
 const same = (a: string, b: string): boolean => existsSync(a) && existsSync(b) && readFileSync(a).equals(readFileSync(b))
 
-async function render(values: { readonly out: string; readonly options: Options; readonly verify: boolean; readonly check: boolean }): Promise<number> {
+async function render(values: { readonly out: string; readonly options: Options; readonly verify: boolean; readonly check: boolean; readonly fresh: string | null }): Promise<number> {
   const { out, options } = values
   const scratch = mkdtempSync(join(tmpdir(), 'pane-screens-out-'))
   try {
@@ -647,7 +645,11 @@ async function render(values: { readonly out: string; readonly options: Options;
     if (values.check) {
       const stale = scenes.filter(scene => !same(join(target, `${scene.name}.png`), join(out, `${scene.name}.png`)))
       if (stale.length > 0) {
-        throw new ScreensError(`${stale.map(scene => `${scene.name}.png`).join(', ')} in ${out} is not what the pane draws now; run \`npm run screens -- render\` and commit it`)
+        // The fresh render is kept where asked, so the difference can be looked at.
+        if (values.fresh !== null) {
+          cpSync(target, values.fresh, { recursive: true })
+        }
+        throw new ScreensError(`${stale.map(scene => `${scene.name}.png`).join(', ')} is stale: run npm run screens -- render and commit docs/screens`)
       }
       console.error(`checked: ${scenes.length} PNGs in ${out} are what the pane draws`)
     }
@@ -663,77 +665,10 @@ function setup(withDeps: boolean): number {
   return spawnSync(process.execPath, [cli, 'install', ...(withDeps ? ['--with-deps'] : []), 'chromium'], { stdio: 'inherit' }).status ?? 1
 }
 
-// ---- keeping the PNGs in the repository ---------------------------------------------------------------------------------
-
-/** Where and as whom `commit` commits, checked before anything runs. */
-type Publishing = {
-  readonly branch: string
-  readonly pushUrl: string
-  readonly path: string
-  readonly authorName: string
-  readonly authorEmail: string
-  readonly message: string
-  readonly attempts: number
-}
-
-/** Git's words for a failure, shortened to one line and with the remote hidden: a token in it must not reach a log. */
-function redact(text: string, pushUrl: string): string {
-  const said = text.split('\n').filter(line => line.trim() !== '' && !line.startsWith('hint:'))
-  return said.join(' | ').replaceAll(pushUrl, '<remote>').replace(/:\/\/[^/@\s]*@/g, '://***@')
-}
-
-function git(plan: Publishing, args: readonly string[], check = true): { readonly status: number; readonly out: string } {
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: plan.authorName, GIT_AUTHOR_EMAIL: plan.authorEmail, GIT_COMMITTER_NAME: plan.authorName, GIT_COMMITTER_EMAIL: plan.authorEmail }
-  const ran = spawnSync('git', args, { cwd: ROOT, env, encoding: 'utf8' })
-  const status = ran.status ?? 1
-  if (check && status !== 0) {
-    throw new ScreensError(`\`git ${redact(args.join(' '), plan.pushUrl)}\` failed (${status}): ${redact((ran.stderr === '' ? ran.stdout : ran.stderr).trim(), plan.pushUrl)}`)
-  }
-  return { status, out: `${ran.stdout}${ran.stderr}`.trim() }
-}
-
-/**
- * Commit the PNGs if they changed, and push them even when the branch moved while they were drawn.
- *
- * A push that finds the branch ahead is refused, and the PNGs would be lost, so each try first puts the commit on top of
- * the branch as it is now. Only a clash on the PNGs themselves, or no remote to reach, ends in failure; the next push to
- * the branch draws them afresh.
- */
-function commit(plan: Publishing): number {
-  git(plan, ['add', '-A', '--', plan.path])
-  if (git(plan, ['diff', '--cached', '--quiet', '--', plan.path], false).status === 0) {
-    console.log('The screenshots are unchanged.')
-    return 0
-  }
-  git(plan, ['commit', '-q', '-m', plan.message, '--', plan.path])
-  let last = ''
-  for (let attempt = 1; attempt <= plan.attempts; attempt += 1) {
-    const pulled = git(plan, ['pull', '--rebase', '--no-edit', plan.pushUrl, plan.branch], false)
-    if (pulled.status !== 0) {
-      last = redact(pulled.out, plan.pushUrl)
-      if (git(plan, ['rev-parse', '--verify', '-q', 'REBASE_HEAD'], false).status === 0) {
-        git(plan, ['rebase', '--abort'], false)
-        throw new ScreensError(`the screenshots clash with what ${plan.branch} gained meanwhile; not pushed (${last})`)
-      }
-      console.error(`try ${attempt}: could not bring in ${plan.branch}: ${last}`)
-      continue
-    }
-    const pushed = git(plan, ['push', plan.pushUrl, `HEAD:refs/heads/${plan.branch}`], false)
-    if (pushed.status === 0) {
-      console.log(`Pushed the screenshots to ${plan.branch} (${git(plan, ['rev-parse', '--short', 'HEAD']).out}), try ${attempt}.`)
-      return 0
-    }
-    last = redact(pushed.out, plan.pushUrl)
-    console.error(`try ${attempt}: push refused: ${last}`)
-  }
-  throw new ScreensError(`the screenshots were not pushed after ${plan.attempts} tries; the last said: ${last}`)
-}
-
 // ---- the command line ---------------------------------------------------------------------------------------------------
 
-const USAGE = `usage: node tools/pane_screens.ts render [--out DIR] [--scene NAME]... [--width PX] [--scale N] [--claude BIN] [--keep DIR] [--verify] [--check] [--allow-unknown]
-       node tools/pane_screens.ts setup [--with-deps]
-       node tools/pane_screens.ts commit --branch NAME    (the remote, token included, in PANE_SCREENS_PUSH_URL)`
+const USAGE = `usage: node tools/pane_screens.ts render [--out DIR] [--scene NAME]... [--width PX] [--scale N] [--claude BIN] [--keep DIR] [--verify] [--check [--fresh DIR]] [--allow-unknown]
+       node tools/pane_screens.ts setup [--with-deps]`
 
 /** A whole number in a range, or a ScreensError naming the option. */
 function integer(text: string | undefined, name: string, least: number, most: number, fallback: number | null): number | null {
@@ -760,13 +695,8 @@ async function main(): Promise<number> {
       verify: { type: 'boolean', default: false },
       check: { type: 'boolean', default: false },
       'allow-unknown': { type: 'boolean', default: false },
+      fresh: { type: 'string' },
       'with-deps': { type: 'boolean', default: false },
-      branch: { type: 'string' },
-      path: { type: 'string' },
-      'author-name': { type: 'string' },
-      'author-email': { type: 'string' },
-      message: { type: 'string' },
-      attempts: { type: 'string' },
     },
   })
   const [command] = positionals
@@ -779,28 +709,10 @@ async function main(): Promise<number> {
       keep: values.keep === undefined ? null : resolve(values.keep),
       allowUnknown: values['allow-unknown'],
     }
-    return render({ out: resolve(values.out ?? SHOTS), options, verify: values.verify, check: values.check })
+    return render({ out: resolve(values.out ?? SHOTS), options, verify: values.verify, check: values.check, fresh: values.fresh === undefined ? null : resolve(values.fresh) })
   }
   if (command === 'setup') {
     return setup(values['with-deps'])
-  }
-  if (command === 'commit') {
-    const pushUrl = process.env['PANE_SCREENS_PUSH_URL'] ?? ''
-    const branch = values.branch ?? ''
-    if (!/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(branch) || pushUrl === '') {
-      // Which options are wrong, never their values: one of them holds a token.
-      console.error(`pane-screens: bad option: ${[...(branch === '' ? ['branch'] : /^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(branch) ? [] : ['branch']), ...(pushUrl === '' ? ['push_url'] : [])].join(', ')}`)
-      return 2
-    }
-    return commit({
-      branch,
-      pushUrl,
-      path: resolve(values.path ?? SHOTS),
-      authorName: values['author-name'] ?? 'github-actions[bot]',
-      authorEmail: values['author-email'] ?? '41898282+github-actions[bot]@users.noreply.github.com',
-      message: values.message ?? `docs: regenerate the pane screenshots [skip ci]`,
-      attempts: integer(values.attempts, 'attempts', 1, 10, 3) ?? 3,
-    })
   }
   console.error(`${USAGE}\n(${basename(import.meta.filename)})`)
   return 2

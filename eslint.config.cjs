@@ -118,6 +118,17 @@ module.exports = [
       ],
     },
   },
+  // Only GitLab's own text may become Markdown to draw (it is what the Markdown view trusts as GitLab's), so `fromGitLab` is
+  // reached from the one file that reads GitLab's answers; a test makes its text by reading an answer too.
+  {
+    files: SOURCE,
+    rules: {
+      'local/only-importers': [
+        'error',
+        { restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: "it stamps text as GitLab's, which only the reader of GitLab's answers can say" } } },
+      ],
+    },
+  },
   {
     files: CORE,
     rules: {
