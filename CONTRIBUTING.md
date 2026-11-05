@@ -73,4 +73,11 @@ What users install is not this repository but the plugin's files alone. `release
 
 - **In a pull request,** `check.yml` builds the tree, runs `claude plugin validate --strict` on it and on both marketplace files, and runs that closure check, so a broken tree fails before a release.
 - **At a release,** the `publish` job (the only one that can write to the repository, besides release-please's own tag) builds the tree from the release's tag and commits it to the `release` branch with a tag `plugin-v0.3.0`. Each version is one commit on top of the last and the branch is never force-pushed, so every released tree stays reachable. Re-running a failed `publish` job publishes the same release again.
-- **Installing** reads `.claude-plugin/marketplace.json` on main, which points the plugin at the `release` branch, so users get the newest release. The tree also holds a marketplace file of its own (`release/marketplace.json`), so a team can pin a version by using the repository with `"ref": "plugin-v0.3.0"` as its marketplace source (see the README); `claude plugin update` sees a new `version` there as usual.
+- **Pinning:** the tree holds a marketplace file of its own (`release/marketplace.json`), so a team pins a version by using the repository with `"ref": "plugin-v0.3.0"` as its marketplace source (see the README); `claude plugin update` sees a new `version` there as usual. This works from the first publish on.
+- **The default install** reads `.claude-plugin/marketplace.json` on main, whose plugin source is `"./"`: the whole repository. Switching it to the release branch is one line, made in its own commit once the first `plugin-v*` tag exists (`git ls-remote --tags origin 'plugin-v*'`; the canary's release-branch step also runs from then on):
+
+  ```json
+  "plugins": [{ "name": "gitlab-ci", "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" } }]
+  ```
+
+  It waits because until the `release` branch exists that source cannot be installed, and installs from main would fail. After it, the README's "That follows main" becomes "That follows releases", and the canary's install step asserts that no development file arrives from the default install too (`claude plugin install` from the marketplace itself, not only from the built tree).

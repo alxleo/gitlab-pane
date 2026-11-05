@@ -1,9 +1,9 @@
 # Catches what breaks the pane while this repository stands still: a new Claude Code, or a change to GitLab's API.
 # check.yml tests one pinned Claude Code, and the tests answer for GitLab with made-up data, so neither can see these.
 #
-# Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub (its
-# release branch, see check.yml) into an empty setup as a teammate would and checks that only the plugin's files arrive,
-# and checks every query the pane sends against gitlab.com's live schema
+# Every Monday it validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an
+# empty setup as a teammate would, installs the release tree (tools/release_tree.py) and checks that only the plugin's
+# files arrive, checks that the release branch holds the latest released version once there is one, and checks every query the pane sends against gitlab.com's live schema
 # (tools/gitlab_schema.py), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
 # the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
@@ -58,7 +58,19 @@ jobs:
           claude plugin marketplace add "$GITHUB_REPOSITORY"
           claude plugin install gitlab-ci@gitlab-pane
           claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
-          # The marketplace installs the release branch's tree, the plugin's files and nothing else: no tools, tests or screenshots.
+      # What a team that pins `plugin-v<version>` gets: the tree's own marketplace, built here, installed from its folder.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.5"
+          enable-cache: false
+      - name: Install the release tree, which holds the plugin's files and nothing else
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/tree-setup
+        run: |
+          uv run tools/release_tree.py build "$RUNNER_TEMP/tree"
+          claude plugin marketplace add "$RUNNER_TEMP/tree"
+          claude plugin install gitlab-ci@gitlab-pane
+          claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
           installed=$(jq -r '.plugins["gitlab-ci@gitlab-pane"][0].installPath' "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json")
           test -f "$installed/hooks/hooks.json"
           for dev in tools tests docs .github CONTRIBUTING.md release; do
@@ -67,6 +79,25 @@ jobs:
               exit 1
             fi
           done
+      # Once the first release has been published, the branch must hold the latest released tree.
+      - name: The release branch holds the latest released version
+        run: |
+          url="https://github.com/${GITHUB_REPOSITORY}.git"
+          if ! git ls-remote --exit-code --heads "$url" release > /dev/null; then
+            echo "::notice::Skipped: there is no release branch yet, because no release has been published since the publish job was added."
+            exit 0
+          fi
+          latest=$(git ls-remote --tags --refs "$url" 'refs/tags/plugin-v*' | sed 's#.*refs/tags/plugin-v##' | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+            echo "::error::The release branch exists but no plugin-v* tag does"
+            exit 1
+          fi
+          git clone --quiet --depth 1 --branch release "$url" "$RUNNER_TEMP/release"
+          held=$(jq -r .version "$RUNNER_TEMP/release/.claude-plugin/plugin.json")
+          if [ "$held" != "$latest" ]; then
+            echo "::error::The release branch holds version $held, but the latest tag is plugin-v$latest"
+            exit 1
+          fi
 
   schema:
     runs-on: ubuntu-latest

@@ -13,11 +13,11 @@
 # is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no checks run on it; they run
 # once it is merged.
 #
-# What users install is not this repository but the tree tools/release_tree.py builds from the allowlist release/files:
-# the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so a
-# broken tree fails there and not at a release. The publish job then commits the tree of a new version to the `release`
-# branch, one commit and one `plugin-v<version>` tag per version, never forced; .claude-plugin/marketplace.json installs
-# from that branch. See CONTRIBUTING.md, Releasing.
+# What a team can pin is not this repository but the tree tools/release_tree.py builds from the allowlist release/files:
+# the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so
+# a broken tree fails there and not at a release. The publish job then commits the tree of a new version to the
+# `release` branch, one commit and one `plugin-v<version>` tag per version, never forced.
+# See CONTRIBUTING.md, Releasing.
 name: check
 on:
   push:

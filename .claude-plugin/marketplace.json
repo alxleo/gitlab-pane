@@ -2,5 +2,5 @@
   "name": "gitlab-pane",
   "owner": { "name": "Alexander Leonov" },
   "description": "A GitLab pane for Claude Code: your merge requests, their pipelines and reviewers, and an inbox of reviews.",
-  "plugins": [{ "name": "gitlab-ci", "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" } }]
+  "plugins": [{ "name": "gitlab-ci", "source": "./" }]
 }
