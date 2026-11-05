@@ -2,15 +2,13 @@
 
 ## Set up a clone
 
-Add the clone as a local marketplace, so every session reads the mod from your folder and an edit needs only `/reload-plugins`:
+Start Claude Code with the clone as the plugin, so every session reads the mod from your folder and an edit needs only `/reload-plugins`:
 
 ```bash
-claude plugin marketplace add path/to/gitlab-pane
+claude --plugin-dir path/to/gitlab-pane
 ```
 
-```bash
-claude plugin install gitlab-ci@gitlab-pane
-```
+(The clone's `.claude-plugin/marketplace.json` is the public one and installs the released tree from GitHub, so adding the clone as a marketplace would not run your edits.) Uninstall `gitlab-ci` first if you installed it, so the two do not both draw a pane.
 
 Then turn on the checks that run before each commit, on its message, and before each push. [pre-commit](https://pre-commit.com) runs them. Install it once with `uv tool install pre-commit` or `brew install pre-commit`, then, in the clone:
 
@@ -69,4 +67,10 @@ The README's pictures come from `uv run tools/pane_screens.py render`, which run
 
 ## Releasing
 
-After each green check on main, the release job in `check.yml` keeps a release pull request open from the commit messages: the next version and its changelog. Merging it is the release. It raises `version` in `.claude-plugin/plugin.json`, which is what makes Claude Code offer the update, and the release job tags it and publishes it on GitHub. A `feat:` raises the minor number and a `fix:` the patch; other kinds wait for one of those. Checks run on the release pull request only once it is merged, as GitHub starts no workflow for a pull request its own token opened.
+After each green check on main, the release job in `check.yml` keeps a release pull request open from the commit messages: the next version and its changelog. Merging it is the release. It raises `version` in `.claude-plugin/plugin.json`, which is what makes Claude Code offer the update, and the release job tags it (`v0.3.0`) and publishes it on GitHub. A `feat:` raises the minor number and a `fix:` the patch; other kinds wait for one of those. Checks run on the release pull request only once it is merged, as GitHub starts no workflow for a pull request its own token opened.
+
+What users install is not this repository but the plugin's files alone. `release/files` lists exactly what ships: `.claude-plugin/plugin.json`, `hooks/` (the modules `hooks/hooks.json` loads, not the generated types, which only type-checking reads), `types/index.d.ts`, `LICENSE` and `README.md`. `tools/release_tree.py` copies those into a tree and fails if a module the plugin loads imports a path outside it, a listed file is not loaded, or the README links to a relative path. When you add a file the plugin loads at run time, add it to `release/files`; `uv run tools/release_tree.py check` and CI say so if you forget.
+
+- **In a pull request,** `check.yml` builds the tree, runs `claude plugin validate --strict` on it and on both marketplace files, and runs that closure check, so a broken tree fails before a release.
+- **At a release,** the `publish` job (the only one that can write to the repository, besides release-please's own tag) builds the tree from the release's tag and commits it to the `release` branch with a tag `plugin-v0.3.0`. Each version is one commit on top of the last and the branch is never force-pushed, so every released tree stays reachable. Re-running a failed `publish` job publishes the same release again.
+- **Installing** reads `.claude-plugin/marketplace.json` on main, which points the plugin at the `release` branch, so users get the newest release. The tree also holds a marketplace file of its own (`release/marketplace.json`), so a team can pin a version by using the repository with `"ref": "plugin-v0.3.0"` as its marketplace source (see the README); `claude plugin update` sees a new `version` there as usual.
