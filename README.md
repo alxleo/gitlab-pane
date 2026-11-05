@@ -26,7 +26,7 @@ Each wake comes once per pipeline. MRs pinned with `watch_mr` sit on top too, bu
 claude plugin install gitlab-pane --marketplace alxleo/gitlab-pane
 ```
 
-Renamed from `gitlab-ci` in 0.3.0: reinstall as `gitlab-pane@gitlab-pane`; settings and the store (avatars, seen marks) do not carry over.
+Renamed from `gitlab-ci` in 0.3.0. The marketplace tells Claude Code of the rename, so an installed or enabled `gitlab-ci@gitlab-pane` moves to `gitlab-pane@gitlab-pane` by itself. The store (avatars, seen marks) starts empty, the plugin's options may need setting again, and a permission rule for `mcp__gitlab-ci__watch_mr` must be added again as `mcp__gitlab-pane__watch_mr`.
 
 Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`). Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in.
 
@@ -35,13 +35,13 @@ For a team, in the project's `.claude/settings.json`:
 ```json
 {
   "extraKnownMarketplaces": {
-    "gitlab-pane": { "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "v0.2.1" } }
+    "gitlab-pane": { "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "v0.3.0" } }
   },
   "enabledPlugins": { "gitlab-pane@gitlab-pane": true }
 }
 ```
 
-- `ref` pins a [release](https://github.com/alxleo/gitlab-pane/releases); raise it to update. Without it, every update installs main, which runs with your GitLab and Jira sign-ins.
+- `ref` pins a [release](https://github.com/alxleo/gitlab-pane/releases); raise it to update. v0.3.0 is the first under the name `gitlab-pane`: an older tag knows only `gitlab-ci`. Without it, every update installs main, which runs with your GitLab and Jira sign-ins.
 - From the first `plugin-v*` tag, `"ref": "plugin-v<version>"` pins too, and installs only the plugin's files.
 - `claude plugin update gitlab-pane@gitlab-pane` updates; a running session keeps its copy until `/reload-plugins`.
 
