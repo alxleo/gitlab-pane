@@ -18,9 +18,10 @@ export const URL_ROOM = 300
  * whitespace and line breaks one space, cut at `room` characters.
  */
 export function foreign(text: string, room = NAME_ROOM): ModelLine {
+  // Format characters go first: removed after the whitespace is joined, one between two spaces would leave a double space.
   const flat = text
-    .replace(/[\p{Cc}\p{Z}\s]+/gu, ' ')
     .replace(/\p{Cf}/gu, '')
+    .replace(/[\p{Cc}\p{Z}\s]+/gu, ' ')
     .trim()
   const chars = [...flat]
   return brand(chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : flat)

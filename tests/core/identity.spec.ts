@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import fc from 'fast-check'
 
 import { discSource } from '../../hooks/avatar.ts'
 import { discColour, firstName, hash, initials, shortHash } from '../../hooks/identity.ts'
@@ -28,6 +29,8 @@ test('people who share initials get a longer pair', () => {
   expect(initials('Ines Mendel', '', true)).toBe('IMe')
   expect(initials('Ivo Marsh', '', true)).toBe('IMa')
   expect(initials('Cher', '', true)).toBe('CHE')
+  // Upper-casing can make a letter two (ß is SS): the pair is cut after it, so it stays three at most.
+  expect(initials('ßßß', '', true)).toBe('SSS')
 })
 
 test('names in other scripts keep whole characters', () => {
@@ -55,4 +58,33 @@ test('a person keeps one colour and a hash is stable', () => {
   expect(discColour('ixm5302')).toBe(discColour('ixm5302'))
   expect(discColour('ixm5302')).toMatch(/^#[0-9A-F]{6}$/)
   expect(discSource('ixm5302')).toContain(discColour('ixm5302'))
+})
+
+// ---- properties -------------------------------------------------------------------------------------------------------
+
+const nameArb = fc.string({
+  unit: fc.oneof(
+    fc.constantFrom(' ', '.', '_', '-', 'ß', 'ǆ', 'ŉ', 'ﬃ', 'é', 'é', '李', 'Ж', '4', '!', '​'),
+    fc
+      .integer({ min: 0, max: 0x10ffff })
+      .filter(code => code < 0xd800 || code > 0xdfff)
+      .map(code => String.fromCodePoint(code)),
+    fc.string({ unit: 'grapheme-ascii', maxLength: 1 })
+  ),
+  maxLength: 30,
+})
+
+test('initials are stable, one to three characters, and the longer form extends the short one', () => {
+  fc.assert(
+    fc.property(nameArb, nameArb, (name, username) => {
+      const short = initials(name, username)
+      const long = initials(name, username, true)
+      expect(initials(name, username)).toBe(short)
+      expect([...short].length).toBeGreaterThanOrEqual(1)
+      expect([...short].length).toBeLessThanOrEqual(3)
+      expect([...long].length).toBeGreaterThanOrEqual(1)
+      expect([...long].length).toBeLessThanOrEqual(3)
+      expect(long.startsWith(short)).toBe(true)
+    })
+  )
 })

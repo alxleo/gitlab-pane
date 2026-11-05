@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import fc from 'fast-check'
 
 import { NOW, HOST, heavyMr, pipe, project, rawMr } from '../fixtures.ts'
 import { parseJson } from '../../hooks/decode.ts'
@@ -26,7 +27,7 @@ import type { ReadResult } from '../../hooks/snapshot.ts'
 import { pinnedQuery } from '../../hooks/gitlab-documents.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 
-import type { MrCard, Pinned } from '../../types'
+import type { MergeStatus, MrCard, Pinned } from '../../types'
 
 const pin = (iid: number, origin?: 'raised' | 'watched'): Pinned => ({ url: `https://gitlab.com/g/p/-/merge_requests/${iid}`, host: HOST, path: 'g/p', iid, ...(origin !== undefined ? { origin } : {}) })
 
@@ -149,7 +150,7 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
   const card = (iid: number, over: Partial<MrCard> = {}): MrCard => ({ ...toCard(HOST, rawMr(iid)), ...over })
   const passing = [{ id: 'CI_MUST_PASS', status: 'success' as const }]
   const conflict = [{ id: 'CONFLICT', status: 'failed' as const }]
-  const base = [card(1, { mergeStatus: passing }), card(2, { mergeStatus: passing }), card(3), card(4, { isOpen: false })]
+  const base = [card(1, { mergeStatus: passing }), card(2, { mergeStatus: passing }), card(3, { mergeStatus: passing }), card(4, { isOpen: false })]
   const delta = mergeReads({
     scope: 'since',
     base,
@@ -159,7 +160,7 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
     verdicts: new Map([['gitlab.com/g/p!5', conflict]]),
   })
   const byIid = Object.fromEntries(delta.map(row => [row.iid, [row.title, row.isOpen, row.mergeStatus]]))
-  // 4 closed and nobody pins it any more; 3 closed but pinned stays, so each session can unpin it; 1 and 2 keep their verdict.
+  // 4 closed and nobody pins it any more; 3 closed but pinned stays, so each session can unpin it, with no verdict; 1 and 2 keep theirs.
   expect(byIid).toEqual({
     1: ['fix: [ABC-1] thing 1', true, passing],
     2: ['newer', true, passing],
@@ -175,4 +176,57 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
 test('a pinned MR is asked for by its path and number, one query each, and a project of its own host', () => {
   expect(pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true }).variables).toEqual({ path: 'g/q', iid: '7' })
   expect(project('g/q').fullPath).toBe('g/q')
+})
+
+// ---- properties -------------------------------------------------------------------------------------------------------
+
+/** An MR of the world GitLab holds: changing it bumps its version and its update time. */
+type World = Map<number, { version: number; isOpen: boolean; updatedAt: number }>
+
+const MINUTE = 60_000
+const worldCard = (iid: number, mr: { version: number; isOpen: boolean; updatedAt: number }): MrCard => ({
+  ...toCard(HOST, rawMr(iid)),
+  title: `version ${mr.version}`,
+  isOpen: mr.isOpen,
+  updatedAt: new Date(mr.updatedAt).toISOString(),
+})
+
+/** GitLab's verdicts, which it gives for open MRs only. */
+const verdictsOf = (world: World): Map<string, MergeStatus> =>
+  new Map([...world].filter(([, mr]) => mr.isOpen).map(([iid, mr]) => [`gitlab.com/g/p!${iid}`, [{ id: 'CI_MUST_PASS', status: (iid + mr.version) % 2 === 0 ? 'success' : 'failed' }]]))
+
+const rowsOf = (rows: readonly MrCard[]) => [...rows].sort((a, b) => a.key.localeCompare(b.key))
+
+/** The rows a read leaves: a whole one, or a delta over the rows `base` of the read before. The pinned MRs the authored list lacks are read one by one. */
+const readWorld = (world: World, pinned: ReadonlySet<number>, scope: 'open' | 'since', base: readonly MrCard[], after: string): MrCard[] => {
+  const cards = [...world].map(([iid, mr]) => worldCard(iid, mr))
+  return mergeReads({
+    scope,
+    base,
+    fetched: scope === 'open' ? cards.filter(card => card.isOpen) : cards.filter(card => card.updatedAt > after),
+    singles: cards.filter(card => !card.isOpen && pinned.has(card.iid)),
+    pinned: new Set([...pinned].map(iid => `gitlab.com/g/p!${iid}`)),
+    verdicts: verdictsOf(world),
+  })
+}
+
+const worldArb = fc.dictionary(fc.integer({ min: 1, max: 8 }).map(String), fc.record({ version: fc.integer({ min: 0, max: 3 }), isOpen: fc.boolean() }), { maxKeys: 8 })
+const changesArb = fc.dictionary(fc.integer({ min: 1, max: 10 }).map(String), fc.record({ isOpen: fc.boolean(), at: fc.integer({ min: 1, max: 59 }) }), { maxKeys: 10 })
+const pinsArb = fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 4 })
+
+test('a delta read on a whole read is the whole read made fresh, for any MRs that changed, closed or appeared since', () => {
+  fc.assert(
+    fc.property(worldArb, changesArb, pinsArb, pinsArb, (initial, changes, earlier, later) => {
+      const before: World = new Map(Object.entries(initial).map(([iid, mr]) => [Number(iid), { ...mr, updatedAt: NOW - 60 * MINUTE }]))
+      const now: World = new Map(before)
+      for (const [iid, change] of Object.entries(changes)) {
+        // Whatever GitLab changes about an MR it stamps: a new version, a state, a time after the read before it.
+        now.set(Number(iid), { version: (before.get(Number(iid))?.version ?? 0) + 1, isOpen: change.isOpen, updatedAt: NOW + change.at * MINUTE })
+      }
+      const whole = readWorld(before, new Set(earlier), 'open', [], '')
+      const { after } = cursorAfter({ kind: 'open' }, NOW, undefined)
+      const delta = readWorld(now, new Set(later), 'since', whole, after)
+      expect(rowsOf(delta)).toEqual(rowsOf(readWorld(now, new Set(later), 'open', [], '')))
+    })
+  )
 })

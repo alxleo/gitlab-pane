@@ -10,6 +10,7 @@ export function rank(card: MrCard): number {
   const status = card.pipeline?.status
   if (
     status === 'failed' ||
+    (card.pipeline !== undefined && failedCount(card.pipeline) > 0) ||
     card.hasConflicts ||
     card.needsRebase ||
     card.changesRequestedBy.length > 0 ||
