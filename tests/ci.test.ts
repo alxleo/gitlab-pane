@@ -18,6 +18,8 @@ import {
   verdictOf,
 } from '../hooks/ci'
 import { ciStatusOf, cleanBody, mergeStatusOf, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
+import { decodeGraphql } from '../hooks/decode'
+import { readInboxJson } from '../hooks/inbox-json'
 import { readTickets, ticketQuery } from '../hooks/jira'
 import { flatOf } from '../hooks/markdown'
 import { NOW, job, note, pipe, rawMr, reviewer, stage, thread, user } from './fixtures'
@@ -298,8 +300,20 @@ test('the model reads who and where, never the comment itself', async () => {
 test('Jira is asked only about ticket keys, and its rows are read by key', async () => {
   expect(ticketQuery(['ABC-980', 'x) or 1=1', 'XY-2'])).toBe('key in (ABC-980, XY-2)')
   expect(
-    readTickets('[{"key": "ABC-980", "fields": {"issuetype": {"name": "Task"}, "status": {"name": "Backlog"}, "summary": "Stop builds"}}]')
+    readTickets([{ key: 'ABC-980', fields: { issuetype: { name: 'Task' }, status: { name: 'Backlog' }, summary: 'Stop builds' } }])
   ).toEqual({ 'ABC-980': { type: 'Task', status: 'Backlog', summary: 'Stop builds' } })
+})
+
+test('what the outside tools print is checked, not cast', async () => {
+  expect(() => readTickets({ error: 'not signed in' })).toThrow('acli answered something other than a list')
+  expect(readTickets([null, { key: 7 }, { key: 'ABC-1', fields: { summary: 4 } }])).toEqual({ 'ABC-1': { type: '', status: '', summary: '' } })
+  expect(() => readInboxJson({ sync: {} })).toThrow('mr-inbox answered without sections')
+  expect(readInboxJson({ sections: [null, { rule: 'r', items: [{ key: 'g/p!1', author: { username: 'a', name: 'A' }, counts: { merged: 1, nope: 2, approved: 'x' } }] }] }).sections).toMatchObject([
+    { rule: 'r', items: [{ key: 'g/p!1', author: 'a', authorName: 'A', counts: { merged: 1 }, activity: [] }] },
+  ])
+  expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })
+  expect(() => decodeGraphql([])).toThrow('glab answered something other than an object')
+  expect(() => decodeGraphql({ data: 'x' })).toThrow('data that is not an object')
 })
 
 test('titles keep the ticket apart and lose their type lead', async () => {

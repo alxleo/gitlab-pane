@@ -20,8 +20,10 @@
   "include": [
     "hooks/avatar.ts",
     "hooks/ci.ts",
+    "hooks/decode.ts",
     "hooks/gitlab.ts",
     "hooks/identity.ts",
+    "hooks/inbox-json.ts",
     "hooks/jira.ts",
     "hooks/markdown.ts",
     "hooks/reconcile.ts",

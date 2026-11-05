@@ -15,8 +15,10 @@ import {
   usualQuery,
 } from './gitlab'
 import type { RawResponse } from './gitlab'
+import { decodeGraphql } from './decode'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
 import { reconcile } from './reconcile'
+import { runJson } from './tools'
 
 import type { MergeStatus, MrCard, Pinned, PollState } from '../types'
 
@@ -195,22 +197,19 @@ export function toggleWake($: EngineInterface) {
 const TICKETS_EVERY_MS = 15 * 60_000
 const USUAL_EVERY_MS = 30 * 60_000
 
-// A login shell finds glab and acli wherever they are installed; the app's own PATH may not.
-const shell = (tool: string, args: readonly string[]) => ['/bin/zsh', '-lc', `exec ${tool} "$@"`, tool, ...args]
-
 /** GitLab.com's edge answers 52x or drops the stream now and then; one retry rides that out. */
 const isTransient = (stderr: string): boolean => /HTTP 5\d\d|stream error/i.test(stderr)
 
 async function ask($: EngineInterface, query: string): Promise<RawResponse> {
-  const call = () => $.process.run(shell('glab', ['api', 'graphql', '-f', `query=${query}`]), { timeoutMs: 90_000 })
-  const first = await call()
-  const run = first.exitCode !== 0 && isTransient(first.stderr) ? await call() : first
-  // glab exits non-zero on a partial GraphQL error yet still prints the data.
-  try {
-    return JSON.parse(run.stdout) as RawResponse
-  } catch {
-    throw new Error(run.stderr.trim().split('\n').pop() || `glab exited ${run.exitCode}`)
+  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`], decodeGraphql, {
+    timeoutMs: 90_000,
+    retryIf: isTransient,
+    isPartialOk: true,
+  })
+  if (!answer.ok) {
+    throw new Error(answer.reason)
   }
+  return answer.value
 }
 
 /**
@@ -249,12 +248,11 @@ async function readJira($: EngineInterface, rows: readonly MrCard[], now: number
     return
   }
   const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
-  const run = await $.process.run(shell('acli', search), { timeoutMs: 60_000 })
-  if (run.exitCode !== 0) {
+  const found = await runJson($, 'acli', search, readTickets, { timeoutMs: 60_000 })
+  if (!found.ok) {
     return
   }
-  const tickets = readTickets(run.stdout)
-  await update($, ticketsAtom, previous => ({ ...previous, ...tickets }))
+  await update($, ticketsAtom, previous => ({ ...previous, ...found.value }))
   await update($, pollAtom, previous => ({ ...previous, ticketsAt: now }))
 }
 
