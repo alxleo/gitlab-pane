@@ -4,10 +4,10 @@ import { discSource } from './avatar'
 import { ago, shortTitle } from './ci'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
-import type { InboxActivity, InboxItem, InboxSection } from '../types'
+import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
 
 /** How each kind of activity reads, in the order a card counts them: what blocks or clears a merge first. */
-const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
+const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string }> = {
   changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes' },
   unapproved: { glyph: '↺', tone: 'warning', word: 'withdrew approval' },
   approved: { glyph: '✓', tone: 'success', word: 'approved' },
@@ -17,7 +17,10 @@ const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
   pushed: { glyph: '↑', word: 'pushed' },
   opened: { glyph: '+', word: 'opened' },
   merged: { glyph: '◆', tone: 'merged', word: 'merged' },
+  unknown: { glyph: '·', word: 'acted' },
 }
+
+const KINDS = Object.keys(VERB) as InboxKind[]
 
 /**
  * What the inbox may take of the pane's drawing, now that it has its own tab and shares the drawing only with the
@@ -70,7 +73,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
 
   /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
   const event = (one: InboxActivity, isWhole: boolean) => {
-    const verb = VERB[one.kind] ?? { glyph: '·', word: one.kind }
+    const verb = VERB[one.kind]
     const when = ago(one.at, now)
     const said = one.excerpt ? `“${one.excerpt}”` : ''
     return (
@@ -108,9 +111,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
    */
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
-    const counted = Object.keys(VERB)
-      .filter(kind => item.counts[kind])
-      .map(kind => `${item.counts[kind]} ${VERB[kind]?.word}`)
+    const counted = KINDS.filter(kind => item.counts[kind]).map(kind => `${item.counts[kind]} ${VERB[kind].word}`)
     const about = [
       bang > 0 ? item.ref.slice(0, bang) : '',
       item.isMine ? '' : item.author,

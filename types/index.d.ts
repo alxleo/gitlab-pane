@@ -1,16 +1,82 @@
 export type JobLink = { name: string; url: string }
 
+/**
+ * GitLab's job and pipeline status, lower case. `unknown` is a status GitLab sent that the pane has no name for, kept
+ * apart so it is never drawn as one it does.
+ */
+export type CiStatus =
+  | 'created'
+  | 'waiting_for_resource'
+  | 'preparing'
+  | 'waiting_for_callback'
+  | 'pending'
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'canceling'
+  | 'canceled'
+  | 'skipped'
+  | 'manual'
+  | 'scheduled'
+  | 'unknown'
+
+/** GitLab's `MergeRequestReviewState`, lower case, with `unknown` for a state the pane has no name for. */
+export type ReviewState = 'unreviewed' | 'reviewed' | 'requested_changes' | 'approved' | 'unapproved' | 'review_started' | 'unknown'
+
+/** Where a person stands on an MR, worked out from their review state, approval and notes. */
+export type PersonState = 'requested_changes' | 'approved' | 'reviewing' | 'commented' | 'unreviewed'
+
+/** GitLab's `DetailedMergeStatus`, with `UNKNOWN` for a verdict the pane has no name for. */
+export type MergeStatus =
+  | 'UNCHECKED'
+  | 'CHECKING'
+  | 'MERGEABLE'
+  | 'COMMITS_STATUS'
+  | 'CI_MUST_PASS'
+  | 'CI_STILL_RUNNING'
+  | 'DISCUSSIONS_NOT_RESOLVED'
+  | 'DRAFT_STATUS'
+  | 'NOT_OPEN'
+  | 'NOT_APPROVED'
+  | 'BLOCKED_STATUS'
+  | 'EXTERNAL_STATUS_CHECKS'
+  | 'PREPARING'
+  | 'JIRA_ASSOCIATION'
+  | 'CONFLICT'
+  | 'NEED_REBASE'
+  | 'APPROVALS_SYNCING'
+  | 'LOCKED_PATHS'
+  | 'LOCKED_LFS_FILES'
+  | 'MERGE_TIME'
+  | 'SECURITY_POLICIES_VIOLATIONS'
+  | 'TITLE_NOT_MATCHING'
+  | 'REQUESTED_CHANGES'
+  | 'SECURITY_POLICY_PIPELINE_CHECK'
+  | 'UNKNOWN'
+
+/** What `mr-inbox` matched a rule on; `unknown` is a kind the pane has no word for. */
+export type InboxKind =
+  | 'changes_requested'
+  | 'unapproved'
+  | 'approved'
+  | 'review'
+  | 'comment'
+  | 'review_requested'
+  | 'pushed'
+  | 'opened'
+  | 'merged'
+  | 'unknown'
+
 export type Job = {
   name: string
-  /** GitLab's job status, lower case. */
-  status: string
+  status: CiStatus
   allowFailure: boolean
   url: string
   startedAt: string | null
   finishedAt: string | null
 }
 
-export type Stage = { name: string; status: string; jobs: Job[] }
+export type Stage = { name: string; status: CiStatus; jobs: Job[] }
 
 export type Note = {
   author: string
@@ -29,8 +95,7 @@ export type Note = {
 export type Reviewer = {
   username: string
   isBot: boolean
-  /** GitLab's review state, lower case: `unreviewed`, `approved`, `requested_changes`, ... */
-  state: string
+  state: ReviewState
 }
 
 /** Someone other than the author, a bot included, who reviewed or commented. */
@@ -43,8 +108,7 @@ export type Person = {
   initials: string
   /** Their GitLab avatar's absolute URL, when they have one; a bot's generated identicon is none. */
   avatarUrl: string | null
-  /** `requested_changes`, `approved`, `reviewing`, `commented` or `unreviewed`. */
-  state: string
+  state: PersonState
   /** Threads they started that are still unresolved. */
   openThreads: number
   /** Their notes, those in unresolved threads first, then newest first. */
@@ -74,14 +138,14 @@ export type MrCard = {
   /** Approvals still needed; a bot's approval never counts. */
   approvalsLeft: number
   approvalsRequired: number
-  /** GitLab's own verdict, under the project's merge rules: `MERGEABLE`, `NOT_APPROVED`, `CI_STILL_RUNNING`, ... */
-  mergeStatus: string | null
+  /** GitLab's own verdict, under the project's merge rules; null while it was not read. */
+  mergeStatus: MergeStatus | null
   approvers: string[]
   reviewers: Reviewer[]
   people: Person[]
   pipeline?: {
     id: number
-    status: string
+    status: CiStatus
     url: string
     /** Seconds GitLab counts as running, once it has settled. */
     duration: number | null
@@ -129,8 +193,7 @@ export type PollState = {
 
 /** One event `mr-inbox` matched a rule on. */
 export type InboxActivity = {
-  /** `comment`, `review`, `approved`, `unapproved`, `changes_requested`, `merged`, `opened`, ... */
-  kind: string
+  kind: InboxKind
   actor: string
   at: string
   url: string | null
@@ -153,7 +216,7 @@ export type InboxItem = {
   /** Human activity since the MR was last marked seen. */
   unseen: number
   /** The rule's matching activity by kind, such as `{ approved: 2, comment: 3 }`. */
-  counts: Record<string, number>
+  counts: Partial<Record<InboxKind, number>>
   activity: InboxActivity[]
 }
 

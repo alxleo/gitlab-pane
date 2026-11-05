@@ -17,7 +17,7 @@ import {
 import type { RawResponse } from './gitlab'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
 
-import type { MrCard, Pinned, PollState } from '../types'
+import type { MergeStatus, MrCard, Pinned, PollState } from '../types'
 
 // The engine lists each module's state from the atoms written in that file, so this file alone holds them.
 const pinnedAtom = atom({ plugin: 'gitlab-ci', key: 'pinned' } as const, [])
@@ -222,7 +222,7 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
     ask($, authoredQuery()),
     ask($, mergeStatusQuery())
       .then(readMergeStatus)
-      .catch(() => new Map<string, string>()),
+      .catch(() => new Map<string, MergeStatus>()),
   ])
   const rows = readResponse(authored, 0).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))

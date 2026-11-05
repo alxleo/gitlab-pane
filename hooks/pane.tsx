@@ -36,28 +36,28 @@ import { filterRepo, leaveReading, openReading, openTab, quietly, refresh, showP
 import { drawReading } from './reading'
 
 import type { Badge, Tone } from './ci'
-import type { Job, MrCard, Note, Person, Stage } from '../types'
+import type { CiStatus, Job, MrCard, Note, Person, PersonState, Stage } from '../types'
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
 
-const REVIEW_STATE: Record<string, string> = {
+const REVIEW_STATE: Record<PersonState, string> = {
   approved: 'approved',
   requested_changes: 'requested changes',
-  reviewed: 'reviewed',
-  review_started: 'reviewing',
   reviewing: 'reviewing',
   commented: 'commented',
   unreviewed: 'not reviewed yet',
-  unapproved: 'withdrew approval',
 }
 
 /** The corner badge on a reviewer's face, and their mark where no Svg is drawn. */
-const REVIEW_MARK: Record<string, { glyph: string; tone: Tone; path: string }> = {
+const REVIEW_MARK: Record<PersonState, { glyph: string; tone: Tone; path: string } | null> = {
   approved: { glyph: '✓', tone: 'success', path: 'M13.1 14.9l1.1 1.1 2.1-2.2' },
   requested_changes: { glyph: '✕', tone: 'error', path: 'M13.5 13.5l2.5 2.5m0-2.5l-2.5 2.5' },
+  reviewing: null,
+  commented: null,
+  unreviewed: null,
 }
 
-const STATUS_WORD: Record<string, string> = {
+const STATUS_WORD: Record<CiStatus, string> = {
   success: 'passed',
   failed: 'failed',
   running: 'running',
@@ -67,12 +67,36 @@ const STATUS_WORD: Record<string, string> = {
   scheduled: 'scheduled',
   skipped: 'skipped',
   canceled: 'canceled',
+  canceling: 'canceling',
+  preparing: 'preparing',
+  waiting_for_resource: 'waiting for a resource',
+  waiting_for_callback: 'waiting for a callback',
+  unknown: 'in a state this pane does not know',
 }
 
-/** Jobs worth a look first: hard failures, then what runs, then what waits, then what passed. */
-const JOB_ORDER = ['failed', 'running', 'amber', 'pending', 'manual', 'created', 'success', 'skipped', 'canceled']
+/** A job is its status, but a failure it may have is amber. */
+type JobKind = CiStatus | 'amber'
 
-const jobKind = (job: Job) => (job.status === 'failed' && job.allowFailure ? 'amber' : job.status)
+/** Jobs worth a look first: hard failures, then what runs, then what waits, then what passed. */
+const JOB_RANK: Record<JobKind, number> = {
+  failed: 0,
+  running: 1,
+  amber: 2,
+  preparing: 3,
+  waiting_for_resource: 4,
+  waiting_for_callback: 5,
+  pending: 6,
+  scheduled: 7,
+  manual: 8,
+  created: 9,
+  success: 10,
+  skipped: 11,
+  canceling: 12,
+  canceled: 13,
+  unknown: 14,
+}
+
+const jobKind = (job: Job): JobKind => (job.status === 'failed' && job.allowFailure ? 'amber' : job.status)
 
 const jobMark = (job: Job): { glyph: string; tone: Tone } =>
   jobKind(job) === 'amber' ? { glyph: '⚠', tone: 'warning' } : statusMark(job.status)
@@ -164,7 +188,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {(person.isBot || !isHandle) && <Text dimColor>{person.isBot ? 'bot' : `@${person.username}`}</Text>}
       </Box>,
       <Text color={personTone(person)}>
-        {[REVIEW_STATE[person.state] ?? person.state, person.openThreads > 0 ? plural(person.openThreads, 'open thread') : '']
+        {[REVIEW_STATE[person.state], person.openThreads > 0 ? plural(person.openThreads, 'open thread') : '']
           .filter(Boolean)
           .join(' · ')}
       </Text>,
@@ -181,7 +205,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const stageLine = (stage: Stage) => {
     const ran = ranFor([stage], now)
     const timing = ran === 0 ? '' : stage.status === 'running' ? ` · running ${duration(ran)}` : ` · ran ${duration(ran)}`
-    return `${stage.name} · ${STATUS_WORD[stage.status] ?? stage.status}${timing}`
+    return `${stage.name} · ${STATUS_WORD[stage.status]}${timing}`
   }
 
   /** The jobs worth opening across the pipeline: what failed, runs or waits on a person, each linked. */
@@ -189,7 +213,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const open = stages
       .flatMap(stage => stage.jobs)
       .filter(job => ['failed', 'running'].includes(job.status) || (job.status === 'manual' && !job.allowFailure))
-      .sort((a, b) => JOB_ORDER.indexOf(jobKind(a)) - JOB_ORDER.indexOf(jobKind(b)))
+      .sort((a, b) => JOB_RANK[jobKind(a)] - JOB_RANK[jobKind(b)])
     return [
       ...open.slice(0, JOBS_SHOWN).map((job, i) => {
         const mark = jobMark(job)
@@ -379,7 +403,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ...(pipeline
           ? [
               <Text bold color={mark.tone}>
-                {`${mark.glyph} Pipeline ${STATUS_WORD[pipeline.status] ?? pipeline.status} · ${pipelineTime(mr, now, usual[mr.project])}`}
+                {`${mark.glyph} Pipeline ${STATUS_WORD[pipeline.status]} · ${pipelineTime(mr, now, usual[mr.project])}`}
               </Text>,
               ...pipelineJobs(pipeline.stages),
             ]
@@ -449,7 +473,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
     const detail = focus ? (
       <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-        <Text bold>{`${focus.name} · ${REVIEW_STATE[focus.state] ?? focus.state} · ${plural(focus.notes.length, 'comment')}`}</Text>
+        <Text bold>{`${focus.name} · ${REVIEW_STATE[focus.state]} · ${plural(focus.notes.length, 'comment')}`}</Text>
         {focus.notes.map(note => (
           <Box key={`pn-${note.url}`} flexDirection="column">
             {byline('who', noteKind(note), [note.where, ago(note.at, now)].filter(Boolean).join(' · '), note.url)}
