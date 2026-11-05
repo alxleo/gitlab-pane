@@ -27,12 +27,19 @@ export function foreign(text: string, room = NAME_ROOM): ModelLine {
 }
 
 /**
+ * What may stand in a `line` template: a number, another line, or a string literal type such as a status. A plain
+ * `string` fails the literal test, and so does any branded one (Markdown, SVG source), whose key type is not a literal.
+ */
+export type Sayable<T> = T extends number | ModelLine ? T : T extends string ? (string extends T ? never : {} extends Record<T, 1> ? never : T) : never
+
+/**
  * A line from this code's own words: the template's text is trusted, and a value must be a number, another line or a
- * string literal type such as a status; a `string` from GitLab does not compile and goes through `foreign` first.
+ * string literal type such as a status; a `string` from GitLab, or any branded string, does not compile and goes
+ * through `foreign` first.
  */
 export function line<V extends readonly (number | string)[]>(
   parts: TemplateStringsArray,
-  ...values: V & { [K in keyof V]: string extends V[K] ? never : V[K] }
+  ...values: V & { [K in keyof V]: Sayable<V[K]> }
 ): ModelLine {
   return brand(parts.reduce((out, text, i) => out + text + (i < values.length ? String(values[i]) : ''), ''))
 }
