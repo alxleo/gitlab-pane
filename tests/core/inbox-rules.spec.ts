@@ -69,7 +69,7 @@ test('an MR shows under a rule for the events that rule counts, since it was mar
   expect(itemsOf(sections, 'mentions')).toEqual(['gitlab.com/g/p!1'])
 })
 
-test('events on your MR and events on someone else\'s go to different rules', () => {
+test("events on your MR and events on someone else's go to different rules", () => {
   const theirs = mr(2, [signal('approved', 5), signal('pushed', 4)], { inQueue: true })
   const mine = mr(3, [signal('approved', 5), signal('pushed', 4, 'bob'), signal('review_requested', 3)], { isMine: true })
   const sections = sectionsOf(snapshot([theirs, mine]), {})
@@ -90,14 +90,15 @@ test('the review queue keeps an MR until you approve it, without news it is grey
 
 test('a ref is the shortest repo!iid no other MR shares', () => {
   const sections = sectionsOf(
-    snapshot([
-      mr(1, [signal('mentioned', 5)]),
-      mr(1, [signal('mentioned', 6)], { path: 'h/p' }),
-      mr(2, [signal('mentioned', 7)], { path: 'g/q/deep' }),
-    ]),
+    snapshot([mr(1, [signal('mentioned', 5)]), mr(1, [signal('mentioned', 6)], { path: 'h/p' }), mr(2, [signal('mentioned', 7)], { path: 'g/q/deep' })]),
     {}
   )
-  expect(sections.find(section => section.rule === 'mentions')?.items.map(item => item.ref).sort()).toEqual(['deep!2', 'g/p!1', 'h/p!1'])
+  expect(
+    sections
+      .find(section => section.rule === 'mentions')
+      ?.items.map(item => item.ref)
+      .sort()
+  ).toEqual(['deep!2', 'g/p!1', 'h/p!1'])
 })
 
 test('a seen mark is kept per user and host, and only for MRs a host that answered still lists', () => {
@@ -180,7 +181,12 @@ test('the notes on your MR become approvals, reviews, pushes and comments by oth
             },
           ],
         },
-        merged: { nodes: [{ ...fields(2, 'me'), mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } }, { ...fields(3, 'me'), mergedAt: ISO(6), mergeUser: { username: 'me', name: 'Me' } }] },
+        merged: {
+          nodes: [
+            { ...fields(2, 'me'), mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } },
+            { ...fields(3, 'me'), mergedAt: ISO(6), mergeUser: { username: 'me', name: 'Me' } },
+          ],
+        },
       },
     },
     NOW
@@ -202,7 +208,7 @@ test('the notes on your MR become approvals, reviews, pushes and comments by oth
   expect(merged?.signals).toEqual([{ kind: 'merged', actor: 'dave', at: AGO(5), note: null, excerpt: '' }])
 })
 
-test('to-dos on MRs become mentions, reviews, failed builds and unmergeable MRs; the others are not the inbox\'s news', () => {
+test("to-dos on MRs become mentions, reviews, failed builds and unmergeable MRs; the others are not the inbox's news", () => {
   const todo = (action: TodoActionEnum, iid: number, body = 'x') => ({
     action,
     createdAt: ISO(iid),
@@ -244,7 +250,11 @@ test('the review queue leaves out what you approved or wrote, and a to-do and th
           nodes: [
             { ...fields(1), approvedBy: { nodes: [{ username: 'me' }] }, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } },
             { ...fields(2, 'me'), approvedBy: { nodes: [] }, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } },
-            { ...fields(3), approvedBy: { nodes: [] }, notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 5, 'alice', 'added 1 commit', 'commit'), note(2, 6, 'carol', 'a comment')] } },
+            {
+              ...fields(3),
+              approvedBy: { nodes: [] },
+              notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 5, 'alice', 'added 1 commit', 'commit'), note(2, 6, 'carol', 'a comment')] },
+            },
           ],
         },
       },
@@ -263,7 +273,15 @@ test('the review queue leaves out what you approved or wrote, and a to-do and th
   const [both] = combine([queue, asked]).mrs
   expect(both?.inQueue).toBe(true)
   expect(both?.signals.filter(one => one.kind === 'review_requested').map(one => one.at)).toEqual([AGO(60)])
-  expect(combine([authoredMrs('gitlab.com', { currentUser: { username: 'me', opened: { nodes: [{ ...fields(9, 'me'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } }] }, merged: { nodes: [] } } }, NOW)]).mrs).toEqual([])
+  expect(
+    combine([
+      authoredMrs(
+        'gitlab.com',
+        { currentUser: { username: 'me', opened: { nodes: [{ ...fields(9, 'me'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } }] }, merged: { nodes: [] } } },
+        NOW
+      ),
+    ]).mrs
+  ).toEqual([])
 })
 
 // ---- the snapshot --------------------------------------------------------------------------------------------------------
@@ -274,8 +292,15 @@ test('the snapshot the leader stores is bounded: fifty MRs of ten events stay un
     Array.from({ length: 80 }, (_, i) =>
       mr(
         i,
-        Array.from({ length: 40 }, (_, k) => signal('comment', k + i, `reviewer.${'y'.repeat(30)}`.slice(0, ACTOR_ROOM), { note: String(1_000_000 + k), excerpt: 'x'.repeat(EXCERPT_ROOM) })),
-        { path: `acme-corp/platform/some-group/another-group/repo-${'x'.repeat(20)}`, title: long('t'), url: `https://git.example.com/${'g/'.repeat(30)}p/-/merge_requests/${i}`, inQueue: i % 2 === 0 }
+        Array.from({ length: 40 }, (_, k) =>
+          signal('comment', k + i, `reviewer.${'y'.repeat(30)}`.slice(0, ACTOR_ROOM), { note: String(1_000_000 + k), excerpt: 'x'.repeat(EXCERPT_ROOM) })
+        ),
+        {
+          path: `acme-corp/platform/some-group/another-group/repo-${'x'.repeat(20)}`,
+          title: long('t'),
+          url: `https://git.example.com/${'g/'.repeat(30)}p/-/merge_requests/${i}`,
+          inQueue: i % 2 === 0,
+        }
       )
     )
   )
@@ -289,7 +314,7 @@ test('the snapshot the leader stores is bounded: fifty MRs of ten events stay un
 
 // ---- /mrs ----------------------------------------------------------------------------------------------------------------
 
-test('references name an MR by its path from the end, and a git remote names the session\'s repo', () => {
+test("references name an MR by its path from the end, and a git remote names the session's repo", () => {
   expect(parseRef('p!7')).toEqual({ path: 'p', iid: 7 })
   expect(parseRef('g/sub/p!7')).toEqual({ path: 'g/sub/p', iid: 7 })
   expect(parseRef('p!x')).toBeNull()
@@ -317,7 +342,9 @@ test('a briefing puts every line other people wrote behind a margin, with contro
             {
               resolvable: true,
               resolved: true,
-              notes: { nodes: [{ ...note(5, 30, 'carol', `${'long '.repeat(500)}`), system: false }, { ...note(6, 20, 'ghost-system', 'added a commit', 'commit'), system: true }, null] },
+              notes: {
+                nodes: [{ ...note(5, 30, 'carol', `${'long '.repeat(500)}`), system: false }, { ...note(6, 20, 'ghost-system', 'added a commit', 'commit'), system: true }, null],
+              },
             },
           ],
         },
@@ -365,7 +392,10 @@ test('"here" narrows every section to the session\'s project, and says why when 
 })
 
 test('an empty section says why when there is a reason: no token, nobody followed', () => {
-  const tokenless = snapshot([], { 'gitlab.com': { user: null, failure: { kind: 'no-token', message: 'no GitLab token for gitlab.com' } }, 'git.corp.com': { user: 'me', failure: null } })
+  const tokenless = snapshot([], {
+    'gitlab.com': { user: null, failure: { kind: 'no-token', message: 'no GitLab token for gitlab.com' } },
+    'git.corp.com': { user: 'me', failure: null },
+  })
   expect(sectionsOf(tokenless, {}, everyone).map(section => section.note)).toEqual(Array(6).fill('no token for gitlab.com'))
   const quiet = sectionsOf(snapshot([]), {}, { ...everyone, followCount: 0 })
   expect(quiet.map(section => section.note)).toEqual([null, null, null, null, null, 'name people or projects in the inboxFollow setting'])
@@ -384,7 +414,11 @@ test('when GitLab kept older notes back, counts newer than the cut are lower bou
 test('the cut is read from the notes GitLab sent: the oldest, when older ones were kept back', () => {
   const some = [note(1, 10, 'bob', 'a'), note(2, 20, 'bob', 'b')]
   const read = (hasPreviousPage: boolean) =>
-    authoredMrs('gitlab.com', { currentUser: { username: 'me', opened: { nodes: [{ ...fields(1, 'me'), notes: { pageInfo: { hasPreviousPage }, nodes: some } }] }, merged: { nodes: [] } } }, NOW).mrs[0]?.cutoff
+    authoredMrs(
+      'gitlab.com',
+      { currentUser: { username: 'me', opened: { nodes: [{ ...fields(1, 'me'), notes: { pageInfo: { hasPreviousPage }, nodes: some } }] }, merged: { nodes: [] } } },
+      NOW
+    ).mrs[0]?.cutoff
   expect(read(true)).toBe(AGO(20))
   expect(read(false)).toBeNull()
 })

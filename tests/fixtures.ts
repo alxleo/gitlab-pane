@@ -1,4 +1,13 @@
-import type { CiJobStatus, MergeabilityCheckIdentifier, MergeabilityCheckStatus, MergeRequestReviewState, MrFieldsFragment, PipelineStatusEnum, ReviewerFieldsFragment } from '../hooks/gitlab.generated.ts'
+import type {
+  CiJobStatus,
+  MergeabilityCheckIdentifier,
+  MergeabilityCheckStatus,
+  MergeRequestReviewState,
+  MrFieldsFragment,
+  PipelineStatusEnum,
+  ReviewerFieldsFragment,
+} from '../hooks/gitlab.generated.ts'
+import type { CheckStatus, MergeStatus } from '../types'
 import type { RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
 
 /** The host the made-up GitLab answers as, unless a test says another. */
@@ -85,6 +94,10 @@ const GITLAB_CHECKS: readonly MergeabilityCheckIdentifier[] = [
 export const checks = (over: Partial<Record<MergeabilityCheckIdentifier, MergeabilityCheckStatus>> = {}): MergeabilityCheck[] =>
   GITLAB_CHECKS.map(identifier => ({ identifier, status: over[identifier] ?? 'SUCCESS' }))
 
+/** GitLab's merge checks as the pane holds them: all pass but the ones named, which take the status given. */
+export const gitlabSays = (over: Partial<Record<string, CheckStatus>> = {}): MergeStatus =>
+  checks().map(check => ({ id: check.identifier, status: over[check.identifier] ?? 'success' }))
+
 /** An MR as the fake GitLab holds it: what MrFields asks for, and the merge checks that only the MergeStatus query gives. */
 export type Mr = MrFieldsFragment & {
   /** The reviewers with their review state, as a current GitLab sends them. */
@@ -155,7 +168,11 @@ export const heavyMr = (iid: number, over: Partial<Mr> = {}): Mr =>
     headPipeline: pipe('FAILED', {
       stages: {
         nodes: Array.from({ length: 9 }, (_, s) =>
-          stage(`stage-${s}-with-a-long-name`, s === 4 ? 'FAILED' : 'SUCCESS', Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS')))
+          stage(
+            `stage-${s}-with-a-long-name`,
+            s === 4 ? 'FAILED' : 'SUCCESS',
+            Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS'))
+          )
         ),
       },
     }),

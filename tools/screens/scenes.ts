@@ -16,11 +16,10 @@ import { fakeGitLab, fakeSession, ran } from '../../tests/gitlab_host'
 import { comment, emptyWorld, fields, inboxAnswers, system } from '../../tests/inbox_fixtures'
 import type { Person, World } from '../../tests/inbox_fixtures'
 
-
 const PANE = {
-  plugin: 'gitlab-ci',
+  plugin: 'gitlab-pane',
   component: 'Pane',
-  requestId: 'gitlab-ci',
+  requestId: 'gitlab-pane',
   props: { title: 'GitLab', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
@@ -48,8 +47,7 @@ const INFRA = project('acme-corp/infra')
 const url = (repo: string, iid: number) => `https://gitlab.com/${repo}/-/merge_requests/${iid}`
 
 /** A job of one of the storefront's pipelines, linking where GitLab would (the fixtures' own jobs link to a placeholder repo). */
-const storefrontJob = (name: string, status: CiJobStatus, over: Parameters<typeof job>[2] = {}) =>
-  job(name, status, { webPath: `/acme-corp/storefront/-/jobs/${name}`, ...over })
+const storefrontJob = (name: string, status: CiJobStatus, over: Parameters<typeof job>[2] = {}) => job(name, status, { webPath: `/acme-corp/storefront/-/jobs/${name}`, ...over })
 
 const withThread = (body: string, author: string, repo: string, iid: number, file: string, line: number) => {
   const base = thread(body, author)
@@ -60,7 +58,15 @@ const withThread = (body: string, author: string, repo: string, iid: number, fil
         note(body, author, {
           url: `${url(repo, iid)}#note_${iid}${line}`,
           createdAt: minutesAgo(35),
-          author: { username: author, name: author.split('.').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' '), bot: false, avatarUrl: null },
+          author: {
+            username: author,
+            name: author
+              .split('.')
+              .map(w => w[0]?.toUpperCase() + w.slice(1))
+              .join(' '),
+            bot: false,
+            avatarUrl: null,
+          },
           position: { filePath: file, newLine: line, oldLine: null },
         }),
       ],
@@ -75,7 +81,8 @@ const mine = (): Mr[] => [
     webUrl: url('acme-corp/storefront', 482),
     project: STOREFRONT,
     sourceBranch: 'feat/saved-cards',
-    description: '## Why\n\nShoppers retype their card on every order. This saves it with the payment provider and offers it at checkout.\n\n## What\n\n- Tokenise the card in the provider vault\n- A saved-cards list on the checkout page',
+    description:
+      '## Why\n\nShoppers retype their card on every order. This saves it with the payment provider and offers it at checkout.\n\n## What\n\n- Tokenise the card in the provider vault\n- A saved-cards list on the checkout page',
     updatedAt: minutesAgo(6),
     approvalsLeft: 1,
     approvalsRequired: 2,
@@ -98,7 +105,18 @@ const mine = (): Mr[] => [
         ],
       },
     }),
-    discussions: { nodes: [withThread('This stores the card number in the cart cookie. Can the token come from the payment provider instead?', BOB, 'acme-corp/storefront', 482, 'src/checkout/cards.ts', 42)] },
+    discussions: {
+      nodes: [
+        withThread(
+          'This stores the card number in the cart cookie. Can the token come from the payment provider instead?',
+          BOB,
+          'acme-corp/storefront',
+          482,
+          'src/checkout/cards.ts',
+          42
+        ),
+      ],
+    },
   }),
   rawMr(479, {
     title: 'fix: [SHOP-209] Cart total rounds half-cents down',
@@ -129,7 +147,9 @@ const mine = (): Mr[] => [
         ],
       },
     }),
-    discussions: { nodes: [withThread('Half-cents should round to even here, per the finance spec. Is `Math.round` what we want?', ALICE, 'acme-corp/storefront', 479, 'src/cart/total.ts', 88)] },
+    discussions: {
+      nodes: [withThread('Half-cents should round to even here, per the finance spec. Is `Math.round` what we want?', ALICE, 'acme-corp/storefront', 479, 'src/cart/total.ts', 88)],
+    },
   }),
   rawMr(133, {
     title: 'refactor: [BILL-88] Extract the invoice renderer',
@@ -197,10 +217,25 @@ const mine = (): Mr[] => [
 
 /** The inbox the screenshot shows: a review asked of the viewer, and what others did on the viewer's own MR. */
 const inboxWorld = (): World => {
-  const billing = (iid: number, title: string, author: Person) => ({ ...fields(iid, author, { title, webUrl: url('acme-corp/billing-api', iid), createdAt: minutesAgo(3_000) }), project: { fullPath: 'acme-corp/billing-api' } })
-  const named = (username: string): Person => ({ username, name: username.split('.').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ') })
-  const infra = { ...fields(61, named(ERIN), { title: 'chore: [OPS-14] Pin the runner image by digest', webUrl: url('acme-corp/infra', 61), createdAt: minutesAgo(27) }), project: { fullPath: 'acme-corp/infra' } }
-  const storefront = { ...fields(488, named(CAROL), { title: 'fix: [SHOP-220] Guard the empty cart at checkout', webUrl: url('acme-corp/storefront', 488), createdAt: minutesAgo(2_000) }), project: { fullPath: 'acme-corp/storefront' } }
+  const billing = (iid: number, title: string, author: Person) => ({
+    ...fields(iid, author, { title, webUrl: url('acme-corp/billing-api', iid), createdAt: minutesAgo(3_000) }),
+    project: { fullPath: 'acme-corp/billing-api' },
+  })
+  const named = (username: string): Person => ({
+    username,
+    name: username
+      .split('.')
+      .map(w => w[0]?.toUpperCase() + w.slice(1))
+      .join(' '),
+  })
+  const infra = {
+    ...fields(61, named(ERIN), { title: 'chore: [OPS-14] Pin the runner image by digest', webUrl: url('acme-corp/infra', 61), createdAt: minutesAgo(27) }),
+    project: { fullPath: 'acme-corp/infra' },
+  }
+  const storefront = {
+    ...fields(488, named(CAROL), { title: 'fix: [SHOP-220] Guard the empty cart at checkout', webUrl: url('acme-corp/storefront', 488), createdAt: minutesAgo(2_000) }),
+    project: { fullPath: 'acme-corp/storefront' },
+  }
   return {
     ...emptyWorld(),
     user: 'alex',
@@ -250,7 +285,7 @@ function engine(on: On, mrs: Mr[]) {
   )
   on('process.run', (_, e) => ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
-  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('ui.toast', () => ({ value: undefined }))
   on('session.repo', () => ({ value: { root: '/r', remote: 'git@gitlab.com:acme-corp/storefront.git', internal: false, name: null } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))

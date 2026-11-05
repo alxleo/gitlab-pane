@@ -4,12 +4,14 @@ import { isSettled } from './status.ts'
 
 import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 
-export const plural = (count: number, one: string, many = `${one}s`) =>
-  `${count} ${count === 1 ? one : many}`
+export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
 /** The first line worth reading, without its Markdown marks. */
 export function excerpt(body: GitLabMarkdown, room = 160): string {
-  const line = flatOf(body).split('\n').find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
+  const line =
+    flatOf(body)
+      .split('\n')
+      .find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
   const plain = line.replace(/^[#>\s]+|[*_`]/g, '').trim()
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
@@ -92,9 +94,7 @@ export function ranOf(jobs: readonly Pick<Job, 'startedAt' | 'finishedAt'>[]): R
 
 /** Seconds any of these stages' jobs ran, overlaps counted once, as GitLab counts a pipeline's duration. */
 export function ranFor(stages: readonly Stage[], now: number): number {
-  const spans = stages
-    .flatMap(stage => [...stage.ran.done, ...stage.ran.running.map((start): [number, number] => [start, now])])
-    .sort((a, b) => a[0] - b[0])
+  const spans = stages.flatMap(stage => [...stage.ran.done, ...stage.ran.running.map((start): [number, number] => [start, now])]).sort((a, b) => a[0] - b[0])
   let total = 0
   let reach = -Infinity
   spans.forEach(([start, end]) => {
@@ -107,8 +107,7 @@ export function ranFor(stages: readonly Stage[], now: number): number {
 const minutes = (seconds: number) => Math.max(1, Math.round(seconds / 60))
 
 /** `10–15m`, the middle half of recent runs. */
-const usualRange = (usual: Usual): ModelLine =>
-  minutes(usual.low) === minutes(usual.high) ? line`${minutes(usual.low)}m` : line`${minutes(usual.low)}–${minutes(usual.high)}m`
+const usualRange = (usual: Usual): ModelLine => (minutes(usual.low) === minutes(usual.high) ? line`${minutes(usual.low)}m` : line`${minutes(usual.low)}–${minutes(usual.high)}m`)
 
 /** How long the pipeline took, or has run so far against how long one usually takes. */
 export function pipelineTime(card: MrCard, now: number, usual?: Usual): ModelLine {

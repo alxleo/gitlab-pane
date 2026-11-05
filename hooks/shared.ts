@@ -43,8 +43,14 @@ export async function publishPins($: EngineInterface, pins: readonly Pinned[]): 
  */
 export async function pinsToRead($: EngineInterface, own: readonly Pinned[]): Promise<Pinned[]> {
   const [me, now, keys] = await Promise.all([$.session.id(), $.clock.now(), $.store.keys()])
-  const found = await Promise.all(keys.filter(key => key.startsWith(PINS_PREFIX) && key !== pinsKey(me)).map(async key => ({ key, record: readPinsRecord(await $.store.get(key)) })))
-  const live = unionPins(own, found.flatMap(({ record }) => (record !== null ? [record] : [])), now)
+  const found = await Promise.all(
+    keys.filter(key => key.startsWith(PINS_PREFIX) && key !== pinsKey(me)).map(async key => ({ key, record: readPinsRecord(await $.store.get(key)) }))
+  )
+  const live = unionPins(
+    own,
+    found.flatMap(({ record }) => (record !== null ? [record] : [])),
+    now
+  )
   const gone = found.filter(({ record }) => record === null || unionPins([], [record], now).length === 0)
   await Promise.all(gone.map(({ key }) => $.store.delete(key)))
   return live

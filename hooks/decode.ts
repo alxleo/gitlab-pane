@@ -5,8 +5,7 @@ import type { RawResponse } from './gitlab-documents.ts'
 
 import type { Usual } from '../types'
 
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** JSON text as `unknown`: `JSON.parse` answers `any`, which would pass for any type it is put into. */
 export const parseJson = (json: string): unknown => JSON.parse(json)

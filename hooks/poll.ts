@@ -130,8 +130,12 @@ async function reasonsFor($: EngineInterface, rows: readonly MrCard[], pins: rea
   const raised = new Set(pins.filter(isRaised).map(pinKey))
   const pipelines = new Set(rows.flatMap(row => (row.pipeline !== undefined ? [String(row.pipeline.id)] : [])))
   const kept = Object.fromEntries(Object.entries(known).filter(([id]) => pipelines.has(id)))
-  const wanted = rows.flatMap(row => (raised.has(row.key) && row.isOpen && row.pipeline !== undefined && row.pipeline.failed.length > 0 && !(String(row.pipeline.id) in kept) ? [{ row, pipeline: row.pipeline }] : []))
-  const fetched = await Promise.all(wanted.map(async ({ row, pipeline }) => [String(pipeline.id), toShared(await readFailures($, row, pipeline.failed.slice(0, TAIL_JOBS)))] as const))
+  const wanted = rows.flatMap(row =>
+    raised.has(row.key) && row.isOpen && row.pipeline !== undefined && row.pipeline.failed.length > 0 && !(String(row.pipeline.id) in kept) ? [{ row, pipeline: row.pipeline }] : []
+  )
+  const fetched = await Promise.all(
+    wanted.map(async ({ row, pipeline }) => [String(pipeline.id), toShared(await readFailures($, row, pipeline.failed.slice(0, TAIL_JOBS)))] as const)
+  )
   return { ...kept, ...Object.fromEntries(fetched) }
 }
 
@@ -174,7 +178,22 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
     const all = together(failures)
     await record($, 'gitlab', all)
     await changeReads($, state => ({ ...state, failures: state.failures + 1 }))
-    const failed = nextSnapshot(previous, { rows: base, outcomes, error: all.message, kept: previous?.kept ?? 0, cursors: previous?.cursors ?? {}, pinned: pins.map(pinKey), extras: [...extras], failures: previous?.failures ?? {}, problems: await readLeaderProblems($) }, me, now)
+    const failed = nextSnapshot(
+      previous,
+      {
+        rows: base,
+        outcomes,
+        error: all.message,
+        kept: previous?.kept ?? 0,
+        cursors: previous?.cursors ?? {},
+        pinned: pins.map(pinKey),
+        extras: [...extras],
+        failures: previous?.failures ?? {},
+        problems: await readLeaderProblems($),
+      },
+      me,
+      now
+    )
     await share($, failed)
     await adopt($, failed, true)
     return
@@ -182,7 +201,10 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
   const fresh = answers.flatMap(answer => answer.rows)
   // A read GitLab partly timed out, or a host that failed, keeps the cards it left out as last seen, so none vanishes or
   // closes for a poll.
-  const behind = new Set([...reads.flatMap(read => ('failure' in read ? [read.host] : [])), ...answers.filter(answer => answer.lost > 0 && answer.scope === 'open').map(answer => answer.host)])
+  const behind = new Set([
+    ...reads.flatMap(read => ('failure' in read ? [read.host] : [])),
+    ...answers.filter(answer => answer.lost > 0 && answer.scope === 'open').map(answer => answer.host),
+  ])
   const kept = behind.size > 0 ? base.filter(row => behind.has(row.host) && !fresh.some(each => each.key === row.key)) : []
   const lostInDelta = answers.filter(answer => answer.scope === 'since').reduce((sum, answer) => sum + answer.lost, 0)
   if (failures.length + notes.length > 0) {
@@ -209,8 +231,23 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
   if (snapshot.version !== (await readReads($)).adopted) {
     await adopt($, snapshot, true)
   }
-  quietly($, readUsualTimes($, snapshot.rows.filter(row => row.isOpen), now), 'usual')
-  quietly($, readAvatars($, snapshot.rows.filter(row => row.isOpen)), 'avatars')
+  quietly(
+    $,
+    readUsualTimes(
+      $,
+      snapshot.rows.filter(row => row.isOpen),
+      now
+    ),
+    'usual'
+  )
+  quietly(
+    $,
+    readAvatars(
+      $,
+      snapshot.rows.filter(row => row.isOpen)
+    ),
+    'avatars'
+  )
 }
 
 /** The leader's turn: reads when a read is due (the pace, a new pin, a request), else draws what is in the store. */

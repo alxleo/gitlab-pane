@@ -86,12 +86,10 @@ export type RawStage = NodeOf<RawPipeline['stages']>
 export type RawJob = NodeOf<RawStage['jobs']>
 
 /** GitLab gives an uploaded avatar as a path on its own host and a Gravatar one as a full URL. */
-const absolute = (host: string, url: string | null | undefined): string | null =>
-  isFilled(url) ? (url.startsWith('/') ? `${siteOf(host)}${url}` : url) : null
+const absolute = (host: string, url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${siteOf(host)}${url}` : url) : null)
 
 /** A reviewer's review state; a host without the field gives none, which reads as not yet reviewed. */
-const reviewOf = (reviewer: RawReviewer): ReviewState =>
-  reviewStateOf('mergeRequestInteraction' in reviewer ? reviewer.mergeRequestInteraction?.reviewState : undefined)
+const reviewOf = (reviewer: RawReviewer): ReviewState => reviewStateOf('mergeRequestInteraction' in reviewer ? reviewer.mergeRequestInteraction?.reviewState : undefined)
 
 /** Markdown as GitLab stores it, HTML and all, its links made absolute; markdown.ts makes it drawable. */
 export function cleanBody(body: string, host: string, path: string): GitLabMarkdown {
@@ -152,10 +150,7 @@ const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=iden
 /** Who to talk to, most pressing first: asked for changes, has open threads, approved, then the rest; bots after people. */
 function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads: { isOpen: boolean; notes: RawNote[] }[]): Person[] {
   const author = raw.author?.username
-  const byName = new Map<
-    string,
-    { name: string; isBot: boolean; avatarUrl: string | null; review: ReviewState; isApprover: boolean; openThreads: number; notes: Note[] }
-  >()
+  const byName = new Map<string, { name: string; isBot: boolean; avatarUrl: string | null; review: ReviewState; isApprover: boolean; openThreads: number; notes: Note[] }>()
   const meet = (user: RawUser | null) => {
     if (user === null || user.username === author) {
       return undefined
@@ -219,8 +214,7 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
     }
   })
   const shared = new Set(people.map(person => person.initials).filter((value, i, all) => all.indexOf(value) !== i))
-  const order = (person: Person) =>
-    STATE_RANK[person.state === 'requested_changes' || person.openThreads === 0 ? person.state : 'open']
+  const order = (person: Person) => STATE_RANK[person.state === 'requested_changes' || person.openThreads === 0 ? person.state : 'open']
   // Bots leave a summary on nearly every MR; only one holding the merge, by an open thread or asking for changes, is shown.
   return people
     .filter(person => !person.isBot || person.state === 'requested_changes' || person.openThreads > 0)
@@ -284,7 +278,9 @@ export function toCard(host: string, raw: RawMr): MrCard {
     approvalsRequired: raw.approvalsRequired ?? 0,
     // Filled from `mergeStatusQuery`, which reads it truer than this MR's own fields do.
     mergeStatus: null,
-    approvers: present(raw.approvedBy?.nodes).filter(user => !user.bot).map(user => user.username),
+    approvers: present(raw.approvedBy?.nodes)
+      .filter(user => !user.bot)
+      .map(user => user.username),
     reviewers,
     people: toPeople(raw, host, path, mrUrl, threads),
     ...(isSome(pipeline)

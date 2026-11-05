@@ -16,8 +16,7 @@ export type AuthoredScope = { kind: 'open' } | { kind: 'since'; after: string }
  * MRs of every state updated after it, so one merged or closed since comes back as such instead of vanishing.
  */
 export const authoredQuery = (features: HostFeatures, scope: AuthoredScope): Request<AuthoredQuery | AuthoredPlainQuery> => {
-  const variables: Record<string, string> = scope.kind === 'open' ? ({ state: 'opened' } satisfies AuthoredQueryVariables) : ({ after: scope.after } satisfies AuthoredQueryVariables)
-  return features.hasReviewStates
-    ? { operation: 'Authored', query: DOCUMENTS.Authored, variables }
-    : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables }
+  const variables: Record<string, string> =
+    scope.kind === 'open' ? ({ state: 'opened' } satisfies AuthoredQueryVariables) : ({ after: scope.after } satisfies AuthoredQueryVariables)
+  return features.hasReviewStates ? { operation: 'Authored', query: DOCUMENTS.Authored, variables } : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables }
 }

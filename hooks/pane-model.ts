@@ -148,8 +148,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   const [firstTrailing] = facts.trailing
   const names = facts.people.map(person => (hasSvg ? person.call : person.initials))
   // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
-  const callOf = (person: PersonFacts, i: number): string =>
-    hasSvg && names.filter(name => name === names[i]).length > 1 ? person.initials : (names[i] ?? person.initials)
+  const callOf = (person: PersonFacts, i: number): string => (hasSvg && names.filter(name => name === names[i]).length > 1 ? person.initials : (names[i] ?? person.initials))
   const time = pipeline !== undefined ? pipelineTime(card, now, input.usual[card.project]) : ''
   return {
     key: card.key,
@@ -304,10 +303,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       isMoreOpen: showMore,
     },
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
-    leftOut:
-      built.length - drawn.size > 0
-        ? `${plural(built.length - drawn.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.`
-        : null,
+    leftOut: built.length - drawn.size > 0 ? `${plural(built.length - drawn.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
     footer: footerOf(input.poll, input.isWaking, now),
   }
 }

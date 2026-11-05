@@ -1,84 +1,86 @@
 # Contributing
 
-## Set up a clone
+Node 22.18 or newer runs everything, TypeScript tools included (types stripped). No Python, no shell script, no other toolchain.
 
-Everything here runs on Node 22.18 or newer (it runs the TypeScript tools as they are, with the types stripped); there is no Python, no shell script and no other toolchain.
+## Set up
 
 ```bash
 npm ci
-npm run setup
-claude --plugin-dir .
+npm run setup                # git hooks, and the engine's declarations into .claude-plugin/types/
+claude --plugin-dir .        # run the mod from this clone
+npm run check && npm test    # everything a commit and a push must pass
 ```
 
-- **Commit messages:** [commitlint](https://commitlint.js.org) with the conventional config checks each one (`feat: …`, `fix(jira): …`, `docs: …`), because releases are worked out from them (the type and subject are checked; body line lengths are not, which `commitlint` in `package.json` switches off). CI runs the same check on a pull request's title; merge with a squash, so the title becomes the commit on main.
-- **Types, the core:** `tsconfig.core.json` strictly checks the files that run on plain data, the ones listed in `include`: most of `hooks/` (everything that does not import `claude-code`) and `tests/fixtures.ts` and `tests/gitlab_fake.ts`, so the made-up GitLab answers must fit the generated types, over the types in `types/index.d.ts`. That list is the one source of what the core is; the linter reads it too. That config has no engine types, so a file there that imports `claude-code` does not compile: code that talks to the engine stays out of the core, and new pure code goes in it.
-- **Types, everything else:** every other file (the panes, `poll.ts`, the tests) imports `claude-code`, so `tsconfig.json` checks all of `hooks/`, `types/`, `tests/` and `tools/screens/` against the engine's declarations. Those are not committed: Claude Code carries them in its bundled plugin-authoring skill and unpacks them on first use, so `node tools/engine_types.ts` asks the `claude` on your PATH to do that, with no sign-in and no network and without spending a model call, and lays the file out where the engine itself writes it, `.claude-plugin/types/claude-code/index.d.ts`, beside the `tsconfig.json` the declarations' header documents. `.claude-plugin/types/` is git-ignored, so the types are always those of the Claude Code you run, and in CI those of the version pinned in `check.yml`. `tools/store-probe` is a plugin of its own and has its own config; `tsconfig.tools.json` covers `tools/*.ts`, which Node runs with its types stripped. The compiler is TypeScript 7 (`typescript-7` in `package.json`); the linter loads the 6.0 `typescript` because typescript-eslint cannot load a newer one.
-- **Types, GitLab's answers:** `hooks/gitlab.generated.ts` holds the TypeScript type of every document the pane sends, made by [graphql-codegen](https://the-guild.dev/graphql/codegen) (versions in `package-lock.json`) from `tools/gitlab_schema.snapshot.json` and the `/* GraphQL */` documents in `hooks/gitlab-documents.ts`. The snapshot is the part of gitlab.com's schema those documents use, nullability included, so a commit needs no network. The documents come in variants for GitLab versions that lack a field (`AuthoredPlain` and `PinnedPlain` leave out `reviewState`), and a host that answers a document with `undefinedField` (read from the error's `extensions`, never its message) is remembered to lack that field and sent the variant without it; all are generated and checked like the rest. After changing a document, run `npm run schema -- types` and commit the file; a field the schema lets be null is `| null` in it, and the code has to handle that to compile. To take the schema as it is now, run `npm run schema -- snapshot`, then `types`.
-- **Lint:** it refuses any `x as T` (bar the GraphQL boundary and the three private brands), `any`, `!`, module-level state, files over 400 lines in `hooks/`, and every eslint-disable comment: a rule changes in the config, never beside the code. On every file it runs the type-aware rules (exhaustive switches, floating promises, unnecessary conditions, strict conditions, unsafe `any` flows), the core against `tsconfig.core.json` and the rest against its own config; in the core it also refuses imports of the engine or of non-core files, and relative imports without `.ts`. The tools in `tools/*.ts` are held to the same rules.
-- **The plugin:** `claude plugin validate --strict .` in `npm run check`, and `npm test` (Vitest on the core, then `claude plugin test .`, then the scenes), which is also the pre-push hook.
-- **Which runner:** pure logic is tested in `tests/core/*.spec.ts` under Vitest and fast-check (plain Node, a fixed seed, printed on failure); `tests/*.test.ts` under `claude plugin test` is only for wiring, drawing, wakes end to end, the budgets and the scenes.
+## Scripts
 
-## The checks
-
-`npm run check` is everything a commit has to pass, and CI runs the same. The hooks `npm run setup` installs run the parts that fit: `npm run check:fast` and the staged-change secret scan before a commit, the conventional-commit check on its message, and `npm test` before a push. Each part is a script of its own:
-
-| Script | What it does |
+| Script | Checks |
 | --- | --- |
-| `npm run files` | JSON and YAML parse; no merge-conflict markers, private keys or files over 500 kB; every text file ends with one newline and has no trailing whitespace (`tools/check_files.ts`). |
-| `npm run knip` | knip (`knip.jsonc`) fails on unused files, exports, types and dependencies; the entry points are `hooks/register.tsx`, `tools/*.ts`, the scenes, the store probe and the tests, each with its reason in the config. Delete what it names; an export only a test uses is not worth keeping. |
-| `npm run lint` | ESLint with typescript-eslint over `hooks/`, `tests/` and `tools/`, set up in `eslint.config.cjs` with two rules of its own in `tools/eslint_rules.cjs`. See below. |
-| `npm run types` | The engine's declarations (`node tools/engine_types.ts`), then TypeScript 7 over the four configs: `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tsconfig.tools.json`. |
-| `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the schema snapshot and the queries. |
-| `npm run release-tree -- check` | The release tree builds from `release/files` and every module it loads resolves inside it. |
-| `npm run docs -- check` | README.md's settings table is plugin.json's `userConfig`, and `tests/docs.generated.ts` holds what the README's and DESIGN.md's tables say, which `tests/docs.test.ts` holds to the code. After changing either table, run `npm run docs -- write` (`tools/docs.ts`). |
-| `npm run validate` | `claude plugin validate --strict` on the plugin and on the dev-only store probe. |
-| `npm run scan` | gitleaks (every commit), actionlint and zizmor, each only if it is installed here; a missing one is named as skipped. |
-| `npm test` | `vitest run` (the core under plain Node), then `claude plugin test .` (the engine), then the scenes. |
-| `npm run check` | All of the above except `npm test`. |
+| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the `claude` on your PATH (`tools/engine_types.ts`: no sign-in, no network, git-ignored). |
+| `npm run files` | JSON and YAML parse; no conflict markers, private keys or files over 500 kB; one final newline, no trailing whitespace. |
+| `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), ESLint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
+| `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |
+| `npm run knip` | No unused file, export, type or dependency; each entry point in `knip.jsonc` has its reason. |
+| `npm run lint` | ESLint over `hooks/`, `tests/`, `tools/`: no `x as T`, `any`, `!`, module state or disable comments; `hooks/` files within 400 lines; type-aware rules; the core imports core files only, by `.ts` path. |
+| `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tsconfig.tools.json`. The linter loads 6.0, which typescript-eslint can load. |
+| `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the snapshot and the documents. |
+| `npm run release-tree -- check` | The tree built from `release/files` loads only what it holds. |
+| `npm run docs -- check` | README's settings table is `userConfig`; README's and DESIGN's tables are `tests/docs.generated.ts` (`docs -- write` remakes it, `tests/docs.test.ts` holds it to the code); the scripts table here is `package.json`'s scripts. |
+| `npm run validate` | `claude plugin validate --strict` on the plugin and the store probe. |
+| `npm run scan` | gitleaks, actionlint, zizmor: each only if installed, and a skipped one is named. |
+| `npm run check:fast` | `files`, `format:check`, `knip`, `lint`, `types`, `schema -- types --check`, `release-tree -- check`, `docs -- check`, `validate`. |
+| `npm run check` | `check:fast`, then `scan`. |
+| `npm test` | Vitest on the core (plain Node), `claude plugin test .` (the engine), then the scenes. |
+| `npm run schema -- <check\|snapshot\|types>` | `check`: every query against gitlab.com's live schema, and what each costs; `snapshot`: refresh the snapshot; `types`: regenerate the types. |
+| `npm run screens -- <render\|setup\|scenes>` | `render` photographs the pane in Chromium for `docs/screens`; `setup` fetches Chromium; `scenes` runs the scenes. |
+| `npm run rig -- flow` | Drives the pane through a headless engine. |
+| `npm run commit-msg` | commitlint on a message file (the commit-msg hook). |
+| `npm run pr-title` | commitlint on stdin (CI, for a pull request's title). |
 
-Beside them, `npm run schema -- <check\|snapshot\|types>` is `tools/gitlab_schema.ts`, `npm run screens -- <render\|setup>` is `tools/pane_screens.ts`, and `npm run rig -- flow` is `tools/pane_rig.ts`, described below.
+## Where each check runs
 
-- **Secrets and workflows:** gitleaks, actionlint and zizmor are not Node tools, so npm cannot install them. CI runs each with its official action in the `scan` job of `check.yml`, pinned to a commit (gitleaks reads a pull request's commits or a push's, and the weekly canary reads the whole history). Locally `npm run scan` runs whichever you have installed (`brew install gitleaks actionlint zizmor`) and says plainly which it skipped; zizmor runs offline unless `GITHUB_TOKEN` is set.
-- **Addresses:** CI fails any commit whose author is not a GitHub noreply address, so nobody's own email is published here. The committer must be one too, or `noreply@anthropic.com` for a commit Claude made and signed. Set yours from https://github.com/settings/emails, and turn on "Keep my email addresses private" there so merges you make on GitHub use it too.
-- **Commit messages:** [commitlint](https://commitlint.js.org) with the conventional config checks each one (`feat: …`, `fix(jira): …`, `docs: …`), because releases are worked out from them. CI runs the same check on a pull request's title; merge with a squash, so the title becomes the commit on main.
-- **Types, the core:** `tsconfig.core.json` strictly checks the files that run on plain data, exactly the files named in `include`: the pure files of `hooks/`, each listed by name (a file is not core until it is listed, whether or not it imports `claude-code`), `tests/fixtures.ts` and `tests/gitlab_fake.ts`, so the made-up GitLab answers must fit the generated types, over the types in `types/index.d.ts`. That list is the one source of what the core is; the linter reads it too. That config has no engine types, so a file there that imports `claude-code` does not compile: code that talks to the engine stays out of the core, and new pure code goes in it.
-- **Types, everything else:** every other file (the panes, `poll.ts`, the tests) imports `claude-code`, so `tsconfig.json` checks all of `hooks/`, `types/`, `tests/` and `tools/screens/` against the engine's declarations. Those are not committed: Claude Code carries them in its bundled plugin-authoring skill and unpacks them on first use, so `node tools/engine_types.ts` asks the `claude` on your PATH to do that, with no sign-in and no network and without spending a model call, and lays the file out where the engine itself writes it, `.claude-plugin/types/claude-code/index.d.ts`, beside the `tsconfig.json` the declarations' header documents. `.claude-plugin/types/` is git-ignored, so the types are always those of the Claude Code you run, and in CI those of the version pinned in `check.yml`. `tools/store-probe` is a plugin of its own and has its own config; `tsconfig.tools.json` covers `tools/*.ts`, which Node runs with its types stripped. The compiler is TypeScript 7 (`typescript-7` in `package.json`); the linter loads the 6.0 `typescript` because typescript-eslint cannot load a newer one.
-- **Types, GitLab's answers:** `hooks/gitlab.generated.ts` holds the TypeScript type of every document the pane sends, made by [graphql-codegen](https://the-guild.dev/graphql/codegen) (versions in `package-lock.json`) from `tools/gitlab_schema.snapshot.json` and the `/* GraphQL */` documents in `hooks/gitlab-documents.ts`. The snapshot is the part of gitlab.com's schema those documents use, nullability included, so a commit needs no network. The documents come in variants for GitLab versions that lack a field (`AuthoredPlain` and `PinnedPlain` leave out `reviewState`), and a host that answers a document with `undefinedField` (read from the error's `extensions`, never its message) is remembered to lack that field and sent the variant without it; all are generated and checked like the rest. After changing a document, run `npm run schema -- types` and commit the file; a field the schema lets be null is `| null` in it, and the code has to handle that to compile. To take the schema as it is now, run `npm run schema -- snapshot`, then `types`.
-- **Lint:** it refuses any `x as T` (bar the GraphQL boundary and the three private brands), `any`, `!`, module-level state, files over 400 lines in `hooks/`, and every eslint-disable comment: a rule changes in the config, never beside the code. On every file it runs the type-aware rules (exhaustive switches, floating promises, unnecessary conditions, strict conditions, unsafe `any` flows), the core against `tsconfig.core.json` and the rest against its own config; in the core it also refuses imports of the engine or of non-core files, and relative imports without `.ts`. The tools in `tools/*.ts` are held to the same rules.
-- **The plugin:** `claude plugin validate --strict .` in `npm run check`, and `npm test` (Vitest on the core, then `claude plugin test .`, then the scenes), which is also the pre-push hook.
-- **Which runner:** pure logic is tested in `tests/core/*.spec.ts` under Vitest and fast-check (plain Node, a fixed seed, printed on failure); `tests/*.test.ts` under `claude plugin test` is only for wiring, drawing, wakes end to end, the budgets and the scenes.
+| Check | On edit | Commit | Push | CI | Weekly canary |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| Core `tsc`, ESLint and `biome format` on the file edited (`tools/check_core.ts`) | x | | | | |
+| `check:fast` | | x | | x | |
+| `scan` (gitleaks on the staged change only) | | x | | x | |
+| Commit message and pull request title (commitlint) | | x | | x | |
+| Author and committer are noreply addresses | | | | x | |
+| `npm test` | | | x | x | x, `claude plugin test .` on the newest Claude Code |
+| Release tree builds and validates | | | | x | x, and installs |
+| `screens -- render --verify --check` | | | | x, when the drawing changes | |
+| `schema -- check` against gitlab.com | | | | x, when queries change | x |
+| Plugin installs from GitHub; release branch holds the latest tag | | | | | x |
+| gitleaks over the whole history | | | | | x |
 
-When Claude Code edits a core file in this repository, `.claude/settings.json` runs `tools/check_core.ts`, which runs the core's `tsc` and `eslint` from this clone's own `node_modules` (the versions `package.json` pins; run `npm ci` if it says they differ) and shows the model what they find. It is silent for any other file.
+Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. Pin one Claude Code version in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`, and change them together. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
 
-## CI
+## GitLab's types
 
-`.github/workflows/check.yml` runs `npm run check:fast`, the tests, the pull request's title and the release tree as one job, and the scanners as another, for pull requests and for main. The Claude Code version CI uses is pinned there, in `screens.yml` and in `tools/pane_screens.ts`; change all three together; the engine's declarations follow the pinned version by themselves. Dependabot proposes newer pinned actions and npm packages monthly.
+Edit the `/* GraphQL */` documents in `hooks/gitlab-documents.ts`, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
+`tools/gitlab_schema.snapshot.json` is the slice of gitlab.com's schema the documents use; `npm run schema -- snapshot` then `types` takes the schema as it is now.
+A document's cost is stated in `COMPLEXITY`, which `schema -- check` verifies. A host that answers `undefinedField` is sent the variant without that field.
 
-`.github/workflows/canary.yml` runs every Monday, for what breaks the pane while this repository stands still. It validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an empty setup, and checks every query the pane sends against gitlab.com's live schema, and that the snapshot and the generated types still match it: when GitLab makes a field nullable or adds an enum value, the canary fails until `snapshot` and `types` are run and the code handles it. A failure opens an issue, and the next green run closes it. When the newest Claude Code passes, it is safe to raise the pinned version. A pull request that changes the queries in `hooks/gitlab-documents.ts`, the snapshot or the generated types gets the schema check too; to run it yourself, with Node 22.18 or newer:
+## Commits
 
-```bash
-npm run schema -- check
-```
-
-The check also asks gitlab.com what each query costs. GitLab answers `queryComplexity { score limit }` for a document before it runs, and answers the schema and the score without a sign-in, so the canary holds no token and runs the same on a fork. (Its limit is 200 without a sign-in and 250 with one, so the check reads the stricter.) `COMPLEXITY` in `hooks/gitlab-documents.ts` states each document's score: the check fails a document that scores otherwise, so a change to a query restates its cost, and one over `COMPLEXITY_SHARE` of the limit. It is offline with `--schema`, which says it measured nothing.
-
-## Screenshots
-
-The README's pictures come from `npm run screens -- render`, which runs the mod's drawing under the pinned Claude Code and photographs it in Chromium with Playwright. Run `npm run screens -- setup` first to fetch Chromium; on Linux, `setup --with-deps` also installs the libraries it needs. `.github/workflows/screens.yml` runs `render --verify --check` on every pull request and push to main that touches the drawing or the screenshot tooling, with `contents: read` only: it fails unless the committed pictures are exactly what the pane draws, and uploads the fresh render as an artifact to look at. Nothing commits for you, so after changing the drawing run `npm run screens -- render` and commit `docs/screens`. `npm run rig -- flow` drives the pane through a real headless engine to check behaviour. The look the renderer gives the desktop app's elements lives in `tools/screens/pane.css`; what each colour and mark means is in [DESIGN.md](DESIGN.md).
+- Conventional messages (`feat:`, `fix(jira):`, `docs:` ...), because releases are worked out from them. Merge a pull request with a squash: its title becomes the commit on main.
+- Author and committer must be GitHub noreply addresses (from https://github.com/settings/emails; turn on "Keep my email addresses private"), or `noreply@anthropic.com` as committer for a commit Claude signed.
 
 ## Releasing
 
-After each green check on main, the release job in `check.yml` keeps a release pull request open from the commit messages: the next version and its changelog. Merging it is the release. It raises `version` in `.claude-plugin/plugin.json`, which is what makes Claude Code offer the update, and the release job tags it (`v0.3.0`) and publishes it on GitHub. A `feat:` raises the minor number and a `fix:` the patch; other kinds wait for one of those. Checks run on the release pull request only once it is merged, as GitHub starts no workflow for a pull request its own token opened.
+```mermaid
+flowchart LR
+  main["green check on main"] --> pr["release-please keeps a release PR open:<br/>next version, changelog"]
+  pr -->|merge = release| tag["version raised in plugin.json,<br/>tag vX.Y.Z, GitHub release"]
+  tag --> publish["publish job builds the tree<br/>from the tag"]
+  publish --> branch["release branch + tag plugin-vX.Y.Z<br/>(one commit a version, never forced)"]
+```
 
-What users install is not this repository but the plugin's files alone. `release/files` lists exactly what ships: `.claude-plugin/plugin.json`, `hooks/` (the modules `hooks/hooks.json` loads, not the generated types, which only type-checking reads), `types/index.d.ts`, `LICENSE` and `README.md`. `tools/release_tree.ts` copies those into a tree and fails if a module the plugin loads imports a path outside it, a listed file is not loaded, a module calls `import(`, which the engine refuses, a development file (`tools/`, `tests/`, `package.json`) is listed, or the README links to a relative path. When you add a file the plugin loads at run time, add it to `release/files`; `npm run release-tree -- check` and CI say so if you forget.
+- `feat:` raises the minor number, `fix:` the patch; `!` or a `BREAKING CHANGE:` footer raises the minor while the version is 0.x. Other kinds wait for one of those.
+- Checks run on the release PR only after it is merged: GitHub starts no workflow for a PR its own token opened.
+- Users get the files in `release/files` and nothing else (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`). A file the plugin loads at run time goes in that list; `release-tree -- check` fails otherwise.
+- A team pins `"ref": "plugin-vX.Y.Z"` in its marketplace source (the tree has its own `release/marketplace.json`).
+- The default install reads `.claude-plugin/marketplace.json` on main (`"source": "./"`). Once the first `plugin-v*` tag exists, switch it to `{ "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" }` in its own commit, and change the README's "That follows main" to "That follows releases".
 
-- **In a pull request,** `check.yml` builds the tree, runs `claude plugin validate --strict` on it and on both marketplace files, and runs that closure check, so a broken tree fails before a release.
-- **At a release,** the `publish` job (the only one that can write to the repository, besides release-please's own tag) builds the tree from the release's tag and commits it to the `release` branch with a tag `plugin-v0.3.0`. Each version is one commit on top of the last and the branch is never force-pushed, so every released tree stays reachable. Re-running a failed `publish` job publishes the same release again.
-- **Pinning:** the tree holds a marketplace file of its own (`release/marketplace.json`), so a team pins a version by using the repository with `"ref": "plugin-v0.3.0"` as its marketplace source (see the README); `claude plugin update` sees a new `version` there as usual. This works from the first publish on.
-- **The default install** reads `.claude-plugin/marketplace.json` on main, whose plugin source is `"./"`: the whole repository. Switching it to the release branch is one line, made in its own commit once the first `plugin-v*` tag exists (`git ls-remote --tags origin 'plugin-v*'`; the canary's release-branch step also runs from then on):
+## Screenshots
 
-  ```json
-  "plugins": [{ "name": "gitlab-ci", "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" } }]
-  ```
-
-  It waits because until the `release` branch exists that source cannot be installed, and installs from main would fail. After it, the README's "That follows main" becomes "That follows releases", and the canary's install step asserts that no development file arrives from the default install too (`claude plugin install` from the marketplace itself, not only from the built tree).
+`docs/screens` comes from `npm run screens -- render` (the mod's own drawing under the pinned Claude Code, photographed in Chromium; run `screens -- setup` first, `setup --with-deps` on Linux). Run it after changing the drawing and commit the pictures; `screens.yml` fails on a stale one. The look of the desktop's elements is `tools/screens/pane.css`; what each colour and mark means is [DESIGN.md](DESIGN.md).

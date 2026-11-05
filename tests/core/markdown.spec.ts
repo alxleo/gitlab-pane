@@ -81,7 +81,10 @@ const docArb: fc.Arbitrary<Doc> = fc.letrec<{ doc: Doc; part: Doc[number] }>(tie
   part: fc.oneof(
     { weight: 3, arbitrary: fc.record({ kind: fc.constant('prose' as const), words: fc.array(wordArb, { minLength: 1, maxLength: 6 }) }) },
     { weight: 1, arbitrary: fc.record({ kind: fc.constant('code' as const), code: fc.constantFrom('<script>run()</script>', '<b>bold</b>', 'a <details> b', '</details>') }) },
-    { weight: 2, arbitrary: fc.record({ kind: fc.constant('fold' as const), summary: fc.array(wordArb, { minLength: 1, maxLength: 3 }), isOpen: fc.boolean(), inside: tie('doc') }) }
+    {
+      weight: 2,
+      arbitrary: fc.record({ kind: fc.constant('fold' as const), summary: fc.array(wordArb, { minLength: 1, maxLength: 3 }), isOpen: fc.boolean(), inside: tie('doc') }),
+    }
   ),
 })).doc
 
@@ -97,17 +100,20 @@ const sourceOf = (doc: Doc): string =>
     .join('\n\n')
 
 /** Every word, in reading order: a fold's summary, then what is inside it. */
-const wordsOf = (doc: Doc): string[] =>
-  doc.flatMap(part => (part.kind === 'prose' ? part.words : part.kind === 'code' ? [part.code] : [...part.summary, ...wordsOf(part.inside)]))
+const wordsOf = (doc: Doc): string[] => doc.flatMap(part => (part.kind === 'prose' ? part.words : part.kind === 'code' ? [part.code] : [...part.summary, ...wordsOf(part.inside)]))
 
-const partWords = (parts: Part[]): string[] =>
-  parts.flatMap(part => ('text' in part ? [part.text.replace(/`/g, '')] : [part.summary, ...partWords(part.parts)]))
+const partWords = (parts: Part[]): string[] => parts.flatMap(part => ('text' in part ? [part.text.replace(/`/g, '')] : [part.summary, ...partWords(part.parts)]))
 
 test('parsing the folds of a document loses no text, and keeps each fold, its summary and whether it is open', () => {
   fc.assert(
     fc.property(docArb, doc => {
       const parts = partsOf(cleanBody(sourceOf(doc), HOST, 'g/p'))
-      const joined = (list: string[]) => list.join(' ').split(/\s+/).filter(word => word !== '').join(' ')
+      const joined = (list: string[]) =>
+        list
+          .join(' ')
+          .split(/\s+/)
+          .filter(word => word !== '')
+          .join(' ')
       expect(joined(partWords(parts))).toBe(joined(wordsOf(doc)))
       const folds = (list: Part[]): { summary: string; isOpen: boolean }[] =>
         list.flatMap(part => ('text' in part ? [] : [{ summary: part.summary, isOpen: part.isOpen }, ...folds(part.parts)]))

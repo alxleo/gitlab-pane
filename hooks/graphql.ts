@@ -95,11 +95,7 @@ export async function ask<Data>($: EngineInterface, host: string, request: Reque
  */
 export function askVariant<Data>($: EngineInterface, host: string, build: (features: HostFeatures) => Request<Data>): Promise<RawResponse<Data>>
 export function askVariant<Data>($: EngineInterface, host: string, build: (features: HostFeatures) => Request<Data> | null): Promise<RawResponse<Data> | null>
-export async function askVariant<Data>(
-  $: EngineInterface,
-  host: string,
-  build: (features: HostFeatures) => Request<Data> | null
-): Promise<RawResponse<Data> | null> {
+export async function askVariant<Data>($: EngineInterface, host: string, build: (features: HostFeatures) => Request<Data> | null): Promise<RawResponse<Data> | null> {
   const first = build(featuresOf(host))
   if (first === null) {
     return null
