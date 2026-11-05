@@ -71,7 +71,7 @@ echo '{"jiraUrl":"https://example.atlassian.net"}' | claude plugin configure git
 
 ## What it runs on your machine
 
-The pane changes nothing on GitLab or Jira and needs no token of its own: `glab`, `acli` and `mr-inbox` use the sign-ins you already have. It runs them through a zsh login shell (`zsh -lc`), so they are found wherever your own shell finds them and your shell's start-up files run each time. It needs macOS, or another system with zsh at `/bin/zsh`.
+The pane changes nothing on GitLab or Jira and needs no token of its own: `glab`, `acli` and `mr-inbox` use the sign-ins you already have. It runs them through a login shell, so they are found wherever your own shell finds them and your shell's start-up files run each time: your `$SHELL` when it is bash, zsh or fish, else `/bin/zsh` where there is one, else `/bin/sh`.
 
 | Runs | How often | For | Writes |
 |---|---|---|---|
