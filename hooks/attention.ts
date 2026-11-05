@@ -73,7 +73,7 @@ const standing = (checks: MergeStatus | null): MergeCheck[] =>
  * What each check asks of you when it fails, as a tone: red is yours to fix, amber is a smaller fix, grey is waiting on
  * others or on time. Typed over GitLab's identifiers, so a check GitLab adds does not compile until it has a tone.
  */
-const CHECK_TONE: Record<MergeabilityCheckIdentifier, Tone> = {
+export const CHECK_TONE: Record<MergeabilityCheckIdentifier, Tone> = {
   CI_MUST_PASS: 'error',
   COMMITS_STATUS: 'error',
   CONFLICT: 'error',

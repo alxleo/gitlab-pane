@@ -12,7 +12,7 @@ import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types
 
 /** How each kind of activity reads, in the order a card counts them: what blocks or clears a merge first. */
 /** An event with no one to name (a pipeline failing, a merge that cannot happen) reads without an actor. */
-const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string; isImpersonal?: boolean }> = {
+export const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string; isImpersonal?: boolean }> = {
   changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes' },
   unapproved: { glyph: '↺', tone: 'warning', word: 'withdrew approval' },
   approved: { glyph: '✓', tone: 'success', word: 'approved' },

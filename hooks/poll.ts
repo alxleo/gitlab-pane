@@ -45,8 +45,14 @@ import { failureOf, runJson } from './tools'
 
 import type { MergeStatus, MrCard, Pinned, Usual } from '../types'
 
-const TICKETS_EVERY_MS = 15 * 60_000
-const USUAL_EVERY_MS = 30 * 60_000
+export const TICKETS_EVERY_MS = 15 * 60_000
+export const USUAL_EVERY_MS = 30 * 60_000
+/** How often GitLab is read while a pinned pipeline runs, and otherwise. */
+export const MOVING_EVERY_MS = 60_000
+export const SETTLED_EVERY_MS = 180_000
+/** After reads in which every host failed: this, doubled for each, up to the most. */
+export const BACKOFF_FROM_MS = 60_000
+export const BACKOFF_MOST_MS = 600_000
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -279,7 +285,7 @@ export async function tick($: EngineInterface): Promise<void> {
   const [poll, rows, pinned, now] = await Promise.all([readPoll($), readRows($), readPins($), $.clock.now()])
   const pinnedKeys = new Set(pinned.map(pinKey))
   const isMoving = rows.some(row => pinnedKeys.has(row.key) && row.pipeline !== undefined && !isSettled(row.pipeline.status))
-  const every = poll.failures > 0 ? Math.min(600_000, 60_000 * 2 ** poll.failures) : isMoving ? 60_000 : 180_000
+  const every = poll.failures > 0 ? Math.min(BACKOFF_MOST_MS, BACKOFF_FROM_MS * 2 ** poll.failures) : isMoving ? MOVING_EVERY_MS : SETTLED_EVERY_MS
   if (poll.attemptedAt === null || now - poll.attemptedAt >= every) {
     await refresh($)
   }

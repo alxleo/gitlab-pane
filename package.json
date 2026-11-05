@@ -9,7 +9,7 @@
   "scripts": {
     "setup": "simple-git-hooks && node tools/engine_types.ts",
     "check": "npm run check:fast && npm run scan",
-    "check:fast": "npm run files && npm run lint && npm run types && npm run schema -- types --check && npm run release-tree -- check && npm run validate",
+    "check:fast": "npm run files && npm run lint && npm run types && npm run schema -- types --check && npm run release-tree -- check && npm run docs -- check && npm run validate",
     "files": "node tools/check_files.ts",
     "lint": "node tools/engine_types.ts && eslint --max-warnings 0 hooks tests tools",
     "types": "node tools/engine_types.ts && node node_modules/typescript-7/bin/tsc -p tsconfig.core.json && node node_modules/typescript-7/bin/tsc -p tsconfig.json && node node_modules/typescript-7/bin/tsc -p tools/store-probe/tsconfig.json && node node_modules/typescript-7/bin/tsc -p tsconfig.tools.json",
@@ -19,6 +19,7 @@
     "screens": "node tools/pane_screens.ts",
     "rig": "node tools/pane_rig.ts",
     "release-tree": "node tools/release_tree.ts",
+    "docs": "node tools/docs.ts",
     "scan": "node tools/scan.ts",
     "commit-msg": "commitlint --edit",
     "pr-title": "commitlint"

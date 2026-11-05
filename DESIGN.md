@@ -1,6 +1,6 @@
 # Design language
 
-What each colour, border and mark in the pane means, and the code that holds it.
+What each colour, border and mark in the pane means, and the code that holds it. `npm run docs -- check` and `tests/docs.test.ts` fail when a table here and the code disagree.
 
 ## Principles
 
