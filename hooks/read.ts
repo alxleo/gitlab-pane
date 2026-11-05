@@ -17,6 +17,8 @@ import {
 import type { RawResponse } from './gitlab'
 import { decodeGraphql } from './decode'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
+import { clear, record, reported } from './problems'
+import type { Source } from './problems'
 import { reconcile } from './reconcile'
 import { runJson } from './tools'
 
@@ -45,9 +47,9 @@ const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
   usualAt: null,
 } satisfies PollState)
 
-/** Runs work nobody awaits, so a session ending mid-call leaves no unhandled rejection. */
-export const quietly = (work: Promise<unknown>): void => {
-  work.catch(() => undefined)
+/** Runs work nobody awaits, so a session ending mid-call leaves no unhandled rejection; a failure goes to `/gitlab`. */
+export const quietly = (work: Promise<unknown>, source: Source = 'pane'): void => {
+  work.catch(reported(source))
 }
 
 /** Everything the pane draws, read at once; reading here makes the pane redraw when any of it changes. */
@@ -222,7 +224,10 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
     ask($, authoredQuery()),
     ask($, mergeStatusQuery())
       .then(readMergeStatus)
-      .catch(() => new Map<string, MergeStatus>()),
+      .catch((error: unknown) => {
+        record('gitlab', `merge status: ${error instanceof Error ? error.message : String(error)}`)
+        return new Map<string, MergeStatus>()
+      }),
   ])
   const rows = readResponse(authored, 0).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
@@ -250,8 +255,10 @@ async function readJira($: EngineInterface, rows: readonly MrCard[], now: number
   const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
   const found = await runJson($, 'acli', search, readTickets, { timeoutMs: 60_000 })
   if (!found.ok) {
+    record('jira', found.reason)
     return
   }
+  clear('jira')
   await update($, ticketsAtom, previous => ({ ...previous, ...found.value }))
   await update($, pollAtom, previous => ({ ...previous, ticketsAt: now }))
 }
@@ -269,6 +276,7 @@ async function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: 
     const chunk = projects.slice(i, i + PROJECTS_PER_QUERY)
     Object.assign(usual, readUsual(await ask($, usualQuery(chunk)), chunk))
   }
+  clear('usual')
   await update($, usualAtom, previous => ({ ...previous, ...usual }))
   await update($, pollAtom, previous => ({ ...previous, usualAt: now }))
 }
@@ -305,6 +313,12 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
       return [url, uri] as const
     })
   )
+  const failed = fetched.filter(pair => pair[1] === null).length
+  if (failed > 0) {
+    record('avatars', `${failed} picture${failed === 1 ? '' : 's'} could not be fetched`)
+  } else {
+    clear('avatars')
+  }
   const fresh = Object.fromEntries(fetched.filter((pair): pair is readonly [string, string] => pair[1] !== null))
   // Only the people on the pane are kept, so the store never outgrows them.
   const kept: Record<string, string> = Object.fromEntries(
@@ -341,6 +355,7 @@ export function refresh($: EngineInterface): Promise<void> {
 async function readOnce($: EngineInterface): Promise<void> {
   const pinned = await read($, pinnedAtom)
   const attemptedAt = await $.clock.now()
+  clear('gitlab')
   let rows: MrCard[]
   let kept: MrCard[]
   try {
@@ -350,6 +365,7 @@ async function readOnce($: EngineInterface): Promise<void> {
     rows = [...answer.rows, ...kept]
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    record('gitlab', message)
     await update($, pollAtom, poll => ({ ...poll, attemptedAt, error: message, failures: poll.failures + 1 }))
     return
   }
@@ -384,9 +400,9 @@ async function readOnce($: EngineInterface): Promise<void> {
   if (reconciled.wakes.length > 0 && (await read($, wakeAtom))) {
     quietly($.prompt.submit({ text: reconciled.wakes.join('\n') }))
   }
-  quietly(readJira($, open, now))
-  quietly(readUsualTimes($, open, now))
-  quietly(readAvatars($, open))
+  quietly(readJira($, open, now), 'jira')
+  quietly(readUsualTimes($, open, now), 'usual')
+  quietly(readAvatars($, open), 'avatars')
 }
 
 /** Every minute while a pinned pipeline runs, every three otherwise; backs off to ten after errors. */

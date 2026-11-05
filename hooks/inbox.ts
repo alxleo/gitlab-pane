@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { readInboxJson } from './inbox-json'
+import { clear, record, reported } from './problems'
 import { runJson, runText } from './tools'
 
 import type { InboxState } from '../types'
@@ -37,6 +38,11 @@ async function repoArgs($: EngineInterface): Promise<string[]> {
 export async function readInbox($: EngineInterface): Promise<void> {
   const result = await runJson($, 'mr-inbox', ['inbox', '--json', ...(await repoArgs($))], readInboxJson, { timeoutMs: 30_000 })
   const readAt = await $.clock.now()
+  if (result.ok) {
+    clear('inbox')
+  } else {
+    record('inbox', unprefixed(result.reason))
+  }
   await update($, inboxAtom, state =>
     result.ok ? { ...state, ...result.value, readAt, error: null } : { ...state, readAt, error: unprefixed(result.reason) }
   )
@@ -49,6 +55,9 @@ export function syncInbox($: EngineInterface): Promise<void> {
   syncing ??= (async () => {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
     const ran = await runText($, 'mr-inbox', ['sync', '--if-older-than', SYNC_IF_OLDER_THAN, '--json', ...(await repoArgs($))], { timeoutMs: 600_000 })
+    if (!ran.ok) {
+      record('inbox', unprefixed(ran.reason))
+    }
     await update($, inboxAtom, state => ({ ...state, isSyncing: false, ...(ran.ok ? {} : { error: unprefixed(ran.reason) }) }))
     await readInbox($)
   })().finally(() => {
@@ -76,12 +85,12 @@ export async function inboxView($: EngineInterface) {
 
 /** Opens one rule, as a tab, closing the one open before; the open one closes. */
 export function toggleRule($: EngineInterface, rule: string): void {
-  update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])).catch(() => undefined)
+  update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])).catch(reported('inbox'))
 }
 
 export function toggleCard($: EngineInterface, key: string): void {
   update($, inboxCardsAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])).catch(
-    () => undefined
+    reported('inbox')
   )
 }
 
@@ -101,6 +110,7 @@ export async function markSeen($: EngineInterface, target: { key: string } | { r
   const args = 'key' in target ? ['seen', target.key] : ['seen', '--rule', target.rule, ...(await repoArgs($))]
   const ran = await runText($, 'mr-inbox', args, { timeoutMs: 30_000 })
   if (!ran.ok) {
+    record('inbox', unprefixed(ran.reason))
     await update($, inboxAtom, state => ({ ...state, error: unprefixed(ran.reason) }))
     return
   }

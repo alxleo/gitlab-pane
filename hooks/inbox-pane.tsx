@@ -3,6 +3,7 @@ import type { EngineInterface, RenderInput } from 'claude-code'
 import { discSource } from './avatar'
 import { ago, measure, shortTitle } from './ci'
 import { firstName, initials, shortHash } from './identity'
+import { reported } from './problems'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -147,7 +148,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               key={`inbox-seen-${shortHash(item.key)}`}
               plain
               label="✓"
-              onPress={() => markSeen($, { key: item.key }).catch(() => undefined)}
+              onPress={() => markSeen($, { key: item.key }).catch(reported('inbox'))}
             />
           </Box>
         </Box>
@@ -226,13 +227,13 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key={`inbox-discuss-${section.rule}`}
           variant="secondary"
           label="discuss in chat"
-          onPress={() => discussRule($, section.rule).catch(() => undefined)}
+          onPress={() => discussRule($, section.rule).catch(reported('inbox'))}
         />
         <Button
           key={`inbox-seen-rule-${section.rule}`}
           variant="secondary"
           label="✓ mark all seen"
-          onPress={() => markSeen($, { rule: section.rule }).catch(() => undefined)}
+          onPress={() => markSeen($, { rule: section.rule }).catch(reported('inbox'))}
         />
       </Box>,
     ]
@@ -248,7 +249,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key="inbox-sync"
           plain
           label={inbox.isSyncing ? 'syncing…' : 'sync'}
-          onPress={() => syncInbox($).catch(() => undefined)}
+          onPress={() => syncInbox($).catch(reported('inbox'))}
         />
       </Box>
       {shown.length > 0 && (
