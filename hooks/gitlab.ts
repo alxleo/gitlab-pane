@@ -70,34 +70,80 @@ const reviewStateOf = (state: string | null | undefined): ReviewState => known(R
 
 export const mergeStatusOf = (status: string): MergeStatus => known(MERGE_STATUSES, status) ?? 'UNKNOWN'
 
-const NOTE_FIELDS = `body system url createdAt author { username name bot avatarUrl } position { filePath newLine oldLine }`
-
-// Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
-const MR_FIELDS = `
-  iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired updatedAt
-  description sourceBranch targetBranch
-  author { username }
-  diffStatsSummary { additions deletions fileCount }
-  project { fullPath name webUrl }
-  approvedBy { nodes { username name bot avatarUrl } }
-  reviewers { nodes { username name bot avatarUrl mergeRequestInteraction { reviewState } } }
-  headPipeline {
-    id status duration startedAt finishedAt path
-    stages { nodes { name status jobs { nodes { name status allowFailure startedAt finishedAt webPath } } } }
+/**
+ * Every document the pane sends is a static GraphQL text with its values passed as variables, never spliced in. The
+ * GraphQL comment before each is how the type generator finds it. A document names the fragments it uses and only
+ * those, as GitLab refuses an unused one.
+ */
+const NOTE_FRAGMENT = /* GraphQL */ `
+  fragment NoteFields on Note {
+    body system url createdAt
+    author { username name bot avatarUrl }
+    position { filePath newLine oldLine }
   }
-  discussions(first: 100) { nodes { resolvable resolved notes(first: 20) { nodes { ${NOTE_FIELDS} } } } }
 `
 
+// Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
+const MR_FRAGMENT = /* GraphQL */ `
+  fragment MrFields on MergeRequest {
+    iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired updatedAt
+    description sourceBranch targetBranch
+    author { username }
+    diffStatsSummary { additions deletions fileCount }
+    project { fullPath name webUrl }
+    approvedBy { nodes { username name bot avatarUrl } }
+    reviewers { nodes { username name bot avatarUrl mergeRequestInteraction { reviewState } } }
+    headPipeline {
+      id status duration startedAt finishedAt path
+      stages { nodes { name status jobs { nodes { name status allowFailure startedAt finishedAt webPath } } } }
+    }
+    discussions(first: 100) { nodes { resolvable resolved notes(first: 20) { nodes { ...NoteFields } } } }
+  }
+`
+
+const AUTHORED = /* GraphQL */ `
+  query Authored {
+    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields } } }
+  }
+`
+
+const MERGE_STATUS = /* GraphQL */ `
+  query MergeStatus {
+    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } }
+  }
+`
+
+const PINNED = /* GraphQL */ `
+  query Pinned($path: ID!, $iid: String!) {
+    project(fullPath: $path) { mergeRequest(iid: $iid) { ...MrFields } }
+  }
+`
+
+const USUAL = /* GraphQL */ `
+  query Usual($path: ID!) {
+    project(fullPath: $path) { pipelines(source: "merge_request_event", status: SUCCESS, first: 20) { nodes { duration } } }
+  }
+`
+
+/** A document and its variables. `glab` sends them as strings (`-f`, as `-F` would turn `12` into a number). */
+export type Request = { query: string; variables: Record<string, string> }
+
+/** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
+export const DOCUMENTS = {
+  Authored: AUTHORED + MR_FRAGMENT + NOTE_FRAGMENT,
+  MergeStatus: MERGE_STATUS,
+  Pinned: PINNED + MR_FRAGMENT + NOTE_FRAGMENT,
+  Usual: USUAL,
+} as const
+
 /** Every open MR the user authored; GitLab scores it 158 of the 250 a query may cost. */
-export const authoredQuery = (): string =>
-  `query { currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ${MR_FIELDS} } } } }`
+export const authoredQuery = (): Request => ({ query: DOCUMENTS.Authored, variables: {} })
 
 /**
  * GitLab's merge verdict for the same MRs, asked on its own: inside the authored query it answered CONFLICT, twice in a
  * row, for MRs that this query and each MR's own lookup called MERGEABLE.
  */
-export const mergeStatusQuery = (): string =>
-  `query { currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } } }`
+export const mergeStatusQuery = (): Request => ({ query: DOCUMENTS.MergeStatus, variables: {} })
 
 /** Each MR's verdict by card key; an MR missing from the answer has none. */
 export function readMergeStatus(response: RawResponse): Map<string, MergeStatus> {
@@ -107,54 +153,30 @@ export function readMergeStatus(response: RawResponse): Map<string, MergeStatus>
   )
 }
 
-/** Each pinned MR costs about 103, so a query takes at most this many. */
-export const PINS_PER_QUERY = 2
+/**
+ * A pinned MR the authored list lacks (someone else's, or merged), one query each. It costs about 103 of the 250 a query
+ * may, so two would fit, but one per query needs no aliases that change with how many are pinned, and a project out of
+ * reach loses its own MR and no other.
+ */
+export const pinnedQuery = (pin: Pinned): Request => ({
+  query: DOCUMENTS.Pinned,
+  variables: { path: pin.project, iid: String(pin.iid) },
+})
 
-/** Pinned MRs the authored list lacks (someone else's, or merged), by project and iid. */
-export function pinnedQuery(pinned: readonly Pinned[]): string {
-  if (pinned.length > PINS_PER_QUERY) {
-    throw new Error(`A query takes at most ${PINS_PER_QUERY} pinned MRs, got ${pinned.length}.`)
-  }
-  const aliases = pinned
-    .map(
-      (mr, i) =>
-        `p${i}: project(fullPath: ${JSON.stringify(mr.project)}) { mergeRequest(iid: ${JSON.stringify(String(mr.iid))}) { ${MR_FIELDS} } }`
-    )
-    .join('\n')
-  return `query {\n${aliases}\n}`
-}
-
-/** Each project costs 11, so a query takes at most this many. */
-export const PROJECTS_PER_QUERY = 15
-
-/** The recent successful MR pipelines of each project, for how long one usually runs. */
-export function usualQuery(projects: readonly string[]): string {
-  const aliases = projects
-    .map(
-      (path, i) =>
-        `h${i}: project(fullPath: ${JSON.stringify(path)}) { pipelines(source: "merge_request_event", status: SUCCESS, first: 20) { nodes { duration } } }`
-    )
-    .join('\n')
-  return `query {\n${aliases}\n}`
-}
+/** The recent successful MR pipelines of a project, for how long one usually runs; it costs 11, so one query each is cheap. */
+export const usualQuery = (project: string): Request => ({ query: DOCUMENTS.Usual, variables: { path: project } })
 
 /** GitLab's `duration` counts only the time jobs ran, so a manual gate left waiting does not stretch it. */
-export function readUsual(response: RawResponse, projects: readonly string[]): Record<string, Usual> {
-  const data = response.data ?? {}
-  return Object.fromEntries(
-    projects.flatMap((path, i) => {
-      const project = data[`h${i}`] as { pipelines?: { nodes?: { duration: number | null }[] } } | null | undefined
-      const seconds = (project?.pipelines?.nodes ?? [])
-        .map(pipeline => pipeline.duration)
-        .filter((value): value is number => typeof value === 'number')
-        .sort((a, b) => a - b)
-      if (seconds.length < 5) {
-        return []
-      }
-      const at = (share: number) => seconds[Math.round((seconds.length - 1) * share)] ?? 0
-      return [[path, { low: at(0.25), high: at(0.75) }]]
-    })
-  )
+export function readUsual(response: RawResponse): Usual | null {
+  const seconds = (response.data?.project?.pipelines?.nodes ?? [])
+    .map(pipeline => pipeline.duration)
+    .filter((value): value is number => typeof value === 'number')
+    .sort((a, b) => a - b)
+  if (seconds.length < 5) {
+    return null
+  }
+  const at = (share: number) => seconds[Math.round((seconds.length - 1) * share)] ?? 0
+  return { low: at(0.25), high: at(0.75) }
 }
 
 type RawUser = { username: string; name: string; bot: boolean; avatarUrl?: string | null }
@@ -215,7 +237,7 @@ export type RawMr = {
 export type RawResponse = {
   data?: {
     currentUser?: { authoredMergeRequests?: { nodes?: (RawMr | null)[] } } | null
-    [alias: string]: unknown
+    project?: { mergeRequest?: RawMr | null; pipelines?: { nodes?: { duration: number | null }[] } | null } | null
   } | null
   errors?: { message: string }[]
 }
@@ -420,26 +442,11 @@ export function toCard(raw: RawMr): MrCard {
 export const lostIn = (response: RawResponse): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
 
-/**
- * Authored and pinned MRs, each once. A read with no data at all throws; a partial one
- * (a pinned project out of reach) keeps what came back.
- */
-export function readResponse(response: RawResponse, pinnedCount: number): MrCard[] {
+/** The authored MRs, or the one pinned MR, as cards. A read with no data at all throws; a partial one keeps what came back. */
+export function readResponse(response: RawResponse): MrCard[] {
   if (!response.data) {
     throw new Error(response.errors?.map(error => error.message).join('; ') || 'GitLab sent no data')
   }
-  const data = response.data
-  const authored = data.currentUser?.authoredMergeRequests?.nodes ?? []
-  const pinned = Array.from({ length: pinnedCount }, (_, i) => {
-    const project = data[`p${i}`] as { mergeRequest?: RawMr | null } | null | undefined
-    return project?.mergeRequest ?? null
-  })
-  const cards = new Map<string, MrCard>()
-  ;[...pinned, ...authored].forEach(raw => {
-    if (raw) {
-      const card = toCard(raw)
-      cards.set(card.key, card)
-    }
-  })
-  return [...cards.values()]
+  const raws = [response.data.project?.mergeRequest, ...(response.data.currentUser?.authoredMergeRequests?.nodes ?? [])]
+  return raws.flatMap(raw => (raw ? [toCard(raw)] : []))
 }

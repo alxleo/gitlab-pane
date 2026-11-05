@@ -9,6 +9,7 @@ import type { On } from 'claude-code'
 import type { Mounted } from 'claude-code/testing'
 
 import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
+import { answered } from '../../tests/gitlab_fake'
 
 import type { RawMr } from '../../hooks/gitlab'
 
@@ -259,22 +260,15 @@ function engine(on: On, mrs: RawMr[]) {
       }
       return ran('{"ok": true}')
     }
-    const query = e.argv.find(arg => arg.startsWith('query=')) ?? ''
-    if (e.argv.includes('glab') && query) {
-      if (query.includes('pipelines(source:')) {
-        const aliases = [...query.matchAll(/(h\d+): project/g)].map(match => match[1] ?? '')
-        const nodes = [420, 480, 540, 600, 660, 720].map(duration => ({ duration }))
-        return ran(JSON.stringify({ data: Object.fromEntries(aliases.map(alias => [alias, { pipelines: { nodes } }])) }))
-      }
-      if (query.includes('detailedMergeStatus') && !query.includes('headPipeline')) {
+    const text = answered(e.argv, {
+      Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
+      MergeStatus: () => {
         const nodes = mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus }))
-        return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes } } } }))
-      }
-      if (query.includes('authoredMergeRequests')) {
-        return ran(JSON.stringify({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }))
-      }
-    }
-    return ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`)
+        return { data: { currentUser: { authoredMergeRequests: { nodes } } } }
+      },
+      Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+    })
+    return text === undefined ? ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`) : ran(text)
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
