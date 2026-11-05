@@ -439,7 +439,7 @@ function stageMod(into: string): string {
   cpSync(join(ROOT, 'types'), join(mod, 'types'), { recursive: true })
   mkdirSync(join(mod, 'tests'))
   // The helpers the scenes import (fixtures, the fake GitLab); none of the mod's own tests.
-  for (const helper of readdirSync(join(ROOT, 'tests')).filter(name => !name.endsWith('.test.ts'))) {
+  for (const helper of readdirSync(join(ROOT, 'tests'), { withFileTypes: true }).filter(entry => entry.isFile() && !entry.name.endsWith('.test.ts')).map(entry => entry.name)) {
     copyFileSync(join(ROOT, 'tests', helper), join(mod, 'tests', helper))
   }
   mkdirSync(join(mod, 'tools', 'screens'), { recursive: true })

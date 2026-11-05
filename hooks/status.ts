@@ -1,7 +1,7 @@
 import type { CiStatus } from '../types'
 
 /** Ends a switch over a union, so a new member is a compile error at every switch that does not name it. */
-export function assertNever(value: never): never {
+function assertNever(value: never): never {
   throw new Error(`Unhandled value: ${String(value)}`)
 }
 

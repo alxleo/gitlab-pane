@@ -116,14 +116,6 @@ export async function setRows($: EngineInterface, rows: MrCard[]): Promise<void>
     await update($, rowsAtom, () => rows)
   }
 }
-/** Puts a card read on its own among the rows, in place of the one with its key. */
-export async function putRow($: EngineInterface, card: MrCard): Promise<void> {
-  const rows = await read($, rowsAtom)
-  const next = [...rows.filter(row => row.key !== card.key), card]
-  if (!isEqual(rows, next)) {
-    await update($, rowsAtom, () => next)
-  }
-}
 /** Keeps the whole cards of the MRs `isWanted` names and puts `card` among them, if given. */
 export async function setDetails($: EngineInterface, isWanted: (key: string) => boolean, card?: MrCard): Promise<void> {
   const known = await read($, detailsAtom)

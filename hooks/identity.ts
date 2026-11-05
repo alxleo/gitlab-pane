@@ -31,9 +31,9 @@ export function initials(name: string, username = '', longer = false): string {
   const [first = '?', ...rest] = words
   const last = rest.at(-1)
   if (last === undefined) {
-    return head(first, longer ? 3 : 2).toUpperCase()
+    return head(first.toUpperCase(), longer ? 3 : 2)
   }
-  return `${head(first, 1)}${head(last, 1)}`.toUpperCase() + (longer ? head([...last].slice(1).join(''), 1) : '')
+  return `${head(first.toUpperCase(), 1)}${head(last.toUpperCase(), 1)}` + (longer ? head([...last].slice(1).join(''), 1) : '')
 }
 
 /**

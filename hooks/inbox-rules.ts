@@ -63,7 +63,7 @@ export const MAX_SIGNALS = 10
 /** Characters of what someone wrote, of a username and of a title that the inbox keeps. */
 export const EXCERPT_ROOM = 80
 export const ACTOR_ROOM = 40
-export const TITLE_ROOM = 100
+const TITLE_ROOM = 100
 const ACTIVITY_SHOWN = 3
 
 const seenPrefix = (host: string, user: string): string => `seen:${shortHash(`${host}/${user}`)}:`
@@ -115,7 +115,7 @@ const isInScope = (rule: Rule, mr: InboxMr): boolean =>
   (!rule.isQueue || mr.inQueue || mr.signals.some(signal => signal.kind === 'review_requested'))
 
 /** A project on a host. */
-export type Repo = { host: string; path: string }
+type Repo = { host: string; path: string }
 
 /** What narrows the sections to the session's repo, and what explains an empty one. */
 export type Context = {
@@ -126,7 +126,7 @@ export type Context = {
 }
 
 /** Every repo, nobody followed. */
-export const EVERYWHERE: Context = { here: { isOn: false, repo: null }, followCount: 0 }
+const EVERYWHERE: Context = { here: { isOn: false, repo: null }, followCount: 0 }
 
 /** Why a rule that shows nothing shows nothing, when there is a reason to give. */
 function noteOf(rule: Rule, snapshot: InboxSnapshot, context: Context): string | null {

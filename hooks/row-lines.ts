@@ -33,7 +33,7 @@ const text = (words: string, how: { bold?: boolean; dim?: boolean; tone?: Tone }
 })
 
 /** A note's byline words: where in the code, and when. */
-export const whereAndWhen = (note: NoteFacts, now: number): string =>
+const whereAndWhen = (note: NoteFacts, now: number): string =>
   [note.where, ago(note.at, now)].filter(isFilled).join(' · ')
 
 const noteLine = (note: NoteFacts, now: number, who = note.author): Line => ({
@@ -133,7 +133,7 @@ export function personLines(person: PersonFacts, now: number): Line[] {
   ]
 }
 
-export type NoteBlock = { who: string; where: string; url: string; body: MarkdownText }
+type NoteBlock = { who: string; where: string; url: string; body: MarkdownText }
 
 /** What an opened card ends on, before its foot: one person's comments, or the description, failed jobs and threads. */
 export type DetailModel =

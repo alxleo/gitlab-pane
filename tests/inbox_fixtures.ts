@@ -3,7 +3,7 @@ import { NOW } from './fixtures'
 import type { Answers } from './gitlab_fake'
 
 /** The inbox's GitLab as tests and scenes set it: the answers to the inbox documents, and builders for what they hold. */
-export const MINUTES_AGO = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
+const MINUTES_AGO = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
 
 export type Person = { username: string; name: string }
 export type Fields = {
@@ -19,7 +19,7 @@ export type Fields = {
 export type Note = { id: string; body: string; system: boolean; createdAt: string; author: Person & { bot: boolean }; systemNoteMetadata: { action: string } | null }
 export type OpenMr = Fields & { notes: { pageInfo: { hasPreviousPage: boolean }; nodes: Note[] } }
 export type QueueMr = OpenMr & { approvedBy: { nodes: { username: string }[] } }
-export type MergedMr = Fields & { mergedAt: string; mergeUser: Person }
+type MergedMr = Fields & { mergedAt: string; mergeUser: Person }
 export type Todo = { action: TodoActionEnum; createdAt: string; body: string; targetUrl: string | null; author: Person; targetEntity: Fields }
 export type BriefMr = Fields & {
   description: string | null
@@ -58,7 +58,7 @@ export const fields = (iid: number, author: Person = ALICE, over: Partial<Fields
   ...over,
 })
 
-export const person = (username: string, name = username): Person & { bot: boolean } => ({ username, name, bot: false })
+const person = (username: string, name = username): Person & { bot: boolean } => ({ username, name, bot: false })
 
 export const comment = (id: number, who: string, minutes: number, body: string): Note => ({
   id: `gid://gitlab/Note/${id}`,
@@ -100,7 +100,7 @@ export const busyWorld = (): World => ({
   opened: [open(1, [system(11, 'bob', 120, 'approved'), comment(12, 'carol.jones', 180, 'please rename'), comment(13, 'carol.jones', 190, 'and the file')])],
 })
 
-export const plain = (id: number, who: string, minutes: number, body: string): Omit<Note, 'systemNoteMetadata'> => ({
+const plain = (id: number, who: string, minutes: number, body: string): Omit<Note, 'systemNoteMetadata'> => ({
   id: `gid://gitlab/Note/${id}`,
   body,
   system: false,

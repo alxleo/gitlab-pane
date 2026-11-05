@@ -113,7 +113,7 @@ async function readHost($: EngineInterface, host: string, now: number, follows: 
  * host that answered whole, so the store keeps one small value per MR that is still listed. Whatever fails is in the
  * snapshot, not thrown, so a host that is down leaves the rest.
  */
-export async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
+async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
   const [now, follows] = await Promise.all([$.clock.now(), read($, inboxFollowAtom)])
   const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows)) })))
   const snapshot: InboxSnapshot = {
@@ -136,7 +136,7 @@ async function marksOf($: EngineInterface, mrs: readonly InboxMr[], snapshot: In
  * Shows a snapshot: the pane draws the rules over it from now on. A host that did not answer at all keeps what it last
  * said, with the reason; every session calls this, with its own read or the leader's.
  */
-export async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): Promise<void> {
+async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): Promise<void> {
   const readAt = await $.clock.now()
   const shown = carryOver((await read($, inboxAtom)).snapshot, snapshot)
   const seen = await marksOf($, shown.mrs, shown)

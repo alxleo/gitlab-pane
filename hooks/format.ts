@@ -107,7 +107,7 @@ export function ranFor(stages: readonly Stage[], now: number): number {
 const minutes = (seconds: number) => Math.max(1, Math.round(seconds / 60))
 
 /** `10–15m`, the middle half of recent runs. */
-export const usualRange = (usual: Usual): ModelLine =>
+const usualRange = (usual: Usual): ModelLine =>
   minutes(usual.low) === minutes(usual.high) ? line`${minutes(usual.low)}m` : line`${minutes(usual.low)}–${minutes(usual.high)}m`
 
 /** How long the pipeline took, or has run so far against how long one usually takes. */

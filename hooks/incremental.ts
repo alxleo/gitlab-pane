@@ -56,7 +56,7 @@ export type HostFound = {
 
 /**
  * The host's rows after a read. A whole read starts from nothing; a delta from the rows known, less the closed ones nobody
- * pins any more. A card read opens or replaces its row, and one that is closed stays only while pinned. A row keeps
+ * pins any more. A card read opens or replaces its row, and one that is closed stays only while pinned. An open row keeps
  * its last verdict through a delta that brings none.
  */
 export function mergeReads({ scope, base, fetched, singles, pinned, verdicts }: HostFound): MrCard[] {
@@ -71,6 +71,6 @@ export function mergeReads({ scope, base, fetched, singles, pinned, verdicts }: 
   }
   return [...rows.values()].map(row => ({
     ...row,
-    mergeStatus: verdicts?.get(row.key) ?? (scope === 'since' ? (before.get(row.key)?.mergeStatus ?? null) : null),
+    mergeStatus: verdicts?.get(row.key) ?? (scope === 'since' && row.isOpen ? (before.get(row.key)?.mergeStatus ?? null) : null),
   }))
 }
