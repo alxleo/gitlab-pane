@@ -100,7 +100,14 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
       tokens.push(`${trace.host} ${trace.token ?? ''}`)
       const log = hosts[trace.host]?.traces?.[`${trace.path}#${trace.job}`]
       const isAccepted = trace.token !== undefined && trace.token === hosts[trace.host]?.accepts
-      return { value: { status: !isAccepted ? 401 : log === undefined ? 404 : 200, ok: isAccepted && log !== undefined, headers: {}, text: isAccepted ? (log ?? '404 Not found') : '401 Unauthorized' } }
+      return {
+        value: {
+          status: !isAccepted ? 401 : log === undefined ? 404 : 200,
+          ok: isAccepted && log !== undefined,
+          headers: {},
+          text: isAccepted ? (log ?? '404 Not found') : '401 Unauthorized',
+        },
+      }
     }
     const request = sent(e.url, e.init)
     requests.push(`${request.host} ${request.operation}`)

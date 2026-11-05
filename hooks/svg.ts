@@ -27,7 +27,6 @@ const escaped = (text: string): string => text.replace(/[&<>"']/g, char => ESCAP
 
 /** `svg\`<text>${name}</text>\`` with `name` escaped; numbers print as they are, a `raw` fragment is put in unescaped. */
 export function svg(parts: TemplateStringsArray, ...values: readonly (string | number | RawSvg)[]): SvgSource {
-  const show = (value: string | number | RawSvg | undefined): string =>
-    value === undefined ? '' : typeof value === 'object' ? value[MARKUP] : escaped(String(value))
+  const show = (value: string | number | RawSvg | undefined): string => (value === undefined ? '' : typeof value === 'object' ? value[MARKUP] : escaped(String(value)))
   return brand(parts.reduce((out, text, i) => out + text + show(values[i]), ''))
 }

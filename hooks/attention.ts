@@ -25,8 +25,7 @@ export function rank(card: MrCard): number {
 }
 
 /** Bots with an open thread or a request for changes, either of which holds the merge. */
-const botsHolding = (card: MrCard): Person[] =>
-  card.people.filter(person => person.isBot && (person.openThreads > 0 || person.state === 'requested_changes'))
+const botsHolding = (card: MrCard): Person[] => card.people.filter(person => person.isBot && (person.openThreads > 0 || person.state === 'requested_changes'))
 
 export const byAttention = (a: MrCard, b: MrCard): number => firstDifference(rank(a) - rank(b), b.updatedAt.localeCompare(a.updatedAt))
 
@@ -42,18 +41,7 @@ export function reviewTone(card: MrCard): Tone {
   return card.approvalsLeft === 0 && (card.approvalsRequired > 0 || card.approvers.length > 0) ? 'success' : 'subtle'
 }
 
-type BadgeKind =
-  | 'failed'
-  | 'check'
-  | 'conflicts'
-  | 'changes'
-  | 'threads'
-  | 'rebase'
-  | 'manual'
-  | 'amber'
-  | 'bots'
-  | 'approvals'
-  | 'ready'
+type BadgeKind = 'failed' | 'check' | 'conflicts' | 'changes' | 'threads' | 'rebase' | 'manual' | 'amber' | 'bots' | 'approvals' | 'ready'
 
 /**
  * One marker on a row's second line: a glyph and a count, its detail on hover; `words` is what a model reads. `check` is
@@ -64,11 +52,14 @@ export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string;
 const ACRONYMS = /\b(ci|lfs)\b/g
 
 /** A check in words, from the identifier GitLab names it by (`CI_MUST_PASS`): a check GitLab adds later reads right with no change here. */
-const checkWords = (id: string): string => id.toLowerCase().replaceAll('_', ' ').replace(ACRONYMS, found => found.toUpperCase())
+const checkWords = (id: string): string =>
+  id
+    .toLowerCase()
+    .replaceAll('_', ' ')
+    .replace(ACRONYMS, found => found.toUpperCase())
 
 /** The checks that stop the merge or warn, GitLab's order within each: a failure before a warning. */
-const standing = (checks: MergeStatus | null): MergeCheck[] =>
-  (['failed', 'warning'] as const).flatMap(status => (checks ?? []).filter(check => check.status === status))
+const standing = (checks: MergeStatus | null): MergeCheck[] => (['failed', 'warning'] as const).flatMap(status => (checks ?? []).filter(check => check.status === status))
 
 /**
  * What each check asks of you when it fails, as a tone: red is yours to fix, amber is a smaller fix, grey is waiting on
@@ -101,8 +92,7 @@ const isKnownCheck = (id: string): id is MergeabilityCheckIdentifier => Object.h
 const failureTone = (id: string): Tone => (isKnownCheck(id) ? CHECK_TONE[id] : 'error')
 
 /** A check in words; the approvals one says how many, as the pane knows. */
-const wordsFor = (card: MrCard, id: string): string =>
-  id === 'NOT_APPROVED' && card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : checkWords(id)
+const wordsFor = (card: MrCard, id: string): string => (id === 'NOT_APPROVED' && card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : checkWords(id))
 
 const checkBadge = (card: MrCard, check: MergeCheck): Badge => ({
   kind: 'check',

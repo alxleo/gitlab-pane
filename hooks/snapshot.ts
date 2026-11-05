@@ -110,12 +110,18 @@ function isCard(value: unknown): value is MrCard {
     Array.isArray(value.people) &&
     Array.isArray(value.openThreads) &&
     isRecord(value.threadsLeft) &&
-    (value.pipeline === undefined || (isRecord(value.pipeline) && Array.isArray(value.pipeline.stages) && Array.isArray(value.pipeline.failed) && typeof value.pipeline.moreFailed === 'number'))
+    (value.pipeline === undefined ||
+      (isRecord(value.pipeline) && Array.isArray(value.pipeline.stages) && Array.isArray(value.pipeline.failed) && typeof value.pipeline.moreFailed === 'number'))
   )
 }
 
 function isHostStatuses(value: unknown): value is Record<string, HostStatus> {
-  return isRecord(value) && Object.values(value).every(status => isRecord(status) && (status.fetchedAt === null || typeof status.fetchedAt === 'number') && (status.error === null || typeof status.error === 'string'))
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      status => isRecord(status) && (status.fetchedAt === null || typeof status.fetchedAt === 'number') && (status.error === null || typeof status.error === 'string')
+    )
+  )
 }
 
 function isCursors(value: unknown): value is Record<string, Cursor> {
@@ -145,7 +151,22 @@ export function readSnapshot(value: unknown): Snapshot | null {
     return null
   }
   const { version, by, fetchedAt, attemptedAt, error, hosts, kept, cursors, pinned, extras, rows, failures, problems } = value
-  return { format: FORMAT, version, by, fetchedAt, attemptedAt, error, hosts, kept, cursors, pinned, extras, rows, failures: sharedFailures(failures), problems: sharedProblems(problems) }
+  return {
+    format: FORMAT,
+    version,
+    by,
+    fetchedAt,
+    attemptedAt,
+    error,
+    hosts,
+    kept,
+    cursors,
+    pinned,
+    extras,
+    rows,
+    failures: sharedFailures(failures),
+    problems: sharedProblems(problems),
+  }
 }
 
 const isPin = (value: unknown): value is Pinned =>
@@ -195,7 +216,11 @@ const isFailureKind = (kind: unknown): kind is FailureKind => typeof kind === 's
 
 /** The problems a stored value holds; whatever is not one is left out. */
 function sharedProblems(value: Record<string, unknown>): Snapshot['problems'] {
-  return Object.fromEntries(Object.entries(value).flatMap(([source, one]): [string, SharedProblem][] => (isRecord(one) && typeof one.message === 'string' && isFailureKind(one.kind) ? [[source, { message: one.message, kind: one.kind }]] : [])))
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([source, one]): [string, SharedProblem][] =>
+      isRecord(one) && typeof one.message === 'string' && isFailureKind(one.kind) ? [[source, { message: one.message, kind: one.kind }]] : []
+    )
+  )
 }
 
 /** What the leader fetched of a failed pipeline, as it travels: one entry per job, the lines already cleaned. */
@@ -207,7 +232,11 @@ export const toShared = (failures: Failures): Record<string, SharedFailure> =>
  * store, which any process of the user can write, cannot put into a wake what `foreign` and `tailOf` would not let through.
  */
 export const failuresFrom = (shared: Readonly<Record<string, SharedFailure>> | undefined): Failures =>
-  new Map(Object.entries(shared ?? {}).flatMap(([job, one]) => (Number.isInteger(Number(job)) ? [[Number(job), { reason: one.reason !== null ? foreign(one.reason) : null, tail: tailOf(one.tail.join('\n')) }] as const] : [])))
+  new Map(
+    Object.entries(shared ?? {}).flatMap(([job, one]) =>
+      Number.isInteger(Number(job)) ? [[Number(job), { reason: one.reason !== null ? foreign(one.reason) : null, tail: tailOf(one.tail.join('\n')) }] as const] : []
+    )
+  )
 
 /** Whether a stored record still stands for its session. A beat stamped ahead of this clock is no proof of life, as for the lease. */
 export const isAlive = (record: PinsRecord, now: number): boolean => Math.abs(now - record.at) < PINS_EXPIRY_MS
@@ -248,7 +277,11 @@ const fullAts = (snapshot: Snapshot): Record<string, number> => Object.fromEntri
  * delta starts), the store keeps the older snapshot: the next delta just starts a little earlier.
  */
 export const needsSave = (previous: Snapshot | null, next: Snapshot): boolean =>
-  previous === null || previous.version !== next.version || !isEqual(previous.pinned, next.pinned) || !isEqual(previous.extras, next.extras) || !isEqual(fullAts(previous), fullAts(next))
+  previous === null ||
+  previous.version !== next.version ||
+  !isEqual(previous.pinned, next.pinned) ||
+  !isEqual(previous.extras, next.extras) ||
+  !isEqual(fullAts(previous), fullAts(next))
 
 /** What a read found, before it becomes a snapshot. */
 export type ReadResult = {
@@ -263,7 +296,8 @@ export type ReadResult = {
   problems: Snapshot['problems']
 }
 
-const errorsOf = (hosts: Readonly<Record<string, HostStatus>>): Record<string, string | null> => Object.fromEntries(Object.entries(hosts).map(([host, status]) => [host, status.error]))
+const errorsOf = (hosts: Readonly<Record<string, HostStatus>>): Record<string, string | null> =>
+  Object.fromEntries(Object.entries(hosts).map(([host, status]) => [host, status.error]))
 
 /**
  * The snapshot after a read. Its version, and the times the footer counts from, move only when a session would draw
@@ -272,7 +306,19 @@ const errorsOf = (hosts: Readonly<Record<string, HostStatus>>): Record<string, s
  */
 export function nextSnapshot(previous: Snapshot | null, read: ReadResult, me: string, now: number): Snapshot {
   const hosts = hostStatuses(previous?.hosts ?? {}, read.outcomes, now)
-  const bookkeeping = { format: FORMAT, by: me, attemptedAt: now, error: read.error, kept: read.kept, cursors: read.cursors, pinned: read.pinned, extras: read.extras, rows: read.rows, failures: read.failures, problems: read.problems } as const
+  const bookkeeping = {
+    format: FORMAT,
+    by: me,
+    attemptedAt: now,
+    error: read.error,
+    kept: read.kept,
+    cursors: read.cursors,
+    pinned: read.pinned,
+    extras: read.extras,
+    rows: read.rows,
+    failures: read.failures,
+    problems: read.problems,
+  } as const
   if (
     previous !== null &&
     previous.error === read.error &&

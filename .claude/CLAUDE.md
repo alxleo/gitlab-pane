@@ -52,7 +52,8 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. [README.md](.
 - Node only: every tool, check and hook is TypeScript run by Node (`node tools/<name>.ts` or an `npm run` script). No bash, no Python. A new tool is a `tools/*.ts` file under the same lint. The only shell is a workflow's `run:` lines.
 - One `package.json` and one `package-lock.json`; the published tree leaves both out. Git hooks are written by `simple-git-hooks` from `package.json`; no script lives in the repository.
 - gitleaks, actionlint and zizmor are not Node tools: CI runs them; `npm run scan` runs those installed.
-- On editing a core file, `.claude/settings.json` runs the core's `tsc` and `eslint`: read what it says.
+- Formatting is Biome's (`biome.jsonc`, formatter only): never hand-format, run `npm run format`. ESLint sets no formatting rule; keep it that way, so the two cannot disagree. A tool that generates a file formats its output through `tools/format.ts`.
+- On editing a core file, `.claude/settings.json` runs the core's `tsc`, `eslint` and `biome format`: read what it says.
 
 ## Before you commit
 

@@ -144,7 +144,9 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
   ].join('\n')
   const clean = cleanBody(body, HOST, 'g/p')
   expect(clean).toContain('See ![shot](https://gitlab.com/g/p/uploads/abc/shot.png)')
-  expect(cleanBody('![shot](/uploads/abc/shot.png) [home](/g/p)', SELF_MANAGED, 'g/p')).toBe('![shot](https://git.corp.com/g/p/uploads/abc/shot.png) [home](https://git.corp.com/g/p)')
+  expect(cleanBody('![shot](/uploads/abc/shot.png) [home](/g/p)', SELF_MANAGED, 'g/p')).toBe(
+    '![shot](https://git.corp.com/g/p/uploads/abc/shot.png) [home](https://git.corp.com/g/p)'
+  )
   expect(flatOf(clean)).toBe('### Locate test timeout undercuts ready wait\n\nThe locate spec waits up to `ORDER_PAGE_READY_TIMEOUT`.\n\nSee')
   expect(excerpt(clean)).toBe('Locate test timeout undercuts ready wait')
   expect(excerpt(cleanBody('## Summary\n\nDoes a thing that is long', HOST, 'g/p'), 12)).toBe('Summary')
@@ -156,7 +158,9 @@ test('a status GitLab adds later reads as unknown, drawn as such, and a known on
   // The status arrives as text from GitLab, so the test sends one the types do not name through the same decoder.
   const unseen = 'A_STATUS_GITLAB_ADDS_LATER'
   const unseenStage = (name: string) => ({ ...stage(name, 'RUNNING', []), status: unseen, jobs: { nodes: [{ ...job(name, 'RUNNING'), status: unseen }] } })
-  const wire = { data: { project: { mergeRequest: { ...rawMr(1), headPipeline: { ...pipe('RUNNING'), status: unseen, stages: { nodes: [unseenStage('build'), unseenStage('test')] } } } } } }
+  const wire = {
+    data: { project: { mergeRequest: { ...rawMr(1), headPipeline: { ...pipe('RUNNING'), status: unseen, stages: { nodes: [unseenStage('build'), unseenStage('test')] } } } } },
+  }
   const [card] = readPinned(HOST, decodeGraphql<PinnedQuery>(parseJson(JSON.stringify(wire))))
   if (card === undefined) {
     throw new Error('the pinned MR was not read')
@@ -225,7 +229,9 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   expect(said('Project', 'reviewState')).toEqual([])
   expect(said('Query', '__type')).toEqual([])
   expect(missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"Field reviewState doesn\'t exist on type UserMergeRequestInteraction"}]}')))).toEqual([])
-  expect(missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"x","extensions":{"code":"INTERNAL","typeName":"MergeRequest","fieldName":"mergeabilityChecks"}}]}')))).toEqual([])
+  expect(
+    missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"x","extensions":{"code":"INTERNAL","typeName":"MergeRequest","fieldName":"mergeabilityChecks"}}]}')))
+  ).toEqual([])
   forgetProbed()
   const current = featuresOf('git.corp.com')
   expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true })

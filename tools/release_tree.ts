@@ -267,18 +267,29 @@ const READINGS: readonly { readonly name: string; readonly source: string; reado
     specs: ['./b'],
     dynamic: 0,
   },
-  { name: 'the same with `export type` of a union and an interface', source: "export type U = 'a' | 'b'\nexport interface I {\n  x: number\n}\nimport { w } from './c'\n", specs: ['./c'], dynamic: 0 },
+  {
+    name: 'the same with `export type` of a union and an interface',
+    source: "export type U = 'a' | 'b'\nexport interface I {\n  x: number\n}\nimport { w } from './c'\n",
+    specs: ['./c'],
+    dynamic: 0,
+  },
   { name: 'import type is erased whole', source: "import type { T } from './a'\nimport type * as ns from './a2'\nimport type D from './a3'\n", specs: [], dynamic: 0 },
   { name: 'export type {…} from is erased whole', source: "export type { T } from './a'\nexport type * from './a2'\n", specs: [], dynamic: 0 },
   { name: 'an import with only type specifiers still loads', source: "import { type A } from './d'\nimport { type B, c } from './e'\n", specs: ['./d', './e'], dynamic: 0 },
   { name: 'a default import named type still loads', source: "import type from './f'\nimport type, { g } from './f2'\n", specs: ['./f', './f2'], dynamic: 0 },
-  { name: 'side-effect imports and re-exports load', source: "import './s'\nexport * from './t'\nexport * as n from './t2'\nexport { a, type B } from './u'\n", specs: ['./s', './t', './t2', './u'], dynamic: 0 },
+  {
+    name: 'side-effect imports and re-exports load',
+    source: "import './s'\nexport * from './t'\nexport * as n from './t2'\nexport { a, type B } from './u'\n",
+    specs: ['./s', './t', './t2', './u'],
+    dynamic: 0,
+  },
   { name: 'a local export list loads nothing', source: "const a = 1\nexport { a }\nimport { z } from './v'\n", specs: ['./v'], dynamic: 0 },
   { name: 'import( is flagged, with a literal or not', source: "const m = await import('./w')\nconst n = import(name)\n", specs: [], dynamic: 2 },
   { name: 'import.meta is not an import', source: 'const here = import.meta.url\n', specs: [], dynamic: 0 },
   {
     name: 'comments, strings, templates and regular expressions hide nothing and show nothing',
-    source: "// import x from './no'\n/* import y from './no2' */\nconst s = \"import z from './no3'\"\nconst t = `${1} import q from './no4' ${`import(`}`\nconst r = /'/\nimport { k } from './x'\n",
+    source:
+      "// import x from './no'\n/* import y from './no2' */\nconst s = \"import z from './no3'\"\nconst t = `${1} import q from './no4' ${`import(`}`\nconst r = /'/\nimport { k } from './x'\n",
     specs: ['./x'],
     dynamic: 0,
   },
@@ -304,7 +315,11 @@ const isFile = (file: string): boolean => existsSync(file) && statSync(file).isF
 
 function resolveImport(tree: string, importer: string, spec: string): string | null {
   const base = resolve(dirname(importer), spec)
-  const candidates = [...(SUFFIXES.some(suffix => base.endsWith(suffix)) ? [base] : []), ...SUFFIXES.map(suffix => `${base}${suffix}`), ...SUFFIXES.map(suffix => join(base, `index${suffix}`))]
+  const candidates = [
+    ...(SUFFIXES.some(suffix => base.endsWith(suffix)) ? [base] : []),
+    ...SUFFIXES.map(suffix => `${base}${suffix}`),
+    ...SUFFIXES.map(suffix => join(base, `index${suffix}`)),
+  ]
   return candidates.find(candidate => isFile(candidate) && inside(tree, candidate)) ?? null
 }
 

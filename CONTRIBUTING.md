@@ -17,6 +17,8 @@ npm run check && npm test    # everything a commit and a push must pass
 | --- | --- |
 | `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the `claude` on your PATH (`tools/engine_types.ts`: no sign-in, no network, git-ignored). |
 | `npm run files` | JSON and YAML parse; no conflict markers, private keys or files over 500 kB; one final newline, no trailing whitespace. |
+| `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), ESLint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
+| `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |
 | `npm run knip` | No unused file, export, type or dependency; each entry point in `knip.jsonc` has its reason. |
 | `npm run lint` | ESLint over `hooks/`, `tests/`, `tools/`: no `x as T`, `any`, `!`, module state or disable comments; `hooks/` files within 400 lines; type-aware rules; the core imports core files only, by `.ts` path. |
 | `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tsconfig.tools.json`. The linter loads 6.0, which typescript-eslint can load. |
@@ -25,7 +27,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run docs -- check` | README's settings table is `userConfig`; README's and DESIGN's tables are `tests/docs.generated.ts` (`docs -- write` remakes it, `tests/docs.test.ts` holds it to the code); the scripts table here is `package.json`'s scripts. |
 | `npm run validate` | `claude plugin validate --strict` on the plugin and the store probe. |
 | `npm run scan` | gitleaks, actionlint, zizmor: each only if installed, and a skipped one is named. |
-| `npm run check:fast` | `files`, `knip`, `lint`, `types`, `schema -- types --check`, `release-tree -- check`, `docs -- check`, `validate`. |
+| `npm run check:fast` | `files`, `format:check`, `knip`, `lint`, `types`, `schema -- types --check`, `release-tree -- check`, `docs -- check`, `validate`. |
 | `npm run check` | `check:fast`, then `scan`. |
 | `npm test` | Vitest on the core (plain Node), `claude plugin test .` (the engine), then the scenes. |
 | `npm run schema -- <check\|snapshot\|types>` | `check`: every query against gitlab.com's live schema, and what each costs; `snapshot`: refresh the snapshot; `types`: regenerate the types. |
@@ -38,7 +40,7 @@ npm run check && npm test    # everything a commit and a push must pass
 
 | Check | On edit | Commit | Push | CI | Weekly canary |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| Core `tsc` and ESLint on the file edited (`tools/check_core.ts`) | x | | | | |
+| Core `tsc`, ESLint and `biome format` on the file edited (`tools/check_core.ts`) | x | | | | |
 | `check:fast` | | x | | x | |
 | `scan` (gitleaks on the staged change only) | | x | | x | |
 | Commit message and pull request title (commitlint) | | x | | x | |

@@ -1,4 +1,12 @@
-import type { CiJobStatus, MergeabilityCheckIdentifier, MergeabilityCheckStatus, MergeRequestReviewState, MrFieldsFragment, PipelineStatusEnum, ReviewerFieldsFragment } from '../hooks/gitlab.generated.ts'
+import type {
+  CiJobStatus,
+  MergeabilityCheckIdentifier,
+  MergeabilityCheckStatus,
+  MergeRequestReviewState,
+  MrFieldsFragment,
+  PipelineStatusEnum,
+  ReviewerFieldsFragment,
+} from '../hooks/gitlab.generated.ts'
 import type { CheckStatus, MergeStatus } from '../types'
 import type { RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
 
@@ -160,7 +168,11 @@ export const heavyMr = (iid: number, over: Partial<Mr> = {}): Mr =>
     headPipeline: pipe('FAILED', {
       stages: {
         nodes: Array.from({ length: 9 }, (_, s) =>
-          stage(`stage-${s}-with-a-long-name`, s === 4 ? 'FAILED' : 'SUCCESS', Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS')))
+          stage(
+            `stage-${s}-with-a-long-name`,
+            s === 4 ? 'FAILED' : 'SUCCESS',
+            Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS'))
+          )
         ),
       },
     }),

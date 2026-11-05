@@ -29,7 +29,14 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     forgetProbed()
     const hosts = parseHosts(options.gitlabHosts)
-    await Promise.all([startData($, options.jiraUrl, hosts), setFollow($, options.inboxFollow), rememberSettings(options.gitlabTokens, hosts), rememberLogs($, options.failureLogs), forgetProblems($), forgetScrolling($)])
+    await Promise.all([
+      startData($, options.jiraUrl, hosts),
+      setFollow($, options.inboxFollow),
+      rememberSettings(options.gitlabTokens, hosts),
+      rememberLogs($, options.failureLogs),
+      forgetProblems($),
+      forgetScrolling($),
+    ])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)
     await $.command.register({
       name: 'gitlab',

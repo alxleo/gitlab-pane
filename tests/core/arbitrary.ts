@@ -31,7 +31,9 @@ const rawArb = fc.record({
   approvalsLeft: fc.integer({ min: 0, max: 3 }),
   approvalsRequired: fc.integer({ min: 0, max: 3 }),
   reviewers: fc.array(fc.record({ name: fc.constantFrom(...NAMES), state: fc.constantFrom(...REVIEW_STATES), bot: fc.boolean() }), { maxLength: 4 }),
-  threads: fc.array(fc.record({ body: fc.constantFrom('please fix', 'nit', 'why?'), author: fc.constantFrom(...NAMES), resolved: fc.boolean(), bot: fc.boolean() }), { maxLength: 8 }),
+  threads: fc.array(fc.record({ body: fc.constantFrom('please fix', 'nit', 'why?'), author: fc.constantFrom(...NAMES), resolved: fc.boolean(), bot: fc.boolean() }), {
+    maxLength: 8,
+  }),
   description: fc.constantFrom('', '## Summary\n\nDoes a thing.', 'Line one\n\n- [x] done\n- [ ] not'),
   updatedAt: fc.constantFrom('2026-10-23T15:00:00Z', '2026-10-23T16:00:00Z', '2026-10-24T09:30:00Z'),
 })
@@ -52,7 +54,15 @@ const cardArb: fc.Arbitrary<MrCard> = rawArb.map(spec =>
         spec.pipeline !== undefined
           ? pipe(spec.pipeline.status, {
               id: `gid://gitlab/Ci::Pipeline/${spec.pipeline.id}`,
-              stages: { nodes: spec.pipeline.stages.map(each => stage(each.name, 'SUCCESS', each.jobs.map(one => job(one.name, one.status, { allowFailure: one.allowFailure })))) },
+              stages: {
+                nodes: spec.pipeline.stages.map(each =>
+                  stage(
+                    each.name,
+                    'SUCCESS',
+                    each.jobs.map(one => job(one.name, one.status, { allowFailure: one.allowFailure }))
+                  )
+                ),
+              },
             })
           : null,
       reviewers: { nodes: spec.reviewers.map(one => reviewer(one.name, one.state, one.bot)) },
@@ -64,7 +74,8 @@ const cardArb: fc.Arbitrary<MrCard> = rawArb.map(spec =>
 /** GitLab's merge checks for a card, as GitLab would say them given what the card shows: a failing check for each thing that blocks. */
 const checksFor = (card: MrCard): MergeStatus => {
   const status = card.pipeline?.status
-  const pipelineCheck: CheckStatus = status === 'failed' || status === 'canceled' || status === 'manual' ? 'failed' : status !== undefined && status !== 'success' && status !== 'skipped' ? 'checking' : 'success'
+  const pipelineCheck: CheckStatus =
+    status === 'failed' || status === 'canceled' || status === 'manual' ? 'failed' : status !== undefined && status !== 'success' && status !== 'skipped' ? 'checking' : 'success'
   const threads = card.openThreads.length + card.threadsLeft.loose + card.threadsLeft.held
   const failing = (isBad: boolean): CheckStatus => (isBad ? 'failed' : 'success')
   return [

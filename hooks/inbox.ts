@@ -53,7 +53,11 @@ async function contextOf($: EngineInterface): Promise<Context> {
 
 /** Switches the Inbox between every repo and the session's own. */
 export function toggleHere($: EngineInterface): void {
-  quietly($, update($, inboxHereAtom, isOn => !isOn), 'inbox')
+  quietly(
+    $,
+    update($, inboxHereAtom, isOn => !isOn),
+    'inbox'
+  )
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -85,13 +89,28 @@ async function tried(label: string, work: Promise<Found>): Promise<Tried> {
 async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[]): Promise<HostRead> {
   const since = new Date(now - HORIZON_MS).toISOString()
   const results = await Promise.all([
-    tried('to-dos', askVariant($, host, inboxTodosQuery).then(answer => todoMrs(host, dataOf(answer)))),
-    tried('review queue', ask($, host, inboxQueueQuery()).then(answer => queueMrs(host, dataOf(answer), now))),
-    tried('your MRs', ask($, host, inboxAuthoredQuery(since)).then(answer => authoredMrs(host, dataOf(answer), now))),
+    tried(
+      'to-dos',
+      askVariant($, host, inboxTodosQuery).then(answer => todoMrs(host, dataOf(answer)))
+    ),
+    tried(
+      'review queue',
+      ask($, host, inboxQueueQuery()).then(answer => queueMrs(host, dataOf(answer), now))
+    ),
+    tried(
+      'your MRs',
+      ask($, host, inboxAuthoredQuery(since)).then(answer => authoredMrs(host, dataOf(answer), now))
+    ),
     ...follows.map(follow =>
       follow.kind === 'user'
-        ? tried(`@${follow.name}`, ask($, host, inboxFollowUserQuery(follow.name, since)).then(answer => followedUserMrs(host, dataOf(answer), now)))
-        : tried(follow.name, ask($, host, inboxFollowProjectQuery(follow.name, since)).then(answer => followedProjectMrs(host, dataOf(answer), now)))
+        ? tried(
+            `@${follow.name}`,
+            ask($, host, inboxFollowUserQuery(follow.name, since)).then(answer => followedUserMrs(host, dataOf(answer), now))
+          )
+        : tried(
+            follow.name,
+            ask($, host, inboxFollowProjectQuery(follow.name, since)).then(answer => followedProjectMrs(host, dataOf(answer), now))
+          )
     ),
   ])
   const founds = results.flatMap(one => ('found' in one ? [one.found] : []))
@@ -101,9 +120,7 @@ async function readHost($: EngineInterface, host: string, now: number, follows: 
   return {
     found: combine(founds),
     failure:
-      first === undefined
-        ? null
-        : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : failed.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
+      first === undefined ? null : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : failed.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
   }
 }
 
@@ -193,23 +210,25 @@ export async function inboxNews($: EngineInterface): Promise<number> {
 }
 
 export async function inboxView($: EngineInterface) {
-  const [inbox, open, cards, now, context] = await Promise.all([
-    read($, inboxAtom),
-    read($, inboxOpenAtom),
-    read($, inboxCardsAtom),
-    $.clock.now(),
-    contextOf($),
-  ])
+  const [inbox, open, cards, now, context] = await Promise.all([read($, inboxAtom), read($, inboxOpenAtom), read($, inboxCardsAtom), $.clock.now(), contextOf($)])
   return { inbox, isHere: context.here.isOn, sections: sectionsOf(inbox.snapshot, inbox.seen, context), problem: problemOf(inbox.snapshot), open, cards, now }
 }
 
 /** Opens one rule, as a tab, closing the one open before; the open one closes. */
 export function toggleRule($: EngineInterface, rule: string): void {
-  quietly($, update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])), 'inbox')
+  quietly(
+    $,
+    update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])),
+    'inbox'
+  )
 }
 
 export function toggleCard($: EngineInterface, key: string): void {
-  quietly($, update($, inboxCardsAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])), 'inbox')
+  quietly(
+    $,
+    update($, inboxCardsAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])),
+    'inbox'
+  )
 }
 
 /** Puts `/mrs --rule <rule>` in the prompt box for you to send; where a surface draws its own box, copies it. */
@@ -265,7 +284,9 @@ async function wanted($: EngineInterface, arg: string, hosts: readonly string[],
   if (remote !== null && hosts.includes(remote.host) && isRefTo(ref, remote.path, ref.iid)) {
     return { hosts: [remote.host], path: remote.path, iid: ref.iid }
   }
-  return listed.length > 1 ? `${arg} names more than one MR in your inbox: use group/project!${ref.iid}` : `${arg} is not in your inbox or this session's repo: use group/project!${ref.iid} or the URL`
+  return listed.length > 1
+    ? `${arg} names more than one MR in your inbox: use group/project!${ref.iid}`
+    : `${arg} is not in your inbox or this session's repo: use group/project!${ref.iid} or the URL`
 }
 
 /** The first host that holds the MR; one that fails is a failure only if none does. */
@@ -303,7 +324,9 @@ export async function briefCommand($: EngineInterface, input: string): Promise<{
   const { snapshot, seen } = await read($, inboxAtom)
   const context = await contextOf($)
   if (args.length === 0) {
-    const rules = sectionsOf(snapshot, seen, context).map(section => `${section.rule} (${section.items.length})`).join(', ')
+    const rules = sectionsOf(snapshot, seen, context)
+      .map(section => `${section.rule} (${section.items.length})`)
+      .join(', ')
     return { text: `${USAGE}\nRules: ${rules}` }
   }
   const hosts = await readHosts($)
@@ -336,12 +359,12 @@ export async function briefCommand($: EngineInterface, input: string): Promise<{
   }
   const left = rule === undefined ? args.length - BRIEF_MOST : 0
   const text = briefing(briefs)
-  const notes = [
-    ...(missing.length > 0 ? [`Not found: ${missing.join(', ')}.`] : []),
-    ...(left > 0 ? [`${left} more were left out: ${BRIEF_MOST} at most.`] : []),
-  ]
+  const notes = [...(missing.length > 0 ? [`Not found: ${missing.join(', ')}.`] : []), ...(left > 0 ? [`${left} more were left out: ${BRIEF_MOST} at most.`] : [])]
   return {
-    text: [`Briefed ${briefs.length} MR${briefs.length === 1 ? '' : 's'} (${text.length.toLocaleString('en-GB')} characters) into this conversation. Thread refs like repo!iid#note_N name each thread.`, ...notes].join(' '),
+    text: [
+      `Briefed ${briefs.length} MR${briefs.length === 1 ? '' : 's'} (${text.length.toLocaleString('en-GB')} characters) into this conversation. Thread refs like repo!iid#note_N name each thread.`,
+      ...notes,
+    ].join(' '),
     context: [text],
   }
 }

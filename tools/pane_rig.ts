@@ -360,7 +360,9 @@ class Desktop {
   }
 
   texts(): string[] {
-    return walk(this.#tree).map(textOf).filter(text => text.trim() !== '')
+    return walk(this.#tree)
+      .map(textOf)
+      .filter(text => text.trim() !== '')
   }
 }
 
@@ -380,14 +382,24 @@ async function describe(desktop: Desktop, engine: Engine, show: number, scrollsB
   return [
     `  view ${view} · title ${await title(engine)} · ${desktop.draws} drawings · offset ${desktop.offset} of ${desktop.rows} rows`,
     ...desktop.scrolls.slice(scrollsBefore).map(scroll => `  scrolled to row ${scroll.offset}: lands on ${scroll.landed}`),
-    ...desktop.texts().slice(0, show).map(text => `  · ${text.slice(0, 110)}`),
+    ...desktop
+      .texts()
+      .slice(0, show)
+      .map(text => `  · ${text.slice(0, 110)}`),
     ...engine.newLogLines().map(line => `  log ${line.slice(0, 220)}`),
   ]
 }
 
 // ---- the command --------------------------------------------------------------------------------------------------------
 
-type Options = { readonly presses: readonly string[]; readonly waitSeconds: number; readonly settleMs: number; readonly bodyRows: number; readonly show: number; readonly log: string | null }
+type Options = {
+  readonly presses: readonly string[]
+  readonly waitSeconds: number
+  readonly settleMs: number
+  readonly bodyRows: number
+  readonly show: number
+  readonly log: string | null
+}
 
 async function flow(options: Options): Promise<number> {
   const folder = mkdtempSync(join(tmpdir(), 'pane-rig-'))
@@ -416,7 +428,10 @@ async function flow(options: Options): Promise<number> {
     return 0
   } catch (error) {
     console.error(`stopped: ${messageOf(error)}`)
-    engine.newLogLines().slice(-15).forEach(line => console.error(`  log ${line.slice(0, 220)}`))
+    engine
+      .newLogLines()
+      .slice(-15)
+      .forEach(line => console.error(`  log ${line.slice(0, 220)}`))
     return 1
   } finally {
     engine.close()

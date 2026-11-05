@@ -29,8 +29,7 @@ const JOB_RANK: Record<JobKind, number> = {
 
 const jobKind = (job: Job): JobKind => (job.status === 'failed' && job.allowFailure ? 'amber' : job.status)
 
-const jobMark = (job: Job): { glyph: string; tone: Tone } =>
-  jobKind(job) === 'amber' ? { glyph: '⚠', tone: 'warning' } : statusMark(job.status)
+const jobMark = (job: Job): { glyph: string; tone: Tone } => (jobKind(job) === 'amber' ? { glyph: '⚠', tone: 'warning' } : statusMark(job.status))
 
 /** How many jobs a card lists before saying how many more there are. */
 export const JOBS_SHOWN = 6

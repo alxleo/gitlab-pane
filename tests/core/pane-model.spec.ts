@@ -139,9 +139,7 @@ test('while nothing has been read, one line per failing source says what to do, 
     inbox: { message: 'boom', at: NOW, kind: 'unknown' as const },
   }
   expect(firstRunLines(failures, false)).toEqual(['GitLab: no access token: set one, or sign in, then press refresh', 'Inbox: boom'])
-  expect(firstRunLines({ gitlab: { message: 'x', at: NOW, kind: 'network' } }, false)).toEqual([
-    'GitLab: cannot be reached: check the network or VPN, then press refresh',
-  ])
+  expect(firstRunLines({ gitlab: { message: 'x', at: NOW, kind: 'network' } }, false)).toEqual(['GitLab: cannot be reached: check the network or VPN, then press refresh'])
   // Once something has been read the pane has cards to show and the footer says the rest.
   expect(firstRunLines(failures, true)).toEqual([])
   const unread = { fetchedAt: null, attemptedAt: NOW, error: 'x', hosts: {}, failures: 1, ticketsAt: null, usualAt: null }

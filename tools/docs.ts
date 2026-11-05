@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
+import { formatted } from './format.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const README = join(ROOT, 'README.md')
@@ -103,8 +104,7 @@ function firstTicked(where: string, cell: string | undefined): string {
 }
 
 /** Every duration a cell names (`1 min`, `30 s`, `2 h`), in milliseconds, in order. */
-const durationsOf = (cell: string | undefined): number[] =>
-  [...(cell ?? '').matchAll(DURATION)].map(found => Number(found[1]) * (UNITS[found[2] ?? ''] ?? Number.NaN))
+const durationsOf = (cell: string | undefined): number[] => [...(cell ?? '').matchAll(DURATION)].map(found => Number(found[1]) * (UNITS[found[2] ?? ''] ?? Number.NaN))
 
 /** What the docs' tables say that the tests hold to the code. */
 function readDocs() {
@@ -184,15 +184,13 @@ function checkScripts(): void {
 
 /** A group of tables as a constant, one row a line. */
 const constant = (name: string, tables: Record<string, readonly unknown[]>): string =>
-  [
-    `export const ${name} = {`,
-    ...Object.entries(tables).flatMap(([key, rows]) => [`  ${key}: [`, ...rows.map(row => `    ${JSON.stringify(row)},`), '  ],']),
-    '} as const',
-  ].join('\n')
+  [`export const ${name} = {`, ...Object.entries(tables).flatMap(([key, rows]) => [`  ${key}: [`, ...rows.map(row => `    ${JSON.stringify(row)},`), '  ],']), '} as const'].join(
+    '\n'
+  )
 
 function generated(): string {
   const docs = readDocs()
-  return [
+  const text = [
     '// What README.md and DESIGN.md say in their tables, read by tools/docs.ts. Never edit it: `npm run docs -- write` makes it.',
     '// `npm run docs -- check` fails while it differs from the docs, and tests/docs.test.ts while it differs from the code.',
     '',
@@ -201,6 +199,7 @@ function generated(): string {
     constant('DESIGN', docs.design),
     '',
   ].join('\n')
+  return formatted(text, GENERATED)
 }
 
 function report(): number {
@@ -236,7 +235,7 @@ function main(args: readonly string[]): number {
     }
     const failed = report()
     if (failed === 0) {
-      console.log('the docs\' settings are plugin.json\'s, the scripts table is package.json\'s, and their tables are in tests/docs.generated.ts')
+      console.log("the docs' settings are plugin.json's, the scripts table is package.json's, and their tables are in tests/docs.generated.ts")
     }
     return failed
   }

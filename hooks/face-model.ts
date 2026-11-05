@@ -51,8 +51,8 @@ export function faceFacts(person: Person, picture: string | undefined): FaceFact
       : svg`<circle cx='8' cy='8' r='9.5' fill='none' stroke='${STAGE_COLOURS[tone]}' stroke-width='3'/>`
   const mark =
     badge !== null
-    ? svg`<circle cx='14.75' cy='14.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
-    : svg``
+      ? svg`<circle cx='14.75' cy='14.75' r='3.75' fill='${STAGE_COLOURS[badge.tone]}' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
+      : svg``
   // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
   const around = (inner: SvgSource): SvgSource =>
     svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${raw(inner)}${raw(ring)}${raw(mark)}</svg>`

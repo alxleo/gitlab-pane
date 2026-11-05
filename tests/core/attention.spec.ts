@@ -12,9 +12,7 @@ import type { MergeStatus, MrCard } from '../../types'
 /** An MR with GitLab's merge checks, as the poll joins them to the authored list. */
 const withChecks = (iid: number, says: MergeStatus, over: Parameters<typeof rawMr>[1] = {}): MrCard => ({ ...toCard(HOST, rawMr(iid, over)), mergeStatus: says })
 
-const marks = (iid: number, over: Parameters<typeof rawMr>[1] = {}) =>
-  badges(toCard(HOST, rawMr(iid, over))).map(badge => `${badge.glyph}${badge.count}`)
-
+const marks = (iid: number, over: Parameters<typeof rawMr>[1] = {}) => badges(toCard(HOST, rawMr(iid, over))).map(badge => `${badge.glyph}${badge.count}`)
 
 test('MRs sort by what needs you: failing, then running, then waiting, then ready', async () => {
   const ready = toCard(HOST, rawMr(1, { approvalsLeft: 0, updatedAt: '2026-10-23T15:05:00Z' }))
@@ -100,7 +98,7 @@ test('an icon speaks for a request for changes, and still the check GitLab fails
   expect(rowBadges(card).map(badge => `${badge.kind}:${badge.words}`)).toEqual(['check:requested changes', 'approvals:needs 1 approval'])
 })
 
-test('a card GitLab gave no checks for still gets the pane\'s own markers for conflicts and a rebase', async () => {
+test("a card GitLab gave no checks for still gets the pane's own markers for conflicts and a rebase", async () => {
   const card = toCard(HOST, rawMr(1, { conflicts: true, shouldBeRebased: true }))
   expect(card.mergeStatus).toBeNull()
   expect(badges(card).map(badge => badge.words)).toEqual(['conflicts', 'needs rebase', 'needs 1 approval'])

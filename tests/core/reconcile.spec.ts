@@ -35,7 +35,10 @@ const card = (status: Wire, says: Partial<Record<string, CheckStatus>> | null = 
     id: `gid://gitlab/Ci::Pipeline/${id}`,
     ...(over.failedJob === true ? { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } } : {}),
   })
-  return { ...toCard(HOST, rawMr(12, { headPipeline, state: over.state ?? 'opened' })), mergeStatus: says === null ? null : checks().map(check => ({ id: check.identifier, status: says[check.identifier] ?? 'success' })) }
+  return {
+    ...toCard(HOST, rawMr(12, { headPipeline, state: over.state ?? 'opened' })),
+    mergeStatus: says === null ? null : checks().map(check => ({ id: check.identifier, status: says[check.identifier] ?? 'success' })),
+  }
 }
 
 type Case = {
@@ -228,7 +231,15 @@ test('reconcile: a watched MR, a first sighting, a repeat and a passing pipeline
 
 test('reconcile: only the first few failed jobs of a pipeline are asked about', async () => {
   const names = ['a', 'b', 'c', 'd', 'e']
-  const stages = { nodes: [stage('test', 'FAILED', names.map((name, i) => job(name, 'FAILED', { webPath: `/g/p/-/jobs/${4700 + i}` })))] }
+  const stages = {
+    nodes: [
+      stage(
+        'test',
+        'FAILED',
+        names.map((name, i) => job(name, 'FAILED', { webPath: `/g/p/-/jobs/${4700 + i}` }))
+      ),
+    ],
+  }
   const many = toCard(HOST, rawMr(12, { headPipeline: pipe('FAILED', { stages }) }))
   const asked: string[][] = []
   await reconcile({
