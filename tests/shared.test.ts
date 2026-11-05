@@ -111,6 +111,11 @@ test("every session's pins are published under its key, kept while it beats and 
   expect(readPinsRecord({ ...record, pins: [{ url: 1 }] })).toBeNull()
   expect(unionPins([pin(1, 'raised')], [record], NOW + 1_000).map(pinKey)).toEqual(['gitlab.com/g/p!1', 'gitlab.com/g/p!2'])
   expect(unionPins([pin(1)], [record], NOW + PINS_EXPIRY_MS).map(pinKey)).toEqual(['gitlab.com/g/p!1'])
+  // One session raised an MR that another only watches: the union has it raised, whichever session is asked.
+  const raisedElsewhere = { session: 'a', at: NOW, pins: [pin(5, 'raised')] }
+  expect(unionPins([pin(5, 'watched')], [raisedElsewhere], NOW).map(one => one.origin)).toEqual(['raised'])
+  expect(unionPins([pin(5, 'raised')], [{ ...raisedElsewhere, pins: [pin(5, 'watched')] }], NOW).map(one => one.origin)).toEqual(['raised'])
+  expect(unionPins([pin(5, 'watched')], [{ ...raisedElsewhere, pins: [pin(5, 'watched')] }], NOW).map(one => one.origin)).toEqual(['watched'])
   expect(isAlive(record, NOW + PINS_EXPIRY_MS - 1)).toBe(true)
   expect(isAlive({ ...record, at: NOW + PINS_EXPIRY_MS }, NOW)).toBe(false)
   expect(isPublished(record, record.pins, NOW + PINS_BEAT_MS - 1)).toBe(true)

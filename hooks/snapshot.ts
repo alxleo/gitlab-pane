@@ -212,10 +212,16 @@ export const failuresFrom = (shared: Readonly<Record<string, SharedFailure>> | u
 /** Whether a stored record still stands for its session. A beat stamped ahead of this clock is no proof of life, as for the lease. */
 export const isAlive = (record: PinsRecord, now: number): boolean => Math.abs(now - record.at) < PINS_EXPIRY_MS
 
-/** Every pin to read: this session's own, then those of the other sessions still alive, one for each MR. */
+/**
+ * Every pin to read: this session's own, then those of the other sessions still alive, one for each MR. An MR any session
+ * raised stays raised in the union (a pin with no origin counts as raised), whoever else only watches it, because the leader
+ * fetches why its pipeline failed for the raised ones; each session still wakes from its own pins alone.
+ */
 export function unionPins(own: readonly Pinned[], others: readonly PinsRecord[], now: number): Pinned[] {
   const all = [...own, ...others.filter(record => isAlive(record, now)).flatMap(record => record.pins)]
-  return all.filter((pin, i) => all.findIndex(each => pinKey(each) === pinKey(pin)) === i)
+  return all
+    .filter((pin, i) => all.findIndex(each => pinKey(each) === pinKey(pin)) === i)
+    .map(pin => all.find(each => pinKey(each) === pinKey(pin) && each.origin !== 'watched') ?? pin)
 }
 
 /** Whether the pins a session stored say what it holds now and are fresh enough to need no beat. */

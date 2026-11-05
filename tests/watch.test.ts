@@ -1128,3 +1128,17 @@ test("a session that reads nothing says what the leader's reads failed with, as 
   expect(answer.text).toContain(', reported by the session that reads GitLab)')
   await ui.unmount()
 })
+
+test('an MR another session raised and this one only watches still has its failure reason fetched, and wakes no one here', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false, reasons: { '/g/p/-/jobs/4711': 'script failure' }, traces: { 'g/p#4711': 'ERROR: Job failed' } }
+  const { woken, store } = engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  store.set('pins:other', { session: 'other', at: clock.now(), pins: [{ url: PINNED_URL, host: HOST, path: 'g/p', iid: 12, origin: 'raised' }] })
+  fake.mrs = [rawMr(12, { updatedAt: stamp(clock), headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED', { webPath: '/g/p/-/jobs/4711' })])] } }) })]
+  await clock.advance(120_000)
+  // The leader fetched why, for the session that raised it, and shared it; this session, which only watches, is not woken.
+  expect(readSnapshot(store.get('snapshot'))?.failures).toEqual({ '99': { '4711': { reason: 'script failure', tail: ['ERROR: Job failed'] } } })
+  expect(woken).toEqual([])
+})
