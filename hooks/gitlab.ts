@@ -1,6 +1,72 @@
-import type { Job, JobLink, MrCard, Note, Person, Pinned, Usual } from '../types'
+import type { CiStatus, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
 const GITLAB = 'https://gitlab.com'
+
+const CI_STATUSES: Record<CiStatus, true> = {
+  created: true,
+  waiting_for_resource: true,
+  preparing: true,
+  waiting_for_callback: true,
+  pending: true,
+  running: true,
+  success: true,
+  failed: true,
+  canceling: true,
+  canceled: true,
+  skipped: true,
+  manual: true,
+  scheduled: true,
+  unknown: true,
+}
+
+const REVIEW_STATES: Record<ReviewState, true> = {
+  unreviewed: true,
+  reviewed: true,
+  requested_changes: true,
+  approved: true,
+  unapproved: true,
+  review_started: true,
+  unknown: true,
+}
+
+const MERGE_STATUSES: Record<MergeStatus, true> = {
+  UNCHECKED: true,
+  CHECKING: true,
+  MERGEABLE: true,
+  COMMITS_STATUS: true,
+  CI_MUST_PASS: true,
+  CI_STILL_RUNNING: true,
+  DISCUSSIONS_NOT_RESOLVED: true,
+  DRAFT_STATUS: true,
+  NOT_OPEN: true,
+  NOT_APPROVED: true,
+  BLOCKED_STATUS: true,
+  EXTERNAL_STATUS_CHECKS: true,
+  PREPARING: true,
+  JIRA_ASSOCIATION: true,
+  CONFLICT: true,
+  NEED_REBASE: true,
+  APPROVALS_SYNCING: true,
+  LOCKED_PATHS: true,
+  LOCKED_LFS_FILES: true,
+  MERGE_TIME: true,
+  SECURITY_POLICIES_VIOLATIONS: true,
+  TITLE_NOT_MATCHING: true,
+  REQUESTED_CHANGES: true,
+  SECURITY_POLICY_PIPELINE_CHECK: true,
+  UNKNOWN: true,
+}
+
+// GitLab adds enum values without notice; one the pane does not know becomes `unknown`, drawn as such, and never a known one.
+const known = <T extends string>(table: Record<T, true>, value: string): T | undefined => (Object.hasOwn(table, value) ? (value as T) : undefined)
+
+/** GitLab's `CiJobStatus` or `PipelineStatusEnum` (or a stage's status, a plain string), lower cased. */
+export const ciStatusOf = (status: string): CiStatus => known(CI_STATUSES, status.toLowerCase()) ?? 'unknown'
+
+/** `MergeRequestReviewState`, lower cased; none yet reads as unreviewed. */
+const reviewStateOf = (state: string | null | undefined): ReviewState => known(REVIEW_STATES, (state ?? 'unreviewed').toLowerCase()) ?? 'unknown'
+
+export const mergeStatusOf = (status: string): MergeStatus => known(MERGE_STATUSES, status) ?? 'UNKNOWN'
 
 const NOTE_FIELDS = `body system url createdAt author { username name bot avatarUrl } position { filePath newLine oldLine }`
 
@@ -32,10 +98,10 @@ export const mergeStatusQuery = (): string =>
   `query { currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } } }`
 
 /** Each MR's verdict by card key; an MR missing from the answer has none. */
-export function readMergeStatus(response: RawResponse): Map<string, string> {
+export function readMergeStatus(response: RawResponse): Map<string, MergeStatus> {
   const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
   return new Map(
-    nodes.flatMap(node => (node?.detailedMergeStatus ? [[`${node.project.fullPath}!${node.iid}`, node.detailedMergeStatus] as const] : []))
+    nodes.flatMap(node => (node?.detailedMergeStatus ? [[`${node.project.fullPath}!${node.iid}`, mergeStatusOf(node.detailedMergeStatus)] as const] : []))
   )
 }
 
@@ -174,16 +240,16 @@ const toNote = (raw: RawNote, project: string, isOpen: boolean): Note => {
   }
 }
 
-const jobLink = (job: RawJob): JobLink => ({ name: job.name, url: `${GITLAB}${job.webPath}` })
-
 const toJob = (job: RawJob): Job => ({
   name: job.name,
-  status: job.status.toLowerCase(),
+  status: ciStatusOf(job.status),
   allowFailure: job.allowFailure,
   url: `${GITLAB}${job.webPath}`,
   startedAt: job.startedAt,
   finishedAt: job.finishedAt,
 })
+
+const jobLink = (job: Job): JobLink => ({ name: job.name, url: job.url })
 
 const words = (name: string): string[] => name.split(/[\s._-]+/).filter(word => /^\p{L}/u.test(word))
 
@@ -197,7 +263,15 @@ export function initials(name: string, longer = false): string {
   return `${first.charAt(0).toUpperCase()}${last.charAt(0).toUpperCase()}${longer ? last.charAt(1) : ''}`
 }
 
-const STATE_ORDER = ['requested_changes', 'open', 'approved', 'reviewing', 'commented', 'unreviewed']
+/** Who to talk to first; `open` is a person with open threads, who comes after one asking for changes. */
+const STATE_RANK: Record<PersonState | 'open', number> = {
+  requested_changes: 0,
+  open: 1,
+  approved: 2,
+  reviewing: 3,
+  commented: 4,
+  unreviewed: 5,
+}
 
 /** A bot without a picture of its own gets a generated identicon, which says nothing of what it is. */
 const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=identicon\b/.test(url)
@@ -207,7 +281,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
   const author = raw.author?.username
   const byName = new Map<
     string,
-    { name: string; isBot: boolean; avatarUrl: string | null; review: string; isApprover: boolean; openThreads: number; notes: Note[] }
+    { name: string; isBot: boolean; avatarUrl: string | null; review: ReviewState; isApprover: boolean; openThreads: number; notes: Note[] }
   >()
   const meet = (user: RawUser | null) => {
     if (!user || user.username === author) {
@@ -229,7 +303,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
   raw.reviewers.nodes.forEach(reviewer => {
     const person = meet(reviewer)
     if (person) {
-      person.review = (reviewer.mergeRequestInteraction?.reviewState ?? 'unreviewed').toLowerCase()
+      person.review = reviewStateOf(reviewer.mergeRequestInteraction?.reviewState)
     }
   })
   raw.approvedBy.nodes.forEach(user => {
@@ -248,7 +322,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
     })
   )
   const people = [...byName].map(([username, person]) => {
-    const state =
+    const state: PersonState =
       person.review === 'requested_changes'
         ? 'requested_changes'
         : person.isApprover || person.review === 'approved'
@@ -272,7 +346,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
   })
   const shared = new Set(people.map(person => person.initials).filter((value, i, all) => all.indexOf(value) !== i))
   const order = (person: Person) =>
-    STATE_ORDER.indexOf(person.state === 'requested_changes' || person.openThreads === 0 ? person.state : 'open')
+    STATE_RANK[person.state === 'requested_changes' || person.openThreads === 0 ? person.state : 'open']
   // Bots leave a summary on nearly every MR; only one holding the merge, by an open thread or asking for changes, is shown.
   return people
     .filter(person => !person.isBot || person.state === 'requested_changes' || person.openThreads > 0)
@@ -292,10 +366,10 @@ export function toCard(raw: RawMr): MrCard {
   const reviewers = raw.reviewers.nodes.map(reviewer => ({
     username: reviewer.username,
     isBot: reviewer.bot,
-    state: (reviewer.mergeRequestInteraction?.reviewState ?? 'unreviewed').toLowerCase(),
+    state: reviewStateOf(reviewer.mergeRequestInteraction?.reviewState),
   }))
   const requested = reviewers.filter(reviewer => reviewer.state === 'requested_changes')
-  const jobs = pipeline?.stages.nodes.flatMap(stage => stage.jobs.nodes) ?? []
+  const jobs = pipeline?.stages.nodes.flatMap(stage => stage.jobs.nodes.map(toJob)) ?? []
   return {
     key: `${project}!${raw.iid}`,
     url: raw.webUrl,
@@ -326,38 +400,40 @@ export function toCard(raw: RawMr): MrCard {
     approvers: raw.approvedBy.nodes.filter(user => !user.bot).map(user => user.username),
     reviewers,
     people: toPeople(raw, project, threads),
-    pipeline: pipeline
+    ...(pipeline
       ? {
-          id: Number(pipeline.id.split('/').pop()),
-          status: pipeline.status.toLowerCase(),
-          url: `${GITLAB}${pipeline.path}`,
-          duration: pipeline.duration,
-          startedAt: pipeline.startedAt,
-          finishedAt: pipeline.finishedAt,
-          stages: pipeline.stages.nodes.map(stage => ({
-            name: stage.name,
-            status: stage.status.toLowerCase(),
-            jobs: stage.jobs.nodes.map(toJob),
-          })),
-          failed: jobs.filter(job => job.status === 'FAILED' && !job.allowFailure).map(jobLink),
-          amber: jobs.filter(job => job.status === 'FAILED' && job.allowFailure).map(jobLink),
-          blockedOn: jobs.filter(job => job.status === 'MANUAL' && !job.allowFailure).map(job => job.name),
+          pipeline: {
+            id: Number(pipeline.id.split('/').pop()),
+            status: ciStatusOf(pipeline.status),
+            url: `${GITLAB}${pipeline.path}`,
+            duration: pipeline.duration,
+            startedAt: pipeline.startedAt,
+            finishedAt: pipeline.finishedAt,
+            stages: pipeline.stages.nodes.map(stage => ({
+              name: stage.name,
+              status: ciStatusOf(stage.status),
+              jobs: stage.jobs.nodes.map(toJob),
+            })),
+            failed: jobs.filter(job => job.status === 'failed' && !job.allowFailure).map(jobLink),
+            amber: jobs.filter(job => job.status === 'failed' && job.allowFailure).map(jobLink),
+            blockedOn: jobs.filter(job => job.status === 'manual' && !job.allowFailure).map(job => job.name),
+          },
         }
-      : undefined,
+      : {}),
     openThreads: open
       .filter(thread => !isBot(thread.first))
       .map(thread => ({ ...toNote(thread.first, project, true), replies: thread.notes.slice(1).map(one => toNote(one, project, true)) })),
   }
 }
 
-/**
- * Authored and pinned MRs, each once. A read with no data at all throws; a partial one
- * (a pinned project out of reach) keeps what came back.
- */
 /** How many of the authored MRs GitLab sent back null: parts of a heavy query it timed out. */
 export const lostIn = (response: RawResponse): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
 
+/**
+ * Authored and pinned MRs, each once. A read with no data at all throws; a partial one
+ * (a pinned project out of reach) keeps what came back.
+ */
 export function readResponse(response: RawResponse, pinnedCount: number): MrCard[] {
   if (!response.data) {
     throw new Error(response.errors?.map(error => error.message).join('; ') || 'GitLab sent no data')

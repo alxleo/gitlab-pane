@@ -24,7 +24,8 @@ on:
 permissions: {}
 
 concurrency:
-  group: check-${{ github.event.pull_request.number || github.ref }}
+  # A body-only edit runs nothing, so it waits in a group of its own: in the shared one it would cancel the real check.
+  group: check-${{ github.event.pull_request.number || github.ref }}${{ github.event.action == 'edited' && !github.event.changes.title && '-body' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -42,15 +43,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # gitleaks reads every commit
-      # Every commit names its author and committer by a GitHub noreply address, so no one's own address is published
-      # here. It reads the pull request's own commits, not the merge GitHub makes to test them, and on main the whole
+      # Every commit names its author by a GitHub noreply address, so no one's own address is published here. The
+      # committer is one too, or Claude's noreply@anthropic.com for a commit Claude made and signed. It reads the pull request's own commits, not the merge GitHub makes to test them, and on main the whole
       # history, which also catches a merge GitHub made with a merger's own address.
       - name: Commits carry noreply addresses only
         env:
           TIP: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           exposed=$(git log --format='%h %ae %ce' "$TIP" \
-            | grep -vE '^[0-9a-f]+ [^ ]+@users\.noreply\.github\.com ([^ ]+@users\.noreply\.github\.com|noreply@github\.com)$' || true)
+            | grep -vE '^[0-9a-f]+ [^ ]+@users\.noreply\.github\.com ([^ ]+@users\.noreply\.github\.com|noreply@github\.com|noreply@anthropic\.com)$' || true)
           if [ -n "$exposed" ]; then
             echo "::error::These commits name an address other than a GitHub noreply one. Set git's user.email to the noreply address at https://github.com/settings/emails and amend them."
             echo "$exposed" | cut -d' ' -f1

@@ -27,6 +27,7 @@ pre-commit install
 - **Files:** JSON and YAML parse; no private keys, conflict markers or large files.
 - **Addresses:** CI fails any commit whose author or committer is not a GitHub noreply address, so nobody's own email is published here. Set yours from https://github.com/settings/emails, and turn on "Keep my email addresses private" there so merges you make on GitHub use it too.
 - **The plugin:** `claude plugin validate --strict .` on each commit that touches it, and `claude plugin test .` before each push.
+- **Types, the core:** `tsc -p tsconfig.core.json`, with TypeScript pinned in `.pre-commit-config.yaml`, strictly checks the files that run on plain data: `avatar.ts`, `ci.ts`, `gitlab.ts`, `jira.ts`, `markdown.ts` and `reconcile.ts` in `hooks/`, over the types in `types/index.d.ts`. That config has no engine types, so a file there that imports `claude-code` does not compile: code that talks to the engine stays out of the core, and new pure code goes in it.
 - **Commit messages:** each one says what it is, such as `feat: …`, `fix(jira): …` or `docs: …`, because releases are worked out from them. A pull request's title follows the same rule; merge with a squash, so the title becomes the commit on main.
 
 To run the checks by hand:
@@ -37,15 +38,23 @@ pre-commit run --all-files --hook-stage manual
 
 That leaves out `claude plugin test .`, which CI runs as its own step, so run it too.
 
-The type-check runs only locally, because it needs the types Claude Code writes into `.claude-plugin/types/` when a signed-in session has loaded the mod from your clone:
+Everything else (the panes, `read.ts`, the tests) imports `claude-code`, so it is type-checked only against the engine's types, which are not generated here but committed in `types/engine/`, a snapshot of what Claude Code writes into `.claude-plugin/types/` when a signed-in session has loaded the mod from your clone:
 
 ```bash
 npx --package typescript tsc -p .
 ```
 
+CI does not run that yet. To take or refresh the snapshot, from a clone a signed-in session has loaded, and commit `types/engine/`:
+
+```bash
+tools/snapshot_types.sh
+```
+
+It records the `claude --version` it came from in `types/engine/VERSION`. Refresh the snapshot whenever `CLAUDE_CODE_VERSION` in `check.yml` is raised, in the same change.
+
 ## CI
 
-`.github/workflows/check.yml` runs the checks above and the tests as one job, for pull requests and for main. The Claude Code version CI uses is pinned there, in `screens.yml` and in `tools/pane_screens.py`; change all three together. Dependabot proposes newer pinned actions and hooks monthly.
+`.github/workflows/check.yml` runs the checks above and the tests as one job, for pull requests and for main. The Claude Code version CI uses is pinned there, in `screens.yml` and in `tools/pane_screens.py`; change all three together, and refresh the types snapshot with them. Dependabot proposes newer pinned actions and hooks monthly.
 
 `.github/workflows/canary.yml` runs every Monday, for what breaks the pane while this repository stands still. It validates the plugin and runs its tests on the newest Claude Code, installs the plugin from GitHub into an empty setup, and checks every query the pane sends against gitlab.com's live schema. A failure opens an issue, and the next green run closes it. When the newest Claude Code passes, it is safe to raise the pinned version. A pull request that changes the queries in `hooks/gitlab.ts` gets the schema check too; to run it yourself, with Node 24 or newer:
 

@@ -1,13 +1,13 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import { discSource } from './avatar'
-import { ago, shortTitle } from './ci'
+import { ago, measure, shortHash, shortTitle } from './ci'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
-import type { InboxActivity, InboxItem, InboxSection } from '../types'
+import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
 
 /** How each kind of activity reads, in the order a card counts them: what blocks or clears a merge first. */
-const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
+const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string }> = {
   changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes' },
   unapproved: { glyph: '↺', tone: 'warning', word: 'withdrew approval' },
   approved: { glyph: '✓', tone: 'success', word: 'approved' },
@@ -17,7 +17,10 @@ const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
   pushed: { glyph: '↑', word: 'pushed' },
   opened: { glyph: '+', word: 'opened' },
   merged: { glyph: '◆', tone: 'merged', word: 'merged' },
+  unknown: { glyph: '·', word: 'acted' },
 }
+
+const KINDS = Object.keys(VERB) as InboxKind[]
 
 /**
  * What the inbox may take of the pane's drawing, now that it has its own tab and shares the drawing only with the
@@ -25,17 +28,6 @@ const VERB: Record<string, { glyph: string; tone?: string; word: string }> = {
  */
 const INBOX_BUDGET = 70_000
 const ITEMS_SHOWN = 30
-
-const measure = (tree: unknown): number => {
-  try {
-    return JSON.stringify(tree)?.length ?? 0
-  } catch {
-    return INBOX_BUDGET
-  }
-}
-
-const hashOf = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
 
 /** `Tessa.Ravensworth` is Tessa; a handle with no separator stays whole. */
 const firstName = (username: string): string => username.split(/[._]/)[0] || username
@@ -70,11 +62,11 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
 
   /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
   const event = (one: InboxActivity, isWhole: boolean) => {
-    const verb = VERB[one.kind] ?? { glyph: '·', word: one.kind }
+    const verb = VERB[one.kind]
     const when = ago(one.at, now)
     const said = one.excerpt ? `“${one.excerpt}”` : ''
     return (
-      <Box key={`ev-${hashOf(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
+      <Box key={`ev-${shortHash(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
           {avatar(one.actor)}
           <Box flexShrink={0}>
@@ -108,9 +100,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
    */
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
-    const counted = Object.keys(VERB)
-      .filter(kind => item.counts[kind])
-      .map(kind => `${item.counts[kind]} ${VERB[kind]?.word}`)
+    const counted = KINDS.filter(kind => item.counts[kind]).map(kind => `${item.counts[kind]} ${VERB[kind].word}`)
     const about = [
       bang > 0 ? item.ref.slice(0, bang) : '',
       item.isMine ? '' : item.author,
@@ -122,7 +112,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const isOpen = canOpen && cards.includes(item.key)
     return (
       <Box
-        key={`ib-${hashOf(item.key)}`}
+        key={`ib-${shortHash(item.key)}`}
         flexDirection="column"
         borderStyle="round"
         borderColor={item.unseen > 0 ? 'warning' : 'subtle'}
@@ -134,7 +124,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}
             {canOpen ? (
               <Button
-                key={`inbox-open-${hashOf(item.key)}`}
+                key={`inbox-open-${shortHash(item.key)}`}
                 plain
                 label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`}
                 onPress={() => toggleCard($, item.key)}
@@ -152,7 +142,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           )}
           <Box flexShrink={0}>
             <Button
-              key={`inbox-seen-${hashOf(item.key)}`}
+              key={`inbox-seen-${shortHash(item.key)}`}
               plain
               label="✓"
               onPress={() => markSeen($, { key: item.key }).catch(() => undefined)}
@@ -173,7 +163,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           ? item.activity.map(one => event(one, true))
           : item.activity[0] && event(item.activity[0], false)}
         {isOpen && (
-          <Button key={`inbox-less-${hashOf(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
+          <Button key={`inbox-less-${shortHash(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
         )}
       </Box>
     )
@@ -210,7 +200,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   // The tabs always draw; the open rule's cards take what is left of the budget.
-  let room = INBOX_BUDGET - measure(shown.map(tab)) - 1_500
+  let room = INBOX_BUDGET - measure(shown.map(tab), INBOX_BUDGET) - 1_500
   const body = (section: InboxSection) => {
     if (open[0] !== section.rule) {
       return []
@@ -218,7 +208,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const lines = []
     for (const item of section.items.slice(0, ITEMS_SHOWN)) {
       const line = itemCard(item)
-      const size = measure(line)
+      const size = measure(line, INBOX_BUDGET)
       if (size > room) {
         break
       }

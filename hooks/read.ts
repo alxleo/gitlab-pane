@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
-import { advance, ago, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf, titleKey, wakeLine } from './ci'
+import { ago, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf, titleKey } from './ci'
 import {
   PINS_PER_QUERY,
   PROJECTS_PER_QUERY,
@@ -16,8 +16,9 @@ import {
 } from './gitlab'
 import type { RawResponse } from './gitlab'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
+import { reconcile } from './reconcile'
 
-import type { MrCard, Pinned, PollState } from '../types'
+import type { MergeStatus, MrCard, Pinned, PollState } from '../types'
 
 // The engine lists each module's state from the atoms written in that file, so this file alone holds them.
 const pinnedAtom = atom({ plugin: 'gitlab-ci', key: 'pinned' } as const, [])
@@ -222,7 +223,7 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
     ask($, authoredQuery()),
     ask($, mergeStatusQuery())
       .then(readMergeStatus)
-      .catch(() => new Map<string, string>()),
+      .catch(() => new Map<string, MergeStatus>()),
   ])
   const rows = readResponse(authored, 0).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
@@ -355,28 +356,9 @@ async function readOnce($: EngineInterface): Promise<void> {
     return
   }
   const now = await $.clock.now()
-  const announced = { ...(await read($, announcedAtom)) }
-  const news: { text: string; wakes: boolean }[] = []
-  const ended = new Set<string>()
-  pinned.forEach(one => {
-    const row = rows.find(each => each.key === pinKey(one))
-    if (!row) {
-      return
-    }
-    if (!row.isOpen) {
-      ended.add(row.key)
-      $.ui.toast(`!${row.iid} is closed or merged; unpinned.`)
-      return
-    }
-    const prior = announced[row.key]
-    const next = advance(prior ?? [], row)
-    announced[row.key] = next.announced
-    // The first sighting only seeds: what it shows was told when it was pinned.
-    if (next.due && prior !== undefined) {
-      news.push({ text: wakeLine(row, next.due, now), wakes: one.origin !== 'watched' })
-    }
-  })
-  const open = rows.filter(row => row.isOpen)
+  const reconciled = reconcile({ pinned, rows, announced: await read($, announcedAtom), now })
+  reconciled.toasts.forEach(text => $.ui.toast(text))
+  const open = reconciled.rows
   const isShown = (key: string) => open.some(row => row.key === key)
   await update($, rowsAtom, () => open)
   // A row merged or closed since it was opened stays out of what is drawn and saved.
@@ -389,9 +371,9 @@ async function readOnce($: EngineInterface): Promise<void> {
     await update($, readingAtom, () => '')
     quietly(openPane($))
   }
-  await update($, announcedAtom, () => announced)
-  if (ended.size > 0) {
-    await update($, pinnedAtom, list => list.filter(each => !ended.has(pinKey(each))))
+  await update($, announcedAtom, () => reconciled.announced)
+  if (reconciled.unpinned.length > 0) {
+    await update($, pinnedAtom, list => list.filter(each => !reconciled.unpinned.includes(pinKey(each))))
   }
   await update($, pollAtom, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: null, failures: 0, kept: kept.length }))
   const pinnedKeys = new Set(pinned.map(pinKey))
@@ -401,11 +383,8 @@ async function readOnce($: EngineInterface): Promise<void> {
       .map(row => `${statusMark(row.pipeline?.status).glyph} !${row.iid}`)
       .join('  ') || undefined
   )
-  // Every pin's news is a toast; only an MR this session raised wakes it, since that is the work it can act on.
-  news.forEach(({ text }) => $.ui.toast(text))
-  const wakes = news.filter(one => one.wakes).map(one => one.text)
-  if (wakes.length > 0 && (await read($, wakeAtom))) {
-    quietly($.prompt.submit({ text: wakes.join('\n') }))
+  if (reconciled.wakes.length > 0 && (await read($, wakeAtom))) {
+    quietly($.prompt.submit({ text: reconciled.wakes.join('\n') }))
   }
   quietly(readJira($, open, now))
   quietly(readUsualTimes($, open, now))
