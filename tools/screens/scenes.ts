@@ -8,7 +8,8 @@ import { mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Mounted } from 'claude-code/testing'
 
-import { isRecord } from '../../hooks/decode'
+import { isFilled, isRecord } from '../../hooks/decode'
+import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.generated'
 import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
 import { answered } from '../../tests/gitlab_fake'
@@ -30,7 +31,7 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** A reviewer with no picture, so the pane draws their initials as it does for anyone GitLab has no picture of. */
-const who = (username: string, state: string) => ({ ...reviewer(username, state), avatarUrl: null })
+const who = (username: string, state: MergeRequestReviewState) => ({ ...reviewer(username, state), avatarUrl: null })
 const approver = (username: string) => {
   const { mergeRequestInteraction: _ignored, ...user } = who(username, 'APPROVED')
   return user
@@ -49,7 +50,7 @@ const INFRA = project('acme-corp/infra')
 const url = (repo: string, iid: number) => `https://gitlab.com/${repo}/-/merge_requests/${iid}`
 
 /** A job of one of the storefront's pipelines, linking where GitLab would (the fixtures' own jobs link to a placeholder repo). */
-const storefrontJob = (name: string, status: string, over: Parameters<typeof job>[2] = {}) =>
+const storefrontJob = (name: string, status: CiJobStatus, over: Parameters<typeof job>[2] = {}) =>
   job(name, status, { webPath: `/acme-corp/storefront/-/jobs/${name}`, ...over })
 
 const withThread = (body: string, author: string, repo: string, iid: number, file: string, line: number) => {
@@ -294,11 +295,12 @@ declare const console: { log: (text: string) => void }
 /** A button by the start of its key, as the pane makes keys from an MR's number or a hash. */
 const press = async (ui: Ui, prefix: string) => {
   const buttons = await ui.findAll({ type: 'Button' })
-  const found = buttons.find(button => button.key === prefix) ?? buttons.find(button => button.key?.startsWith(prefix))
-  if (!found?.key) {
+  const found = buttons.find(button => button.key === prefix) ?? buttons.find(button => button.key?.startsWith(prefix) === true)
+  const key = found?.key
+  if (!isFilled(key)) {
     throw new Error(`no button keyed ${prefix}`)
   }
-  await ui.press({ key: found.key })
+  await ui.press({ key })
 }
 
 type Node = { type: string; props?: Record<string, unknown>; hover?: { scope?: string }; children?: (Node | string)[] }
@@ -334,9 +336,9 @@ const pathTo = (node: Node | string, keyPrefix: string): Node[] => {
  */
 const pointerOn = (tree: Node, keyPrefix: string): { scopes: string[]; keys: string[] } => {
   const boxes = pathTo(tree, keyPrefix).filter(node => node.type === 'Box')
-  const scope = [...boxes].reverse().find(node => node.hover?.scope)?.hover?.scope
+  const scope = [...boxes].reverse().find(node => isFilled(node.hover?.scope))?.hover?.scope
   return {
-    scopes: scope ? [scope] : [],
+    scopes: isFilled(scope) ? [scope] : [],
     keys: boxes.flatMap(node => (typeof node.props?.key === 'string' ? [node.props.key] : [])),
   }
 }
@@ -387,8 +389,8 @@ for (const scene of SCENES) {
     if (!isNode(tree)) {
       throw new Error(`scene ${scene.name}: the pane did not draw a tree of elements`)
     }
-    const pointer = scene.hover ? pointerOn(tree, scene.hover) : { scopes: [], keys: [] }
-    if (scene.hover && pointer.scopes.length === 0) {
+    const pointer = scene.hover !== undefined ? pointerOn(tree, scene.hover) : { scopes: [], keys: [] }
+    if (scene.hover !== undefined && pointer.scopes.length === 0) {
       throw new Error(`scene ${scene.name}: nothing drawn is keyed ${scene.hover}`)
     }
     const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: pointer.scopes, hoverKeys: pointer.keys, tree }

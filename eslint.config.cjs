@@ -21,6 +21,36 @@ const GENERATED = ['hooks/gitlab.generated.ts']
 
 const SOURCE = ['hooks/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}', 'tools/screens/**/*.{ts,tsx}']
 
+// The type-aware rules, which need the type-checker. The core is checked by tsconfig.core.json, which has no engine types and
+// so keeps the layering honest; everything else by tsconfig.json, with the declarations of the Claude Code that CI pins
+// (tools/engine_types.sh lays them out). Both get the same rules.
+const TYPE_AWARE = {
+  '@typescript-eslint/switch-exhaustiveness-check': 'error',
+  '@typescript-eslint/no-floating-promises': 'error',
+  '@typescript-eslint/no-unnecessary-condition': 'error',
+  // A string, a number or a nullable one is not a condition: `''` and `0` are values, and `if (count)` is where a count
+  // of zero goes missing. Say what is meant: `!== ''`, `> 0`, `!== null`.
+  '@typescript-eslint/strict-boolean-expressions': [
+    'error',
+    {
+      allowString: false,
+      allowNumber: false,
+      allowNullableObject: false,
+      allowNullableBoolean: false,
+      allowNullableString: false,
+      allowNullableNumber: false,
+      allowNullableEnum: false,
+      allowAny: false,
+    },
+  ],
+  '@typescript-eslint/no-unsafe-assignment': 'error',
+  '@typescript-eslint/no-unsafe-call': 'error',
+  '@typescript-eslint/no-unsafe-member-access': 'error',
+  '@typescript-eslint/no-unsafe-return': 'error',
+  '@typescript-eslint/no-unsafe-argument': 'error',
+  '@typescript-eslint/prefer-readonly': 'error',
+}
+
 const tooling = { plugins: { '@typescript-eslint': tseslint.plugin, '@eslint-community/eslint-comments': comments, local } }
 
 module.exports = [
@@ -107,45 +137,16 @@ module.exports = [
       ],
     },
   },
-  // Type-aware rules, core only: they need the type-checker, and only the core compiles without the engine's types.
+  // Type-aware rules, the core against tsconfig.core.json and the rest of the source against tsconfig.json.
   {
     files: CORE,
     languageOptions: { parserOptions: { project: './tsconfig.core.json', tsconfigRootDir: __dirname } },
-    rules: {
-      '@typescript-eslint/switch-exhaustiveness-check': 'error',
-      '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-unnecessary-condition': 'error',
-      // A string, a number or a nullable one is not a condition: `''` and `0` are values, and `if (count)` is where a count
-      // of zero goes missing. Say what is meant: `!== ''`, `> 0`, `!== null`.
-      '@typescript-eslint/strict-boolean-expressions': [
-        'error',
-        {
-          allowString: false,
-          allowNumber: false,
-          allowNullableObject: false,
-          allowNullableBoolean: false,
-          allowNullableString: false,
-          allowNullableNumber: false,
-          allowNullableEnum: false,
-          allowAny: false,
-        },
-      ],
-      '@typescript-eslint/no-unsafe-assignment': 'error',
-      '@typescript-eslint/no-unsafe-call': 'error',
-      '@typescript-eslint/no-unsafe-member-access': 'error',
-      '@typescript-eslint/no-unsafe-return': 'error',
-      '@typescript-eslint/no-unsafe-argument': 'error',
-      '@typescript-eslint/prefer-readonly': 'error',
-    },
+    rules: TYPE_AWARE,
   },
-  // The rest of the source (panes, read.ts, inbox, tests, screens) imports 'claude-code', whose types exist only in the
-  // snapshot types/engine/ (see CONTRIBUTING.md). Once CI type-checks with that snapshot, switch this block on, with the
-  // same type-aware rules as the core's block above. It is keyed on types/engine/ existing in the repo, not on a runtime test.
-  //
-  // {
-  //   files: SOURCE,
-  //   ignores: CORE,
-  //   languageOptions: { parserOptions: { project: './tsconfig.json', tsconfigRootDir: __dirname } },
-  //   rules: { /* the '@typescript-eslint/...' type-aware rules listed above */ },
-  // },
+  {
+    files: SOURCE,
+    ignores: CORE,
+    languageOptions: { parserOptions: { project: './tsconfig.json', tsconfigRootDir: __dirname } },
+    rules: TYPE_AWARE,
+  },
 ]
