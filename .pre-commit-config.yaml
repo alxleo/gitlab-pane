@@ -4,7 +4,7 @@
 # over the whole history instead of the staged change.
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit, manual]
-exclude: ^(CHANGELOG\.md|tools/screens/fonts/.*)$
+exclude: ^(CHANGELOG\.md|tools/screens/fonts/.*|types/engine/.*)$ # types/engine is a copy of what Claude Code wrote, kept as it was
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
