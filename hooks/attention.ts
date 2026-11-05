@@ -1,8 +1,9 @@
+import type { MergeabilityCheckIdentifier } from './gitlab.generated.ts'
 import { plural } from './format.ts'
 import { firstDifference } from './order.ts'
 import { isSettled, type Tone } from './status.ts'
 
-import type { MergeStatus, MrCard, Person } from '../types'
+import type { MergeCheck, MergeStatus, MrCard, Person } from '../types'
 
 /** 0 needs you now, 1 is moving, 2 waits on others, 3 is ready. */
 export function rank(card: MrCard): number {
@@ -42,6 +43,7 @@ export function reviewTone(card: MrCard): Tone {
 
 export type BadgeKind =
   | 'failed'
+  | 'check'
   | 'conflicts'
   | 'changes'
   | 'threads'
@@ -52,28 +54,96 @@ export type BadgeKind =
   | 'approvals'
   | 'ready'
 
-/** One marker on a row's second line: a glyph and a count, its detail on hover; `words` is what a model reads. */
-export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string; words: string }
+/**
+ * One marker on a row's second line: a glyph and a count, its detail on hover; `words` is what a model reads. `check` is
+ * the GitLab merge check (by its identifier) that the marker is, or that it gives the detail of.
+ */
+export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string; words: string; check?: string }
 
-/** What stands between the MR and a merge, each from its own field, worst first. */
+const ACRONYMS = /\b(ci|lfs)\b/g
+
+/** A check in words, from the identifier GitLab names it by (`CI_MUST_PASS`): a check GitLab adds later reads right with no change here. */
+export const checkWords = (id: string): string => id.toLowerCase().replaceAll('_', ' ').replace(ACRONYMS, found => found.toUpperCase())
+
+/** The checks that stop the merge or warn, GitLab's order within each: a failure before a warning. */
+const standing = (checks: MergeStatus | null): MergeCheck[] =>
+  (['failed', 'warning'] as const).flatMap(status => (checks ?? []).filter(check => check.status === status))
+
+/**
+ * What each check asks of you when it fails, as a tone: red is yours to fix, amber is a smaller fix, grey is waiting on
+ * others or on time. Typed over GitLab's identifiers, so a check GitLab adds does not compile until it has a tone.
+ */
+const CHECK_TONE: Record<MergeabilityCheckIdentifier, Tone> = {
+  CI_MUST_PASS: 'error',
+  COMMITS_STATUS: 'error',
+  CONFLICT: 'error',
+  DISCUSSIONS_NOT_RESOLVED: 'warning',
+  DRAFT_STATUS: 'subtle',
+  JIRA_ASSOCIATION_MISSING: 'warning',
+  LOCKED_LFS_FILES: 'error',
+  LOCKED_PATHS: 'error',
+  MERGE_REQUEST_BLOCKED: 'subtle',
+  MERGE_TIME: 'subtle',
+  NEED_REBASE: 'warning',
+  NOT_APPROVED: 'subtle',
+  NOT_OPEN: 'subtle',
+  REQUESTED_CHANGES: 'error',
+  SECURITY_POLICY_PIPELINE_CHECK: 'error',
+  SECURITY_POLICY_VIOLATIONS: 'error',
+  STATUS_CHECKS_MUST_PASS: 'subtle',
+  TITLE_REGEX: 'warning',
+}
+
+const isKnownCheck = (id: string): id is MergeabilityCheckIdentifier => Object.hasOwn(CHECK_TONE, id)
+
+/** A failing check's tone; one GitLab adds after this was written blocks the merge, so it is red until it has a tone. */
+const failureTone = (id: string): Tone => (isKnownCheck(id) ? CHECK_TONE[id] : 'error')
+
+/** A check in words; the approvals one says how many, as the pane knows. */
+const wordsFor = (card: MrCard, id: string): string =>
+  id === 'NOT_APPROVED' && card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : checkWords(id)
+
+const checkBadge = (card: MrCard, check: MergeCheck): Badge => ({
+  kind: 'check',
+  glyph: check.status === 'failed' ? '✗' : '⚠',
+  tone: check.status === 'failed' ? failureTone(check.id) : 'warning',
+  count: '',
+  words: wordsFor(card, check.id),
+  check: check.id,
+})
+
+/** Whether GitLab says the MR can merge: none of its checks fails or is still being made, and one has passed. */
+export const isMergeable = (checks: MergeStatus | null): boolean =>
+  checks !== null && checks.some(check => check.status === 'success') && checks.every(check => ['success', 'inactive', 'warning'].includes(check.status))
+
+/** GitLab says the MR is no longer open, which its authored list shows a read later. */
+export const hasLeft = (card: MrCard): boolean => card.mergeStatus?.some(check => check.id === 'NOT_OPEN' && check.status === 'failed') === true
+
+/**
+ * What stands between the MR and a merge, worst first: the pipeline's failed jobs, then every check GitLab fails or warns
+ * of, then what only the pane knows (who asked for changes, threads and approvals as people, manual and allowed-to-fail
+ * jobs, bots). A marker that gives the detail of a check stands in its place. A host that gives no checks gets the pane's
+ * own markers for conflicts and a rebase.
+ */
 export function badges(card: MrCard): Badge[] {
   const pipeline = card.pipeline
+  const checks = card.mergeStatus
   const list: Badge[] = []
-  const add = (kind: BadgeKind, glyph: string, tone: Tone, count: string, words: string) =>
-    list.push({ kind, glyph, tone, count, words })
+  const add = (kind: BadgeKind, glyph: string, tone: Tone, count: string, words: string, check?: string) =>
+    list.push({ kind, glyph, tone, count, words, ...(check !== undefined ? { check } : {}) })
   if (pipeline !== undefined && pipeline.failed.length > 0) {
-    add('failed', '✗', 'error', String(pipeline.failed.length), plural(pipeline.failed.length, 'job failed', 'jobs failed'))
+    add('failed', '✗', 'error', String(pipeline.failed.length), plural(pipeline.failed.length, 'job failed', 'jobs failed'), 'CI_MUST_PASS')
   }
-  if (card.hasConflicts) {
+  if (checks === null && card.hasConflicts) {
     add('conflicts', '⇄', 'error', '', 'conflicts')
   }
   if (card.changesRequestedBy.length > 0) {
-    add('changes', '✋', 'error', String(card.changesRequestedBy.length), `changes requested by ${card.changesRequestedBy.join(', ')}`)
+    add('changes', '✋', 'error', String(card.changesRequestedBy.length), `changes requested by ${card.changesRequestedBy.join(', ')}`, 'REQUESTED_CHANGES')
   }
   if (card.openThreads.length > 0) {
-    add('threads', '💬', 'warning', String(card.openThreads.length), plural(card.openThreads.length, 'open thread'))
+    add('threads', '💬', 'warning', String(card.openThreads.length), plural(card.openThreads.length, 'open thread'), 'DISCUSSIONS_NOT_RESOLVED')
   }
-  if (card.needsRebase) {
+  if (checks === null && card.needsRebase) {
     add('rebase', '↻', 'warning', '', 'needs rebase')
   }
   if (pipeline !== undefined && pipeline.blockedOn.length > 0) {
@@ -96,72 +166,64 @@ export function badges(card: MrCard): Badge[] {
       '👤',
       card.approvalsLeft > 0 ? 'subtle' : 'success',
       `${given}/${card.approvalsRequired}`,
-      card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'approved'
+      card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'approved',
+      'NOT_APPROVED'
     )
   }
-  const blocks = list.some(badge => badge.kind !== 'approvals') || card.approvalsLeft > 0
-  if (!blocks && pipeline?.status === 'success' && !card.isDraft) {
-    add('ready', '⤵', 'success', '', 'ready to merge')
-  }
-  return list
+  const claimed = new Set(list.flatMap(badge => badge.check ?? []))
+  const unsaid = standing(checks)
+    .filter(check => !claimed.has(check.id))
+    .map(check => checkBadge(card, check))
+  const isReady = checks !== null ? isMergeable(checks) : card.approvalsLeft === 0 && pipeline?.status === 'success' && !card.isDraft
+  const blocks = list.some(badge => badge.kind !== 'approvals')
+  const ready: Badge[] = !blocks && isReady ? [{ kind: 'ready', glyph: '⤵', tone: 'success', count: '', words: 'ready to merge' }] : []
+  return [...list.filter(badge => badge.kind === 'failed'), ...unsaid, ...list.filter(badge => badge.kind !== 'failed'), ...ready]
 }
 
 /**
  * The row's markers: each person's or bot's icon speaks for their change request and threads, so 💬 keeps only threads
- * no icon holds.
+ * no icon holds. A check GitLab fails for what an icon speaks for still shows, as the check.
  */
 export function rowBadges(card: MrCard): Badge[] {
   const held = new Set(card.people.map(person => person.username))
   const loose = card.openThreads.filter(note => !held.has(note.author)).length
+  const checkOf = (id: string): Badge[] =>
+    standing(card.mergeStatus)
+      .filter(check => check.id === id)
+      .map(check => checkBadge(card, check))
   return badges(card).flatMap(badge => {
-    if (badge.kind === 'changes' || badge.kind === 'bots') {
+    if (badge.kind === 'changes') {
+      return checkOf('REQUESTED_CHANGES')
+    }
+    if (badge.kind === 'bots') {
       return []
     }
     if (badge.kind === 'threads') {
-      return loose > 0 ? [{ ...badge, count: String(loose), words: plural(loose, 'open thread') }] : []
+      return loose > 0 ? [{ ...badge, count: String(loose), words: plural(loose, 'open thread') }] : checkOf('DISCUSSIONS_NOT_RESOLVED')
     }
     return [badge]
   })
 }
 
-export type Verdict = { words: string; tone: Tone; covers: readonly BadgeKind[] }
+/** GitLab's verdict in words: its first failing check, in its own order, else the one still being checked, else that the MR can merge. `check` is the one said. */
+export type Verdict = { words: string; tone: Tone; check: string | null }
 
-const said = (words: string, tone: Tone, covers: readonly BadgeKind[] = []): Verdict => ({ words, tone, covers })
-
-/**
- * What each of GitLab's verdicts says, in words and a tone, with the pane's markers it already covers so they would only
- * repeat it. Null for one still being worked out by GitLab, or about an MR that has left: nothing worth saying.
- */
-const VERDICT: Record<MergeStatus, (card: MrCard) => Verdict | null> = {
-  MERGEABLE: () => said('✓ mergeable', 'success', ['ready', 'approvals']),
-  NOT_APPROVED: card => said(card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'needs approval', 'subtle', ['approvals']),
-  REQUESTED_CHANGES: () => said('changes requested', 'error', ['changes']),
-  CONFLICT: () => said('conflicts', 'error', ['conflicts']),
-  NEED_REBASE: () => said('needs rebase', 'warning', ['rebase']),
-  CI_MUST_PASS: () => said('CI must pass', 'error', ['failed']),
-  CI_STILL_RUNNING: () => said('CI running', 'subtle'),
-  DISCUSSIONS_NOT_RESOLVED: () => said('threads open', 'warning', ['threads']),
-  DRAFT_STATUS: () => said('draft', 'subtle'),
-  COMMITS_STATUS: () => said('commits status', 'subtle'),
-  BLOCKED_STATUS: () => said('blocked status', 'subtle'),
-  EXTERNAL_STATUS_CHECKS: () => said('external status checks', 'subtle'),
-  JIRA_ASSOCIATION: () => said('jira association', 'subtle'),
-  LOCKED_PATHS: () => said('locked paths', 'subtle'),
-  LOCKED_LFS_FILES: () => said('locked lfs files', 'subtle'),
-  MERGE_TIME: () => said('merge time', 'subtle'),
-  SECURITY_POLICIES_VIOLATIONS: () => said('security policies violations', 'subtle'),
-  TITLE_NOT_MATCHING: () => said('title not matching', 'subtle'),
-  SECURITY_POLICY_PIPELINE_CHECK: () => said('security policy pipeline check', 'subtle'),
-  UNKNOWN: () => said('merge status unknown', 'subtle'),
-  UNCHECKED: () => null,
-  CHECKING: () => null,
-  PREPARING: () => null,
-  APPROVALS_SYNCING: () => null,
-  NOT_OPEN: () => null,
+/** Null while no check was read, and while a check GitLab cannot say yet is of a status the pane has no name for. */
+export function verdictOf(card: MrCard): Verdict | null {
+  const failed = card.mergeStatus?.find(check => check.status === 'failed')
+  if (failed !== undefined) {
+    return { words: wordsFor(card, failed.id), tone: failureTone(failed.id), check: failed.id }
+  }
+  const checking = card.mergeStatus?.find(check => check.status === 'checking')
+  if (checking !== undefined) {
+    return { words: `${checkWords(checking.id)} (checking)`, tone: 'subtle', check: checking.id }
+  }
+  return isMergeable(card.mergeStatus) ? { words: '✓ mergeable', tone: 'success', check: null } : null
 }
 
-/** GitLab's own verdict on whether the MR can merge (`detailedMergeStatus`); null while GitLab is deciding, or when it was not read. */
-export const verdictOf = (card: MrCard): Verdict | null => (card.mergeStatus !== null ? VERDICT[card.mergeStatus](card) : null)
+/** The row's markers that trail the verdict: those it does not already say, and none that repeats a passed check. */
+export const trailingOf = (verdict: Verdict, row: readonly Badge[]): Badge[] =>
+  row.filter(badge => badge.kind !== 'ready' && (verdict.check === null ? badge.kind === 'check' || badge.check === undefined : badge.check !== verdict.check))
 
 /** A person's icon colour: asked for changes, open threads, approved, or nothing pending. */
 export const personTone = (person: Person): Tone =>

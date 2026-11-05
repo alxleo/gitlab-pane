@@ -77,7 +77,8 @@ The pane changes nothing on GitLab or Jira. A host's token is the first of: `GIT
 
 | Runs | How often | For | Writes |
 |---|---|---|---|
-| HTTPS POST to `https://<host>/api/graphql` for each configured host | every minute while a pinned pipeline runs, every 3 min otherwise, slower after errors | your MRs and the ones you pin: pipelines, reviewers, comments, and how long each repo's pipelines usually take; as you; the first read of a host also asks its schema which of a few newer fields it has | nothing: queries only |
+| HTTPS POST to `https://<host>/api/graphql` for each configured host | every minute while a pinned pipeline runs, every 3 min otherwise, slower after errors | your MRs and the ones you pin: pipelines, reviewers, comments, how long each repo's pipelines usually take, and why a failed job of an MR opened from a session failed; as you; the first read of a host also asks its schema which of a few newer fields it has | nothing: queries only |
+| HTTPS GET of `https://<host>/api/v4/projects/<project>/jobs/<job>/trace` | once per failed job of an MR opened from a session, when its pipeline fails and the `failureLogs` setting is on | the end of that job's log, for the wake | nothing |
 | `glab config get token --host <host>` | once per host per session, when no environment token applies | the token `glab` holds | nothing |
 | `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (a configured host or Gravatar), https only, no token sent; the engine's HTTP returns text, not bytes | nothing; the pictures are kept in the plugin's own store |
 | `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
@@ -85,7 +86,8 @@ The pane changes nothing on GitLab or Jira. A host's token is the first of: `GIT
 
 What reaches Claude, and so the model provider, from GitLab:
 
-- **Wakes.** When an MR opened from a session fails its pipeline or can merge, the pane sends that session a message saying so, with the names of the failed jobs. Job names come from the repo's CI configuration, so treat them as text from that repo, not instructions. They are cut to one line of 80 characters with control and bidi characters removed before they reach the model. The pane's `wake Claude` switch turns this off.
+- **Wakes.** When an MR opened from a session fails its pipeline or can merge, the pane sends that session a message saying so, with the names of the failed jobs and GitLab's one-line reason for each (`script failure`). Job names come from the repo's CI configuration, so treat them as text from that repo, not instructions. They are cut to one line of 80 characters with control and bidi characters removed before they reach the model. The pane's `wake Claude` switch turns this off.
+- **Failed job logs.** With the `failureLogs` setting on (it is, by default), that wake also quotes the last lines of up to three failed jobs' logs: at most 20 lines and 2,000 characters each, with terminal escapes removed, every line one line of 200 characters at most, behind a `│ ` marker under a heading that says it is the job's output and not instructions. A log is whatever the repo's scripts print, so it is text from that repo like a job name. Turn the setting off to send neither the log nor the request for it.
 - **`/mrs`** puts the MRs' descriptions and other people's comments into the conversation, and **`watch_mr`** answers with an MR's pipeline and what blocks it.
 - **Bash commands.** The pane reads each Bash command a session runs, and the output of `glab mr create`, to pin the MR it opens. Nothing is sent anywhere for this.
 
