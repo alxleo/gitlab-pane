@@ -11,6 +11,7 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "target": "ES2023",
     "lib": ["ES2023"],
     "module": "ESNext",
@@ -20,10 +21,16 @@
   "include": [
     "hooks/avatar.ts",
     "hooks/ci.ts",
+    "hooks/decode.ts",
     "hooks/gitlab.ts",
+    "hooks/identity.ts",
+    "hooks/inbox-json.ts",
     "hooks/jira.ts",
     "hooks/markdown.ts",
+    "hooks/model-text.ts",
+    "hooks/problems.ts",
     "hooks/reconcile.ts",
+    "hooks/svg.ts",
     "types/index.d.ts"
   ]
 }

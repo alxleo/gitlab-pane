@@ -3,7 +3,9 @@ import type { Register } from 'claude-code'
 import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
+import type { ModelLine } from './model-text'
 import { drawPane } from './pane'
+import { problems, reported } from './problems'
 import { openPane, paneDrawn, pin, quietly, refresh, scrolling, tick } from './read'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
@@ -17,6 +19,9 @@ const INBOX_FIRST_MS = 2_000
 
 /** What the pane last did, so /gitlab can say why it is blank; a reload starts it over. */
 const health = { loadedAt: '', draws: 0, last: 'never asked to draw' }
+
+/** A tool's answer: only lines from model-text.ts, so text from GitLab cannot reach the model raw. */
+const answer = (result: ModelLine) => ({ result })
 
 export const register: Register = (on, options) => {
   useJiraSite(options.jiraUrl)
@@ -41,16 +46,16 @@ export const register: Register = (on, options) => {
       name: 'mrs',
       description: 'Brief several GitLab MRs into this conversation, threads and all: /mrs <repo!iid …> or /mrs --rule <name>',
     })
-    $.clock.every(TICK_MS, () => quietly(tick($)))
-    $.clock.every(INBOX_TICK_MS, () => quietly(inboxTick($)))
+    $.clock.every(TICK_MS, () => quietly(tick($), 'gitlab'))
+    $.clock.every(INBOX_TICK_MS, () => quietly(inboxTick($), 'inbox'))
     // A start or a reload reads at once, so rows kept from an older version are replaced before they are drawn for long.
-    quietly(refresh($))
+    quietly(refresh($), 'gitlab')
     // Retires the separate reading pane an earlier version opened; the app keeps a pane across reloads.
     quietly($.ui.close({ id: 'gitlab-ci-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
       quietly(openPane($))
-      $.clock.after(INBOX_FIRST_MS, () => quietly(syncInbox($)))
+      $.clock.after(INBOX_FIRST_MS, () => quietly(syncInbox($), 'inbox'))
     }
     return next(e)
   })
@@ -60,9 +65,10 @@ export const register: Register = (on, options) => {
   // One line: the MRs belong in the pane. It still says enough to explain a pane that is blank or missing.
   on('command.run', { command: 'gitlab' }, async $ => {
     const opened = await openPane($)
-    quietly(refresh($))
+    quietly(refresh($), 'gitlab')
     const isGoingBackStuck = scrolling.goingBack !== '' && scrolling.goingBack !== 'done'
-    if (opened.isPlaced && !health.last.startsWith('threw') && !scrolling.refused && !isGoingBackStuck) {
+    const failures = problems()
+    if (opened.isPlaced && !health.last.startsWith('threw') && !scrolling.refused && !isGoingBackStuck && failures.length === 0) {
       return { text: 'GitLab pane open' }
     }
     return {
@@ -71,6 +77,7 @@ export const register: Register = (on, options) => {
         `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
         ...(scrolling.refused ? [`last scroll refused: ${scrolling.refused}`] : []),
         ...(isGoingBackStuck ? [`going back: ${scrolling.goingBack}`] : []),
+        ...failures,
       ].join(' · '),
     }
   })
@@ -80,7 +87,7 @@ export const register: Register = (on, options) => {
     try {
       const result = await pin($, String(url ?? ''), 'watched')
       quietly(openPane($))
-      return { result }
+      return answer(result)
     } catch (error) {
       return { deny: error instanceof Error ? error.message : String(error) }
     }
@@ -95,7 +102,7 @@ export const register: Register = (on, options) => {
     }
     const urls = new Set(ran.text.match(MR_URLS) ?? [])
     for (const url of urls) {
-      await pin($, url, 'raised').catch(() => undefined)
+      await pin($, url, 'raised').catch(reported('gitlab'))
     }
     if (urls.size > 0) {
       quietly(openPane($))

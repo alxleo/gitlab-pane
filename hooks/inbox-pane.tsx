@@ -1,7 +1,9 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import { discSource } from './avatar'
-import { ago, measure, shortHash, shortTitle } from './ci'
+import { ago, measure, shortTitle } from './ci'
+import { firstName, initials, shortHash } from './identity'
+import { reported } from './problems'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -29,9 +31,6 @@ const KINDS = Object.keys(VERB) as InboxKind[]
 const INBOX_BUDGET = 70_000
 const ITEMS_SHOWN = 30
 
-/** `Tessa.Ravensworth` is Tessa; a handle with no separator stays whole. */
-const firstName = (username: string): string => username.split(/[._]/)[0] || username
-
 /** The inbox mr-inbox's rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const elements = $.ui.resolve(e)
@@ -52,11 +51,15 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         ? 'reading GitLab…'
         : 'not synced yet')
 
-  /** An initials disc, coloured by name; where the surface draws no Svg, nothing. */
+  // mr-inbox gives a display name only for an MR's author, so an actor is known by name where they wrote an MR here, and
+  // otherwise by username alone: `ixm5302` is IX until some card names them.
+  const names = new Map(inbox.sections.flatMap(section => section.items).map(item => [item.author, item.authorName]))
+
+  /** An initials disc, coloured by username; where the surface draws no Svg, nothing. */
   const avatar = (username: string) =>
     Svg ? (
       <Box flexShrink={0}>
-        <Svg width={16} height={16} alt={username} source={discSource(username)} />
+        <Svg width={16} height={16} alt={username} source={discSource(username, 16, initials(names.get(username) ?? '', username))} />
       </Box>
     ) : null
 
@@ -70,7 +73,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box flexDirection="row" gap={1}>
           {avatar(one.actor)}
           <Box flexShrink={0}>
-            <Text color={verb.tone}>{`${verb.glyph} ${firstName(one.actor)} ${verb.word}`}</Text>
+            <Text color={verb.tone}>{`${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}</Text>
           </Box>
           <Box flexGrow={1} flexShrink={1}>
             {!isWhole && said && (
@@ -145,7 +148,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               key={`inbox-seen-${shortHash(item.key)}`}
               plain
               label="✓"
-              onPress={() => markSeen($, { key: item.key }).catch(() => undefined)}
+              onPress={() => markSeen($, { key: item.key }).catch(reported('inbox'))}
             />
           </Box>
         </Box>
@@ -224,13 +227,13 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key={`inbox-discuss-${section.rule}`}
           variant="secondary"
           label="discuss in chat"
-          onPress={() => discussRule($, section.rule).catch(() => undefined)}
+          onPress={() => discussRule($, section.rule).catch(reported('inbox'))}
         />
         <Button
           key={`inbox-seen-rule-${section.rule}`}
           variant="secondary"
           label="✓ mark all seen"
-          onPress={() => markSeen($, { rule: section.rule }).catch(() => undefined)}
+          onPress={() => markSeen($, { rule: section.rule }).catch(reported('inbox'))}
         />
       </Box>,
     ]
@@ -246,7 +249,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key="inbox-sync"
           plain
           label={inbox.isSyncing ? 'syncing…' : 'sync'}
-          onPress={() => syncInbox($).catch(() => undefined)}
+          onPress={() => syncInbox($).catch(reported('inbox'))}
         />
       </Box>
       {shown.length > 0 && (
