@@ -31,7 +31,7 @@ A Claude Code mod in TypeScript: a GitLab pane beside the session. README.md say
 
 ## Commits
 
-- The author and committer must be a GitHub noreply address (`<id>+<name>@users.noreply.github.com`). CI fails any other.
+- The author must be a GitHub noreply address (`<id>+<name>@users.noreply.github.com`); the committer the same, or `noreply@anthropic.com` for a commit Claude signs. CI fails any other. Set git's `author.*` and `committer.*` apart, not `user.*`, so a rebase keeps both right.
 - Conventional messages: `feat:`, `fix(jira):`, `docs:`, `test:`, `ci:`, `refactor:`, `chore:`. Releases are worked out from them. Do not edit `CHANGELOG.md`.
 
 ## Before you commit
