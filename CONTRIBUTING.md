@@ -56,6 +56,8 @@ When Claude Code edits a core file in this repository, `.claude/settings.json` r
 npm run schema -- check
 ```
 
+The check also asks gitlab.com what each query costs. GitLab answers `queryComplexity { score limit }` for a document before it runs, and answers the schema and the score without a sign-in, so the canary holds no token and runs the same on a fork. (Its limit is 200 without a sign-in and 250 with one, so the check reads the stricter.) `COMPLEXITY` in `hooks/gitlab-documents.ts` states each document's score: the check fails a document that scores otherwise, so a change to a query restates its cost, and one over `COMPLEXITY_SHARE` of the limit. It is offline with `--schema`, which says it measured nothing.
+
 ## Screenshots
 
 The README's pictures come from `npm run screens -- render`, which runs the mod's drawing under the pinned Claude Code and photographs it in Chromium with Playwright. Run `npm run screens -- setup` first to fetch Chromium; on Linux, `setup --with-deps` also installs the libraries it needs. `.github/workflows/screens.yml` runs `render --verify --check` on every pull request and push to main that touches the drawing or the screenshot tooling, with `contents: read` only: it fails unless the committed pictures are exactly what the pane draws, and uploads the fresh render as an artifact to look at. Nothing commits for you, so after changing the drawing run `npm run screens -- render` and commit `docs/screens`. `npm run rig -- flow` drives the pane through a real headless engine to check behaviour. The look the renderer gives the desktop app's elements lives in `tools/screens/pane.css`; what each colour and mark means is in [DESIGN.md](DESIGN.md).

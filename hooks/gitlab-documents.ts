@@ -133,11 +133,30 @@ export const DOCUMENTS = {
   Usual: USUAL,
 } as const satisfies Record<keyof Operations, string>
 
+/**
+ * What GitLab's `queryComplexity` scores each document, which `node tools/gitlab_schema.ts check` measures against
+ * gitlab.com, with no sign-in. A query may cost no more than the limit, and the check also fails any document that scores
+ * other than this, or more than COMPLEXITY_SHARE of the limit it reports, so a change to a document states its cost.
+ * `null` is a document GitLab does not score (introspection).
+ */
+export const COMPLEXITY = {
+  Authored: 151,
+  AuthoredPlain: 148,
+  MergeStatus: 16,
+  Pinned: 100,
+  PinnedPlain: 98,
+  Probe: null,
+  Usual: 8,
+} as const satisfies Record<keyof Operations, number | null>
+
+/** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */
+export const COMPLEXITY_SHARE = 0.8
+
 
 /** Asks a host's schema which of the fields that older GitLab versions lack it has. */
 export const probeQuery = (): Request<ProbeQuery> => ({ operation: 'Probe', query: DOCUMENTS.Probe, variables: {} })
 
-/** Every open MR the user authored; GitLab scores it 158 of the 250 a query may cost. */
+/** Every open MR the user authored: the heaviest document (`COMPLEXITY.Authored`). */
 export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | AuthoredPlainQuery> =>
   features.hasReviewStates
     ? { operation: 'Authored', query: DOCUMENTS.Authored, variables: {} }
@@ -150,9 +169,8 @@ export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | A
 export const mergeStatusQuery = (): Request<MergeStatusQuery> => ({ operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} })
 
 /**
- * A pinned MR the authored list lacks (someone else's, or merged), one query each. It costs about 103 of the 250 a query
- * may, so two would fit, but one per query needs no aliases that change with how many are pinned, and a project out of
- * reach loses its own MR and no other.
+ * A pinned MR the authored list lacks (someone else's, or merged), one query each (`COMPLEXITY.Pinned`): that needs no
+ * aliases that change with how many are pinned, and a project out of reach loses its own MR and no other.
  */
 export const pinnedQuery = (pin: Pinned, features: HostFeatures): Request<PinnedQuery | PinnedPlainQuery> => {
   const variables = { path: pin.path, iid: String(pin.iid) } satisfies PinnedQueryVariables
@@ -161,7 +179,7 @@ export const pinnedQuery = (pin: Pinned, features: HostFeatures): Request<Pinned
     : { operation: 'PinnedPlain', query: DOCUMENTS.PinnedPlain, variables }
 }
 
-/** The recent successful MR pipelines of a project, for how long one usually runs; it costs 11, so one query each is cheap. */
+/** The recent successful MR pipelines of a project, for how long one usually runs: cheap (`COMPLEXITY.Usual`), so one query each. */
 export const usualQuery = (path: string): Request<UsualQuery> => ({
   operation: 'Usual',
   query: DOCUMENTS.Usual,
