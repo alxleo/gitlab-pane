@@ -14,7 +14,7 @@ import type {
 import type { RawResponse } from './gitlab-documents.ts'
 import { isFilled, isSome } from './decode.ts'
 import { Failure } from './failure.ts'
-import { ciStatusOf, mergeStatusOf, reviewStateOf } from './gitlab-status.ts'
+import { checkStatusOf, ciStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
@@ -27,18 +27,22 @@ export function readFeatures(response: RawResponse<ProbeQuery>): HostFeatures {
   const names = (type: { fields?: ({ name: string } | null)[] | null } | null | undefined): string[] => present(type?.fields).map(field => field.name)
   const data = dataOf(response)
   return {
-    hasMergeVerdict: names(data.mergeRequest).includes('detailedMergeStatus'),
+    hasMergeVerdict: names(data.mergeRequest).includes('mergeabilityChecks'),
     hasReviewStates: names(data.interaction).includes('reviewState'),
   }
 }
 
-/** Each MR's verdict by card key; an MR missing from the answer has none. */
+/** Each MR's merge checks by card key; an MR missing from the answer, or sent with no checks, has none. */
 export function readMergeStatus(host: string, response: RawResponse<MergeStatusQuery>): Map<string, MergeStatus> {
   const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
   return new Map(
-    nodes.flatMap(node =>
-      isFilled(node?.detailedMergeStatus) ? [[cardKey(host, node.project.fullPath, node.iid), mergeStatusOf(node.detailedMergeStatus)] as const] : []
-    )
+    nodes.flatMap(node => {
+      if (node === null) {
+        return []
+      }
+      const checks = node.mergeabilityChecks.map(check => ({ id: check.identifier, status: checkStatusOf(check.status) }))
+      return checks.length > 0 ? [[cardKey(host, node.project.fullPath, node.iid), checks] as const] : []
+    })
   )
 }
 

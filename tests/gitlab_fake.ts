@@ -7,9 +7,9 @@ export type Answers = {
 }
 
 /** The names of the schema's fields that vary between GitLab versions, as an introspection of a current GitLab lists them. */
-export const CURRENT = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'detailedMergeStatus' }] }, interaction: { fields: [{ name: 'reviewState' }] } }
+export const CURRENT = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'mergeabilityChecks' }] }, interaction: { fields: [{ name: 'reviewState' }] } }
 
-/** What the probe reads of an older self-managed GitLab: neither `detailedMergeStatus` nor `reviewState` is in its schema. */
+/** What the probe reads of an older self-managed GitLab: neither `mergeabilityChecks` nor `reviewState` is in its schema. */
 export const OLDER = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'mergeStatus' }] }, interaction: { fields: [{ name: 'canMerge' }] } }
 
 /** What `$.http.fetch` resolves with. */

@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
-import { AVATAR_BASE64, NOW, SELF_MANAGED, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { AVATAR_BASE64, NOW, SELF_MANAGED, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
 import { OLDER } from './gitlab_fake'
@@ -176,7 +176,7 @@ test(
   async ($, on) => {
     const clock = mock.clock(on, { now: NOW })
     const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false }
-    // A self-managed GitLab too old for reviewState and detailedMergeStatus, holding an MR with the same path and number.
+    // A self-managed GitLab too old for reviewState and mergeabilityChecks, holding an MR with the same path and number.
     const corpMrs = [
       rawMr(12, { headPipeline: pipe('RUNNING'), webUrl: `https://${SELF_MANAGED}/g/p/-/merge_requests/12`, project: project('g/p', SELF_MANAGED), reviewers: { nodes: [reviewer('tim', 'APPROVED')] } }),
     ]
@@ -227,16 +227,16 @@ test(
 
 test('a raised MR wakes when GitLab newly says it can merge, never for a passed pipeline alone', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING'), detailedMergeStatus: 'CI_STILL_RUNNING' })], isDown: false }
+  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING'), mergeabilityChecks: checks({ CI_MUST_PASS: 'CHECKING' }) })], isDown: false }
   const { woken } = engine(on, fake)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await raise($)
-  fake.mrs = [rawMr(12, { headPipeline: pipe('SUCCESS'), detailedMergeStatus: 'NOT_APPROVED' })]
+  fake.mrs = [rawMr(12, { headPipeline: pipe('SUCCESS'), mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }) })]
   await clock.advance(180_000)
   expect(woken).toEqual([])
 
-  fake.mrs = [rawMr(12, { headPipeline: pipe('SUCCESS'), approvalsLeft: 0, detailedMergeStatus: 'MERGEABLE' })]
+  fake.mrs = [rawMr(12, { headPipeline: pipe('SUCCESS'), approvalsLeft: 0, mergeabilityChecks: checks() })]
   await clock.advance(180_000)
   expect(woken).toEqual(['!12 can merge: pipeline passed in 10m'])
   await clock.advance(180_000)

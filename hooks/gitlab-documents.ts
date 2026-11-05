@@ -71,7 +71,7 @@ const AUTHORED_PLAIN = /* GraphQL */ `
 
 const MERGE_STATUS = /* GraphQL */ `
   query MergeStatus {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } }
+    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } mergeabilityChecks { identifier status } } } }
   }
 `
 
@@ -142,7 +142,7 @@ export const DOCUMENTS = {
 export const COMPLEXITY = {
   Authored: 151,
   AuthoredPlain: 148,
-  MergeStatus: 16,
+  MergeStatus: 19,
   Pinned: 100,
   PinnedPlain: 98,
   Probe: null,
@@ -163,8 +163,8 @@ export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | A
     : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables: {} }
 
 /**
- * GitLab's merge verdict for the same MRs, asked on its own: inside the authored query it answered CONFLICT, twice in a
- * row, for MRs that this query and each MR's own lookup called MERGEABLE.
+ * GitLab's own merge checks for the same MRs, asked on its own: its single verdict (`detailedMergeStatus`) answered
+ * CONFLICT, twice in a row, inside the authored query for MRs that this query and each MR's own lookup called MERGEABLE.
  */
 export const mergeStatusQuery = (): Request<MergeStatusQuery> => ({ operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} })
 

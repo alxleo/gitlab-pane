@@ -1,4 +1,4 @@
-import { badges } from './attention.ts'
+import { badges, isMergeable } from './attention.ts'
 import { pipelineTime, ticketOf } from './format.ts'
 import { commas, dotted, EMPTY, foreign, line, NAME_ROOM, URL_ROOM, type ModelLine } from './model-text.ts'
 import { isSettled, statusMark } from './status.ts'
@@ -19,7 +19,7 @@ export function advance(
   const id = card.pipeline?.id ?? 0
   const mine = announced.filter(key => key.startsWith(`${id}:`))
   const isFailing = card.pipeline !== undefined && (card.pipeline.failed.length > 0 || card.pipeline.status === 'failed')
-  const due = isFailing ? 'failed' : card.mergeStatus === 'MERGEABLE' ? 'mergeable' : null
+  const due = isFailing ? 'failed' : isMergeable(card.mergeStatus) ? 'mergeable' : null
   if (due === null || mine.includes(`${id}:${due}`)) {
     return { announced: mine, due: null }
   }

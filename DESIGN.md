@@ -31,6 +31,20 @@ Hovering a card that opens turns its border the theme's `claude` colour.
 - **Line 1** is the title, `▸` while closed and `▾` while open, and the time since the last update. An open card ends with `▴ less` and `read whole ›`, which gives the MR a page of its own.
 - **Line 2** is the card's links, the pipeline's stage strip and run time against how long that repo's pipelines usually take, GitLab's merge verdict in words with any other blockers trailing it dimly, then the people. Passed stages fold into one run, counted in its tooltip.
 
+## Merge checks
+
+The words of a row's blockers are GitLab's own `mergeabilityChecks` (`hooks/attention.ts`), named by their identifier (`CI_MUST_PASS` reads `CI must pass`), so a check GitLab adds needs no change here.
+
+| Where | Says | Tone |
+|---|---|---|
+| Verdict | the first check that fails, in GitLab's order (the one `detailedMergeStatus` reports) | red |
+| Verdict | the first check still being made, with `(checking)`, when none fails | grey |
+| Verdict | `✓ mergeable`, when none fails or is being made | green |
+| Trailing, dim | each other failing check, then each warning | red, amber |
+| Nothing | a check that passed or the project turned off | |
+
+The pane keeps its own marker only for what the checks do not say: failed, amber and manual jobs (with the stage strip and the run time), who asked for changes, threads, approvals and bots (the people). A marker that gives the detail of a check (the failed jobs for `CI_MUST_PASS`, the approvals count for `NOT_APPROVED`) stands in its place. A GitLab without `mergeabilityChecks` gets the pane's own `⇄ conflicts` and `↻ needs rebase` instead, and no verdict.
+
 ## Pipeline marks
 
 `statusMark` in `hooks/status.ts`:

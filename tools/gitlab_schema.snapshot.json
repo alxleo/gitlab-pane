@@ -469,161 +469,6 @@
    },
    {
     "description": null,
-    "enumValues": [
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "APPROVALS_SYNCING"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "BLOCKED_STATUS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "CHECKING"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "CI_MUST_PASS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "CI_STILL_RUNNING"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "COMMITS_STATUS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "CONFLICT"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "DISCUSSIONS_NOT_RESOLVED"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "DRAFT_STATUS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "EXTERNAL_STATUS_CHECKS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "JIRA_ASSOCIATION"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "LOCKED_LFS_FILES"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "LOCKED_PATHS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "MERGEABLE"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "MERGE_TIME"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "NEED_REBASE"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "NOT_APPROVED"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "NOT_OPEN"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "PREPARING"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "REQUESTED_CHANGES"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "SECURITY_POLICIES_VIOLATIONS"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "SECURITY_POLICY_PIPELINE_CHECK"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "TITLE_NOT_MATCHING"
-     },
-     {
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
-      "name": "UNCHECKED"
-     }
-    ],
-    "fields": null,
-    "inputFields": null,
-    "interfaces": null,
-    "kind": "ENUM",
-    "name": "DetailedMergeStatus",
-    "possibleTypes": null
-   },
-   {
-    "description": null,
     "enumValues": null,
     "fields": [
      {
@@ -936,18 +781,6 @@
       "deprecationReason": null,
       "description": null,
       "isDeprecated": false,
-      "name": "detailedMergeStatus",
-      "type": {
-       "kind": "ENUM",
-       "name": "DetailedMergeStatus",
-       "ofType": null
-      }
-     },
-     {
-      "args": [],
-      "deprecationReason": null,
-      "description": null,
-      "isDeprecated": false,
       "name": "diffStatsSummary",
       "type": {
        "kind": "OBJECT",
@@ -1025,6 +858,30 @@
         "kind": "SCALAR",
         "name": "String",
         "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": "Status: Experiment. Introduced in GitLab 16.5.",
+      "description": null,
+      "isDeprecated": true,
+      "name": "mergeabilityChecks",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "MergeRequestMergeabilityCheck",
+          "ofType": null
+         }
+        }
        }
       }
      },
@@ -1223,6 +1080,49 @@
     "interfaces": [],
     "kind": "OBJECT",
     "name": "MergeRequestConnection",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
+    "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "identifier",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "ENUM",
+        "name": "MergeabilityCheckIdentifier",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "status",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "ENUM",
+        "name": "MergeabilityCheckStatus",
+        "ofType": null
+       }
+      }
+     }
+    ],
+    "inputFields": null,
+    "interfaces": [],
+    "kind": "OBJECT",
+    "name": "MergeRequestMergeabilityCheck",
     "possibleTypes": null
    },
    {
@@ -1564,6 +1464,166 @@
     "interfaces": null,
     "kind": "ENUM",
     "name": "MergeRequestState",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": [
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "CI_MUST_PASS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "COMMITS_STATUS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "CONFLICT"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "DISCUSSIONS_NOT_RESOLVED"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "DRAFT_STATUS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "JIRA_ASSOCIATION_MISSING"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "LOCKED_LFS_FILES"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "LOCKED_PATHS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "MERGE_REQUEST_BLOCKED"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "MERGE_TIME"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "NEED_REBASE"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "NOT_APPROVED"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "NOT_OPEN"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "REQUESTED_CHANGES"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "SECURITY_POLICY_PIPELINE_CHECK"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "SECURITY_POLICY_VIOLATIONS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "STATUS_CHECKS_MUST_PASS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "TITLE_REGEX"
+     }
+    ],
+    "fields": null,
+    "inputFields": null,
+    "interfaces": null,
+    "kind": "ENUM",
+    "name": "MergeabilityCheckIdentifier",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": [
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "CHECKING"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "FAILED"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "INACTIVE"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "SUCCESS"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "WARNING"
+     }
+    ],
+    "fields": null,
+    "inputFields": null,
+    "interfaces": null,
+    "kind": "ENUM",
+    "name": "MergeabilityCheckStatus",
     "possibleTypes": null
    },
    {

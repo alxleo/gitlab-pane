@@ -17,32 +17,6 @@ export type CiJobStatus =
   | 'WAITING_FOR_CALLBACK'
   | 'WAITING_FOR_RESOURCE';
 
-export type DetailedMergeStatus =
-  | 'APPROVALS_SYNCING'
-  | 'BLOCKED_STATUS'
-  | 'CHECKING'
-  | 'CI_MUST_PASS'
-  | 'CI_STILL_RUNNING'
-  | 'COMMITS_STATUS'
-  | 'CONFLICT'
-  | 'DISCUSSIONS_NOT_RESOLVED'
-  | 'DRAFT_STATUS'
-  | 'EXTERNAL_STATUS_CHECKS'
-  | 'JIRA_ASSOCIATION'
-  | 'LOCKED_LFS_FILES'
-  | 'LOCKED_PATHS'
-  | 'MERGEABLE'
-  | 'MERGE_TIME'
-  | 'NEED_REBASE'
-  | 'NOT_APPROVED'
-  | 'NOT_OPEN'
-  | 'PREPARING'
-  | 'REQUESTED_CHANGES'
-  | 'SECURITY_POLICIES_VIOLATIONS'
-  | 'SECURITY_POLICY_PIPELINE_CHECK'
-  | 'TITLE_NOT_MATCHING'
-  | 'UNCHECKED';
-
 export type MergeRequestReviewState =
   | 'APPROVED'
   | 'REQUESTED_CHANGES'
@@ -57,6 +31,33 @@ export type MergeRequestState =
   | 'locked'
   | 'merged'
   | 'opened';
+
+export type MergeabilityCheckIdentifier =
+  | 'CI_MUST_PASS'
+  | 'COMMITS_STATUS'
+  | 'CONFLICT'
+  | 'DISCUSSIONS_NOT_RESOLVED'
+  | 'DRAFT_STATUS'
+  | 'JIRA_ASSOCIATION_MISSING'
+  | 'LOCKED_LFS_FILES'
+  | 'LOCKED_PATHS'
+  | 'MERGE_REQUEST_BLOCKED'
+  | 'MERGE_TIME'
+  | 'NEED_REBASE'
+  | 'NOT_APPROVED'
+  | 'NOT_OPEN'
+  | 'REQUESTED_CHANGES'
+  | 'SECURITY_POLICY_PIPELINE_CHECK'
+  | 'SECURITY_POLICY_VIOLATIONS'
+  | 'STATUS_CHECKS_MUST_PASS'
+  | 'TITLE_REGEX';
+
+export type MergeabilityCheckStatus =
+  | 'CHECKING'
+  | 'FAILED'
+  | 'INACTIVE'
+  | 'SUCCESS'
+  | 'WARNING';
 
 export type PipelineStatusEnum =
   | 'CANCELED'
@@ -94,7 +95,7 @@ export type AuthoredPlainQuery = { currentUser: { authoredMergeRequests: { nodes
 export type MergeStatusQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MergeStatusQuery = { currentUser: { authoredMergeRequests: { nodes: Array<{ iid: string, detailedMergeStatus: DetailedMergeStatus | null, project: { fullPath: string } } | null> | null } | null } | null };
+export type MergeStatusQuery = { currentUser: { authoredMergeRequests: { nodes: Array<{ iid: string, project: { fullPath: string }, mergeabilityChecks: Array<{ identifier: MergeabilityCheckIdentifier, status: MergeabilityCheckStatus }> } | null> | null } | null } | null };
 
 export type PinnedQueryVariables = Exact<{
   path: string;

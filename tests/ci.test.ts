@@ -10,7 +10,7 @@ import { STAGE_COLOURS } from '../hooks/status'
 import { excerpt, lead, pipelineTime, ranFor, shortTitle, ticketOf } from '../hooks/format'
 import { pictureUri, sizedAvatar } from '../hooks/picture'
 import { discMarks, discSource } from '../hooks/avatar'
-import { ciStatusOf, mergeStatusOf } from '../hooks/gitlab-status'
+import { checkStatusOf, ciStatusOf } from '../hooks/gitlab-status'
 import { cleanBody, readFeatures, readPinned, readResponse, readUsual, toCard } from '../hooks/gitlab'
 import { authoredQuery, pinnedQuery, probeQuery, usualQuery } from '../hooks/gitlab-documents'
 import { Failure } from '../hooks/failure'
@@ -29,32 +29,39 @@ import type { ModelLine, Sayable } from '../hooks/model-text'
 import { raw, svg } from '../hooks/svg'
 import type { RawSvg, SvgSource } from '../hooks/svg'
 import { CURRENT, OLDER } from './gitlab_fake'
-import { HOST, NOW, SELF_MANAGED, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { HOST, NOW, SELF_MANAGED, checks, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
-import type { CiStatus, MergeStatus, MrCard, Stage } from '../types'
+import type { CheckStatus, CiStatus, MergeStatus, MrCard, Stage } from '../types'
 
 const view = (status: CiStatus, id = 7, failed: unknown[] = []) => ({ id, status, failed })
+
+/** GitLab's merge checks as the pane holds them: all pass but the ones named, which take the status given. */
+const gitlabSays = (over: Partial<Record<string, CheckStatus>> = {}): MergeStatus =>
+  checks().map(check => ({ id: check.identifier, status: over[check.identifier] ?? 'success' }))
+
+/** An MR with GitLab's merge checks, as the poll joins them to the authored list. */
+const withChecks = (iid: number, says: MergeStatus, over: Parameters<typeof rawMr>[1] = {}): MrCard => ({ ...toCard(HOST, rawMr(iid, over)), mergeStatus: says })
 
 const marks = (iid: number, over: Parameters<typeof rawMr>[1] = {}) =>
   badges(toCard(HOST, rawMr(iid, over))).map(badge => `${badge.glyph}${badge.count}`)
 
 test('a pipeline wakes once for its first hard failure, running or finished, never again after a reload', async () => {
-  const first = advance([], { pipeline: view('running', 7, ['test']), mergeStatus: 'CI_STILL_RUNNING' })
+  const first = advance([], { pipeline: view('running', 7, ['test']), mergeStatus: gitlabSays({ CI_MUST_PASS: 'checking' }) })
   expect(first.due).toBe('failed')
-  expect(advance(first.announced, { pipeline: view('running', 7, ['test']), mergeStatus: 'CI_STILL_RUNNING' }).due).toBe(null)
-  expect(advance(first.announced, { pipeline: view('failed', 7, ['test']), mergeStatus: 'CI_MUST_PASS' }).due).toBe(null)
+  expect(advance(first.announced, { pipeline: view('running', 7, ['test']), mergeStatus: gitlabSays({ CI_MUST_PASS: 'checking' }) }).due).toBe(null)
+  expect(advance(first.announced, { pipeline: view('failed', 7, ['test']), mergeStatus: gitlabSays({ CI_MUST_PASS: 'failed' }) }).due).toBe(null)
   // The next pipeline's failure is news again.
-  expect(advance(first.announced, { pipeline: view('failed', 8, ['test']), mergeStatus: 'CI_MUST_PASS' }).due).toBe('failed')
+  expect(advance(first.announced, { pipeline: view('failed', 8, ['test']), mergeStatus: gitlabSays({ CI_MUST_PASS: 'failed' }) }).due).toBe('failed')
 })
 
 test('a passed pipeline alone never wakes; GitLab newly saying it can merge does, once per pipeline', async () => {
-  const passed = advance([], { pipeline: view('success'), mergeStatus: 'NOT_APPROVED' })
+  const passed = advance([], { pipeline: view('success'), mergeStatus: gitlabSays({ NOT_APPROVED: 'failed' }) })
   expect(passed.due).toBe(null)
-  expect(advance([], { pipeline: view('manual'), mergeStatus: 'CI_MUST_PASS' }).due).toBe(null)
+  expect(advance([], { pipeline: view('manual'), mergeStatus: gitlabSays({ CI_MUST_PASS: 'failed' }) }).due).toBe(null)
 
-  const approved = advance(passed.announced, { pipeline: view('success'), mergeStatus: 'MERGEABLE' })
+  const approved = advance(passed.announced, { pipeline: view('success'), mergeStatus: gitlabSays() })
   expect(approved.due).toBe('mergeable')
-  expect(advance(approved.announced, { pipeline: view('success'), mergeStatus: 'MERGEABLE' }).due).toBe(null)
+  expect(advance(approved.announced, { pipeline: view('success'), mergeStatus: gitlabSays() }).due).toBe(null)
 })
 
 test('MRs sort by what needs you: failing, then running, then waiting, then ready', async () => {
@@ -67,7 +74,7 @@ test('MRs sort by what needs you: failing, then running, then waiting, then read
   expect([ready, waiting, running, asked, failing].sort(byAttention).map(card => card.iid)).toEqual([5, 4, 3, 2, 1])
 })
 
-test('each blocker is its own marker: a glyph and a count, no words', async () => {
+test('on a host with no merge checks each blocker is its own marker: a glyph and a count, no words', async () => {
   expect(
     marks(1, {
       conflicts: true,
@@ -256,26 +263,48 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
   expect(excerpt(cleanBody('## Summary\n\nDoes a thing that is long', HOST, 'g/p'), 12)).toBe('Summary')
 })
 
-test("GitLab's merge verdict reads as words in its tone, and as nothing while GitLab is still deciding", async () => {
-  const card = (mergeStatus: MergeStatus | null, approvalsLeft = 2) => ({ ...toCard(HOST, rawMr(1, { approvalsLeft, approvalsRequired: 2 })), mergeStatus })
-  const said = (mergeStatus: MergeStatus | null, approvalsLeft?: number) => {
-    const verdict = verdictOf(card(mergeStatus, approvalsLeft))
+test("GitLab's own merge checks give the verdict: its first failing check in words, mergeable when none stops it, nothing when none was read", async () => {
+  const said = (mergeStatus: MergeStatus | null) => {
+    const verdict = verdictOf({ ...toCard(HOST, rawMr(1)), mergeStatus })
     return verdict !== null ? [verdict.words, verdict.tone] : null
   }
-  expect(said('MERGEABLE')).toEqual(['✓ mergeable', 'success'])
-  expect(said('NOT_APPROVED')).toEqual(['needs 2 approvals', 'subtle'])
-  expect(said('REQUESTED_CHANGES')).toEqual(['changes requested', 'error'])
-  expect(said('CONFLICT')).toEqual(['conflicts', 'error'])
-  expect(said('NEED_REBASE')).toEqual(['needs rebase', 'warning'])
-  expect(said('CI_MUST_PASS')).toEqual(['CI must pass', 'error'])
-  expect(said('CI_STILL_RUNNING')).toEqual(['CI running', 'subtle'])
-  expect(said('DISCUSSIONS_NOT_RESOLVED')).toEqual(['threads open', 'warning'])
-  expect(said('DRAFT_STATUS')).toEqual(['draft', 'subtle'])
-  expect(said('JIRA_ASSOCIATION')).toEqual(['jira association', 'subtle'])
-  expect(said(mergeStatusOf('A_VERDICT_GITLAB_ADDS_LATER'))).toEqual(['merge status unknown', 'subtle'])
-  for (const quiet of ['UNCHECKED', 'CHECKING', 'PREPARING', 'APPROVALS_SYNCING', 'NOT_OPEN', null] as const) {
-    expect(said(quiet)).toBe(null)
-  }
+  expect(said(gitlabSays())).toEqual(['✓ mergeable', 'success'])
+  // GitLab lists the checks in the order that settles which one it reports, so the first that fails is the one said.
+  expect(said(gitlabSays({ CI_MUST_PASS: 'failed', DRAFT_STATUS: 'failed', NOT_APPROVED: 'failed' }))).toEqual(['draft status', 'error'])
+  expect(said(gitlabSays({ CI_MUST_PASS: 'failed' }))).toEqual(['CI must pass', 'error'])
+  expect(said(gitlabSays({ CI_MUST_PASS: 'checking', NOT_APPROVED: 'failed' }))).toEqual(['not approved', 'error'])
+  expect(said(gitlabSays({ CI_MUST_PASS: 'checking' }))).toEqual(['CI must pass (checking)', 'subtle'])
+  // A warning passed with a note, and a check the project turned off is not one.
+  expect(said(gitlabSays({ JIRA_ASSOCIATION_MISSING: 'warning', MERGE_TIME: 'inactive' }))).toEqual(['✓ mergeable', 'success'])
+  // A check and a status GitLab adds later read from their names, and a status the pane cannot name is not a pass.
+  expect(said([...gitlabSays(), { id: 'A_CHECK_GITLAB_ADDS_LATER', status: 'failed' }])).toEqual(['a check gitlab adds later', 'error'])
+  expect(said([...gitlabSays(), { id: 'X', status: checkStatusOf('A_STATUS_GITLAB_ADDS_LATER') }])).toBe(null)
+  expect(said(null)).toBe(null)
+  expect(said([])).toBe(null)
+})
+
+test('every check GitLab fails or warns of is a marker, worst first, with a pane marker standing in for the check it gives the detail of', async () => {
+  const card = withChecks(1, gitlabSays({ DRAFT_STATUS: 'failed', JIRA_ASSOCIATION_MISSING: 'warning', NOT_APPROVED: 'failed', CONFLICT: 'failed' }), { conflicts: true })
+  // The conflict is GitLab's to say, so the pane's own ⇄ stays out; the approvals count stands for NOT_APPROVED.
+  expect(badges(card).map(badge => `${badge.glyph} ${badge.words}`)).toEqual(['✗ draft status', '✗ conflict', '⚠ jira association missing', '👤 needs 1 approval'])
+  const facts = cardFacts(card, {})
+  expect(facts.verdict?.words).toBe('draft status')
+  expect(facts.trailing.map(badge => badge.words)).toEqual(['conflict', 'jira association missing', 'needs 1 approval'])
+  expect(cardFacts(withChecks(2, gitlabSays({ NOT_APPROVED: 'failed' })), {}).trailing).toEqual([])
+  expect(cardFacts(withChecks(3, gitlabSays(), { approvalsLeft: 0 }), {}).trailing).toEqual([])
+})
+
+test('an icon speaks for a request for changes, and still the check GitLab fails shows on the row', async () => {
+  const card = withChecks(1, gitlabSays({ REQUESTED_CHANGES: 'failed' }), { reviewers: { nodes: [reviewer('tim', 'REQUESTED_CHANGES')] } })
+  expect(badges(card).map(badge => badge.kind)).toEqual(['changes', 'approvals'])
+  expect(rowBadges(card).map(badge => `${badge.kind}:${badge.words}`)).toEqual(['check:requested changes', 'approvals:needs 1 approval'])
+})
+
+test('a card GitLab gave no checks for still gets the pane\'s own markers for conflicts and a rebase', async () => {
+  const card = toCard(HOST, rawMr(1, { conflicts: true, shouldBeRebased: true }))
+  expect(card.mergeStatus).toBeNull()
+  expect(badges(card).map(badge => badge.words)).toEqual(['conflicts', 'needs rebase', 'needs 1 approval'])
+  expect(verdictOf(card)).toBeNull()
 })
 
 test('a status GitLab adds later reads as unknown, drawn as such, and a known one keeps its name', async () => {
@@ -516,9 +545,9 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   const cards = [
     toCard(HOST, rawMr(12, { headPipeline: pipe('FAILED') })),
     toCard(HOST, rawMr(13, { headPipeline: pipe('SUCCESS') })),
-    { ...toCard(HOST, rawMr(14, { ...approved, headPipeline: pipe('SUCCESS'), discussions: botThread })), mergeStatus: 'MERGEABLE' as const },
-    { ...toCard(HOST, rawMr(15, { ...approved, headPipeline: pipe('RUNNING') })), mergeStatus: 'CI_STILL_RUNNING' as const },
-    { ...toCard(HOST, rawMr(16)), mergeStatus: 'NOT_OPEN' as const },
+    { ...toCard(HOST, rawMr(14, { ...approved, headPipeline: pipe('SUCCESS'), discussions: botThread })), mergeStatus: gitlabSays() },
+    { ...toCard(HOST, rawMr(15, { ...approved, headPipeline: pipe('RUNNING') })), mergeStatus: gitlabSays({ CI_MUST_PASS: 'checking' }) },
+    { ...toCard(HOST, rawMr(16)), mergeStatus: gitlabSays({ NOT_OPEN: 'failed' }) },
   ]
   const { mine, tabs } = modelOf(cards)
   // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
@@ -533,7 +562,7 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   const byLink = Object.fromEntries(mine.rows.map(row => [row.mr.text, row]))
   // GitLab's verdict is the one word on whether it can merge, said once; a bot's open thread is on its face, so nothing trails it.
   expect(byLink['🔀 !14']?.verdict).toEqual({ words: '✓ mergeable', tone: 'success', bold: true, trailing: null })
-  expect(byLink['🔀 !15']?.verdict?.words).toBe('CI running')
+  expect(byLink['🔀 !15']?.verdict?.words).toBe('CI must pass (checking)')
   // With no verdict read, the pane's own marker shows in words.
   expect(byLink['🔀 !13']?.verdict).toBeNull()
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
