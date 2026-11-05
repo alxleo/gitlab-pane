@@ -11,7 +11,7 @@
     "check": "npm run check:fast && npm run scan",
     "check:fast": "npm run files && npm run lint && npm run types && npm run schema -- types --check && npm run release-tree -- check && npm run validate",
     "files": "node tools/check_files.ts",
-    "lint": "eslint --max-warnings 0 hooks tests tools",
+    "lint": "node tools/engine_types.ts && eslint --max-warnings 0 hooks tests tools",
     "types": "node tools/engine_types.ts && node node_modules/typescript-7/bin/tsc -p tsconfig.core.json && node node_modules/typescript-7/bin/tsc -p tsconfig.json && node node_modules/typescript-7/bin/tsc -p tools/store-probe/tsconfig.json && node node_modules/typescript-7/bin/tsc -p tsconfig.tools.json",
     "validate": "claude plugin validate --strict . && claude plugin validate --strict tools/store-probe",
     "test": "claude plugin test .",
