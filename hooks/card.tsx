@@ -1,6 +1,6 @@
 import type { EngineInterface, RenderChildren } from 'claude-code'
 
-import { showPerson, toggle } from './choices'
+import { showPersonCard, toggleCard } from './detail'
 import { quietly } from './failures'
 import { face } from './faces'
 import { joins, markdown, reveal, trigger } from './kit'
@@ -31,7 +31,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
   // An open card ends on closing it, or on reading it whole on a page of its own, which has a drawing of its own.
   const foot = (
     <Box flexDirection="row" gap={2}>
-      <Button key={scope('less')} plain label="▴ less" onPress={() => toggle($, row.key)} />
+      <Button key={scope('less')} plain label="▴ less" onPress={() => toggleCard($, row.key)} />
       <Button key={scope('read')} plain label="read whole ›" onPress={() => openReading($, row.key)} />
     </Box>
   )
@@ -41,7 +41,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
         <Box flexDirection="row" gap={1} alignItems="center">
           <Box flexGrow={1} flexShrink={1} hover={joins(kit, about)}>
             {row.canOpen ? (
-              <Button key={row.titleKey} plain label={`${row.isOpen ? '▾' : '▸'} ${row.title}`} onPress={() => toggle($, row.key)} />
+              <Button key={row.titleKey} plain label={`${row.isOpen ? '▾' : '▸'} ${row.title}`} onPress={() => toggleCard($, row.key)} />
             ) : (
               <Text weight="semibold" wrap="truncate-end">
                 {row.title}
@@ -87,7 +87,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
                 key={scope(`person-${person.username}`)}
                 plain
                 label={person.label}
-                onPress={() => quietly($, showPerson($, row.key, person.username))}
+                onPress={() => quietly($, showPersonCard($, row.key, person.username))}
               />,
             ])
           )}

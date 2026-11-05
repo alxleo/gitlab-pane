@@ -2,7 +2,9 @@
 // tools/gitlab_schema.py, and graphql-codegen reads the documents in this file for the types in gitlab.generated.ts.
 import type {
   AuthoredPlainQuery,
+  AuthoredPlainQueryVariables,
   AuthoredQuery,
+  AuthoredQueryVariables,
   FailuresQuery,
   FailuresQueryVariables,
   InboxAuthoredQuery,
@@ -70,14 +72,14 @@ const REVIEWER_PLAIN_FRAGMENT = /* GraphQL */ `
 `
 
 const AUTHORED = /* GraphQL */ `
-  query Authored {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerFields } } } } }
+  query Authored($state: MergeRequestState, $after: Time) {
+    currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerFields } } } } }
   }
 `
 
 const AUTHORED_PLAIN = /* GraphQL */ `
-  query AuthoredPlain {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerPlain } } } } }
+  query AuthoredPlain($state: MergeRequestState, $after: Time) {
+    currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerPlain } } } } }
   }
 `
 
@@ -302,8 +304,8 @@ export type RawResponse<Data> = { data?: Data | null; errors?: { message: string
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
 export type Operations = {
-  Authored: { variables: Record<string, never>; data: AuthoredQuery }
-  AuthoredPlain: { variables: Record<string, never>; data: AuthoredPlainQuery }
+  Authored: { variables: AuthoredQueryVariables; data: AuthoredQuery }
+  AuthoredPlain: { variables: AuthoredPlainQueryVariables; data: AuthoredPlainQuery }
   MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
   Failures: { variables: FailuresQueryVariables; data: FailuresQuery }
   Pinned: { variables: PinnedQueryVariables; data: PinnedQuery }
@@ -360,12 +362,6 @@ export const COMPLEXITY = {
 
 /** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */
 export const COMPLEXITY_SHARE = 0.8
-
-/** Every open MR the user authored: the heaviest document (`COMPLEXITY.Authored`). */
-export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | AuthoredPlainQuery> =>
-  features.hasReviewStates
-    ? { operation: 'Authored', query: DOCUMENTS.Authored, variables: {} }
-    : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables: {} }
 
 /**
  * GitLab's own merge checks for the same MRs, or none for a host that lacks them. Asked on its own: its single verdict (`detailedMergeStatus`) answered

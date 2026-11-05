@@ -3,6 +3,7 @@ import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
 import { closePage, readPage, readTab, setPage, setTab } from './choices'
 import { readRows } from './data'
+import { ensureDetail } from './detail'
 import { quietly } from './failures'
 import { nextDraw, rowDrawn } from './in-flight'
 import { titleKey } from './drawing'
@@ -43,6 +44,15 @@ export async function openPane($: EngineInterface) {
   return $.ui.open({ id: PANE_ID, title: await paneTitle($) })
 }
 
+/**
+ * Whether a surface draws the pane now. The engine keeps the record (`$.ui.panes()`), so a pane that sits open and quiet,
+ * and so is never asked to draw again, still counts; one the person closed, or that waits undrawn on a terminal too
+ * narrow for it, does not.
+ */
+export async function isPaneDrawn($: EngineInterface): Promise<boolean> {
+  return (await $.ui.panes()).some(pane => pane.id === PANE_ID && pane.isPlaced && pane.isShown)
+}
+
 /** Shows the MR list (`mine`) or the inbox; only the open tab is drawn. */
 export function openTab($: EngineInterface, tab: 'mine' | 'inbox'): void {
   quietly($, setTab($, tab).then(() => openPane($)))
@@ -66,6 +76,7 @@ export function openReading($: EngineInterface, key: string): void {
     scrollPane($, { to: 'start' })
       .then(() => setPage($, key))
       .then(() => openPane($))
+      .then(() => ensureDetail($, key))
   )
 }
 

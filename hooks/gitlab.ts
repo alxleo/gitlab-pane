@@ -15,6 +15,7 @@ import { isFilled, isSome } from './decode.ts'
 import { Failure } from './failure.ts'
 import { checkStatusOf, ciStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { cardKey, projectOf, siteOf } from './hosts.ts'
+import { lead, ranOf } from './format.ts'
 import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
 import { firstDifference } from './order.ts'
@@ -120,6 +121,9 @@ const toNote = (raw: RawNote, host: string, path: string, isOpen: boolean, mrUrl
 
 const UNNAMED = '(unnamed)'
 
+/** Letters of a description a row's hover card quotes. */
+const LEAD_ROOM = 160
+
 /** A job without a path of its own links to its pipeline. */
 const toJob = (host: string, job: RawJob, pipelineUrl: string): Job => ({
   name: job.name ?? UNNAMED,
@@ -211,6 +215,7 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
       state,
       openThreads: person.openThreads,
       notes,
+      noteCount: notes.length,
     }
   })
   const shared = new Set(people.map(person => person.initials).filter((value, i, all) => all.indexOf(value) !== i))
@@ -242,12 +247,12 @@ export function toCard(host: string, raw: RawMr): MrCard {
   }))
   const requested = reviewers.filter(reviewer => reviewer.state === 'requested_changes')
   const pipelineUrl = isFilled(pipeline?.path) ? `${siteOf(host)}${pipeline.path}` : mrUrl
-  const stages = present(pipeline?.stages?.nodes).map(stage => ({
-    name: stage.name ?? UNNAMED,
-    status: ciStatusOf(stage.status ?? ''),
-    jobs: present(stage.jobs?.nodes).map(job => toJob(host, job, pipelineUrl)),
-  }))
+  const stages = present(pipeline?.stages?.nodes).map(stage => {
+    const stageJobs = present(stage.jobs?.nodes).map(job => toJob(host, job, pipelineUrl))
+    return { name: stage.name ?? UNNAMED, status: ciStatusOf(stage.status ?? ''), jobs: stageJobs, ran: ranOf(stageJobs) }
+  })
   const jobs = stages.flatMap(stage => stage.jobs)
+  const description = cleanBody(raw.description ?? '', host, path)
   return {
     key: cardKey(host, path, raw.iid),
     url: mrUrl,
@@ -258,7 +263,9 @@ export function toCard(host: string, raw: RawMr): MrCard {
     iid: Number(raw.iid),
     title: raw.title,
     author: raw.author?.username ?? '',
-    description: cleanBody(raw.description ?? '', host, path),
+    description,
+    lead: description !== '' ? lead(description, LEAD_ROOM) : '',
+    hasDescription: description.trim() !== '',
     branch: { source: raw.sourceBranch, target: raw.targetBranch },
     diff: isSome(raw.diffStatsSummary)
       ? {
@@ -293,6 +300,9 @@ export function toCard(host: string, raw: RawMr): MrCard {
             failed: jobs.filter(job => job.status === 'failed' && !job.allowFailure).map(jobLink),
             amber: jobs.filter(job => job.status === 'failed' && job.allowFailure).map(jobLink),
             blockedOn: jobs.filter(job => job.status === 'manual' && !job.allowFailure).map(job => job.name),
+            moreJobs: 0,
+            moreFailed: 0,
+            moreAmber: 0,
           },
         }
       : {}),
@@ -302,6 +312,7 @@ export function toCard(host: string, raw: RawMr): MrCard {
         ...toNote(thread.first, host, path, true, mrUrl),
         replies: thread.notes.slice(1).map(one => toNote(one, host, path, true, mrUrl)),
       })),
+    threadsLeft: { loose: 0, held: 0 },
   }
 }
 

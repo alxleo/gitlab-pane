@@ -32,6 +32,11 @@ export async function readTab($: EngineInterface): Promise<string> {
 export async function readPage($: EngineInterface): Promise<string> {
   return (await read($, choicesAtom)).reading
 }
+/** The card keys of the MRs drawn open or read whole: the ones whose description and threads are wanted. */
+export async function readOpened($: EngineInterface): Promise<string[]> {
+  const { expanded, reading } = await read($, choicesAtom)
+  return [...expanded.filter(key => key !== 'drafts' && key !== 'more'), ...(reading !== '' ? [reading] : [])]
+}
 export async function readWake($: EngineInterface): Promise<boolean> {
   return (await read($, choicesAtom)).wake
 }
@@ -58,8 +63,12 @@ const without = (people: Record<string, string>, key: string): Record<string, st
   Object.fromEntries(Object.entries(people).filter(([each]) => each !== key))
 
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
+export function flip($: EngineInterface, key: string): Promise<void> {
+  return change($, choices => ({ ...choices, expanded: toggled(choices.expanded, key), person: without(choices.person, key) }))
+}
+
 export function toggle($: EngineInterface, key: string): void {
-  quietly($, change($, choices => ({ ...choices, expanded: toggled(choices.expanded, key), person: without(choices.person, key) })))
+  quietly($, flip($, key))
 }
 
 /** Opens or closes one `<details>` fold, named `<row key>#<where>`, against how GitLab first shows it. */
