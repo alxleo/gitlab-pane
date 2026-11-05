@@ -41,7 +41,7 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
-type Fake = { mrs: RawMr[]; isDown: boolean; lost?: string[] }
+type Fake = { mrs: RawMr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
 
 function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)
@@ -52,6 +52,9 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   on('process.run', (_, e) => {
     if (e.argv.includes('acli')) {
       jiraReads.push(e.argv.at(-1) ?? '')
+      if (fake.isJiraMissing) {
+        return ran('', 127, 'zsh: command not found: acli')
+      }
       return ran(JSON.stringify([{ key: 'ABC-1', fields: { issuetype: { name: 'Task' }, status: { name: 'In Progress' }, summary: 'Make the thing work' } }]))
     }
     if (e.argv.includes('avatar')) {
@@ -205,13 +208,20 @@ test('with no Jira site set, ticket keys show as plain text and Jira is never re
 
 test('a Jira site links each ticket key and reads its details', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const { jiraReads } = engine(on, { mrs: [rawMr(12)], isDown: false })
+  const fake: Fake = { mrs: [rawMr(12)], isDown: false }
+  const { jiraReads } = engine(on, fake)
+  on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Link', text: '🎫 ABC-1' }))?.props.href).toBe('https://jira.example.com/browse/ABC-1')
   expect(jiraReads).toEqual(['key in (ABC-1)'])
+  // Once acli goes missing, the next read says so in /gitlab's answer instead of keeping quiet.
+  fake.isJiraMissing = true
+  await clock.advance(20 * 60_000)
+  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  expect(answer.text).toContain('jira: acli is not installed')
   await ui.unmount()
 })
 

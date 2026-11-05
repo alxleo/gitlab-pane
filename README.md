@@ -82,7 +82,7 @@ The pane changes nothing on GitLab or Jira and needs no token of its own: `glab`
 
 What reaches Claude, and so the model provider, from GitLab:
 
-- **Wakes.** When an MR opened from a session fails its pipeline or can merge, the pane sends that session a message saying so, with the names of the failed jobs. Job names come from the repo's CI configuration, so treat them as text from that repo, not instructions. The pane's `wake Claude` switch turns this off.
+- **Wakes.** When an MR opened from a session fails its pipeline or can merge, the pane sends that session a message saying so, with the names of the failed jobs. Job names come from the repo's CI configuration, so treat them as text from that repo, not instructions. They are cut to one line of 80 characters with control and bidi characters removed before they reach the model. The pane's `wake Claude` switch turns this off.
 - **`/mrs`** puts the MRs' descriptions and other people's comments into the conversation, and **`watch_mr`** answers with an MR's pipeline and what blocks it.
 - **Bash commands.** The pane reads each Bash command a session runs, and the output of `glab mr create`, to pin the MR it opens. Nothing is sent anywhere for this.
 

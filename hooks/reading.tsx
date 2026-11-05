@@ -1,10 +1,10 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import { CHROME_SIZE, DRAWING_BUDGET, LINK, ago, measure, plural, shortHash, verdictOf } from './ci'
-import { partsOf } from './markdown'
+import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { toggleFold } from './read'
 
-import type { Part } from './markdown'
+import type { MarkdownText, Part } from './markdown'
 import type { MrCard, Note } from '../types'
 
 /** Room kept for the link that says the rest is on GitLab. */
@@ -17,12 +17,14 @@ const CUT_NOTE_SIZE = 300
  */
 export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, folds: string[], now: number) {
   const { Box, Text, Button, Link, Markdown } = $.ui.resolve(e)
+  /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
+  const markdown = (text: MarkdownText) => <Markdown text={text} />
 
   /** GitLab Markdown drawn as GitLab draws it: each `<details>` a toggle under its summary, closed unless asked open. */
   const rich = (parts: Part[], id: string): RenderChildren[] => parts.flatMap((part, i) => richPart(part, id, i))
   const richPart = (part: Part, id: string, i: number): RenderChildren[] => {
     if ('text' in part) {
-      return [<Markdown text={part.text} />]
+      return [markdown(part.text)]
     }
     const fold = `${id}.${i}`
     const isOpen = part.isOpen !== folds.includes(fold)
@@ -128,9 +130,9 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       room -= size
       continue
     }
-    const cut = 'text' in part ? cutToFit(part.text, room, text => measure(<Markdown text={text} />)) : ''
+    const cut = 'text' in part ? cutToFit(part.text, room, text => measure(markdown(text))) : EMPTY_MARKDOWN
     if (cut) {
-      described.push(<Markdown text={cut} />)
+      described.push(markdown(cut))
     }
     isCut = true
     break
@@ -143,19 +145,4 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     ...kept,
     ...(kept.length < blocks.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of the threads are on GitLab`}</Link>] : []),
   ]
-}
-
-/** The longest start of `text` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does. */
-function cutToFit(text: string, room: number, sizeOf: (text: string) => number): string {
-  let length = Math.min(text.length, room)
-  while (length > 0) {
-    const start = text.slice(0, length)
-    const end = [start.lastIndexOf('\n\n'), start.lastIndexOf('\n'), start.lastIndexOf(' ')].find(at => at > length / 2) ?? length
-    const cut = `${start.slice(0, end).trimEnd()} …`
-    if (sizeOf(cut) <= room) {
-      return cut
-    }
-    length = Math.floor(length * 0.8)
-  }
-  return ''
 }

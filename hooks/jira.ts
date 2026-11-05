@@ -1,3 +1,5 @@
+import { field, records, text } from './decode'
+
 import type { Ticket } from '../types'
 
 let browse = ''
@@ -21,15 +23,24 @@ export const ticketQuery = (keys: readonly string[]): string =>
 /** The fields a ticket's hover card shows, as `acli` names them. */
 export const TICKET_FIELDS = 'key,issuetype,status,summary'
 
-type Row = { key: string; fields?: { issuetype?: { name?: string }; status?: { name?: string }; summary?: string } }
-
-/** `acli jira workitem search --json` rows, Jira's own issue shape, by key. */
-export function readTickets(stdout: string): Record<string, Ticket> {
-  const rows = JSON.parse(stdout) as Row[]
+/** `acli jira workitem search --json` rows, Jira's own issue shape, by key; throws when the answer is not a list. */
+export function readTickets(raw: unknown): Record<string, Ticket> {
+  if (!Array.isArray(raw)) {
+    throw new Error('acli answered something other than a list of tickets')
+  }
   return Object.fromEntries(
-    rows.map(row => [
-      row.key,
-      { type: row.fields?.issuetype?.name ?? '', status: row.fields?.status?.name ?? '', summary: row.fields?.summary ?? '' },
-    ])
+    records(raw)
+      .filter(row => text(row.key) !== '')
+      .map(row => {
+        const fields = field(row, 'fields')
+        return [
+          text(row.key),
+          {
+            type: text(field(field(fields, 'issuetype'), 'name')),
+            status: text(field(field(fields, 'status'), 'name')),
+            summary: text(field(fields, 'summary')),
+          },
+        ]
+      })
   )
 }

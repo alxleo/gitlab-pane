@@ -209,6 +209,8 @@ export type InboxItem = {
   title: string
   url: string
   author: string
+  /** The author's display name, as mr-inbox gives it; empty when it gives none. */
+  authorName: string
   /** You wrote it, so your name says nothing on its card. */
   isMine: boolean
   state: string

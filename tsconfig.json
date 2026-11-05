@@ -1,5 +1,5 @@
 {
   "extends": "./types/engine/tsconfig.json",
-  "compilerOptions": { "noEmit": true },
+  "compilerOptions": { "noEmit": true, "allowImportingTsExtensions": true },
   "include": ["hooks", "types", "tests", "tools/screens"]
 }

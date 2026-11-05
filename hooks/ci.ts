@@ -1,4 +1,6 @@
-import { flatOf } from './markdown'
+import { shortHash } from './identity'
+import { cutMarkdown, flatOf, type MarkdownText } from './markdown'
+import { commas, dotted, EMPTY, foreign, line, NAME_ROOM, URL_ROOM, type ModelLine } from './model-text'
 
 import type { CiStatus, MergeStatus, MrCard, Person, Pinned, Stage, Usual } from '../types'
 
@@ -68,14 +70,15 @@ export function advance(
 }
 
 /** The one line a wake says: `!1395 can merge: pipeline passed in 17m`; a failure carries the pipeline's link. */
-export function wakeLine(card: MrCard, due: Due, now: number): string {
+export function wakeLine(card: MrCard, due: Due, now: number): ModelLine {
   const pipeline = card.pipeline
+  const time = pipelineTime(card, now)
   if (due === 'mergeable') {
-    return `!${card.iid} can merge${pipeline?.status === 'success' ? `: pipeline passed in ${pipelineTime(card, now)}` : ''}`
+    return line`!${card.iid} can merge${pipeline?.status === 'success' ? line`: pipeline passed in ${time}` : EMPTY}`
   }
-  const jobs = pipeline?.failed.map(job => job.name).join(', ') ?? ''
-  const when = pipeline && isSettled(pipeline.status) ? `pipeline failed in ${pipelineTime(card, now)}` : 'a job failed while the pipeline runs'
-  return `!${card.iid} ${when}${jobs ? `: ${jobs}` : ''} · ${pipeline?.url ?? card.url}`
+  const jobs = commas(pipeline?.failed.map(job => foreign(job.name)) ?? [])
+  const when = pipeline && isSettled(pipeline.status) ? line`pipeline failed in ${time}` : line`a job failed while the pipeline runs`
+  return line`!${card.iid} ${when}${jobs ? line`: ${jobs}` : EMPTY} · ${foreign(pipeline?.url ?? card.url, URL_ROOM)}`
 }
 
 /** 0 needs you now, 1 is moving, 2 waits on others, 3 is ready. */
@@ -105,7 +108,9 @@ export const byAttention = (a: MrCard, b: MrCard): number =>
 
 export type Tone = 'success' | 'error' | 'warning' | 'subtle' | 'suggestion'
 
-export function statusMark(status: CiStatus | undefined): { glyph: string; tone: Tone } {
+export type Glyph = '✓' | '✗' | '⏸' | '⊘' | '○' | '?' | '●'
+
+export function statusMark(status: CiStatus | undefined): { glyph: Glyph; tone: Tone } {
   switch (status) {
     case 'success':
       return { glyph: '✓', tone: 'success' }
@@ -176,9 +181,7 @@ export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
   }
 }
 
-/** Keeps a hover scope or key short whatever the project path or username. */
-export const shortHash = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
+export { shortHash }
 
 /**
  * The key of an MR's title button, which the pane scrolls back to after the MR's page. The desktop reports where only
@@ -372,15 +375,9 @@ export function excerpt(body: string, room = 160): string {
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
 
-/** Text for Markdown, its marks escaped so a title reads as written. */
-export function markdownText(text: string): string {
-  return text.replace(/([\\`*_[\]()#<>!|~])/g, '\\$1')
-}
-
 /** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
-export function bodyOf(text: string, room = 1_200): string {
-  const clean = flatOf(text)
-  return clean.length > room ? `${clean.slice(0, room - 1)}…` : clean
+export function bodyOf(text: string, room = 1_200): MarkdownText {
+  return cutMarkdown(flatOf(text), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */
@@ -399,27 +396,27 @@ export function lead(body: string, room = 240): string {
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
 
-export const duration = (seconds: number): string => {
+export const duration = (seconds: number): ModelLine => {
   const minutes = Math.round(seconds / 60)
   if (seconds < 60) {
-    return `${Math.round(seconds)}s`
+    return line`${Math.round(seconds)}s`
   }
   if (minutes < 60) {
-    return `${minutes}m`
+    return line`${minutes}m`
   }
   const hours = Math.floor(minutes / 60)
-  return hours < 24 ? `${hours}h ${minutes % 60}m` : `${Math.floor(hours / 24)}d ${hours % 24}h`
+  return hours < 24 ? line`${hours}h ${minutes % 60}m` : line`${Math.floor(hours / 24)}d ${hours % 24}h`
 }
 
-export const ago = (iso: string, now: number): string => {
+export const ago = (iso: string, now: number): ModelLine => {
   const minutes = Math.floor((now - Date.parse(iso)) / 60_000)
   if (minutes < 1) {
-    return 'now'
+    return line`now`
   }
   if (minutes < 60) {
-    return `${minutes}m`
+    return line`${minutes}m`
   }
-  return minutes < 1440 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / 1440)}d`
+  return minutes < 1440 ? line`${Math.floor(minutes / 60)}h` : line`${Math.floor(minutes / 1440)}d`
 }
 
 /** Seconds any of these jobs ran, overlaps counted once, as GitLab counts a pipeline's duration. */
@@ -440,23 +437,23 @@ export function ranFor(stages: readonly Stage[], now: number): number {
 const minutes = (seconds: number) => Math.max(1, Math.round(seconds / 60))
 
 /** `10–15m`, the middle half of recent runs. */
-export const usualRange = (usual: Usual): string =>
-  minutes(usual.low) === minutes(usual.high) ? `${minutes(usual.low)}m` : `${minutes(usual.low)}–${minutes(usual.high)}m`
+export const usualRange = (usual: Usual): ModelLine =>
+  minutes(usual.low) === minutes(usual.high) ? line`${minutes(usual.low)}m` : line`${minutes(usual.low)}–${minutes(usual.high)}m`
 
 /** How long the pipeline took, or has run so far against how long one usually takes. */
-export function pipelineTime(card: MrCard, now: number, usual?: Usual): string {
+export function pipelineTime(card: MrCard, now: number, usual?: Usual): ModelLine {
   const pipeline = card.pipeline
   if (!pipeline) {
-    return 'no pipeline'
+    return line`no pipeline`
   }
   if (pipeline.duration !== null && isSettled(pipeline.status)) {
     return duration(pipeline.duration)
   }
   const ran = ranFor(pipeline.stages, now) || (pipeline.startedAt ? (now - Date.parse(pipeline.startedAt)) / 1000 : null)
   if (ran === null) {
-    return pipeline.status
+    return line`${pipeline.status}`
   }
-  return usual ? `${duration(ran)} · usually ${usualRange(usual)}` : `${duration(ran)} so far`
+  return usual ? line`${duration(ran)} · usually ${usualRange(usual)}` : line`${duration(ran)} so far`
 }
 
 const TICKET = /\[([A-Z]+-\d+)\]/
@@ -471,18 +468,16 @@ export const shortTitle = (title: string): string =>
     .replace(/\[([A-Z]+-\d+|NO-JIRA)\]\s*/, '')
 
 /** One line a model or a toast reads; never another person's words, only who and where. */
-export function describe(card: MrCard, now: number): string {
+export function describe(card: MrCard, now: number): ModelLine {
   const { glyph } = statusMark(card.pipeline?.status)
   const ticket = ticketOf(card.title)
-  const failed = card.pipeline?.failed.map(job => job.name) ?? []
-  return [
-    `!${card.iid}${ticket ? ` (${ticket})` : ''} ${glyph} ${card.pipeline?.status ?? 'no pipeline'} ${pipelineTime(card, now)}`,
+  const failed = card.pipeline?.failed.map(job => foreign(job.name)) ?? []
+  return dotted([
+    line`!${card.iid}${ticket ? line` (${foreign(ticket)})` : EMPTY} ${glyph} ${card.pipeline?.status ?? 'no pipeline'} ${pipelineTime(card, now)}`,
     ...badges(card)
       .filter(badge => badge.kind !== 'failed' && badge.words !== 'approved')
-      .map(badge => badge.words),
-    failed.length > 0 ? `failed: ${failed.join(', ')}` : '',
-    card.pipeline?.url ?? card.url,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+      .map(badge => foreign(badge.words, NAME_ROOM)),
+    failed.length > 0 ? line`failed: ${commas(failed)}` : EMPTY,
+    foreign(card.pipeline?.url ?? card.url, URL_ROOM),
+  ])
 }

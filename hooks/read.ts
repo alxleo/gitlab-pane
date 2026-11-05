@@ -15,8 +15,13 @@ import {
   usualQuery,
 } from './gitlab'
 import type { RawResponse } from './gitlab'
+import { decodeGraphql } from './decode'
+import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
+import { clear, record, reported } from './problems'
+import type { Source } from './problems'
 import { reconcile } from './reconcile'
+import { runJson } from './tools'
 
 import type { MergeStatus, MrCard, Pinned, PollState } from '../types'
 
@@ -43,9 +48,9 @@ const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
   usualAt: null,
 } satisfies PollState)
 
-/** Runs work nobody awaits, so a session ending mid-call leaves no unhandled rejection. */
-export const quietly = (work: Promise<unknown>): void => {
-  work.catch(() => undefined)
+/** Runs work nobody awaits, so a session ending mid-call leaves no unhandled rejection; a failure goes to `/gitlab`. */
+export const quietly = (work: Promise<unknown>, source: Source = 'pane'): void => {
+  work.catch(reported(source))
 }
 
 /** Everything the pane draws, read at once; reading here makes the pane redraw when any of it changes. */
@@ -195,22 +200,19 @@ export function toggleWake($: EngineInterface) {
 const TICKETS_EVERY_MS = 15 * 60_000
 const USUAL_EVERY_MS = 30 * 60_000
 
-// A login shell finds glab and acli wherever they are installed; the app's own PATH may not.
-const shell = (tool: string, args: readonly string[]) => ['/bin/zsh', '-lc', `exec ${tool} "$@"`, tool, ...args]
-
 /** GitLab.com's edge answers 52x or drops the stream now and then; one retry rides that out. */
 const isTransient = (stderr: string): boolean => /HTTP 5\d\d|stream error/i.test(stderr)
 
 async function ask($: EngineInterface, query: string): Promise<RawResponse> {
-  const call = () => $.process.run(shell('glab', ['api', 'graphql', '-f', `query=${query}`]), { timeoutMs: 90_000 })
-  const first = await call()
-  const run = first.exitCode !== 0 && isTransient(first.stderr) ? await call() : first
-  // glab exits non-zero on a partial GraphQL error yet still prints the data.
-  try {
-    return JSON.parse(run.stdout) as RawResponse
-  } catch {
-    throw new Error(run.stderr.trim().split('\n').pop() || `glab exited ${run.exitCode}`)
+  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`], decodeGraphql, {
+    timeoutMs: 90_000,
+    retryIf: isTransient,
+    isPartialOk: true,
+  })
+  if (!answer.ok) {
+    throw new Error(answer.reason)
   }
+  return answer.value
 }
 
 /**
@@ -223,7 +225,10 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
     ask($, authoredQuery()),
     ask($, mergeStatusQuery())
       .then(readMergeStatus)
-      .catch(() => new Map<string, MergeStatus>()),
+      .catch((error: unknown) => {
+        record('gitlab', `merge status: ${error instanceof Error ? error.message : String(error)}`)
+        return new Map<string, MergeStatus>()
+      }),
   ])
   const rows = readResponse(authored, 0).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
@@ -249,12 +254,13 @@ async function readJira($: EngineInterface, rows: readonly MrCard[], now: number
     return
   }
   const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
-  const run = await $.process.run(shell('acli', search), { timeoutMs: 60_000 })
-  if (run.exitCode !== 0) {
+  const found = await runJson($, 'acli', search, readTickets, { timeoutMs: 60_000 })
+  if (!found.ok) {
+    record('jira', found.reason)
     return
   }
-  const tickets = readTickets(run.stdout)
-  await update($, ticketsAtom, previous => ({ ...previous, ...tickets }))
+  clear('jira')
+  await update($, ticketsAtom, previous => ({ ...previous, ...found.value }))
   await update($, pollAtom, previous => ({ ...previous, ticketsAt: now }))
 }
 
@@ -271,6 +277,7 @@ async function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: 
     const chunk = projects.slice(i, i + PROJECTS_PER_QUERY)
     Object.assign(usual, readUsual(await ask($, usualQuery(chunk)), chunk))
   }
+  clear('usual')
   await update($, usualAtom, previous => ({ ...previous, ...usual }))
   await update($, pollAtom, previous => ({ ...previous, usualAt: now }))
 }
@@ -307,6 +314,12 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
       return [url, uri] as const
     })
   )
+  const failed = fetched.filter(pair => pair[1] === null).length
+  if (failed > 0) {
+    record('avatars', `${failed} picture${failed === 1 ? '' : 's'} could not be fetched`)
+  } else {
+    clear('avatars')
+  }
   const fresh = Object.fromEntries(fetched.filter((pair): pair is readonly [string, string] => pair[1] !== null))
   // Only the people on the pane are kept, so the store never outgrows them.
   const kept: Record<string, string> = Object.fromEntries(
@@ -339,10 +352,16 @@ export function refresh($: EngineInterface): Promise<void> {
   return queued
 }
 
+/** The only way text reaches the model unasked: lines built by model-text.ts, so a foreign value cannot arrive raw. */
+function wake($: EngineInterface, news: readonly ModelLine[]) {
+  return $.prompt.submit({ text: lines(news) })
+}
+
 /** One GitLab read for every row; wakes the session for a pinned MR's new result. */
 async function readOnce($: EngineInterface): Promise<void> {
   const pinned = await read($, pinnedAtom)
   const attemptedAt = await $.clock.now()
+  clear('gitlab')
   let rows: MrCard[]
   let kept: MrCard[]
   try {
@@ -352,6 +371,7 @@ async function readOnce($: EngineInterface): Promise<void> {
     rows = [...answer.rows, ...kept]
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    record('gitlab', message)
     await update($, pollAtom, poll => ({ ...poll, attemptedAt, error: message, failures: poll.failures + 1 }))
     return
   }
@@ -384,11 +404,11 @@ async function readOnce($: EngineInterface): Promise<void> {
       .join('  ') || undefined
   )
   if (reconciled.wakes.length > 0 && (await read($, wakeAtom))) {
-    quietly($.prompt.submit({ text: reconciled.wakes.join('\n') }))
+    quietly(wake($, reconciled.wakes))
   }
-  quietly(readJira($, open, now))
-  quietly(readUsualTimes($, open, now))
-  quietly(readAvatars($, open))
+  quietly(readJira($, open, now), 'jira')
+  quietly(readUsualTimes($, open, now), 'usual')
+  quietly(readAvatars($, open), 'avatars')
 }
 
 /** Every minute while a pinned pipeline runs, every three otherwise; backs off to ten after errors. */
@@ -408,7 +428,7 @@ export async function tick($: EngineInterface): Promise<void> {
 }
 
 /** Pins an MR to this session and answers what it looks like now, saying so when that is stale. */
-export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<string> {
+export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<ModelLine> {
   const parsed = parseMrUrl(url)
   if (!parsed) {
     throw new Error(`Not a gitlab.com merge request URL: ${url}`)
@@ -421,12 +441,10 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
   await refresh($)
   const [rows, poll, now] = await Promise.all([read($, rowsAtom), read($, pollAtom), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
-  const stale =
-    poll.error !== null
-      ? `GitLab could not be read (${poll.error})${poll.fetchedAt ? `; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : ''}`
-      : ''
+  const age = poll.fetchedAt ? line`; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : EMPTY
+  const stale = poll.error !== null ? line`GitLab could not be read (${foreign(poll.error, URL_ROOM)})${age}` : EMPTY
   if (row) {
-    return stale ? `${describe(row, now)} · ${stale}` : describe(row, now)
+    return dotted([describe(row, now), stale])
   }
-  return `Pinned !${parsed.iid}; ${stale || 'GitLab did not return it.'}`
+  return line`Pinned !${parsed.iid}; ${stale || line`GitLab did not return it.`}`
 }
