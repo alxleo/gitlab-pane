@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ELIGIBLE_MS, EXPIRY_MS, RENEW_MS, TICK_MS, decide, isDrawnRecently, isHeld, readRecord } from '../hooks/lease'
+import { EXPIRY_MS, RENEW_MS, TICK_MS, decide, isHeld, readRecord } from '../hooks/lease'
 import type { Decision, LeaseRecord, Role } from '../hooks/lease'
 
 type Session = { me: string; isDrawing: boolean; raisedPins: number }
@@ -150,12 +150,6 @@ test('a record a clock far ahead wrote, or one past its time, does not hold the 
   expect(isHeld({ owner: 'a', renewedAt: T0 + EXPIRY_MS }, T0)).toBe(false)
 })
 
-test('a pane counts as drawn for the eligibility window after its last drawing', () => {
-  expect(isDrawnRecently(null, T0)).toBe(false)
-  expect(isDrawnRecently(T0, T0 + ELIGIBLE_MS - 1)).toBe(true)
-  expect(isDrawnRecently(T0, T0 + ELIGIBLE_MS)).toBe(false)
-})
-
 test('only a record with an owner and a finite time is read as a lease', () => {
   expect(readRecord({ owner: 'a', renewedAt: T0 })).toEqual({ owner: 'a', renewedAt: T0 })
   expect(readRecord({ owner: 'a', renewedAt: T0, extra: 1 })).toEqual({ owner: 'a', renewedAt: T0 })
@@ -167,5 +161,4 @@ test('only a record with an owner and a finite time is read as a lease', () => {
 test('the lease outlives a missed renewal and a tick is never slower than a renewal', () => {
   expect(EXPIRY_MS).toBeGreaterThanOrEqual(2 * RENEW_MS)
   expect(TICK_MS).toBeLessThanOrEqual(RENEW_MS)
-  expect(ELIGIBLE_MS).toBeGreaterThan(EXPIRY_MS)
 })

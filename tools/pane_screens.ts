@@ -668,7 +668,20 @@ function setup(withDeps: boolean): number {
 // ---- the command line ---------------------------------------------------------------------------------------------------
 
 const USAGE = `usage: node tools/pane_screens.ts render [--out DIR] [--scene NAME]... [--width PX] [--scale N] [--claude BIN] [--keep DIR] [--verify] [--check [--fresh DIR]] [--allow-unknown]
+       node tools/pane_screens.ts scenes [--claude BIN]
        node tools/pane_screens.ts setup [--with-deps]`
+
+/** Every scene drawn under the engine, no browser: what \`npm test\` runs, so a change that breaks a scene fails there. */
+function scenesOnly(claude: string): number {
+  const work = mkdtempSync(join(tmpdir(), 'pane-scenes-'))
+  try {
+    const drawn = drawScenes(claude, work)
+    console.log(`scenes: ${drawn.length} drawn, as listed`)
+    return 0
+  } finally {
+    rmSync(work, { recursive: true, force: true })
+  }
+}
 
 /** A whole number in a range, or a ScreensError naming the option. */
 function integer(text: string | undefined, name: string, least: number, most: number, fallback: number | null): number | null {
@@ -710,6 +723,9 @@ async function main(): Promise<number> {
       allowUnknown: values['allow-unknown'],
     }
     return render({ out: resolve(values.out ?? SHOTS), options, verify: values.verify, check: values.check, fresh: values.fresh === undefined ? null : resolve(values.fresh) })
+  }
+  if (command === 'scenes') {
+    return scenesOnly(values.claude ?? 'claude')
   }
   if (command === 'setup') {
     return setup(values['with-deps'])

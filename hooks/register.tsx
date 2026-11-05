@@ -6,22 +6,18 @@ import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
 import { hostsLine, parseHosts } from './hosts'
-import { briefCommand, inboxTick, setFollow, syncInbox } from './inbox'
+import { briefCommand, setFollow } from './inbox'
+import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
 import { forgetScrolling, openPane, readScrolling } from './panes'
-import { pin, refresh, tick } from './poll'
+import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
 export const PANE = 'gitlab-ci'
 const TOOL = 'mcp__gitlab-ci__watch_mr'
-const TICK_MS = 30_000
-/** The inbox reads GitLab (three small queries per host) at most this often. */
-const INBOX_TICK_MS = 60_000
-/** The inbox starts a moment after the pane's own read, so the two do not race for the first answers. */
-const INBOX_FIRST_MS = 2_000
 
 /** A tool's answer: only lines from model-text.ts, so text from GitLab cannot reach the model raw. */
 const answer = (result: ModelLine) => ({ result })
@@ -54,17 +50,16 @@ export const register: Register = (on, options) => {
       name: 'mrs',
       description: 'Brief several GitLab MRs into this conversation, threads and all: /mrs <repo!iid …> or /mrs --rule <name>',
     })
-    $.clock.every(TICK_MS, () => quietly($, tick($), 'gitlab'))
-    $.clock.every(INBOX_TICK_MS, () => quietly($, inboxTick($), 'inbox'))
-    // A start or a reload reads at once, so rows kept from an older version are replaced before they are drawn for long.
-    quietly($, refresh($), 'gitlab')
+    $.clock.every(TICK_MS, () => quietly($, step($), 'gitlab'))
     // Retires the separate reading pane an earlier version opened; the app keeps a pane across reloads.
     quietly($, $.ui.close({ id: 'gitlab-ci-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
-      quietly($, openPane($))
-      $.clock.after(INBOX_FIRST_MS, () => quietly($, syncInbox($), 'inbox'))
+      await openPane($).catch(reported($, 'pane'))
     }
+    // A start or a reload takes its part at once (the pane is open by now, or is not to be), so what is drawn first is a
+    // snapshot of the leader's, or the leader's own first read, and not rows kept from an older version.
+    quietly($, step($), 'gitlab')
     return next(e)
   })
 

@@ -147,3 +147,19 @@ export const mergeStatuses = (mrs: readonly Mr[]) => ({
     },
   },
 })
+
+/** An MR as heavy as the pane meets: nine stages of twenty jobs, five failing, six long threads, three reviewers. */
+export const heavyMr = (iid: number, over: Partial<Mr> = {}): Mr =>
+  rawMr(iid, {
+    description: `## What\n\n${'This change does a careful thing. '.repeat(60)}`,
+    headPipeline: pipe('FAILED', {
+      stages: {
+        nodes: Array.from({ length: 9 }, (_, s) =>
+          stage(`stage-${s}-with-a-long-name`, s === 4 ? 'FAILED' : 'SUCCESS', Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS')))
+        ),
+      },
+    }),
+    reviewers: { nodes: [reviewer('first.reviewer', 'REQUESTED_CHANGES'), reviewer('second.reviewer', 'APPROVED'), reviewer('third.reviewer', 'UNREVIEWED')] },
+    discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 === 1 ? 'first.reviewer' : 'second.reviewer')) },
+    ...over,
+  })

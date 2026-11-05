@@ -12,7 +12,7 @@ import { isFilled, isRecord } from '../../hooks/decode'
 import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.generated'
 import { NOW, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
-import { fakeGitLab, ran } from '../../tests/gitlab_host'
+import { fakeGitLab, fakeSession, ran } from '../../tests/gitlab_host'
 import { comment, emptyWorld, fields, inboxAnswers, system } from '../../tests/inbox_fixtures'
 import type { Person, World } from '../../tests/inbox_fixtures'
 
@@ -226,9 +226,9 @@ const inboxWorld = (): World => {
 
 /** GitLab as the scenes set it; every command not listed here fails, so nothing real is ever asked. */
 function engine(on: On, mrs: Mr[]) {
-  mock.store(on, {})
+  // The same session the tests use: an id, a store shared as the engine shares it, and the panes the pane asks after.
+  const { titles } = fakeSession(on, { id: 'scene' })
   const world = inboxWorld()
-  const titles: string[] = []
   fakeGitLab(
     on,
     {
@@ -237,6 +237,10 @@ function engine(on: On, mrs: Mr[]) {
           Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
           MergeStatus: () => mergeStatuses(mrs),
           Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+          // An opened card reads its MR whole, description and threads, as the pane does on demand.
+          Pinned: ({ path, iid }) => ({
+            data: { project: { mergeRequest: mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } },
+          }),
           ...inboxAnswers(world),
         },
         accepts: 'scene-token',
@@ -247,14 +251,7 @@ function engine(on: On, mrs: Mr[]) {
   on('process.run', (_, e) => ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  on('ui.open', (_, e) => {
-    titles.push(e.title ?? '')
-    return { value: { isPlaced: true } }
-  })
-  on('ui.close', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
-  on('ui.status', () => ({ value: undefined }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.repo', () => ({ value: { root: '/r', remote: 'git@gitlab.com:acme-corp/storefront.git', internal: false, name: null } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return { titles }
