@@ -58,8 +58,8 @@ export const register: Register = (on, options) => {
       description: 'Brief several GitLab MRs into this conversation, threads and all: /mrs <repo!iid …> or /mrs --rule <name>',
     })
     $.clock.every(TICK_MS, () => quietly($, step($), 'gitlab'))
-    // Retires the separate reading pane an earlier version opened; the app keeps a pane across reloads.
-    quietly($, $.ui.close({ id: 'gitlab-pane-mr' }))
+    // Retires the separate reading pane an earlier version opened, under the plugin's old name; the app keeps a pane across reloads.
+    quietly($, $.ui.close({ id: 'gitlab-ci-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
       await openPane($).catch(reported($, 'pane'))
