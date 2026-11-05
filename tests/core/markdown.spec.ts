@@ -1,8 +1,8 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
 
-import { cleanBody } from '../hooks/gitlab'
-import { flatOf, partsOf } from '../hooks/markdown'
-import { HOST } from './fixtures'
+import { cleanBody } from '../../hooks/gitlab.ts'
+import { flatOf, partsOf } from '../../hooks/markdown.ts'
+import { HOST } from '../fixtures.ts'
 
 test('code keeps the tags it quotes; HTML elsewhere becomes Markdown or goes, as GitLab draws it', () => {
   const text = [

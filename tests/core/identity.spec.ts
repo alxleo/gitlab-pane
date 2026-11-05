@@ -1,7 +1,7 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
 
-import { discSource } from '../hooks/avatar'
-import { discColour, firstName, hash, initials, shortHash } from '../hooks/identity'
+import { discSource } from '../../hooks/avatar.ts'
+import { discColour, firstName, hash, initials, shortHash } from '../../hooks/identity.ts'
 
 test('initials come from the display name, so a handle like ixm5302 is IM beside Ines Mendel', () => {
   expect(initials('Ines Mendel', 'ixm5302')).toBe('IM')

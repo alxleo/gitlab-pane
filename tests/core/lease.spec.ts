@@ -1,7 +1,7 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
 
-import { EXPIRY_MS, RENEW_MS, TICK_MS, decide, isHeld, readRecord } from '../hooks/lease'
-import type { Decision, LeaseRecord, Role } from '../hooks/lease'
+import { EXPIRY_MS, RENEW_MS, TICK_MS, decide, isHeld, readRecord } from '../../hooks/lease.ts'
+import type { Decision, LeaseRecord, Role } from '../../hooks/lease.ts'
 
 type Session = { me: string; isDrawing: boolean; raisedPins: number }
 

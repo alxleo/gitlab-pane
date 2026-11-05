@@ -1,15 +1,15 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
 
-import { HOST, NOW, checks, job, pipe, rawMr, stage } from './fixtures'
+import { HOST, NOW, checks, job, pipe, rawMr, stage } from '../fixtures.ts'
 
-import { toCard } from '../hooks/gitlab'
-import { reconcile } from '../hooks/reconcile'
-import type { FailureReader } from '../hooks/reconcile'
-import { tailOf } from '../hooks/job-tail'
-import { foreign } from '../hooks/model-text'
+import { toCard } from '../../hooks/gitlab.ts'
+import { reconcile } from '../../hooks/reconcile.ts'
+import type { FailureReader } from '../../hooks/reconcile.ts'
+import { tailOf } from '../../hooks/job-tail.ts'
+import { foreign } from '../../hooks/model-text.ts'
 
-import type { MergeRequestState } from '../hooks/gitlab.generated'
-import type { CheckStatus, MrCard, Pinned } from '../types'
+import type { MergeRequestState } from '../../hooks/gitlab.generated.ts'
+import type { CheckStatus, MrCard, Pinned } from '../../types'
 
 const KEY = 'gitlab.com/g/p!12'
 

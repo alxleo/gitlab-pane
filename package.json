@@ -14,7 +14,7 @@
     "lint": "node tools/engine_types.ts && eslint --max-warnings 0 hooks tests tools",
     "types": "node tools/engine_types.ts && node node_modules/typescript-7/bin/tsc -p tsconfig.core.json && node node_modules/typescript-7/bin/tsc -p tsconfig.json && node node_modules/typescript-7/bin/tsc -p tools/store-probe/tsconfig.json && node node_modules/typescript-7/bin/tsc -p tsconfig.tools.json",
     "validate": "claude plugin validate --strict . && claude plugin validate --strict tools/store-probe",
-    "test": "claude plugin test . && node tools/pane_screens.ts scenes",
+    "test": "vitest run && claude plugin test . && node tools/pane_screens.ts scenes",
     "schema": "node tools/gitlab_schema.ts",
     "screens": "node tools/pane_screens.ts",
     "rig": "node tools/pane_rig.ts",
@@ -52,13 +52,16 @@
     "@types/markdown-it": "14.2.0",
     "@types/node": "22.20.5",
     "eslint": "10.14.0",
+    "fast-check": "4.10.2",
     "graphql": "17.1.0",
+    "knip": "6.44.1",
     "markdown-it": "15.0.3",
     "playwright": "1.64.1",
     "simple-git-hooks": "2.14.0",
     "typescript": "6.0.3",
     "typescript-7": "npm:typescript@7.0.2",
     "typescript-eslint": "8.72.1",
+    "vitest": "5.1.0",
     "yaml": "2.9.1"
   }
 }

@@ -1,12 +1,12 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
 
-import { NOW, HOST, heavyMr, pipe, project, rawMr } from './fixtures'
-import { parseJson } from '../hooks/decode'
-import { failedCount, threadCount } from '../hooks/format'
-import { cardFacts } from '../hooks/row-facts'
-import { toCard } from '../hooks/gitlab'
-import { cursorAfter, FULL_EVERY_MS, mergeReads, movingRows, OVERLAP_MS, scopeFor } from '../hooks/incremental'
-import { slimCard, withDetail } from '../hooks/slim'
+import { NOW, HOST, heavyMr, pipe, project, rawMr } from '../fixtures.ts'
+import { parseJson } from '../../hooks/decode.ts'
+import { failedCount, threadCount } from '../../hooks/format.ts'
+import { cardFacts } from '../../hooks/row-facts.ts'
+import { toCard } from '../../hooks/gitlab.ts'
+import { cursorAfter, FULL_EVERY_MS, mergeReads, movingRows, OVERLAP_MS, scopeFor } from '../../hooks/incremental.ts'
+import { slimCard, withDetail } from '../../hooks/slim.ts'
 import {
   FOOTER_MS,
   isAlive,
@@ -21,12 +21,12 @@ import {
   readPinsRecord,
   readSnapshot,
   unionPins,
-} from '../hooks/snapshot'
-import type { ReadResult } from '../hooks/snapshot'
-import { pinnedQuery } from '../hooks/gitlab-documents'
-import { pinKey } from '../hooks/mr-url'
+} from '../../hooks/snapshot.ts'
+import type { ReadResult } from '../../hooks/snapshot.ts'
+import { pinnedQuery } from '../../hooks/gitlab-documents.ts'
+import { pinKey } from '../../hooks/mr-url.ts'
 
-import type { MrCard, Pinned } from '../types'
+import type { MrCard, Pinned } from '../../types'
 
 const pin = (iid: number, origin?: 'raised' | 'watched'): Pinned => ({ url: `https://gitlab.com/g/p/-/merge_requests/${iid}`, host: HOST, path: 'g/p', iid, ...(origin !== undefined ? { origin } : {}) })
 
