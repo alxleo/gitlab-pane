@@ -18,7 +18,7 @@ export const REVIEW_STATE: Record<PersonState, string> = {
 }
 
 /** The corner badge on a reviewer's face, and their mark where no Svg is drawn. */
-const REVIEW_MARK: Record<PersonState, { glyph: string; tone: Tone; path: string } | null> = {
+export const REVIEW_MARK: Record<PersonState, { glyph: string; tone: Tone; path: string } | null> = {
   approved: { glyph: '✓', tone: 'success', path: 'M13.1 14.9l1.1 1.1 2.1-2.2' },
   requested_changes: { glyph: '✕', tone: 'error', path: 'M13.5 13.5l2.5 2.5m0-2.5l-2.5 2.5' },
   reviewing: null,
