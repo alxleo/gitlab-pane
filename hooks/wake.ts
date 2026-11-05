@@ -52,7 +52,8 @@ export function wakeLine(card: MrCard, due: Due, now: number, failures: Failures
     }) ?? []
   )
   const when = pipeline !== undefined && isSettled(pipeline.status) ? line`pipeline failed in ${time}` : line`a job failed while the pipeline runs`
-  return line`!${card.iid} ${when}${jobs.length > 0 ? line`: ${jobs}` : EMPTY} · ${foreign(pipeline?.url ?? card.url, URL_ROOM)}`
+  const left = pipeline !== undefined && pipeline.moreFailed > 0 ? line` +${pipeline.moreFailed} more` : EMPTY
+  return line`!${card.iid} ${when}${jobs.length > 0 ? line`: ${jobs}${left}` : EMPTY} · ${foreign(pipeline?.url ?? card.url, URL_ROOM)}`
 }
 
 /** The lines after a failure's wake: the end of each failed job's log, quoted as the job's output and fenced from the rest. */
@@ -69,7 +70,7 @@ export function describe(card: MrCard, now: number): ModelLine {
     ...badges(card)
       .filter(badge => badge.kind !== 'failed' && badge.words !== 'approved')
       .map(badge => foreign(badge.words, NAME_ROOM)),
-    failed.length > 0 ? line`failed: ${commas(failed)}` : EMPTY,
+    failed.length > 0 ? line`failed: ${commas(failed)}${card.pipeline !== undefined && card.pipeline.moreFailed > 0 ? line` +${card.pipeline.moreFailed} more` : EMPTY}` : EMPTY,
     foreign(card.pipeline?.url ?? card.url, URL_ROOM),
   ])
 }

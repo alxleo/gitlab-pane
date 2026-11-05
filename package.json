@@ -14,7 +14,7 @@
     "lint": "node tools/engine_types.ts && eslint --max-warnings 0 hooks tests tools",
     "types": "node tools/engine_types.ts && node node_modules/typescript-7/bin/tsc -p tsconfig.core.json && node node_modules/typescript-7/bin/tsc -p tsconfig.json && node node_modules/typescript-7/bin/tsc -p tools/store-probe/tsconfig.json && node node_modules/typescript-7/bin/tsc -p tsconfig.tools.json",
     "validate": "claude plugin validate --strict . && claude plugin validate --strict tools/store-probe",
-    "test": "claude plugin test .",
+    "test": "claude plugin test . && node tools/pane_screens.ts scenes",
     "schema": "node tools/gitlab_schema.ts",
     "screens": "node tools/pane_screens.ts",
     "rig": "node tools/pane_rig.ts",

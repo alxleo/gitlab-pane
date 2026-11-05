@@ -6,8 +6,10 @@ import { REVIEW_MARK, REVIEW_STATE } from '../hooks/face-model'
 import { CI_STATUSES } from '../hooks/gitlab-status'
 import { VERB } from '../hooks/inbox-pane'
 import { RULES } from '../hooks/inbox-rules'
-import { BACKOFF_FROM_MS, BACKOFF_MOST_MS, MOVING_EVERY_MS, SETTLED_EVERY_MS, TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/poll'
-import { INBOX_TICK_MS } from '../hooks/register'
+import { FULL_EVERY_MS } from '../hooks/incremental'
+import { EXPIRY_MS, RENEW_MS, TICK_MS } from '../hooks/lease'
+import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
+import { BACKOFF_MAX_MS, INBOX_EVERY_MS, WAKE_ONLY_EVERY_MS, pollEvery } from '../hooks/snapshot'
 import { STAGE_COLOURS, statusMark } from '../hooks/status'
 import { DESIGN, README } from './docs.generated'
 
@@ -40,14 +42,18 @@ test('the README names the slash commands and the tool the plugin registers, and
   expect(sorted(README.tools)).toEqual(sorted(tools))
 })
 
-test('the README\'s polling intervals are the ones the pane polls at', () => {
+test('the README\'s polling intervals are the ones the sessions poll at', () => {
   expect(README.runs).toEqual([
-    // GraphQL for your MRs: while a pinned pipeline runs, otherwise, and backing off from the first failed read to the most.
-    [MOVING_EVERY_MS, SETTLED_EVERY_MS, BACKOFF_FROM_MS * 2, BACKOFF_MOST_MS],
+    // The leader's read of your MRs: while a pinned pipeline runs, otherwise, the first back-off and the most; the whole list.
+    [pollEvery(0, true), pollEvery(0, false), pollEvery(1, false), BACKOFF_MAX_MS, FULL_EVERY_MS],
+    // an opened card, read whole once
+    [],
+    // a raised MR in a session that draws no pane
+    [WAKE_ONLY_EVERY_MS],
     // the usual pipeline times
     [USUAL_EVERY_MS],
     // the Inbox
-    [INBOX_TICK_MS],
+    [INBOX_EVERY_MS],
     // why a job failed: once, when it fails
     [],
     // Jira
@@ -55,6 +61,8 @@ test('the README\'s polling intervals are the ones the pane polls at', () => {
     // avatars, once per face; glab's token, once per host
     [],
     [],
+    // the lease: each session's turn, the leader's renewal, and how long an unrenewed lease holds
+    [TICK_MS, RENEW_MS, EXPIRY_MS],
   ])
 })
 

@@ -69,17 +69,20 @@ Queries only, as you: nothing is written to GitLab or Jira.
 
 | Runs | How often | For | Writes (plugin store) |
 |---|---|---|---|
-| GraphQL, per host | 1 min while a pinned pipeline runs, else 3 min; after reads where every host failed, 2 min doubling to 10 min | your open MRs, their merge checks, pins not among them | — |
-| GraphQL, per repo | 30 min, and for a new repo | usual pipeline times | — |
-| GraphQL, per host | 1 min while the session has a screen | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | ✓ seen marks; GitLab's to-dos are untouched |
-| GraphQL; with `failureLogs`, `GET …/jobs/<job>/trace` (last 64 KiB, up to 3 jobs) | once, when a raised MR's pipeline fails | why each job failed | — |
-| `acli jira workitem search` | 15 min, and for a new key | ticket status | — |
-| `curl` via `/bin/sh`, https only, no token | once per new face | avatars, at the addresses GitLab gives | the pictures |
+| GraphQL, per host, by the leader | 30 s while a pinned pipeline runs, else 1 min; after reads where every host failed, 2 min doubling to 10 min; the whole list every 5 min, only what changed between | your open MRs and their merge checks; running and pinned ones not among them, one by one | the snapshot every session draws |
+| GraphQL, one MR | once when you open its card, again when it changes | its description and threads, for this pane only | — |
+| GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
+| GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
+| GraphQL, per host, by the leader | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |
+| GraphQL; with `failureLogs`, `GET …/jobs/<job>/trace` (last 64 KiB, up to 3 jobs), by the leader, or by the raising session if it draws no pane | once, when a raised MR's pipeline fails | why each job failed | in the snapshot |
+| `acli jira workitem search`, in each session that draws | 15 min, and for a new key | ticket status | — |
+| `curl` via `/bin/sh`, https only, no token, by the leader | once per new face | avatars, at the addresses GitLab gives | the pictures |
 | `glab config get token --host <host>` | once per host per session, again after `/gitlab` or a 401 | a token | — |
+| the lease, in the store | 2 s; the leader renews it every 15 s, and another takes over after 45 s without | electing one leader among the sessions that draw the pane | who leads, each session's pins |
 
+- **Several sessions** share one reader: the leader reads GitLab and writes a snapshot, the others draw it. Each session decides its own wakes.
 - **Tokens**, first found: `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN` or `OAUTH_TOKEN` (for `GITLAB_HOST` or `GL_HOST`, else the first host); `glab`'s; `gitlabTokens`. Never shown.
 - **`glab` and `acli`** run in your login shell (`$SHELL` if bash, zsh or fish, else zsh, else sh), start-up files and all.
-- **Several sessions** each read GitLab for themselves.
 - **Bash commands** are read to pin the MR one creates; nothing is sent.
 
 ## What reaches Claude

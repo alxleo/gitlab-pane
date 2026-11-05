@@ -3,16 +3,17 @@ import { expect, test } from 'claude-code/testing'
 import { advance, describe, wakeLine } from '../hooks/wake'
 import { badges, byAttention, rank, rowBadges, verdictOf } from '../hooks/attention'
 import { firstRunLines } from '../hooks/first-run'
-import { buildPane } from '../hooks/pane-model'
-import type { PaneInput, Piece, RowModel } from '../hooks/pane-model'
+import { buildPane, MINE_SHOWN } from '../hooks/pane-model'
 import { cardFacts } from '../hooks/row-facts'
+import type { PaneInput, Piece, RowModel } from '../hooks/pane-model'
 import { STAGE_COLOURS } from '../hooks/status'
-import { excerpt, lead, pipelineTime, ranFor, shortTitle, ticketOf } from '../hooks/format'
+import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../hooks/format'
 import { pictureUri, sizedAvatar } from '../hooks/picture'
 import { discMarks, discSource } from '../hooks/avatar'
 import { checkStatusOf, ciStatusOf } from '../hooks/gitlab-status'
 import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../hooks/gitlab'
-import { authoredQuery, mergeStatusQuery, pinnedQuery, usualQuery } from '../hooks/gitlab-documents'
+import { authoredQuery } from '../hooks/authored-request'
+import { mergeStatusQuery, pinnedQuery, usualQuery } from '../hooks/gitlab-documents'
 import { Failure } from '../hooks/failure'
 import { featuresOf, forgetProbed, learnLack, serialised } from '../hooks/in-flight'
 import { isAbsentOptional, withProblem } from '../hooks/problems'
@@ -32,7 +33,7 @@ import type { RawSvg, SvgSource } from '../hooks/svg'
 import { undefinedField } from './gitlab_fake'
 import { HOST, NOW, SELF_MANAGED, checks, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
-import type { CheckStatus, CiStatus, MergeStatus, MrCard, Stage } from '../types'
+import type { CheckStatus, CiStatus, Job, MergeStatus, MrCard, Stage } from '../types'
 
 const view = (status: CiStatus, id = 7, failed: unknown[] = []) => ({ id, status, failed })
 
@@ -209,18 +210,20 @@ test("a bot's request for changes and its open threads are its icon's; only what
 
 test('run time counts only while jobs run, not while a manual gate waits', async () => {
   const at = (minute: number) => new Date(NOW - (60 - minute) * 60_000).toISOString()
+  const stageOf = (name: string, status: Stage['status'], jobs: Job[]): Stage => ({ name, status, jobs, ran: ranOf(jobs) })
   const stages: Stage[] = [
-    { name: 'a', status: 'success', jobs: [{ name: 'x', status: 'success', allowFailure: false, url: '', startedAt: at(0), finishedAt: at(10) }] },
-    {
-      name: 'b',
-      status: 'running',
-      jobs: [
-        { name: 'y', status: 'success', allowFailure: false, url: '', startedAt: at(5), finishedAt: at(15) },
-        { name: 'z', status: 'running', allowFailure: false, url: '', startedAt: at(50), finishedAt: null },
-      ],
-    },
+    stageOf('a', 'success', [{ name: 'x', status: 'success', allowFailure: false, url: '', startedAt: at(0), finishedAt: at(10) }]),
+    stageOf('b', 'running', [
+      { name: 'y', status: 'success', allowFailure: false, url: '', startedAt: at(5), finishedAt: at(15) },
+      { name: 'z', status: 'running', allowFailure: false, url: '', startedAt: at(50), finishedAt: null },
+    ]),
   ]
   expect(ranFor(stages, NOW)).toBe(25 * 60)
+  // Merged into runs and starts, as a shared card keeps them, the jobs say the same.
+  expect(stages.map(one => one.ran)).toEqual([
+    { done: [[Date.parse(at(0)), Date.parse(at(10))]], running: [] },
+    { done: [[Date.parse(at(5)), Date.parse(at(15))]], running: [Date.parse(at(50))] },
+  ])
   expect(ranFor([], NOW)).toBe(0)
 })
 
@@ -376,7 +379,12 @@ test('a partial GraphQL answer keeps what came back, and what the schema lets be
   expect(card.reviewers).toEqual([])
   expect(card.pipeline?.url).toBe(mr)
   expect(card.pipeline?.stages).toEqual([
-    { name: '(unnamed)', status: 'unknown', jobs: [{ name: '(unnamed)', status: 'unknown', allowFailure: false, url: mr, startedAt: '2026-10-23T14:50:00Z', finishedAt: '2026-10-23T15:00:00Z' }] },
+    {
+      name: '(unnamed)',
+      status: 'unknown',
+      jobs: [{ name: '(unnamed)', status: 'unknown', allowFailure: false, url: mr, startedAt: '2026-10-23T14:50:00Z', finishedAt: '2026-10-23T15:00:00Z' }],
+      ran: { done: [[Date.parse('2026-10-23T14:50:00Z'), Date.parse('2026-10-23T15:00:00Z')]], running: [] },
+    },
   ])
   expect(card.openThreads.map(thread => thread.url)).toEqual([mr])
 })
@@ -479,10 +487,14 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   expect(featuresOf('gitlab.com')).toEqual(current)
   forgetProbed()
   expect(featuresOf('git.corp.com')).toEqual(current)
-  expect(authoredQuery(current).operation).toBe('Authored')
-  expect(authoredQuery(current).query).toContain('reviewState')
-  expect(authoredQuery(older).operation).toBe('AuthoredPlain')
-  expect(authoredQuery(older).query).not.toContain('reviewState')
+  expect(authoredQuery(current, { kind: 'open' }).operation).toBe('Authored')
+  expect(authoredQuery(current, { kind: 'open' }).query).toContain('reviewState')
+  expect(authoredQuery(older, { kind: 'open' }).operation).toBe('AuthoredPlain')
+  expect(authoredQuery(older, { kind: 'open' }).query).not.toContain('reviewState')
+  // A whole read asks for the open MRs; a delta for MRs of any state changed after a moment.
+  expect(authoredQuery(current, { kind: 'open' }).variables).toEqual({ state: 'opened' })
+  expect(authoredQuery(current, { kind: 'since', after: '2026-10-23T15:00:00.000Z' }).variables).toEqual({ after: '2026-10-23T15:00:00.000Z' })
+  expect(authoredQuery(current, { kind: 'since', after: 'x' }).query).toContain('updatedAfter: $after')
   expect(mergeStatusQuery(current)?.operation).toBe('MergeStatus')
   expect(mergeStatusQuery(older)).toBeNull()
   const pin = { url: 'https://git.corp.com/g/p/-/merge_requests/3', host: SELF_MANAGED, path: 'g/p', iid: 3 }
@@ -543,7 +555,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
   buildPane(
     {
       cards,
-      facts: Object.fromEntries(cards.map(card => [card.key, cardFacts(card, {})])),
+      avatars: {},
       pinned: [],
       tickets: {},
       usual: {},
@@ -553,7 +565,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       repoFilter: '',
       view: 'mine',
       news: 0,
-      poll: { fetchedAt: NOW, attemptedAt: NOW, error: null, hosts: {}, failures: 0, ticketsAt: null, usualAt: null },
+      poll: { fetchedAt: NOW, error: null, hosts: {} },
       isWaking: true,
       failures: {},
       ...over,
@@ -590,6 +602,33 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   // With no verdict read, the pane's own marker shows in words.
   expect(byLink['🔀 !13']?.verdict).toBeNull()
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
+})
+
+test('a render works out the facts of the rows drawn alone, and measures each piece of a row at most once', async () => {
+  const worked = new Set<string>()
+  // cardFacts is the only reader of a card's description, so a card whose description is read has its facts worked out.
+  const cards = Array.from({ length: 50 }, (_, i) => {
+    const card = toCard(HOST, rawMr(300 + i, { headPipeline: pipe(i % 2 === 0 ? 'FAILED' : 'SUCCESS') }))
+    return Object.defineProperty({ ...card }, 'description', {
+      enumerable: true,
+      get: () => {
+        worked.add(card.key)
+        return card.description
+      },
+    })
+  })
+  const measured = new Map<string, number>()
+  const model = modelOf(cards, {}, (piece, row) => {
+    measured.set(`${row.key}|${piece}`, (measured.get(`${row.key}|${piece}`) ?? 0) + 1)
+    return 1_000
+  })
+  const drawn = model.mine.rows.filter(row => row.fit.isDrawn)
+  // Mine shows ten of the fifty; the other forty are ranked and counted, and their words never worked out.
+  expect(drawn).toHaveLength(MINE_SHOWN)
+  expect(worked.size).toBe(MINE_SHOWN)
+  expect(Math.max(...measured.values())).toBe(1)
+  // Three kinds of piece for a row without detail: its head, its cards, and its faces if it has pictures.
+  expect(measured.size).toBeLessThanOrEqual(MINE_SHOWN * 3)
 })
 
 test('the model fills the room by what needs you: rows, then hover cards; rows past the room are counted', async () => {

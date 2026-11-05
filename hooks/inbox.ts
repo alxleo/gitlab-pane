@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import { readHosts } from './data'
 import { isEqual } from './equal'
 import { Failure, kindOf } from './failure'
-import { clear, quietly, record } from './failures'
+import { clear, quietly, record, reported } from './failures'
 import type { RawResponse } from './gitlab-documents'
 import { ask, askVariant } from './graphql'
 import { inboxAuthoredQuery, inboxBriefQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './inbox-requests'
@@ -16,7 +16,7 @@ import { parseFollow } from './inbox-follow'
 import { isRefTo, parseRef, parseRemote } from './inbox-refs'
 import { HORIZON_MS, RULES, bounded, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
 import type { Context } from './inbox-rules'
-import { NO_SNAPSHOT, carryOver, problemOf } from './inbox-snapshot'
+import { NO_SNAPSHOT, carryOver, problemOf, readSnapshot } from './inbox-snapshot'
 import { cardKey } from './hosts'
 import { joined } from './in-flight'
 import { parseMrUrl } from './mr-url'
@@ -150,23 +150,40 @@ export async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): P
   await update($, inboxAtom, state => (isEqual(state.snapshot, shown) && isEqual(state.seen, seen) ? { ...state, readAt } : { ...state, snapshot: shown, seen, readAt }))
 }
 
-/** Reads the inbox and shows it; a call mid-read joins it. For a session that reads for itself. */
-export function syncInbox($: EngineInterface): Promise<void> {
+/** Where the leader keeps the inbox for the sessions that only draw it: a key of its own, so a mark written beside it is never lost. */
+const INBOX_STORE = 'inbox-snapshot'
+
+/** The leader's inbox: reads every host once, keeps the snapshot in the store when it changed, and shows it. A call mid-read joins it. */
+export function leadInbox($: EngineInterface, hosts: readonly string[]): Promise<void> {
   return joined('inbox-sync', async () => {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
     try {
-      await applyInbox($, await readInbox($, await readHosts($)))
+      const snapshot = await readInbox($, hosts)
+      const shared = readSnapshot(await $.store.get(INBOX_STORE))
+      // The store is rewritten whole for any write, so a read that found what is there already writes nothing.
+      if (shared === null || !isEqual({ ...shared, at: 0 }, { ...snapshot, at: 0 })) {
+        await $.store.set(INBOX_STORE, snapshot).then(() => clear($, 'store'), reported($, 'store'))
+      }
+      await applyInbox($, snapshot)
     } finally {
       await update($, inboxAtom, state => ({ ...state, isSyncing: false }))
     }
   })
 }
 
-/** On the mod's timer: keeps the inbox fresh wherever a surface can draw the pane. */
-export async function inboxTick($: EngineInterface): Promise<void> {
-  if ((await $.session.surfaces()).length > 0) {
-    await syncInbox($)
+/** What a session that only draws does with the inbox: shows the leader's snapshot. Gives when that was read, or none if the leader has shared none. */
+export async function followInbox($: EngineInterface): Promise<number | null> {
+  const snapshot = readSnapshot(await $.store.get(INBOX_STORE))
+  if (snapshot === null) {
+    return null
   }
+  await applyInbox($, snapshot)
+  return snapshot.at
+}
+
+/** When the leader's snapshot in the store was read, or none. */
+export async function sharedInboxAt($: EngineInterface): Promise<number | null> {
+  return readSnapshot(await $.store.get(INBOX_STORE))?.at ?? null
 }
 
 /** How many MRs have news, as the inbox counts them: one MR counts once, whichever rules list it. */
