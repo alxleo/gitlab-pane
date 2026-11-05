@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { isFilled } from './decode'
 import { readInboxJson } from './inbox-json'
-import { clear, record, reported } from './failures'
+import { clear, quietly, record } from './failures'
 import { joined } from './in-flight'
 import { runJson, runText } from './tools'
 
@@ -82,13 +82,11 @@ export async function inboxView($: EngineInterface) {
 
 /** Opens one rule, as a tab, closing the one open before; the open one closes. */
 export function toggleRule($: EngineInterface, rule: string): void {
-  update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])).catch(reported($, 'inbox'))
+  quietly($, update($, inboxOpenAtom, list => (list[0] === rule ? [] : [rule])), 'inbox')
 }
 
 export function toggleCard($: EngineInterface, key: string): void {
-  update($, inboxCardsAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])).catch(
-    reported($, 'inbox')
-  )
+  quietly($, update($, inboxCardsAtom, list => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])), 'inbox')
 }
 
 /** Puts `/mrs --rule <rule>` in the prompt box for you to send; where a surface draws its own box, copies it. */

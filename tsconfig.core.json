@@ -30,6 +30,7 @@
     "hooks/identity.ts",
     "hooks/inbox-json.ts",
     "hooks/jira.ts",
+    "hooks/lease.ts",
     "hooks/markdown.ts",
     "hooks/model-text.ts",
     "hooks/mr-url.ts",
