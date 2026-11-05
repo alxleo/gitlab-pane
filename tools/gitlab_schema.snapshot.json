@@ -155,6 +155,18 @@
       "deprecationReason": null,
       "description": null,
       "isDeprecated": false,
+      "name": "failureMessage",
+      "type": {
+       "kind": "SCALAR",
+       "name": "String",
+       "ofType": null
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
       "name": "finishedAt",
       "type": {
        "kind": "SCALAR",
@@ -1790,6 +1802,51 @@
         "name": "ID",
         "ofType": null
        }
+      }
+     },
+     {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "retried",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Boolean",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "statuses",
+        "type": {
+         "kind": "LIST",
+         "name": null,
+         "ofType": {
+          "kind": "NON_NULL",
+          "name": null,
+          "ofType": {
+           "kind": "ENUM",
+           "name": "CiJobStatus",
+           "ofType": null
+          }
+         }
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "jobs",
+      "type": {
+       "kind": "OBJECT",
+       "name": "CiJobConnection",
+       "ofType": null
       }
      },
      {

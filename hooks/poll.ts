@@ -39,6 +39,7 @@ import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from '.
 import { pictureUri, sizedAvatar } from './picture'
 import { openPane } from './panes'
 import { reconcile } from './reconcile'
+import { readFailures } from './job-failures'
 import { isSettled } from './status'
 import { failureOf, runJson } from './tools'
 
@@ -250,7 +251,7 @@ async function readOnce($: EngineInterface): Promise<void> {
     await record($, 'gitlab', together([...failures, ...notes]))
   }
   const now = await $.clock.now()
-  const reconciled = reconcile({ pinned, rows, announced: await readAnnounced($), now })
+  const reconciled = await reconcile({ pinned, rows, announced: await readAnnounced($), now, failures: (card, jobs) => readFailures($, card, jobs) })
   reconciled.toasts.forEach(text => $.ui.toast(text))
   const open = reconciled.rows
   const isShown = (key: string) => open.some(row => row.key === key)

@@ -3,6 +3,8 @@
 import type {
   AuthoredPlainQuery,
   AuthoredQuery,
+  FailuresQuery,
+  FailuresQueryVariables,
   MergeStatusQuery,
   PinnedPlainQuery,
   PinnedQuery,
@@ -96,6 +98,14 @@ const PROBE = /* GraphQL */ `
   }
 `
 
+// Why a raised MR's failed jobs failed, asked only when its pipeline has just failed: one small query then, and no field
+// on every read for a message few reads need. A host too old to have the field answers an error, and the wake goes without.
+const FAILURES = /* GraphQL */ `
+  query Failures($path: ID!, $iid: String!) {
+    project(fullPath: $path) { mergeRequest(iid: $iid) { headPipeline { jobs(statuses: [FAILED], retried: false) { nodes { webPath allowFailure failureMessage } } } } }
+  }
+`
+
 const USUAL = /* GraphQL */ `
   query Usual($path: ID!) {
     project(fullPath: $path) { pipelines(source: "merge_request_event", status: SUCCESS, first: 20) { nodes { duration } } }
@@ -116,6 +126,7 @@ export type Operations = {
   Authored: { variables: Record<string, never>; data: AuthoredQuery }
   AuthoredPlain: { variables: Record<string, never>; data: AuthoredPlainQuery }
   MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
+  Failures: { variables: FailuresQueryVariables; data: FailuresQuery }
   Pinned: { variables: PinnedQueryVariables; data: PinnedQuery }
   PinnedPlain: { variables: PinnedQueryVariables; data: PinnedPlainQuery }
   Probe: { variables: Record<string, never>; data: ProbeQuery }
@@ -126,6 +137,7 @@ export type Operations = {
 export const DOCUMENTS = {
   Authored: AUTHORED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   AuthoredPlain: AUTHORED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
+  Failures: FAILURES,
   MergeStatus: MERGE_STATUS,
   Pinned: PINNED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
@@ -142,6 +154,7 @@ export const DOCUMENTS = {
 export const COMPLEXITY = {
   Authored: 151,
   AuthoredPlain: 148,
+  Failures: 16,
   MergeStatus: 19,
   Pinned: 100,
   PinnedPlain: 98,
@@ -184,4 +197,11 @@ export const usualQuery = (path: string): Request<UsualQuery> => ({
   operation: 'Usual',
   query: DOCUMENTS.Usual,
   variables: { path } satisfies UsualQueryVariables,
+})
+
+/** Why the failed jobs of an MR's pipeline failed (`COMPLEXITY.Failures`). */
+export const failuresQuery = (path: string, iid: number): Request<FailuresQuery> => ({
+  operation: 'Failures',
+  query: DOCUMENTS.Failures,
+  variables: { path, iid: String(iid) } satisfies FailuresQueryVariables,
 })

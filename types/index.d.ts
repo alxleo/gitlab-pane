@@ -316,6 +316,8 @@ declare module 'claude-code' {
       unreachable: string[]
       scrolling: Scrolling
       problems: Problems
+      /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
+      logs: boolean
     }
   }
 }

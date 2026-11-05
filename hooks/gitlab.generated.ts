@@ -118,6 +118,14 @@ export type ProbeQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type ProbeQuery = { mergeRequest: { fields: Array<{ name: string }> | null } | null, interaction: { fields: Array<{ name: string }> | null } | null };
 
+export type FailuresQueryVariables = Exact<{
+  path: string;
+  iid: string;
+}>;
+
+
+export type FailuresQuery = { project: { mergeRequest: { headPipeline: { jobs: { nodes: Array<{ webPath: string | null, allowFailure: boolean, failureMessage: string | null } | null> | null } | null } | null } | null } | null };
+
 export type UsualQueryVariables = Exact<{
   path: string;
 }>;

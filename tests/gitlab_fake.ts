@@ -52,6 +52,22 @@ export function sent(url: string, init: { method?: string; headers?: Record<stri
   return { host: match[1], operation: body.operationName, variables: stringRecord(body.variables), token: header?.replace(/^Bearer /, '') }
 }
 
+/** A job's log asked for on the REST API: the host, the project path and job number it names, and the bearer token. */
+export type Traced = { host: string; path: string; job: string; token: string | undefined }
+
+/** The request `$.http.fetch(url, init)` is given, read as a GET of a job's trace, or none when it is something else. */
+export function traced(url: string, init: { method?: string; headers?: Record<string, string> } | undefined): Traced | null {
+  const match = /^https:\/\/([^/]+)\/api\/v4\/projects\/([^/]+)\/jobs\/(\d+)\/trace$/.exec(url)
+  if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+    return null
+  }
+  if (init?.method !== undefined && init.method !== 'GET') {
+    throw new Error(`the pane read a job's trace with ${init.method}`)
+  }
+  const header = Object.entries(init?.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
+  return { host: match[1], path: decodeURIComponent(match[2]), job: match[3], token: header?.replace(/^Bearer /, '') }
+}
+
 /**
  * What a GitLab host answers a request: 401 unless the bearer is the token that host accepts, else the test's answer to the
  * operation, a Probe answered as a current GitLab unless the test sets it (`OLDER` is what an older one lists).
@@ -70,6 +86,8 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, set(answers.AuthoredPlain, operation)({}))
     case 'MergeStatus':
       return reply(200, set(answers.MergeStatus, operation)({}))
+    case 'Failures':
+      return reply(200, set(answers.Failures, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'Pinned':
       return reply(200, set(answers.Pinned, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'PinnedPlain':

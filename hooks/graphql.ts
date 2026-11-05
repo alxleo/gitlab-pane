@@ -10,7 +10,7 @@ import { failureOf } from './tools'
 import type { Found } from './tokens'
 
 /** The most of an answer the engine's `$.http.fetch` reads; it cuts the rest off, which no longer parses. */
-const ENGINE_READS_BYTES = 4 * 1024 * 1024
+export const ENGINE_READS_BYTES = 4 * 1024 * 1024
 
 type Answer = { status: number; text: string }
 
