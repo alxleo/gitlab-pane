@@ -1,0 +1,23 @@
+{
+  // The dev tools in tools/*.ts: Node runs them as they are (type stripping, Node 22.18+), so only syntax that erases is allowed.
+  // They may import the core (each by its .ts path) and nothing of the engine. tools/screens and tools/store-probe have configs of their own.
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"]
+  },
+  "include": ["tools/*.ts", "hooks/decode.ts", "hooks/gitlab.ts", "types/index.d.ts"]
+}

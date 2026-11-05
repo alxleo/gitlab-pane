@@ -1,5 +1,5 @@
 // Draws the pane on the desktop surface for each README scene, from GitLab and mr-inbox answers made up here, and prints
-// every drawn tree as one `PANE-SCENE <json>` line on the test's output. tools/pane_screens.py copies this file into a
+// every drawn tree as one `PANE-SCENE <json>` line on the test's output. tools/pane_screens.ts copies this file into a
 // scratch copy of the mod as `scenes.test.ts` and reads those lines back; it is not named *.test.ts here so that
 // `claude plugin test .` never runs it as one of the mod's own tests.
 //
