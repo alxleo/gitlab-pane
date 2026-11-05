@@ -1,6 +1,7 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import { discSource } from './avatar'
+import { isFilled } from './decode'
 import { ago, shortTitle } from './format'
 import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
@@ -43,10 +44,10 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const age = ago(iso, now)
     return age === 'now' ? 'just now' : `${age} ago`
   }
-  const problem = inbox.error ?? (inbox.syncError ? `sync failed: ${inbox.syncError}` : null)
+  const problem = inbox.error ?? (isFilled(inbox.syncError) ? `sync failed: ${inbox.syncError}` : null)
   const status =
     problem ??
-    (inbox.syncedAt
+    (isFilled(inbox.syncedAt)
       ? `synced ${since(inbox.syncedAt)}`
       : inbox.readAt === null || inbox.isSyncing
         ? 'reading GitLab…'
@@ -58,7 +59,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
 
   /** An initials disc, coloured by username; where the surface draws no Svg, nothing. */
   const avatar = (username: string) =>
-    Svg ? (
+    Svg !== undefined ? (
       <Box flexShrink={0}>
         <Svg width={16} height={16} alt={username} source={discSource(username, 16, initials(names.get(username) ?? '', username))} />
       </Box>
@@ -68,7 +69,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const event = (one: InboxActivity, isWhole: boolean) => {
     const verb = VERB[one.kind]
     const when = ago(one.at, now)
-    const said = one.excerpt ? `“${one.excerpt}”` : ''
+    const said = one.excerpt !== '' ? `“${one.excerpt}”` : ''
     return (
       <Box key={`ev-${shortHash(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
@@ -77,17 +78,17 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             <Text color={verb.tone}>{`${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}</Text>
           </Box>
           <Box flexGrow={1} flexShrink={1}>
-            {!isWhole && said && (
+            {!isWhole && said !== '' && (
               <Text dimColor italic wrap="truncate-end">
                 {said}
               </Text>
             )}
           </Box>
           <Box flexShrink={0}>
-            {one.url ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}
+            {isFilled(one.url) ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}
           </Box>
         </Box>
-        {isWhole && said && (
+        {isWhole && said !== '' && (
           <Box paddingLeft={3}>
             <Text dimColor italic>
               {said}
@@ -104,7 +105,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
    */
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
-    const counted = KINDS.filter(kind => item.counts[kind]).map(kind => `${item.counts[kind]} ${VERB[kind].word}`)
+    const counted = KINDS.filter(kind => (item.counts[kind] ?? 0) > 0).map(kind => `${item.counts[kind]} ${VERB[kind].word}`)
     const about = [
       bang > 0 ? item.ref.slice(0, bang) : '',
       item.isMine ? '' : item.author,
@@ -165,7 +166,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
         {isOpen
           ? item.activity.map(one => event(one, true))
-          : item.activity[0] && event(item.activity[0], false)}
+          : item.activity[0] !== undefined && event(item.activity[0], false)}
         {isOpen && (
           <Button key={`inbox-less-${shortHash(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
         )}
@@ -243,7 +244,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="row" gap={2}>
-        <Text color={problem ? 'warning' : undefined} dimColor={!problem} size="footnote">
+        <Text color={isFilled(problem) ? 'warning' : undefined} dimColor={!isFilled(problem)} size="footnote">
           {status}
         </Text>
         <Button
@@ -262,7 +263,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       {quiet.length > 0 && (
         <Text dimColor wrap="truncate-end">
           {`Nothing else in: ${quiet
-            .map(section => (section.note ? `${section.title} (${section.note})` : section.isAllAbove ? `${section.title} (all above)` : section.title))
+            .map(section => (isFilled(section.note) ? `${section.title} (${section.note})` : section.isAllAbove ? `${section.title} (all above)` : section.title))
             .join(', ')}`}
         </Text>
       )}

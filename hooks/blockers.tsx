@@ -93,7 +93,9 @@ export function blockerLines(kit: Kit, row: MrCard, badge: Badge) {
       return [head(`Approvals ${badge.count}${row.approvers.length > 0 ? `: ${row.approvers.join(', ')}` : ''}`)]
     case 'ready':
       return [head('Ready to merge')]
-    default:
+    case 'changes':
+    case 'bots':
+      // The row has no such markers (rowBadges): each person's or bot's icon speaks for them.
       return []
   }
 }

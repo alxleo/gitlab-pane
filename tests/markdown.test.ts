@@ -54,7 +54,7 @@ test('each <details> is a fold under its summary, nested ones inside, open ones 
   expect(parts.length).toBe(3)
   expect(parts[0]).toEqual({ text: 'Before.' })
   const fold = parts[1]
-  if (!fold || !('summary' in fold)) {
+  if (fold === undefined || !('summary' in fold)) {
     throw new Error('expected a fold')
   }
   expect(fold.summary).toBe('Evidence')

@@ -5,6 +5,7 @@ import { NOW, job, pipe, rawMr, stage } from './fixtures'
 import { toCard } from '../hooks/gitlab'
 import { reconcile } from '../hooks/reconcile'
 
+import type { MergeRequestState } from '../hooks/gitlab.generated'
 import type { MergeStatus, MrCard, Pinned } from '../types'
 
 const KEY = 'g/p!12'
@@ -13,17 +14,17 @@ const pin = (origin?: 'raised' | 'watched'): Pinned => ({
   url: 'https://gitlab.com/g/p/-/merge_requests/12',
   project: 'g/p',
   iid: 12,
-  ...(origin ? { origin } : {}),
+  ...(origin !== undefined ? { origin } : {}),
 })
 
 type Wire = Parameters<typeof pipe>[0]
 
 /** !12 with the pipeline `id` in `status`, GitLab's verdict `mergeStatus`, and `lint` the one job that failed, if any. */
-const card = (status: Wire, mergeStatus: MergeStatus | null = null, over: { id?: number; state?: string; failedJob?: boolean } = {}): MrCard => {
+const card = (status: Wire, mergeStatus: MergeStatus | null = null, over: { id?: number; state?: MergeRequestState; failedJob?: boolean } = {}): MrCard => {
   const id = over.id ?? 99
   const headPipeline = pipe(status, {
     id: `gid://gitlab/Ci::Pipeline/${id}`,
-    ...(over.failedJob ? { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } } : {}),
+    ...(over.failedJob === true ? { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } } : {}),
   })
   return { ...toCard(rawMr(12, { headPipeline, state: over.state ?? 'opened' })), mergeStatus }
 }
