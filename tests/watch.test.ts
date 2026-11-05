@@ -6,7 +6,7 @@ import { AVATAR_BASE64, NOW, job, note, pipe, project, rawMr, reviewer, stage, t
 import type { Mr } from './fixtures'
 import { answered } from './gitlab_fake'
 
-import { STAGE_COLOURS } from '../hooks/ci'
+import { STAGE_COLOURS } from '../hooks/status'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
 
@@ -27,13 +27,9 @@ const PANE = {
 type Drawn = { type?: string; props?: Record<string, unknown>; hover?: { scope?: string; display?: string }; children?: unknown[] }
 
 /** Every element in a drawn tree, with the `hover` a found element's props leave out. */
-const elementsOf = (node: unknown): Drawn[] => {
-  if (!node || typeof node !== 'object') {
-    return []
-  }
-  const element = node as Drawn
-  return [element, ...(element.children ?? []).flatMap(elementsOf)]
-}
+const isDrawn = (node: unknown): node is Drawn => typeof node === 'object' && node !== null && (!('children' in node) || Array.isArray(node.children))
+
+const elementsOf = (node: unknown): Drawn[] => (isDrawn(node) ? [node, ...(node.children ?? []).flatMap(elementsOf)] : [])
 
 const boxesOf = (node: unknown): Drawn[] => elementsOf(node).filter(element => element.type === 'Box')
 

@@ -1,9 +1,10 @@
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import { discSource } from './avatar'
-import { ago, measure, shortTitle } from './ci'
+import { ago, shortTitle } from './format'
+import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
-import { reported } from './problems'
+import { reported } from './failures'
 import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -22,7 +23,7 @@ const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string }> = 
   unknown: { glyph: '·', word: 'acted' },
 }
 
-const KINDS = Object.keys(VERB) as InboxKind[]
+const KINDS = Object.keys(VERB).filter((kind): kind is InboxKind => kind in VERB)
 
 /**
  * What the inbox may take of the pane's drawing, now that it has its own tab and shares the drawing only with the
@@ -148,7 +149,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               key={`inbox-seen-${shortHash(item.key)}`}
               plain
               label="✓"
-              onPress={() => markSeen($, { key: item.key }).catch(reported('inbox'))}
+              onPress={() => markSeen($, { key: item.key }).catch(reported($, 'inbox'))}
             />
           </Box>
         </Box>
@@ -227,13 +228,13 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key={`inbox-discuss-${section.rule}`}
           variant="secondary"
           label="discuss in chat"
-          onPress={() => discussRule($, section.rule).catch(reported('inbox'))}
+          onPress={() => discussRule($, section.rule).catch(reported($, 'inbox'))}
         />
         <Button
           key={`inbox-seen-rule-${section.rule}`}
           variant="secondary"
           label="✓ mark all seen"
-          onPress={() => markSeen($, { rule: section.rule }).catch(reported('inbox'))}
+          onPress={() => markSeen($, { rule: section.rule }).catch(reported($, 'inbox'))}
         />
       </Box>,
     ]
@@ -249,7 +250,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           key="inbox-sync"
           plain
           label={inbox.isSyncing ? 'syncing…' : 'sync'}
-          onPress={() => syncInbox($).catch(reported('inbox'))}
+          onPress={() => syncInbox($).catch(reported($, 'inbox'))}
         />
       </Box>
       {shown.length > 0 && (

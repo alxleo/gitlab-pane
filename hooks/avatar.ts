@@ -1,5 +1,5 @@
-import { discColour, initials as initialsOf } from './identity'
-import { raw, svg, type SvgSource } from './svg'
+import { discColour, initials as initialsOf } from './identity.ts'
+import { raw, svg, type SvgSource } from './svg.ts'
 
 /**
  * A person's initials on a disc coloured by their username, `size` pixels across from the origin: marks to sit inside

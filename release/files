@@ -1,0 +1,50 @@
+# Everything the plugin ships, and nothing else: tools/release_tree.py copies exactly these files into the tree that
+# the `release` branch holds, and fails if a module the plugin loads imports something that is not listed.
+# One path per line, relative to the repository root. A line with two paths copies the first to the second.
+# A new runtime file belongs here; `uv run tools/release_tree.py check` fails until it is.
+.claude-plugin/plugin.json
+# The tree is also a marketplace of its own, so a team can pin a released version by tag (see CONTRIBUTING.md).
+release/marketplace.json .claude-plugin/marketplace.json
+LICENSE
+README.md
+types/index.d.ts
+hooks/hooks.json
+hooks/attention.ts
+hooks/avatar.ts
+hooks/blockers.tsx
+hooks/card.tsx
+hooks/choices.ts
+hooks/data.ts
+hooks/decode.ts
+hooks/drawing.ts
+hooks/faces.tsx
+hooks/failures.ts
+hooks/format.ts
+hooks/gitlab-status.ts
+hooks/gitlab.ts
+hooks/identity.ts
+hooks/in-flight.ts
+hooks/inbox-json.ts
+hooks/inbox-pane.tsx
+hooks/inbox.ts
+hooks/jira.ts
+hooks/kit.tsx
+hooks/markdown.ts
+hooks/model-text.ts
+hooks/mr-url.ts
+hooks/notes.tsx
+hooks/order.ts
+hooks/pane.tsx
+hooks/panes.ts
+hooks/picture.ts
+hooks/poll.ts
+hooks/problems.ts
+hooks/reading.tsx
+hooks/reconcile.ts
+hooks/register.tsx
+hooks/status.ts
+hooks/strip.tsx
+hooks/svg.ts
+hooks/tools.ts
+hooks/view.ts
+hooks/wake.ts

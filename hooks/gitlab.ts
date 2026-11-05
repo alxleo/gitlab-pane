@@ -1,75 +1,12 @@
 import type { AuthoredQuery, AuthoredQueryVariables, MergeStatusQuery, MrFieldsFragment, NoteFieldsFragment, PinnedQuery, PinnedQueryVariables, UsualQuery, UsualQueryVariables } from './gitlab.generated.ts'
+import { isFilled, isSome } from './decode.ts'
+import { ciStatusOf, mergeStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { initials } from './identity.ts'
+import { firstDifference } from './order.ts'
 
 import type { CiStatus, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
 const GITLAB = 'https://gitlab.com'
-
-const CI_STATUSES: Record<CiStatus, true> = {
-  created: true,
-  waiting_for_resource: true,
-  preparing: true,
-  waiting_for_callback: true,
-  pending: true,
-  running: true,
-  success: true,
-  failed: true,
-  canceling: true,
-  canceled: true,
-  skipped: true,
-  manual: true,
-  scheduled: true,
-  unknown: true,
-}
-
-const REVIEW_STATES: Record<ReviewState, true> = {
-  unreviewed: true,
-  reviewed: true,
-  requested_changes: true,
-  approved: true,
-  unapproved: true,
-  review_started: true,
-  unknown: true,
-}
-
-const MERGE_STATUSES: Record<MergeStatus, true> = {
-  UNCHECKED: true,
-  CHECKING: true,
-  MERGEABLE: true,
-  COMMITS_STATUS: true,
-  CI_MUST_PASS: true,
-  CI_STILL_RUNNING: true,
-  DISCUSSIONS_NOT_RESOLVED: true,
-  DRAFT_STATUS: true,
-  NOT_OPEN: true,
-  NOT_APPROVED: true,
-  BLOCKED_STATUS: true,
-  EXTERNAL_STATUS_CHECKS: true,
-  PREPARING: true,
-  JIRA_ASSOCIATION: true,
-  CONFLICT: true,
-  NEED_REBASE: true,
-  APPROVALS_SYNCING: true,
-  LOCKED_PATHS: true,
-  LOCKED_LFS_FILES: true,
-  MERGE_TIME: true,
-  SECURITY_POLICIES_VIOLATIONS: true,
-  TITLE_NOT_MATCHING: true,
-  REQUESTED_CHANGES: true,
-  SECURITY_POLICY_PIPELINE_CHECK: true,
-  UNKNOWN: true,
-}
-
-// GitLab adds enum values without notice; one the pane does not know becomes `unknown`, drawn as such, and never a known one.
-const known = <T extends string>(table: Record<T, true>, value: string): T | undefined => (Object.hasOwn(table, value) ? (value as T) : undefined)
-
-/** GitLab's `CiJobStatus` or `PipelineStatusEnum` (or a stage's status, a plain string), lower cased. */
-export const ciStatusOf = (status: string): CiStatus => known(CI_STATUSES, status.toLowerCase()) ?? 'unknown'
-
-/** `MergeRequestReviewState`, lower cased; none yet reads as unreviewed. */
-const reviewStateOf = (state: string | null | undefined): ReviewState => known(REVIEW_STATES, (state ?? 'unreviewed').toLowerCase()) ?? 'unknown'
-
-export const mergeStatusOf = (status: string): MergeStatus => known(MERGE_STATUSES, status) ?? 'UNKNOWN'
 
 /**
  * Every document the pane sends is a static GraphQL text with its values passed as variables, never spliced in. The
@@ -164,7 +101,9 @@ export const mergeStatusQuery = (): Request<MergeStatusQuery> => ({ query: DOCUM
 export function readMergeStatus(response: RawResponse<MergeStatusQuery>): Map<string, MergeStatus> {
   const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
   return new Map(
-    nodes.flatMap(node => (node?.detailedMergeStatus ? [[`${node.project.fullPath}!${node.iid}`, mergeStatusOf(node.detailedMergeStatus)] as const] : []))
+    nodes.flatMap(node =>
+      isFilled(node?.detailedMergeStatus) ? [[`${node.project.fullPath}!${node.iid}`, mergeStatusOf(node.detailedMergeStatus)] as const] : []
+    )
   )
 }
 
@@ -210,7 +149,7 @@ export type RawStage = NodeOf<RawPipeline['stages']>
 export type RawJob = NodeOf<RawStage['jobs']>
 
 /** GitLab gives an uploaded avatar as a path on its own host and a Gravatar one as a full URL. */
-const absolute = (url: string | null | undefined): string | null => (url ? (url.startsWith('/') ? `${GITLAB}${url}` : url) : null)
+const absolute = (url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${GITLAB}${url}` : url) : null)
 
 /** Markdown as GitLab stores it, HTML and all, its links made absolute; markdown.ts makes it drawable. */
 export function cleanBody(body: string, project: string): string {
@@ -230,7 +169,7 @@ const toNote = (raw: RawNote, project: string, isOpen: boolean, mrUrl: string): 
     body: cleanBody(raw.body, project),
     url: raw.url ?? mrUrl,
     at: raw.createdAt,
-    ...(raw.position ? { where: `${raw.position.filePath}${line ? `:${line}` : ''}` } : {}),
+    ...(isSome(raw.position) ? { where: `${raw.position.filePath}${(line ?? 0) > 0 ? `:${line}` : ''}` } : {}),
     isOpen,
   }
 }
@@ -242,7 +181,7 @@ const toJob = (job: RawJob, pipelineUrl: string): Job => ({
   name: job.name ?? UNNAMED,
   status: ciStatusOf(job.status ?? ''),
   allowFailure: job.allowFailure,
-  url: job.webPath ? `${GITLAB}${job.webPath}` : pipelineUrl,
+  url: isFilled(job.webPath) ? `${GITLAB}${job.webPath}` : pipelineUrl,
   startedAt: job.startedAt,
   finishedAt: job.finishedAt,
 })
@@ -270,7 +209,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
     { name: string; isBot: boolean; avatarUrl: string | null; review: ReviewState; isApprover: boolean; openThreads: number; notes: Note[] }
   >()
   const meet = (user: RawUser | null) => {
-    if (!user || user.username === author) {
+    if (user === null || user.username === author) {
       return undefined
     }
     const avatarUrl = absolute(user.avatarUrl)
@@ -288,13 +227,13 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
   }
   present(raw.reviewers?.nodes).forEach((reviewer: RawReviewer) => {
     const person = meet(reviewer)
-    if (person) {
+    if (person !== undefined) {
       person.review = reviewStateOf(reviewer.mergeRequestInteraction?.reviewState)
     }
   })
   present(raw.approvedBy?.nodes).forEach(user => {
     const person = meet(user)
-    if (person) {
+    if (person !== undefined) {
       person.isApprover = true
     }
   })
@@ -302,7 +241,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
     thread.notes.forEach((one, i) => {
       const person = meet(one.author)
       person?.notes.push(toNote(one, project, thread.isOpen, mrUrl))
-      if (person && i === 0 && thread.isOpen) {
+      if (person !== undefined && i === 0 && thread.isOpen) {
         person.openThreads += 1
       }
     })
@@ -318,7 +257,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
             : person.notes.length > 0
               ? 'commented'
               : 'unreviewed'
-    const notes = [...person.notes].sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || b.at.localeCompare(a.at))
+    const notes = [...person.notes].sort((a, b) => firstDifference(Number(b.isOpen) - Number(a.isOpen), b.at.localeCompare(a.at)))
     return {
       username,
       name: person.name,
@@ -337,7 +276,7 @@ function toPeople(raw: RawMr, project: string, mrUrl: string, threads: { isOpen:
   return people
     .filter(person => !person.isBot || person.state === 'requested_changes' || person.openThreads > 0)
     .map(person => (shared.has(person.initials) ? { ...person, initials: initials(person.name, person.username, true) } : person))
-    .sort((a, b) => Number(a.isBot) - Number(b.isBot) || order(a) - order(b) || a.name.localeCompare(b.name))
+    .sort((a, b) => firstDifference(Number(a.isBot) - Number(b.isBot), order(a) - order(b), a.name.localeCompare(b.name)))
 }
 
 export function toCard(raw: RawMr): MrCard {
@@ -347,7 +286,8 @@ export function toCard(raw: RawMr): MrCard {
   const isBot = (note: RawNote) => note.author?.bot === true
   const threads = present(raw.discussions.nodes).flatMap(thread => {
     const notes = present(thread.notes.nodes).filter(one => !one.system)
-    return notes[0] ? [{ isOpen: thread.resolvable && !thread.resolved, notes, first: notes[0] }] : []
+    const [first] = notes
+    return first !== undefined ? [{ isOpen: thread.resolvable && !thread.resolved, notes, first }] : []
   })
   const open = threads.filter(thread => thread.isOpen)
   const reviewers = present(raw.reviewers?.nodes).map(reviewer => ({
@@ -356,7 +296,7 @@ export function toCard(raw: RawMr): MrCard {
     state: reviewStateOf(reviewer.mergeRequestInteraction?.reviewState),
   }))
   const requested = reviewers.filter(reviewer => reviewer.state === 'requested_changes')
-  const pipelineUrl = pipeline?.path ? `${GITLAB}${pipeline.path}` : mrUrl
+  const pipelineUrl = isFilled(pipeline?.path) ? `${GITLAB}${pipeline.path}` : mrUrl
   const stages = present(pipeline?.stages?.nodes).map(stage => ({
     name: stage.name ?? UNNAMED,
     status: ciStatusOf(stage.status ?? ''),
@@ -373,7 +313,7 @@ export function toCard(raw: RawMr): MrCard {
     author: raw.author?.username ?? '',
     description: cleanBody(raw.description ?? '', project),
     branch: { source: raw.sourceBranch, target: raw.targetBranch },
-    diff: raw.diffStatsSummary
+    diff: isSome(raw.diffStatsSummary)
       ? {
           additions: raw.diffStatsSummary.additions,
           deletions: raw.diffStatsSummary.deletions,
@@ -393,7 +333,7 @@ export function toCard(raw: RawMr): MrCard {
     approvers: present(raw.approvedBy?.nodes).filter(user => !user.bot).map(user => user.username),
     reviewers,
     people: toPeople(raw, project, mrUrl, threads),
-    ...(pipeline
+    ...(isSome(pipeline)
       ? {
           pipeline: {
             id: Number(pipeline.id.split('/').pop()),
@@ -423,10 +363,12 @@ export const lostIn = (response: RawResponse<AuthoredQuery>): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
 
 const dataOf = <Data>(response: RawResponse<Data>): Data => {
-  if (!response.data) {
-    throw new Error(response.errors?.map(error => error.message).join('; ') || 'GitLab sent no data')
+  const { data } = response
+  if (!isSome(data)) {
+    const reason = (response.errors ?? []).map(error => error.message).join('; ')
+    throw new Error(reason === '' ? 'GitLab sent no data' : reason)
   }
-  return response.data
+  return data
 }
 
 /** The authored MRs as cards. A read with no data at all throws; a partial one keeps what came back. */
@@ -436,5 +378,5 @@ export const readResponse = (response: RawResponse<AuthoredQuery>): MrCard[] =>
 /** The one pinned MR as a card, or none when GitLab named no such MR or project (out of reach). */
 export const readPinned = (response: RawResponse<PinnedQuery>): MrCard[] => {
   const raw = dataOf(response).project?.mergeRequest
-  return raw ? [toCard(raw)] : []
+  return isSome(raw) ? [toCard(raw)] : []
 }
