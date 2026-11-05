@@ -205,13 +205,14 @@ const inboxWorld = (): World => {
     ...emptyWorld(),
     user: 'alex',
     queue: [
-      { ...infra, notes: { nodes: [] }, approvedBy: { nodes: [] } },
-      { ...storefront, notes: { nodes: [system(8, CAROL, 95, 'commit', 'added 1 commit')] }, approvedBy: { nodes: [] } },
+      { ...infra, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] }, approvedBy: { nodes: [] } },
+      { ...storefront, notes: { pageInfo: { hasPreviousPage: false }, nodes: [system(8, CAROL, 95, 'commit', 'added 1 commit')] }, approvedBy: { nodes: [] } },
     ],
     opened: [
       {
         ...billing(140, 'feat: [BILL-95] Retry failed invoice emails', { username: 'alex', name: 'Alex' }),
         notes: {
+          pageInfo: { hasPreviousPage: false },
           nodes: [
             system(1, ALICE, 140, 'commit', 'added 2 commits'),
             system(2, ERIN, 64, 'approved'),

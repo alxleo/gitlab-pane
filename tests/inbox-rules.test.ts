@@ -3,7 +3,8 @@ import { expect, test } from 'claude-code/testing'
 import { parseJson } from '../hooks/decode'
 import type { TodoActionEnum } from '../hooks/gitlab.generated'
 import { briefing, readBrief } from '../hooks/inbox-brief'
-import { authoredMrs, combine, queueMrs, todoMrs } from '../hooks/inbox-gitlab'
+import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from '../hooks/inbox-gitlab'
+import { parseFollow } from '../hooks/inbox-follow'
 import { isRefTo, parseRef, parseRemote } from '../hooks/inbox-refs'
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, MAX_MRS, MAX_SIGNALS, RULES, bounded, ruleNamed, sectionsOf, seenKey, seenKeyOf, staleSeenKeys } from '../hooks/inbox-rules'
 import { carryOver, problemOf, readSnapshot } from '../hooks/inbox-snapshot'
@@ -35,6 +36,8 @@ const mr = (iid: number, signals: InboxSignal[], over: Partial<InboxMr> = {}): I
   state: 'opened',
   isDraft: false,
   inQueue: false,
+  isFollowed: false,
+  cutoff: null,
   signals,
   ...over,
 })
@@ -44,7 +47,7 @@ const snapshot = (mrs: InboxMr[], hosts: InboxSnapshot['hosts'] = { 'gitlab.com'
 const itemsOf = (sections: ReturnType<typeof sectionsOf>, rule: string) => sections.find(section => section.rule === rule)?.items.map(item => item.key)
 
 test('the rules are a fixed set, and each is found by its name or its title', () => {
-  expect(RULES.map(rule => rule.name)).toEqual(['review-requested', 'mentions', 'build-failed', 'cant-merge', 'on-my-mrs'])
+  expect(RULES.map(rule => rule.name)).toEqual(['review-requested', 'mentions', 'build-failed', 'cant-merge', 'on-my-mrs', 'following'])
   expect(ruleNamed('on-my-mrs')?.title).toBe('On my MRs')
   expect(ruleNamed(" Can't merge ")?.name).toBe('cant-merge')
   expect(ruleNamed('people')).toBeUndefined()
@@ -67,7 +70,7 @@ test('an MR shows under a rule for the events that rule counts, since it was mar
 })
 
 test('events on your MR and events on someone else\'s go to different rules', () => {
-  const theirs = mr(2, [signal('approved', 5), signal('pushed', 4)])
+  const theirs = mr(2, [signal('approved', 5), signal('pushed', 4)], { inQueue: true })
   const mine = mr(3, [signal('approved', 5), signal('pushed', 4, 'bob'), signal('review_requested', 3)], { isMine: true })
   const sections = sectionsOf(snapshot([theirs, mine]), {})
   // Someone else's approval is not yours to read; their push is, when you were asked to review.
@@ -159,6 +162,7 @@ test('the notes on your MR become approvals, reviews, pushes and comments by oth
             {
               ...fields(1, 'me'),
               notes: {
+                pageInfo: { hasPreviousPage: false },
                 nodes: [
                   note(1, 10, 'bob', 'approved this merge request', 'approved'),
                   note(2, 20, 'bob', 'requested changes', 'requested_changes'),
@@ -238,9 +242,9 @@ test('the review queue leaves out what you approved or wrote, and a to-do and th
         username: 'me',
         reviewRequestedMergeRequests: {
           nodes: [
-            { ...fields(1), approvedBy: { nodes: [{ username: 'me' }] }, notes: { nodes: [] } },
-            { ...fields(2, 'me'), approvedBy: { nodes: [] }, notes: { nodes: [] } },
-            { ...fields(3), approvedBy: { nodes: [] }, notes: { nodes: [note(1, 5, 'alice', 'added 1 commit', 'commit'), note(2, 6, 'carol', 'a comment')] } },
+            { ...fields(1), approvedBy: { nodes: [{ username: 'me' }] }, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } },
+            { ...fields(2, 'me'), approvedBy: { nodes: [] }, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } },
+            { ...fields(3), approvedBy: { nodes: [] }, notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 5, 'alice', 'added 1 commit', 'commit'), note(2, 6, 'carol', 'a comment')] } },
           ],
         },
       },
@@ -259,7 +263,7 @@ test('the review queue leaves out what you approved or wrote, and a to-do and th
   const [both] = combine([queue, asked]).mrs
   expect(both?.inQueue).toBe(true)
   expect(both?.signals.filter(one => one.kind === 'review_requested').map(one => one.at)).toEqual([AGO(60)])
-  expect(combine([authoredMrs('gitlab.com', { currentUser: { username: 'me', opened: { nodes: [{ ...fields(9, 'me'), notes: { nodes: [] } }] }, merged: { nodes: [] } } }, NOW)]).mrs).toEqual([])
+  expect(combine([authoredMrs('gitlab.com', { currentUser: { username: 'me', opened: { nodes: [{ ...fields(9, 'me'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [] } }] }, merged: { nodes: [] } } }, NOW)]).mrs).toEqual([])
 })
 
 // ---- the snapshot --------------------------------------------------------------------------------------------------------
@@ -333,4 +337,78 @@ test('a briefing puts every line other people wrote behind a margin, with contro
   expect(text).toContain('[cut here: the rest is on GitLab]')
   expect(readBrief({ project: { mergeRequest: null } })).toBeNull()
   expect(readBrief(null)).toBeNull()
+})
+
+// ---- following, "here", the notes and the cut ----------------------------------------------------------------------------
+
+const everyone = { here: { isOn: false, repo: null }, followCount: 2 }
+
+test('the Following rule lists the activity on the MRs of the people and projects followed, and nothing else', () => {
+  const followed = mr(1, [signal('comment', 5, 'bob', { excerpt: 'hm' }), signal('approved', 6, 'carol'), signal('pushed', 7, 'alice')], { isFollowed: true })
+  const stranger = mr(2, [signal('comment', 5)])
+  const sections = sectionsOf(snapshot([followed, stranger]), {}, everyone)
+  expect(itemsOf(sections, 'following')).toEqual(['gitlab.com/g/p!1'])
+  expect(sections.find(section => section.rule === 'following')?.items[0]?.counts).toEqual({ comment: 1, approved: 1, pushed: 1 })
+  // A followed MR's push is not a review you were asked for.
+  expect(itemsOf(sections, 'review-requested')).toEqual([])
+})
+
+test('"here" narrows every section to the session\'s project, and says why when the session has none', () => {
+  const here = mr(1, [signal('mentioned', 5)])
+  const elsewhere = mr(2, [signal('mentioned', 5)], { path: 'g/other' })
+  const snap = snapshot([here, elsewhere])
+  expect(itemsOf(sectionsOf(snap, {}, { ...everyone, here: { isOn: true, repo: { host: 'gitlab.com', path: 'g/p' } } }), 'mentions')).toEqual(['gitlab.com/g/p!1'])
+  expect(itemsOf(sectionsOf(snap, {}, { ...everyone, here: { isOn: true, repo: { host: 'git.corp.com', path: 'g/p' } } }), 'mentions')).toEqual([])
+  const noRepo = sectionsOf(snap, {}, { ...everyone, here: { isOn: true, repo: null } })
+  expect(noRepo.every(section => section.items.length === 0 && section.note === 'this session has no GitLab repo')).toBe(true)
+  expect(itemsOf(sectionsOf(snap, {}, everyone), 'mentions')).toEqual(['gitlab.com/g/p!1', 'gitlab.com/g/other!2'])
+})
+
+test('an empty section says why when there is a reason: no token, nobody followed', () => {
+  const tokenless = snapshot([], { 'gitlab.com': { user: null, failure: { kind: 'no-token', message: 'no GitLab token for gitlab.com' } }, 'git.corp.com': { user: 'me', failure: null } })
+  expect(sectionsOf(tokenless, {}, everyone).map(section => section.note)).toEqual(Array(6).fill('no token for gitlab.com'))
+  const quiet = sectionsOf(snapshot([]), {}, { ...everyone, followCount: 0 })
+  expect(quiet.map(section => section.note)).toEqual([null, null, null, null, null, 'name people or projects in the inboxFollow setting'])
+  expect(sectionsOf(snapshot([mr(1, [signal('mentioned', 5)])]), {}, everyone).find(section => section.rule === 'mentions')?.note).toBeNull()
+})
+
+test('when GitLab kept older notes back, counts newer than the cut are lower bounds, and a mark past the cut makes them exact', () => {
+  const cut = mr(1, [signal('comment', 10), signal('comment', 11)], { isMine: true, cutoff: AGO(12) })
+  const item = (marked: number) => sectionsOf(snapshot([cut]), { [seenKeyOf(snapshot([cut]), cut) ?? '']: marked }).find(section => section.rule === 'on-my-mrs')?.items[0]
+  expect(item(AGO(60))?.isCapped).toBe(true)
+  expect(item(AGO(5))).toBeUndefined()
+  expect(item(AGO(11.5))?.isCapped).toBe(false)
+  expect(sectionsOf(snapshot([mr(2, [signal('comment', 10)], { isMine: true })]), {}).find(section => section.rule === 'on-my-mrs')?.items[0]?.isCapped).toBe(false)
+})
+
+test('the cut is read from the notes GitLab sent: the oldest, when older ones were kept back', () => {
+  const some = [note(1, 10, 'bob', 'a'), note(2, 20, 'bob', 'b')]
+  const read = (hasPreviousPage: boolean) =>
+    authoredMrs('gitlab.com', { currentUser: { username: 'me', opened: { nodes: [{ ...fields(1, 'me'), notes: { pageInfo: { hasPreviousPage }, nodes: some } }] }, merged: { nodes: [] } } }, NOW).mrs[0]?.cutoff
+  expect(read(true)).toBe(AGO(20))
+  expect(read(false)).toBeNull()
+})
+
+test('followed people and projects: their open MRs with activity, flagged, and what was merged by someone else', () => {
+  const group = {
+    opened: { nodes: [{ ...fields(1, 'alice'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 10, 'bob', 'nice'), note(2, 11, 'me', 'mine')] } }] },
+    merged: { nodes: [{ ...fields(2, 'alice'), mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } }] },
+  }
+  const found = followedUserMrs('gitlab.com', { currentUser: { username: 'me' }, user: group }, NOW)
+  expect(found.mrs.map(one => [one.iid, one.isFollowed, one.signals.map(each => each.kind)])).toEqual([
+    [1, true, ['comment']],
+    [2, true, ['merged']],
+  ])
+  expect(followedProjectMrs('gitlab.com', { currentUser: { username: 'me' }, project: null }, NOW)).toEqual({ user: 'me', mrs: [] })
+})
+
+test('the follow setting is people and projects, a list or a comma string, at most ten, nothing else', () => {
+  expect(parseFollow(['@alice', 'g/p', 'g/p', 'nonsense', '@', ' @bob.b , g/sub/q '])).toEqual([
+    { kind: 'user', name: 'alice' },
+    { kind: 'project', name: 'g/p' },
+    { kind: 'user', name: 'bob.b' },
+    { kind: 'project', name: 'g/sub/q' },
+  ])
+  expect(parseFollow(Array.from({ length: 30 }, (_, i) => `@u${i}`)).length).toBe(10)
+  expect(parseFollow(undefined)).toEqual([])
 })

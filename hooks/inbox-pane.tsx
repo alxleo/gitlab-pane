@@ -6,7 +6,7 @@ import { ago, shortTitle } from './format'
 import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
 import { reported } from './failures'
-import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } from './inbox'
+import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleHere, toggleRule } from './inbox'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
 
@@ -41,7 +41,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const { Box, Text, Button, Link } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
-  const { inbox, sections: ruled, problem, open, cards, now } = await inboxView($)
+  const { inbox, isHere, sections: ruled, problem, open, cards, now } = await inboxView($)
   const since = (iso: string) => {
     const age = ago(iso, now)
     return age === 'now' ? 'just now' : `${age} ago`
@@ -107,7 +107,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
    */
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
-    const counted = KINDS.filter(kind => (item.counts[kind] ?? 0) > 0).map(kind => `${item.counts[kind]} ${VERB[kind].word}`)
+    const counted = KINDS.filter(kind => (item.counts[kind] ?? 0) > 0).map(kind => `${item.counts[kind]}${item.isCapped ? '+' : ''} ${VERB[kind].word}`)
     const about = [
       bang > 0 ? item.ref.slice(0, bang) : '',
       item.isMine ? '' : item.author,
@@ -144,7 +144,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           </Box>
           {item.unseen > 0 && (
             <Box flexShrink={0}>
-              <Text color="warning">{`${item.unseen} new`}</Text>
+              <Text color="warning">{`${item.unseen}${item.isCapped ? '+' : ''} new`}</Text>
             </Box>
           )}
           <Box flexShrink={0}>
@@ -249,6 +249,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         <Text color={problem !== null ? 'warning' : undefined} dimColor={problem === null} size="footnote">
           {status}
         </Text>
+        <Button key="inbox-here" plain label={isHere ? '● here' : '○ here'} onPress={() => toggleHere($)} />
         <Button
           key="inbox-sync"
           plain
@@ -265,7 +266,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       {quiet.length > 0 && (
         <Text dimColor wrap="truncate-end">
           {`Nothing else in: ${quiet
-            .map(section => (section.isAllAbove ? `${section.title} (all above)` : section.title))
+            .map(section => (isFilled(section.note) ? `${section.title} (${section.note})` : section.isAllAbove ? `${section.title} (all above)` : section.title))
             .join(', ')}`}
         </Text>
       )}

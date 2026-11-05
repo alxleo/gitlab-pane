@@ -387,7 +387,7 @@ test('what the outside tools print is checked, not cast', async () => {
   expect(readSnapshot({ at: 1, hosts: { h: { user: 'u', failure: { kind: 'nope', message: 'm' } } }, mrs: [null, { host: 'h', path: 'g/p', iid: 1, signals: [{ kind: 'merged', at: 5 }, { kind: 'nope', at: 6 }, { kind: 'comment', at: 'x' }] }, { host: 'h' }] })).toEqual({
     at: 1,
     hosts: { h: { user: 'u', failure: { kind: 'unknown', message: 'm' } } },
-    mrs: [{ host: 'h', path: 'g/p', iid: 1, title: '', url: '', author: '', authorName: '', isMine: false, state: '', isDraft: false, inQueue: false, signals: [{ kind: 'merged', actor: '', at: 5, note: null, excerpt: '' }] }],
+    mrs: [{ host: 'h', path: 'g/p', iid: 1, title: '', url: '', author: '', authorName: '', isMine: false, state: '', isDraft: false, inQueue: false, isFollowed: false, cutoff: null, signals: [{ kind: 'merged', actor: '', at: 5, note: null, excerpt: '' }] }],
   })
   expect(readSnapshot({ at: 'soon', hosts: {}, mrs: [] })).toBeNull()
   expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })

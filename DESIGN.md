@@ -67,7 +67,7 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 
 Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`): ✗ requested changes, ↺ withdrew approval, ✓ approved, ● reviewed, 💬 commented, @ mentioned you, ? asked for a review, ↑ pushed, ◆ merged, ✗ pipeline failed, ⚠ can't merge. The last two have no one to name. A card with news has an amber border and says `N new`; one without is grey (a review you were asked for stays, grey, until you approve it).
 
-The tabs are the five rules of `hooks/inbox-rules.ts`: Review requested, Mentions, Build failed, Can't merge, On my MRs. An MR shows once, under the first that has it. ✓ marks seen on this machine only; GitLab is not told.
+The tabs are the six rules of `hooks/inbox-rules.ts`: Review requested, Mentions, Build failed, Can't merge, On my MRs, Following (the MRs of the people and projects the `inboxFollow` setting names). An MR shows once, under the first that has it. ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project. A count with a `+` (`3+ new`) is a lower bound: GitLab sent only the latest 30 notes of that MR and the mark is older than the oldest. A tab with nothing says why when it can, in the line below the tabs: no token for a host, no repo for `here`, nobody followed.
 
 ## Text
 

@@ -60,6 +60,8 @@ function mrOf(raw: Record<string, unknown>): InboxMr[] {
           state: text(raw.state),
           isDraft: raw.isDraft === true,
           inQueue: raw.inQueue === true,
+          isFollowed: raw.isFollowed === true,
+          cutoff: typeof raw.cutoff === 'number' ? raw.cutoff : null,
           signals: records(raw.signals).flatMap(signalOf),
         },
       ]

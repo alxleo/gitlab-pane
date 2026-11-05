@@ -3,8 +3,8 @@ import type { On } from 'claude-code'
 
 import { shortHash as hashOf } from '../hooks/identity'
 import { NOW, mergeStatuses } from './fixtures'
-import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, queued, system, todo } from './inbox_fixtures'
-import type { Fields, Person, World } from './inbox_fixtures'
+import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, open, queued, system, todo } from './inbox_fixtures'
+import type { Fields, Note, Person, World } from './inbox_fixtures'
 import { fakeGitLab, ran } from './gitlab_host'
 
 const PANE = {
@@ -41,7 +41,7 @@ function memory(on: On): Map<string, unknown> {
 }
 
 /** The host with `world` behind it; every call is in `requests`. The token comes from the environment. */
-function engine(on: On, world: World, hasToken = true) {
+function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE) {
   const store = memory(on)
   const gitlab = fakeGitLab(
     on,
@@ -54,7 +54,7 @@ function engine(on: On, world: World, hasToken = true) {
     { env: hasToken ? { GITLAB_TOKEN: TOKEN } : {}, isDown: () => world.isDown }
   )
   on('process.run', (_, e) => gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`))
-  on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
+  on('session.repo', () => ({ value: remote === null ? null : { root: '/r', remote, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -359,7 +359,7 @@ test('/mrs hands the briefing to the model, out of the transcript, with other pe
 
   const usage = await $.command.run(typed(''))
   expect(usage.text).toMatch(/^Usage: \/mrs/)
-  expect(usage.text).toContain('Rules: review-requested (1), mentions (0), build-failed (0), cant-merge (0), on-my-mrs (1)')
+  expect(usage.text).toContain('Rules: review-requested (1), mentions (0), build-failed (0), cant-merge (0), on-my-mrs (1), following (0)')
   expect(usage.context).toBeUndefined()
 })
 
@@ -378,7 +378,7 @@ test('/mrs --rule briefs the MRs a rule shows, and says so for a rule that is no
   expect(answer.context?.[0]).not.toContain('## g/p!2')
   expect((await $.command.run(typed('--rule Review requested'))).text).toMatch(/^Briefed 1 MR \(/)
   expect((await $.command.run(typed('--rule nope'))).text).toBe(
-    '/mrs: nope is not a rule. Rules: review-requested, mentions, build-failed, cant-merge, on-my-mrs'
+    '/mrs: nope is not a rule. Rules: review-requested, mentions, build-failed, cant-merge, on-my-mrs, following'
   )
   expect((await $.command.run(typed('--rule mentions'))).text).toBe('/mrs: nothing in Mentions right now')
   await ui.unmount()
@@ -411,9 +411,9 @@ test('a full inbox and each rule open in turn stay inside the 100,000 characters
     webUrl: `https://gitlab.com/${group}/repo-${'x'.repeat(20)}/-/merge_requests/${iid}`,
   })
   const notes = (base: number) => Array.from({ length: 6 }, (_, k) => comment(base + k, `reviewer.${'y'.repeat(20)}${k}`, 30 + k, 'x'.repeat(160)))
-  world.queue = Array.from({ length: 8 }, (_, i) => ({ ...wide(100 + i, ALICE), notes: { nodes: [] }, approvedBy: { nodes: [] } }))
+  world.queue = Array.from({ length: 8 }, (_, i) => ({ ...wide(100 + i, ALICE), notes: { pageInfo: { hasPreviousPage: false }, nodes: [] }, approvedBy: { nodes: [] } }))
   world.todos = Array.from({ length: 40 }, (_, i) => todo('mentioned', wide(200 + i, ALICE), `dave.${'z'.repeat(20)}`, 20 + i, 'x'.repeat(160)))
-  world.opened = Array.from({ length: 10 }, (_, i) => ({ ...wide(300 + i, ME), notes: { nodes: notes(1000 + i * 10) } }))
+  world.opened = Array.from({ length: 10 }, (_, i) => ({ ...wide(300 + i, ME), notes: { pageInfo: { hasPreviousPage: false }, nodes: notes(1000 + i * 10) } }))
   engine(on, world)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -463,5 +463,89 @@ test('an actor who wrote an MR in the inbox has the initials of their name, like
   ])
   expect(await ui.find({ type: 'Text', text: '? Ines asked for a review' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '↑ zed99 pushed' })).toBeDefined()
+  await ui.unmount()
+})
+
+// ---- here, following, the cut --------------------------------------------------------------------------------------------
+
+test('"here" narrows the Inbox to the session\'s project and back', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = emptyWorld()
+  world.todos = [todo('mentioned', fields(4), 'dave', 30, '@me look'), todo('mentioned', fields(5, ALICE, { project: { fullPath: 'g/other' }, webUrl: 'https://gitlab.com/g/other/-/merge_requests/5' }), 'erin', 20, '@me too')]
+  engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
+  expect(JSON.stringify(await ui.drawn())).toContain('"Mentions · 2 new"')
+  await ui.press({ key: 'inbox-here' })
+  expect(JSON.stringify(await ui.drawn())).toContain('"Mentions · 1 new"')
+  expect((await ui.find({ type: 'Button', key: 'inbox-here' }))?.props.label).toBe('● here')
+  await ui.press({ key: 'inbox-here' })
+  expect(JSON.stringify(await ui.drawn())).toContain('"Mentions · 2 new"')
+  await ui.unmount()
+})
+
+test('"here" in a session with no repo says so in every section', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, busyWorld(), true, null)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
+  await ui.press({ key: 'inbox-here' })
+  expect((await ui.find({ type: 'Text', text: /^Nothing else in: Review requested \(this session has no GitLab repo\)/ }))).toBeDefined()
+  await ui.unmount()
+})
+
+test('the Following tab lists the MRs of the people and projects the setting names, and reads two small queries for each', { options: { inboxFollow: ['@frank', 'g/lib'] } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = emptyWorld()
+  const theirs = (iid: number, notes: Note[]) => ({ ...open(iid, notes, { username: 'frank', name: 'Frank' }) })
+  world.followed = {
+    '@frank': { opened: { nodes: [theirs(30, [comment(41, 'gina', 15, 'is this safe?')])] }, merged: { nodes: [] } },
+    'g/lib': { opened: { nodes: [theirs(31, [system(42, 'hal', 25, 'approved')])] }, merged: { nodes: [] } },
+  }
+  const gitlab = engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(gitlab.requests).toEqual(expect.arrayContaining(['gitlab.com InboxFollowUser', 'gitlab.com InboxFollowProject']))
+  await ui.press({ key: 'tab-inbox' })
+  expect(JSON.stringify(await ui.drawn())).toContain('"Following · 2 new"')
+  await ui.press({ key: 'inbox-rule-following' })
+  expect(await ui.find({ type: 'Text', text: '💬 gina commented' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '✓ hal approved' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('with nobody followed the Following tab says how to follow', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, busyWorld())
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
+  expect(await ui.find({ type: 'Text', text: /Following \(name people or projects in the inboxFollow setting\)/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an MR with more notes than GitLab sent counts them as at least, and says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = emptyWorld()
+  world.opened = [open(1, [comment(51, 'carol', 20, 'one'), comment(52, 'carol', 21, 'two')], ME, true)]
+  engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
+  await ui.press({ key: 'inbox-rule-on-my-mrs' })
+  expect(await ui.find({ type: 'Text', text: '2+ new' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'p · 2+ commented' })).toBeDefined()
   await ui.unmount()
 })

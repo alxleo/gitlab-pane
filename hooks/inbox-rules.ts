@@ -19,22 +19,33 @@ export type Rule = {
   kinds: readonly InboxKind[]
   scope: Scope
   isQueue: boolean
+  /** Only MRs of the people and projects the `inboxFollow` setting names. */
+  isFollowing: boolean
 }
 
 /**
  * The rules, in the order an MR is given to the first that has it. What blocks a merge comes before what is said about it.
  */
 export const RULES: readonly Rule[] = [
-  { name: 'review-requested', title: 'Review requested', kinds: ['review_requested', 'pushed'], scope: 'others', isQueue: true },
-  { name: 'mentions', title: 'Mentions', kinds: ['mentioned'], scope: 'any', isQueue: false },
-  { name: 'build-failed', title: 'Build failed', kinds: ['build_failed'], scope: 'any', isQueue: false },
-  { name: 'cant-merge', title: "Can't merge", kinds: ['unmergeable'], scope: 'any', isQueue: false },
+  { name: 'review-requested', title: 'Review requested', kinds: ['review_requested', 'pushed'], scope: 'others', isQueue: true, isFollowing: false },
+  { name: 'mentions', title: 'Mentions', kinds: ['mentioned'], scope: 'any', isQueue: false, isFollowing: false },
+  { name: 'build-failed', title: 'Build failed', kinds: ['build_failed'], scope: 'any', isQueue: false, isFollowing: false },
+  { name: 'cant-merge', title: "Can't merge", kinds: ['unmergeable'], scope: 'any', isQueue: false, isFollowing: false },
   {
     name: 'on-my-mrs',
     title: 'On my MRs',
     kinds: ['changes_requested', 'unapproved', 'approved', 'review', 'comment', 'pushed', 'merged'],
     scope: 'mine',
     isQueue: false,
+    isFollowing: false,
+  },
+  {
+    name: 'following',
+    title: 'Following',
+    kinds: ['changes_requested', 'unapproved', 'approved', 'review', 'comment', 'pushed', 'merged'],
+    scope: 'others',
+    isQueue: false,
+    isFollowing: true,
   },
 ]
 
@@ -97,16 +108,48 @@ const rank = (isFirst: boolean, at: number): number => (isFirst ? 2 ** 42 : 0) +
 const isoOf = (at: number): string => new Date(at).toISOString()
 
 /** Whether a rule looks at this MR at all. */
-const isInScope = (rule: Rule, mr: InboxMr): boolean => rule.scope === 'any' || (rule.scope === 'mine') === mr.isMine
+const isInScope = (rule: Rule, mr: InboxMr): boolean =>
+  (rule.scope === 'any' || (rule.scope === 'mine') === mr.isMine) &&
+  (!rule.isFollowing || mr.isFollowed) &&
+  // A queue rule is about review: an MR is in it for being asked, not for what happens on an MR followed.
+  (!rule.isQueue || mr.inQueue || mr.signals.some(signal => signal.kind === 'review_requested'))
+
+/** A project on a host. */
+export type Repo = { host: string; path: string }
+
+/** What narrows the sections to the session's repo, and what explains an empty one. */
+export type Context = {
+  /** The Inbox's "here" switch, and the session's repo while it has one. */
+  here: { isOn: boolean; repo: Repo | null }
+  /** How many entries `inboxFollow` names. */
+  followCount: number
+}
+
+/** Every repo, nobody followed. */
+export const EVERYWHERE: Context = { here: { isOn: false, repo: null }, followCount: 0 }
+
+/** Why a rule that shows nothing shows nothing, when there is a reason to give. */
+function noteOf(rule: Rule, snapshot: InboxSnapshot, context: Context): string | null {
+  const tokenless = Object.entries(snapshot.hosts).flatMap(([host, one]) => (one.failure?.kind === 'no-token' ? [host] : []))
+  if (context.here.isOn && context.here.repo === null) {
+    return 'this session has no GitLab repo'
+  }
+  if (tokenless.length > 0) {
+    return `no token for ${tokenless.join(', ')}`
+  }
+  return rule.isFollowing && context.followCount === 0 ? 'name people or projects in the inboxFollow setting' : null
+}
 
 /**
  * The sections the rules make of a snapshot, given when each MR was marked seen (by seen key). Within a section an MR with
  * news comes first, the newest first; a queue keeps the MRs without news after them.
  */
-export function sectionsOf(snapshot: InboxSnapshot, seen: Readonly<Record<string, number>>): InboxSection[] {
+export function sectionsOf(snapshot: InboxSnapshot, seen: Readonly<Record<string, number>>, context: Context = EVERYWHERE): InboxSection[] {
+  const { repo } = context.here
+  const mrs = !context.here.isOn ? snapshot.mrs : snapshot.mrs.filter(mr => repo !== null && mr.host === repo.host && mr.path === repo.path)
   const refs = refsOf(snapshot.mrs)
   return RULES.map(rule => {
-    const items = snapshot.mrs.flatMap((mr): { item: InboxItem; latest: number }[] => {
+    const items = mrs.flatMap((mr): { item: InboxItem; latest: number }[] => {
       if (!isInScope(rule, mr)) {
         return []
       }
@@ -135,6 +178,7 @@ export function sectionsOf(snapshot: InboxSnapshot, seen: Readonly<Record<string
             state: mr.state,
             isDraft: mr.isDraft,
             unseen: fresh.length,
+            isCapped: mr.cutoff !== null && mr.cutoff > since,
             counts,
             activity: counted.slice(0, ACTIVITY_SHOWN).map(
               (signal): InboxActivity => ({
@@ -150,7 +194,7 @@ export function sectionsOf(snapshot: InboxSnapshot, seen: Readonly<Record<string
       ]
     })
     items.sort((a, b) => rank(b.item.unseen > 0, b.latest) - rank(a.item.unseen > 0, a.latest))
-    return { rule: rule.name, title: rule.title, items: items.map(one => one.item) }
+    return { rule: rule.name, title: rule.title, note: items.length === 0 ? noteOf(rule, snapshot, context) : null, items: items.map(one => one.item) }
   })
 }
 

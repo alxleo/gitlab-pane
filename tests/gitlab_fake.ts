@@ -89,6 +89,10 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, answers.InboxQueue !== undefined ? answers.InboxQueue({}) : NOTHING.InboxQueue)
     case 'InboxAuthored':
       return reply(200, answers.InboxAuthored !== undefined ? answers.InboxAuthored({ since: need(variables, 'since') }) : NOTHING.InboxAuthored)
+    case 'InboxFollowUser':
+      return reply(200, answers.InboxFollowUser !== undefined ? answers.InboxFollowUser({ username: need(variables, 'username'), since: need(variables, 'since') }) : { data: { currentUser: { username: 'me' }, user: null } })
+    case 'InboxFollowProject':
+      return reply(200, answers.InboxFollowProject !== undefined ? answers.InboxFollowProject({ path: need(variables, 'path'), since: need(variables, 'since') }) : { data: { currentUser: { username: 'me' }, project: null } })
     case 'InboxBrief':
       return reply(200, set(answers.InboxBrief, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     default:

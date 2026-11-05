@@ -1,6 +1,6 @@
 # gitlab-pane
 
-A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions. It shows your open merge requests: each pipeline's stages and run time against the repo's usual, what blocks the merge, and a face for each reviewer or commenter that opens their comments on a click. A second tab, Inbox, lists what needs you, read from GitLab itself: reviews asked of you, mentions, failed builds, MRs that cannot merge, and what reviewers did on your MRs.
+A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions. It shows your open merge requests: each pipeline's stages and run time against the repo's usual, what blocks the merge, and a face for each reviewer or commenter that opens their comments on a click. A second tab, Inbox, lists what needs you, read from GitLab itself: reviews asked of you, mentions, failed builds, MRs that cannot merge, and what reviewers did on your MRs; plus the MRs of people and projects you follow. `● here` narrows it to the session's project.
 
 MRs pinned to a session sit on top: the ones Claude pins with `watch_mr` and the ones opened from the session with `glab mr create`. An MR opened from the session also wakes it when its pipeline fails or it can merge.
 
@@ -63,6 +63,7 @@ Claude Code installs a new copy only when the plugin's version has changed. To g
 |---|---|
 | `gitlabHosts` | The GitLab hosts to read, default `gitlab.com`; add self-managed ones such as `git.example.com`. The first is home: its projects show without the host. Merge request addresses on any of them can be pinned. |
 | `gitlabTokens` | Sensitive; the last place a token is looked for, as `host=token` entries (a bare token is for the first host). It needs the `read_api` scope. |
+| `inboxFollow` | People and projects whose MRs the Inbox's Following tab lists: `@username` or `group/project`, up to ten, on every host. Each costs two small queries per host a minute. Empty leaves the tab empty. |
 | `jiraUrl` | Your Jira address, such as `https://example.atlassian.net`. Ticket keys in MR titles link there, and their details are read with `acli`. Empty leaves Jira out: keys show as plain text. |
 
 Set it with `/plugin configure gitlab-ci` in a terminal session, or:
@@ -81,7 +82,7 @@ The pane changes nothing on GitLab or Jira. A host's token is the first of: `GIT
 | `glab config get token --host <host>` | once per host per session, when no environment token applies | the token `glab` holds | nothing |
 | `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (a configured host or Gravatar), https only, no token sent; the engine's HTTP returns text, not bytes | nothing; the pictures are kept in the plugin's own store |
 | `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
-| HTTPS POST to `https://<host>/api/graphql` for each configured host, the Inbox's three queries | every minute while a pane is drawn | your pending to-dos on MRs (review requested, mentioned, build failed, unmergeable, review submitted), the MRs you are a reviewer of, your open MRs with their latest notes, and the ones merged lately; as you | nothing on GitLab: queries only. **✓ mark seen** is kept in the plugin's own store on this machine, one small value per MR, and does not mark a to-do done on GitLab |
+| HTTPS POST to `https://<host>/api/graphql` for each configured host, the Inbox queries | every minute while a pane is drawn | your pending to-dos on MRs (review requested, mentioned, build failed, unmergeable, review submitted), the MRs you are a reviewer of, your open MRs with their latest notes, the ones merged lately, and the same for each person or project in `inboxFollow`; as you | nothing on GitLab: queries only. **✓ mark seen** is kept in the plugin's own store on this machine, one small value per MR, and does not mark a to-do done on GitLab |
 
 What reaches Claude, and so the model provider, from GitLab:
 

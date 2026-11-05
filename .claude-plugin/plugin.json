@@ -25,6 +25,13 @@
       "description": "Last resort when neither GITLAB_TOKEN nor glab holds a token for a host: one host=token per entry, such as git.example.com=glpat-…; a bare token is for the first host. A token needs the read_api scope.",
       "default": []
     },
+    "inboxFollow": {
+      "type": "string",
+      "multiple": true,
+      "title": "Inbox: follow",
+      "description": "People and projects whose merge requests the Inbox's Following tab lists: @username or group/project, up to ten. Each costs two small queries per host a minute. Empty leaves the tab empty.",
+      "default": []
+    },
     "jiraUrl": {
       "type": "string",
       "title": "Jira site",

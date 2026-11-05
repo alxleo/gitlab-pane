@@ -5,21 +5,23 @@ import { readHosts } from './data'
 import { isEqual } from './equal'
 import { Failure, kindOf } from './failure'
 import { clear, quietly, record } from './failures'
-import { inboxAuthoredQuery, inboxBriefQuery, inboxQueueQuery, inboxTodosQuery } from './gitlab-documents'
+import { inboxAuthoredQuery, inboxBriefQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './gitlab-documents'
 import type { RawResponse } from './gitlab-documents'
 import { ask } from './graphql'
 import { briefing, readBrief } from './inbox-brief'
 import type { Brief } from './inbox-brief'
-import { authoredMrs, combine, queueMrs, todoMrs } from './inbox-gitlab'
+import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from './inbox-gitlab'
 import type { Found } from './inbox-gitlab'
+import { parseFollow } from './inbox-follow'
 import { isRefTo, parseRef, parseRemote } from './inbox-refs'
 import { HORIZON_MS, RULES, bounded, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
+import type { Context } from './inbox-rules'
 import { NO_SNAPSHOT, carryOver, problemOf } from './inbox-snapshot'
 import { cardKey } from './hosts'
 import { joined } from './in-flight'
 import { parseMrUrl } from './mr-url'
 
-import type { InboxHost, InboxMr, InboxSnapshot, InboxState } from '../types'
+import type { InboxFollow, InboxHost, InboxMr, InboxSnapshot, InboxState } from '../types'
 
 // GitLab owns the data, the rules are inbox-rules.ts, and this module only asks, keeps and marks. What the pane draws is
 // the rules applied to the last snapshot and the marks, so a mark shows at once and needs no read.
@@ -31,6 +33,28 @@ const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
 } satisfies InboxState)
 const inboxOpenAtom = atom({ plugin: 'gitlab-ci', key: 'inboxOpen' } as const, [])
 const inboxCardsAtom = atom({ plugin: 'gitlab-ci', key: 'inboxCards' } as const, [])
+const inboxHereAtom = atom({ plugin: 'gitlab-ci', key: 'inboxHere' } as const, false)
+const inboxFollowAtom = atom({ plugin: 'gitlab-ci', key: 'inboxFollow' } as const, [])
+
+/** A mod loading takes the `inboxFollow` setting: the people and projects the Following rule lists. */
+export async function setFollow($: EngineInterface, setting: unknown): Promise<void> {
+  await update($, inboxFollowAtom, () => parseFollow(setting))
+}
+
+/**
+ * What narrows and explains the sections: the "here" switch with the session's repo while it has one, and how many
+ * entries are followed. Asks the session for its repo only while the switch is on.
+ */
+async function contextOf($: EngineInterface): Promise<Context> {
+  const [isOn, follows] = await Promise.all([read($, inboxHereAtom), read($, inboxFollowAtom)])
+  const remote = isOn ? ((await $.session.repo().catch(() => null))?.remote ?? '') : ''
+  return { here: { isOn, repo: parseRemote(remote) }, followCount: follows.length }
+}
+
+/** Switches the Inbox between every repo and the session's own. */
+export function toggleHere($: EngineInterface): void {
+  quietly($, update($, inboxHereAtom, isOn => !isOn), 'inbox')
+}
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -55,15 +79,20 @@ async function tried(label: string, work: Promise<Found>): Promise<Tried> {
 }
 
 /**
- * One host's three documents, asked at once: a host that times one out loses only that one. What came is kept; why the
+ * One host's documents (three, and two more per followed person or project), asked at once: a host that times one out loses only that one. What came is kept; why the
  * rest did not is the failure, with the document named unless every one failed the same way.
  */
-async function readHost($: EngineInterface, host: string, now: number): Promise<HostRead> {
+async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[]): Promise<HostRead> {
   const since = new Date(now - HORIZON_MS).toISOString()
   const results = await Promise.all([
     tried('to-dos', ask($, host, inboxTodosQuery()).then(answer => todoMrs(host, dataOf(answer)))),
     tried('review queue', ask($, host, inboxQueueQuery()).then(answer => queueMrs(host, dataOf(answer), now))),
     tried('your MRs', ask($, host, inboxAuthoredQuery(since)).then(answer => authoredMrs(host, dataOf(answer), now))),
+    ...follows.map(follow =>
+      follow.kind === 'user'
+        ? tried(`@${follow.name}`, ask($, host, inboxFollowUserQuery(follow.name, since)).then(answer => followedUserMrs(host, dataOf(answer), now)))
+        : tried(follow.name, ask($, host, inboxFollowProjectQuery(follow.name, since)).then(answer => followedProjectMrs(host, dataOf(answer), now)))
+    ),
   ])
   const founds = results.flatMap(one => ('found' in one ? [one.found] : []))
   const failed = results.flatMap(one => ('error' in one ? [{ label: one.label, error: one.error }] : []))
@@ -85,8 +114,8 @@ async function readHost($: EngineInterface, host: string, now: number): Promise<
  * snapshot, not thrown, so a host that is down leaves the rest.
  */
 export async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
-  const now = await $.clock.now()
-  const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now)) })))
+  const [now, follows] = await Promise.all([$.clock.now(), read($, inboxFollowAtom)])
+  const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows)) })))
   const snapshot: InboxSnapshot = {
     at: now,
     hosts: Object.fromEntries(reads.map(one => [one.host, { user: one.found.user, failure: one.failure }])),
@@ -143,17 +172,18 @@ export async function inboxTick($: EngineInterface): Promise<void> {
 /** How many MRs have news, as the inbox counts them: one MR counts once, whichever rules list it. */
 export async function inboxNews($: EngineInterface): Promise<number> {
   const { snapshot, seen } = await read($, inboxAtom)
-  return new Set(sectionsOf(snapshot, seen).flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
+  return new Set(sectionsOf(snapshot, seen, await contextOf($)).flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
 }
 
 export async function inboxView($: EngineInterface) {
-  const [inbox, open, cards, now] = await Promise.all([
+  const [inbox, open, cards, now, context] = await Promise.all([
     read($, inboxAtom),
     read($, inboxOpenAtom),
     read($, inboxCardsAtom),
     $.clock.now(),
+    contextOf($),
   ])
-  return { inbox, sections: sectionsOf(inbox.snapshot, inbox.seen), problem: problemOf(inbox.snapshot), open, cards, now }
+  return { inbox, isHere: context.here.isOn, sections: sectionsOf(inbox.snapshot, inbox.seen, context), problem: problemOf(inbox.snapshot), open, cards, now }
 }
 
 /** Opens one rule, as a tab, closing the one open before; the open one closes. */
@@ -182,7 +212,7 @@ export async function discussRule($: EngineInterface, rule: string): Promise<voi
  */
 export async function markSeen($: EngineInterface, target: { key: string } | { rule: string }): Promise<void> {
   const { snapshot, seen } = await read($, inboxAtom)
-  const sections = sectionsOf(snapshot, seen)
+  const sections = sectionsOf(snapshot, seen, await contextOf($))
   const keys = new Set('key' in target ? [target.key] : (sections.find(section => section.rule === target.rule)?.items ?? []).map(item => item.key))
   const marks = snapshot.mrs.flatMap(mr => (keys.has(cardKey(mr.host, mr.path, mr.iid)) ? (seenKeyOf(snapshot, mr) ?? []) : []))
   const at = await $.clock.now()
@@ -242,8 +272,8 @@ async function briefOf($: EngineInterface, target: Wanted): Promise<Brief | null
 }
 
 /** The MRs a rule shows, as what to ask GitLab for; at most the briefing carries. */
-function ruleTargets(name: string, snapshot: InboxSnapshot, seen: Readonly<Record<string, number>>): Wanted[] {
-  const items = sectionsOf(snapshot, seen).find(section => section.rule === name)?.items ?? []
+function ruleTargets(name: string, snapshot: InboxSnapshot, seen: Readonly<Record<string, number>>, context: Context): Wanted[] {
+  const items = sectionsOf(snapshot, seen, context).find(section => section.rule === name)?.items ?? []
   return items
     .slice(0, BRIEF_MOST)
     .flatMap(item => snapshot.mrs.filter(mr => cardKey(mr.host, mr.path, mr.iid) === item.key))
@@ -254,8 +284,9 @@ function ruleTargets(name: string, snapshot: InboxSnapshot, seen: Readonly<Recor
 export async function briefCommand($: EngineInterface, input: string): Promise<{ text: string; context?: string[] }> {
   const args = input.trim().split(/\s+/).filter(Boolean)
   const { snapshot, seen } = await read($, inboxAtom)
+  const context = await contextOf($)
   if (args.length === 0) {
-    const rules = sectionsOf(snapshot, seen).map(section => `${section.rule} (${section.items.length})`).join(', ')
+    const rules = sectionsOf(snapshot, seen, context).map(section => `${section.rule} (${section.items.length})`).join(', ')
     return { text: `${USAGE}\nRules: ${rules}` }
   }
   const hosts = await readHosts($)
@@ -263,7 +294,7 @@ export async function briefCommand($: EngineInterface, input: string): Promise<{
   if (args[0] === '--rule' && rule === undefined) {
     return { text: `/mrs: ${args.slice(1).join(' ')} is not a rule. Rules: ${RULES.map(one => one.name).join(', ')}` }
   }
-  const asked = rule === undefined ? await Promise.all(args.slice(0, BRIEF_MOST).map(arg => wanted($, arg, hosts, snapshot.mrs))) : ruleTargets(rule.name, snapshot, seen)
+  const asked = rule === undefined ? await Promise.all(args.slice(0, BRIEF_MOST).map(arg => wanted($, arg, hosts, snapshot.mrs))) : ruleTargets(rule.name, snapshot, seen, context)
   const stray = asked.find((one): one is string => typeof one === 'string')
   if (stray !== undefined) {
     return { text: `/mrs: ${stray}` }

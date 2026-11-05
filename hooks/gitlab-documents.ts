@@ -6,6 +6,10 @@ import type {
   InboxAuthoredQuery,
   InboxAuthoredQueryVariables,
   InboxBriefQuery,
+  InboxFollowProjectQuery,
+  InboxFollowProjectQueryVariables,
+  InboxFollowUserQuery,
+  InboxFollowUserQueryVariables,
   InboxBriefQueryVariables,
   InboxQueueQuery,
   InboxTodosQuery,
@@ -177,7 +181,7 @@ const INBOX_QUEUE = /* GraphQL */ `
         nodes {
           ...InboxMrFields
           approvedBy { nodes { username } }
-          notes(last: 30) { nodes { ...InboxNoteFields } }
+          notes(last: 30) { pageInfo { hasPreviousPage } nodes { ...InboxNoteFields } }
         }
       }
     }
@@ -192,10 +196,52 @@ const INBOX_AUTHORED = /* GraphQL */ `
       opened: authoredMergeRequests(state: opened, first: 30, sort: UPDATED_DESC) {
         nodes {
           ...InboxMrFields
-          notes(last: 30) { nodes { ...InboxNoteFields } }
+          notes(last: 30) { pageInfo { hasPreviousPage } nodes { ...InboxNoteFields } }
         }
       }
       merged: authoredMergeRequests(state: merged, mergedAfter: $since, first: 10, sort: MERGED_AT_DESC) {
+        nodes {
+          ...InboxMrFields
+          ...InboxMergedByFields
+        }
+      }
+    }
+  }
+`
+
+// The MRs of a person or a project the inboxFollow setting names: the open ones with their latest notes, and the ones merged
+// since a date. A user or project the host does not know answers null, which is no MRs, not an error.
+const INBOX_FOLLOW_USER = /* GraphQL */ `
+  query InboxFollowUser($username: String!, $since: Time!) {
+    currentUser { username }
+    user(username: $username) {
+      opened: authoredMergeRequests(state: opened, first: 10, sort: UPDATED_DESC) {
+        nodes {
+          ...InboxMrFields
+          notes(last: 30) { pageInfo { hasPreviousPage } nodes { ...InboxNoteFields } }
+        }
+      }
+      merged: authoredMergeRequests(state: merged, mergedAfter: $since, first: 5, sort: MERGED_AT_DESC) {
+        nodes {
+          ...InboxMrFields
+          ...InboxMergedByFields
+        }
+      }
+    }
+  }
+`
+
+const INBOX_FOLLOW_PROJECT = /* GraphQL */ `
+  query InboxFollowProject($path: ID!, $since: Time!) {
+    currentUser { username }
+    project(fullPath: $path) {
+      opened: mergeRequests(state: opened, first: 10, sort: UPDATED_DESC) {
+        nodes {
+          ...InboxMrFields
+          notes(last: 30) { pageInfo { hasPreviousPage } nodes { ...InboxNoteFields } }
+        }
+      }
+      merged: mergeRequests(state: merged, mergedAfter: $since, first: 5, sort: MERGED_AT_DESC) {
         nodes {
           ...InboxMrFields
           ...InboxMergedByFields
@@ -245,6 +291,8 @@ export type Operations = {
   InboxQueue: { variables: Record<string, never>; data: InboxQueueQuery }
   InboxAuthored: { variables: InboxAuthoredQueryVariables; data: InboxAuthoredQuery }
   InboxBrief: { variables: InboxBriefQueryVariables; data: InboxBriefQuery }
+  InboxFollowUser: { variables: InboxFollowUserQueryVariables; data: InboxFollowUserQuery }
+  InboxFollowProject: { variables: InboxFollowProjectQueryVariables; data: InboxFollowProjectQuery }
 }
 
 /** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
@@ -260,6 +308,8 @@ export const DOCUMENTS = {
   InboxQueue: INBOX_QUEUE + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT,
   InboxAuthored: INBOX_AUTHORED + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
   InboxBrief: INBOX_BRIEF + INBOX_MR_FRAGMENT,
+  InboxFollowUser: INBOX_FOLLOW_USER + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
+  InboxFollowProject: INBOX_FOLLOW_PROJECT + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
 } as const satisfies Record<keyof Operations, string>
 
 
@@ -315,4 +365,18 @@ export const inboxBriefQuery = (path: string, iid: number): Request<InboxBriefQu
   operation: 'InboxBrief',
   query: DOCUMENTS.InboxBrief,
   variables: { path, iid: String(iid) } satisfies InboxBriefQueryVariables,
+})
+
+/** The open MRs and the ones merged since `since` of a person, `username` without the `@`. */
+export const inboxFollowUserQuery = (username: string, since: string): Request<InboxFollowUserQuery> => ({
+  operation: 'InboxFollowUser',
+  query: DOCUMENTS.InboxFollowUser,
+  variables: { username, since } satisfies InboxFollowUserQueryVariables,
+})
+
+/** The open MRs and the ones merged since `since` of a project. */
+export const inboxFollowProjectQuery = (path: string, since: string): Request<InboxFollowProjectQuery> => ({
+  operation: 'InboxFollowProject',
+  query: DOCUMENTS.InboxFollowProject,
+  variables: { path, since } satisfies InboxFollowProjectQueryVariables,
 })

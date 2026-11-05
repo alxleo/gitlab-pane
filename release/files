@@ -28,6 +28,7 @@ hooks/hosts.ts
 hooks/identity.ts
 hooks/in-flight.ts
 hooks/inbox-brief.ts
+hooks/inbox-follow.ts
 hooks/inbox-gitlab.ts
 hooks/inbox-pane.tsx
 hooks/inbox-refs.ts

@@ -2027,6 +2027,22 @@
         "ofType": null
        }
       }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "pageInfo",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "OBJECT",
+        "name": "PageInfo",
+        "ofType": null
+       }
+      }
      }
     ],
     "inputFields": null,
@@ -2043,6 +2059,33 @@
     "interfaces": null,
     "kind": "SCALAR",
     "name": "NoteID",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
+    "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "hasPreviousPage",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "Boolean",
+        "ofType": null
+       }
+      }
+     }
+    ],
+    "inputFields": null,
+    "interfaces": [],
+    "kind": "OBJECT",
+    "name": "PageInfo",
     "possibleTypes": null
    },
    {
@@ -2314,6 +2357,67 @@
       }
      },
      {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "first",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Int",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "mergedAfter",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Time",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": "created_desc",
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "sort",
+        "type": {
+         "kind": "ENUM",
+         "name": "MergeRequestSort",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "state",
+        "type": {
+         "kind": "ENUM",
+         "name": "MergeRequestState",
+         "ofType": null
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "mergeRequests",
+      "type": {
+       "kind": "OBJECT",
+       "name": "MergeRequestConnection",
+       "ofType": null
+      }
+     },
+     {
       "args": [],
       "deprecationReason": null,
       "description": null,
@@ -2445,6 +2549,31 @@
       "type": {
        "kind": "OBJECT",
        "name": "Project",
+       "ofType": null
+      }
+     },
+     {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "username",
+        "type": {
+         "kind": "SCALAR",
+         "name": "String",
+         "ofType": null
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "user",
+      "type": {
+       "kind": "OBJECT",
+       "name": "UserCore",
        "ofType": null
       }
      }
@@ -2937,6 +3066,67 @@
     "description": null,
     "enumValues": null,
     "fields": [
+     {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "first",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Int",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "mergedAfter",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Time",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": "created_desc",
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "sort",
+        "type": {
+         "kind": "ENUM",
+         "name": "MergeRequestSort",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "state",
+        "type": {
+         "kind": "ENUM",
+         "name": "MergeRequestState",
+         "ofType": null
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "authoredMergeRequests",
+      "type": {
+       "kind": "OBJECT",
+       "name": "MergeRequestConnection",
+       "ofType": null
+      }
+     },
      {
       "args": [],
       "deprecationReason": null,

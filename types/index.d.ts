@@ -250,6 +250,8 @@ export type InboxItem = {
   unseen: number
   /** The rule's unseen activity by kind, such as `{ approved: 2, comment: 3 }`. */
   counts: Partial<Record<InboxKind, number>>
+  /** GitLab's latest notes stopped before the last seen mark, so the counts are lower bounds: drawn `30+`. */
+  isCapped: boolean
   /** The newest few events the rule counts, seen or not. */
   activity: InboxActivity[]
 }
@@ -257,6 +259,8 @@ export type InboxItem = {
 export type InboxSection = {
   rule: string
   title: string
+  /** Why the rule shows nothing, such as a host with no token or a session with no repo; null when there is no such reason. */
+  note: string | null
   items: InboxItem[]
 }
 
@@ -287,6 +291,10 @@ export type InboxMr = {
   isDraft: boolean
   /** You are a reviewer of it and have not approved it. */
   inQueue: boolean
+  /** It is one of the people's or projects' MRs the `inboxFollow` setting names. */
+  isFollowed: boolean
+  /** When the oldest note read was written if GitLab had older ones it did not send, else null: nothing before it is counted. */
+  cutoff: number | null
   /** Newest first. */
   signals: InboxSignal[]
 }
@@ -309,6 +317,9 @@ export type InboxSnapshot = {
   hosts: Record<string, InboxHost>
   mrs: InboxMr[]
 }
+
+/** A person (`user`, without the `@`) or a project (`project`, `group/project`) the `inboxFollow` setting names. */
+export type InboxFollow = { kind: 'user' | 'project'; name: string }
 
 export type InboxState = {
   snapshot: InboxSnapshot
@@ -359,6 +370,10 @@ declare module 'claude-code' {
       inbox: InboxState
       /** The inbox rule drawn open: one at most, as tabs. */
       inboxOpen: string[]
+      /** Whether the inbox shows only the session's own repo. */
+      inboxHere: boolean
+      /** The people and projects the Following rule lists. */
+      inboxFollow: InboxFollow[]
       /** Inbox MRs, by key, opened to their recent activity. */
       inboxCards: string[]
       /** This session's MRs, drawn first and the only ones that wake it. */

@@ -17,7 +17,7 @@ export type Fields = {
   project: { fullPath: string }
 }
 export type Note = { id: string; body: string; system: boolean; createdAt: string; author: Person & { bot: boolean }; systemNoteMetadata: { action: string } | null }
-export type OpenMr = Fields & { notes: { nodes: Note[] } }
+export type OpenMr = Fields & { notes: { pageInfo: { hasPreviousPage: boolean }; nodes: Note[] } }
 export type QueueMr = OpenMr & { approvedBy: { nodes: { username: string }[] } }
 export type MergedMr = Fields & { mergedAt: string; mergeUser: Person }
 export type Todo = { action: TodoActionEnum; createdAt: string; body: string; targetUrl: string | null; author: Person; targetEntity: Fields }
@@ -35,6 +35,8 @@ export type World = {
   queue: QueueMr[]
   opened: OpenMr[]
   merged: MergedMr[]
+  /** What each followed person ('@name') or project holds; one not listed is one the host does not know. */
+  followed: Record<string, { opened: { nodes: OpenMr[] }; merged: { nodes: MergedMr[] } }>
   briefs: Record<string, BriefMr | null>
   isDown: boolean
   /** What the host answers the to-do document instead of its data: an error. */
@@ -73,7 +75,11 @@ export const system = (id: number, who: string, minutes: number, action: string,
   systemNoteMetadata: { action },
 })
 
-export const open = (iid: number, notes: Note[], author: Person = ME): OpenMr => ({ ...fields(iid, author), notes: { nodes: notes } })
+/** An open MR with these notes; `hasMore` says GitLab kept older ones back. */
+export const open = (iid: number, notes: Note[], author: Person = ME, hasMore = false): OpenMr => ({
+  ...fields(iid, author),
+  notes: { pageInfo: { hasPreviousPage: hasMore }, nodes: notes },
+})
 export const queued = (iid: number, notes: Note[] = [], author: Person = ALICE): QueueMr => ({ ...open(iid, notes, author), approvedBy: { nodes: [] } })
 
 export const todo = (action: TodoActionEnum, mr: Fields, who: string, minutes: number, body: string): Todo => ({
@@ -85,7 +91,7 @@ export const todo = (action: TodoActionEnum, mr: Fields, who: string, minutes: n
   targetEntity: mr,
 })
 
-export const emptyWorld = (): World => ({ user: 'me', todos: [], queue: [], opened: [], merged: [], briefs: {}, isDown: false })
+export const emptyWorld = (): World => ({ user: 'me', todos: [], queue: [], opened: [], merged: [], followed: {}, briefs: {}, isDown: false })
 
 /** A review request on p!2, three things said on your p!1: the inbox the first tests read. */
 export const busyWorld = (): World => ({
@@ -121,12 +127,14 @@ export const brief = (iid: number, over: Partial<BriefMr> = {}): BriefMr => ({
 
 
 /** GitLab's answers to the inbox documents (and the brief) as `world` holds them; `isDown` is the network's, set on the fake host. */
-export const inboxAnswers = (world: World): Pick<Answers, 'InboxTodos' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief'> => ({
+export const inboxAnswers = (world: World): Pick<Answers, 'InboxTodos' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject'> => ({
   InboxTodos: () =>
     world.todosError === undefined
       ? { data: { currentUser: { username: world.user, todos: { nodes: world.todos } } } }
       : { errors: [{ message: world.todosError }] },
   InboxQueue: () => ({ data: { currentUser: { username: world.user, reviewRequestedMergeRequests: { nodes: world.queue } } } }),
   InboxAuthored: () => ({ data: { currentUser: { username: world.user, opened: { nodes: world.opened }, merged: { nodes: world.merged } } } }),
+  InboxFollowUser: variables => ({ data: { currentUser: { username: world.user }, user: world.followed[`@${variables.username}`] ?? null } }),
+  InboxFollowProject: variables => ({ data: { currentUser: { username: world.user }, project: world.followed[variables.path] ?? null } }),
   InboxBrief: variables => ({ data: { project: { mergeRequest: world.briefs[`${variables.path}!${variables.iid}`] ?? null } } }),
 })

@@ -3,7 +3,7 @@
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
 import { foreign } from './model-text.ts'
 
-import type { InboxAuthoredQuery, InboxQueueQuery, InboxTodosQuery } from './gitlab.generated.ts'
+import type { InboxAuthoredQuery, InboxFollowProjectQuery, InboxFollowUserQuery, InboxQueueQuery, InboxTodosQuery } from './gitlab.generated.ts'
 import type { InboxKind, InboxMr, InboxSignal } from '../types'
 
 /** What a document gave of the inbox: who is signed in, and the MRs it named. */
@@ -74,10 +74,15 @@ const timeOf = (iso: string | null): number | null => {
 }
 
 /** The kinds the rules count on an MR of this sort: a note of another kind is not kept. */
-const wantedKinds = (isMine: boolean): ReadonlySet<InboxKind> =>
-  new Set(RULES.filter(rule => rule.scope === 'any' || (rule.scope === 'mine') === isMine).flatMap(rule => rule.kinds))
+const wantedKinds = (isMine: boolean, isFollowed: boolean): ReadonlySet<InboxKind> =>
+  new Set(RULES.filter(rule => (rule.scope === 'any' || (rule.scope === 'mine') === isMine) && (!rule.isFollowing || isFollowed)).flatMap(rule => rule.kinds))
 
-function mrOf(host: string, me: string, fields: MrFields, signals: InboxSignal[], inQueue: boolean): InboxMr {
+/** What a document knows of how an MR came to be listed. */
+type Why = { inQueue: boolean; isFollowed: boolean; cutoff: number | null }
+
+const PLAIN: Why = { inQueue: false, isFollowed: false, cutoff: null }
+
+function mrOf(host: string, me: string, fields: MrFields, signals: InboxSignal[], why: Why): InboxMr {
   const path = fields.project.fullPath
   const iid = Number(fields.iid)
   return {
@@ -91,7 +96,7 @@ function mrOf(host: string, me: string, fields: MrFields, signals: InboxSignal[]
     isMine: fields.author?.username === me,
     state: fields.state,
     isDraft: fields.draft,
-    inQueue,
+    ...why,
     signals,
   }
 }
@@ -100,8 +105,8 @@ function mrOf(host: string, me: string, fields: MrFields, signals: InboxSignal[]
  * The events in an MR's latest notes that the rules count, within the horizon, by someone other than the user and not a
  * bot: a comment, an approval, a push. Newest first.
  */
-function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: boolean, now: number): InboxSignal[] {
-  const wanted = wantedKinds(isMine)
+function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: boolean, isFollowed: boolean, now: number): InboxSignal[] {
+  const wanted = wantedKinds(isMine, isFollowed)
   return notes.flatMap((note): InboxSignal[] => {
     const at = timeOf(note?.createdAt ?? null)
     if (note === null || at === null || at < now - HORIZON_MS || note.author === null || note.author.bot || note.author.username === me) {
@@ -115,7 +120,16 @@ function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: 
   })
 }
 
+/** The notes GitLab sent of an MR, and whether it kept older ones back. */
+type Notes = { pageInfo: { hasPreviousPage: boolean }; nodes: readonly (NoteFields | null)[] | null }
+
 const present = <T>(list: readonly (T | null)[] | null | undefined): T[] => (list ?? []).flatMap(one => (one === null ? [] : [one]))
+
+/** When the oldest note sent was written, if GitLab kept older ones back: nothing before it is counted, so counts are lower bounds. */
+function cutoffOf(notes: Notes): number | null {
+  const times = present(notes.nodes).flatMap(note => timeOf(note.createdAt) ?? [])
+  return notes.pageInfo.hasPreviousPage && times.length > 0 ? Math.min(...times) : null
+}
 
 /** The MRs that wait on the user's to-dos, with who asked or said what. */
 export function todoMrs(host: string, data: InboxTodosQuery | null): Found {
@@ -128,7 +142,7 @@ export function todoMrs(host: string, data: InboxTodosQuery | null): Found {
       return []
     }
     const signal: InboxSignal = { kind, actor: todo.author.username.slice(0, ACTOR_ROOM), at, note: noteOfUrl(todo.targetUrl), excerpt: excerptOf(todo.body) }
-    return [mrOf(host, me, target, [signal], false)]
+    return [mrOf(host, me, target, [signal], PLAIN)]
   })
   return { user: me, mrs }
 }
@@ -144,7 +158,7 @@ export function queueMrs(host: string, data: InboxQueueQuery | null, now: number
     }
     // The to-do, when there is one, says better who asked and when; `combine` keeps the newest request.
     const request: InboxSignal = { kind: 'review_requested', actor: (fields.author?.username ?? '').slice(0, ACTOR_ROOM), at: asked, note: null, excerpt: '' }
-    return [mrOf(host, me, fields, [request, ...noteSignals(present(fields.notes.nodes), me, false, now)], true)]
+    return [mrOf(host, me, fields, [request, ...noteSignals(present(fields.notes.nodes), me, false, false, now)], { ...PLAIN, inQueue: true, cutoff: cutoffOf(fields.notes) })]
   })
   return { user: me, mrs }
 }
@@ -155,14 +169,40 @@ export function authoredMrs(host: string, data: InboxAuthoredQuery | null, now: 
   if (me === null) {
     return { user: null, mrs: [] }
   }
-  const opened = present(data?.currentUser?.opened?.nodes).map(fields => mrOf(host, me, fields, noteSignals(present(fields.notes.nodes), me, true, now), false))
+  const opened = present(data?.currentUser?.opened?.nodes).map(fields =>
+    mrOf(host, me, fields, noteSignals(present(fields.notes.nodes), me, true, false, now), { ...PLAIN, cutoff: cutoffOf(fields.notes) })
+  )
   const merged = present(data?.currentUser?.merged?.nodes).flatMap((fields): InboxMr[] => {
     const at = timeOf(fields.mergedAt)
     const by = fields.mergeUser?.username
-    return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], false)]
+    return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], PLAIN)]
   })
   return { user: me, mrs: [...opened, ...merged] }
 }
+
+/** The open and the lately merged MRs of a followed person or project. */
+type Followed = NonNullable<InboxFollowUserQuery['user']>
+
+function followedMrs(host: string, me: string | null, group: Followed | null | undefined, now: number): Found {
+  if (me === null || group === null || group === undefined) {
+    return { user: me, mrs: [] }
+  }
+  const opened = present(group.opened?.nodes).map(fields =>
+    mrOf(host, me, fields, noteSignals(present(fields.notes.nodes), me, fields.author?.username === me, true, now), { ...PLAIN, isFollowed: true, cutoff: cutoffOf(fields.notes) })
+  )
+  const merged = present(group.merged?.nodes).flatMap((fields): InboxMr[] => {
+    const at = timeOf(fields.mergedAt)
+    const by = fields.mergeUser?.username
+    return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], { ...PLAIN, isFollowed: true })]
+  })
+  return { user: me, mrs: [...opened, ...merged] }
+}
+
+/** A followed person's MRs: the open ones with what others did on them lately, and the ones merged by someone else. */
+export const followedUserMrs = (host: string, data: InboxFollowUserQuery | null, now: number): Found => followedMrs(host, data?.currentUser?.username ?? null, data?.user, now)
+
+/** A followed project's MRs, the same. */
+export const followedProjectMrs = (host: string, data: InboxFollowProjectQuery | null, now: number): Found => followedMrs(host, data?.currentUser?.username ?? null, data?.project, now)
 
 /** The same MR as several documents saw it becomes one, with all their signals, newest first; a request counts once. */
 function joined(first: InboxMr, all: readonly InboxMr[]): InboxMr {
@@ -173,6 +213,9 @@ function joined(first: InboxMr, all: readonly InboxMr[]): InboxMr {
     ...first,
     isMine: all.some(mr => mr.isMine),
     inQueue: all.some(mr => mr.inQueue),
+    isFollowed: all.some(mr => mr.isFollowed),
+    // The latest cut is the one that hides most.
+    cutoff: all.reduce<number | null>((latest, mr) => (mr.cutoff === null ? latest : Math.max(latest ?? 0, mr.cutoff)), null),
     signals: signals.filter(signal => {
       const id = `${signal.kind}|${signal.actor}|${signal.at}`
       const isRepeat = seen.has(id) || (signal.kind === 'review_requested' && signal !== request)

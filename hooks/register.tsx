@@ -5,7 +5,7 @@ import { field, isFilled } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { hostsLine, parseHosts } from './hosts'
-import { briefCommand, inboxTick, syncInbox } from './inbox'
+import { briefCommand, inboxTick, setFollow, syncInbox } from './inbox'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
@@ -32,7 +32,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     forgetProbed()
     const hosts = parseHosts(options.gitlabHosts)
-    await Promise.all([startData($, options.jiraUrl, hosts), rememberSettings(options.gitlabTokens, hosts), forgetProblems($), forgetScrolling($)])
+    await Promise.all([startData($, options.jiraUrl, hosts), setFollow($, options.inboxFollow), rememberSettings(options.gitlabTokens, hosts), forgetProblems($), forgetScrolling($)])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)
     await $.command.register({
       name: 'gitlab',

@@ -32,6 +32,7 @@
     "hooks/hosts.ts",
     "hooks/identity.ts",
     "hooks/inbox-brief.ts",
+    "hooks/inbox-follow.ts",
     "hooks/inbox-gitlab.ts",
     "hooks/inbox-refs.ts",
     "hooks/inbox-rules.ts",
