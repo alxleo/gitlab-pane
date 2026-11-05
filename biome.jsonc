@@ -1,0 +1,38 @@
+{
+  // Biome formats; ESLint lints. Only the formatter is on: the linter and the import organiser are off, so no rule here can
+  // disagree with eslint.config.cjs, which sets no formatting rule of its own.
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "root": true,
+  // What git ignores (node_modules, the engine's declarations, worktrees) is not formatted.
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    // Measured, not guessed: formatting the existing code at 100, 120, 140, 160, 180, 200 and 250 columns changes the fewest
+    // lines at 180 (140 changes more than twice as many), because the code was wrapped at about that width by hand.
+    "lineWidth": 180,
+    "lineEnding": "lf"
+  },
+  "linter": { "enabled": false },
+  "assist": { "enabled": false },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded",
+      "arrowParentheses": "asNeeded",
+      // The code has a trailing comma in a multi-line array or object and none after the last argument or parameter.
+      "trailingCommas": "es5"
+    }
+  },
+  "json": { "formatter": { "trailingCommas": "none" }, "parser": { "allowComments": true } },
+  // release-please rewrites these two on every release with JSON.stringify, which puts each array item and object member
+  // on its own line; formatted the same way here, the release commit passes `format:check` on main as it stands.
+  "overrides": [{ "includes": [".claude-plugin/plugin.json", ".release-please-manifest.json"], "json": { "formatter": { "expand": "always" } } }],
+  "files": {
+    // TypeScript, TSX, JavaScript, CommonJS and JSON, all of them: the generated files too, because the tools that make
+    // them (tools/gitlab_schema.ts, tools/docs.ts) run their output through Biome before they write or compare it. The one
+    // exception is package-lock.json, which npm writes and rewrites on every install.
+    "includes": ["**/*.{ts,tsx,js,cjs,json,jsonc}", "!package-lock.json"]
+  }
+}

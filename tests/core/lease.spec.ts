@@ -11,8 +11,7 @@ const T0 = 1_000_000
 const session = (me: string, over: Partial<Session> = {}): Session => ({ me, isDrawing: true, raisedPins: 0, ...over })
 
 /** The stored record after a decision wrote its part. */
-const stored = (record: LeaseRecord | null, { write }: Decision): LeaseRecord | null =>
-  write.kind === 'set' ? write.record : write.kind === 'clear' ? null : record
+const stored = (record: LeaseRecord | null, { write }: Decision): LeaseRecord | null => (write.kind === 'set' ? write.record : write.kind === 'clear' ? null : record)
 
 /** One session's tick against the record in the store; the next record is what the store holds afterwards. */
 const tick = (record: LeaseRecord | null, who: Session, now: number) => {

@@ -32,7 +32,10 @@ export async function refreshDetails($: EngineInterface): Promise<void> {
 
 /** Opens or closes a row, reading it whole when it opens. */
 export function toggleCard($: EngineInterface, key: string): void {
-  quietly($, flip($, key).then(() => ensureDetail($, key)))
+  quietly(
+    $,
+    flip($, key).then(() => ensureDetail($, key))
+  )
 }
 
 /** Opens a row on one person's comments alone, reading it whole. */

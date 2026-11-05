@@ -78,7 +78,9 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box flexDirection="row" gap={1}>
           {verb.isImpersonal !== true && avatar(one.actor)}
           <Box flexShrink={0}>
-            <Text color={verb.tone}>{verb.isImpersonal === true ? `${verb.glyph} ${verb.word}` : `${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}</Text>
+            <Text color={verb.tone}>
+              {verb.isImpersonal === true ? `${verb.glyph} ${verb.word}` : `${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}
+            </Text>
           </Box>
           <Box flexGrow={1} flexShrink={1}>
             {!isWhole && said !== '' && (
@@ -87,9 +89,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               </Text>
             )}
           </Box>
-          <Box flexShrink={0}>
-            {isFilled(one.url) ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}
-          </Box>
+          <Box flexShrink={0}>{isFilled(one.url) ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}</Box>
         </Box>
         {isWhole && said !== '' && (
           <Box paddingLeft={3}>
@@ -109,13 +109,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
     const counted = KINDS.filter(kind => (item.counts[kind] ?? 0) > 0).map(kind => `${item.counts[kind]}${item.isCapped ? '+' : ''} ${VERB[kind].word}`)
-    const about = [
-      bang > 0 ? item.ref.slice(0, bang) : '',
-      item.isMine ? '' : item.author,
-      item.isDraft ? 'draft' : '',
-      item.state === 'opened' ? '' : item.state,
-      ...counted,
-    ]
+    const about = [bang > 0 ? item.ref.slice(0, bang) : '', item.isMine ? '' : item.author, item.isDraft ? 'draft' : '', item.state === 'opened' ? '' : item.state, ...counted]
     const canOpen = item.activity.length > 0
     const isOpen = canOpen && cards.includes(item.key)
     return (
@@ -131,12 +125,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           <Box flexGrow={1} flexShrink={1}>
             {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}
             {canOpen ? (
-              <Button
-                key={`inbox-open-${shortHash(item.key)}`}
-                plain
-                label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`}
-                onPress={() => toggleCard($, item.key)}
-              />
+              <Button key={`inbox-open-${shortHash(item.key)}`} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`} onPress={() => toggleCard($, item.key)} />
             ) : (
               <Text weight="semibold" wrap="truncate-end">
                 {shortTitle(item.title)}
@@ -149,12 +138,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Box>
           )}
           <Box flexShrink={0}>
-            <Button
-              key={`inbox-seen-${shortHash(item.key)}`}
-              plain
-              label="✓"
-              onPress={() => markSeen($, { key: item.key }).catch(reported($, 'inbox'))}
-            />
+            <Button key={`inbox-seen-${shortHash(item.key)}`} plain label="✓" onPress={() => markSeen($, { key: item.key }).catch(reported($, 'inbox'))} />
           </Box>
         </Box>
         <Box flexDirection="row" gap={1}>
@@ -167,12 +151,8 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           </Box>
         </Box>
-        {isOpen
-          ? item.activity.map(one => event(one, true))
-          : item.activity[0] !== undefined && event(item.activity[0], false)}
-        {isOpen && (
-          <Button key={`inbox-less-${shortHash(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />
-        )}
+        {isOpen ? item.activity.map(one => event(one, true)) : item.activity[0] !== undefined && event(item.activity[0], false)}
+        {isOpen && <Button key={`inbox-less-${shortHash(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />}
       </Box>
     )
   }
@@ -228,12 +208,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       ...lines,
       <Box key={`inbox-foot-${section.rule}`} flexDirection="row" flexWrap="wrap" columnGap={1}>
         {left > 0 && <Text dimColor>{`+${left} more`}</Text>}
-        <Button
-          key={`inbox-discuss-${section.rule}`}
-          variant="secondary"
-          label="discuss in chat"
-          onPress={() => discussRule($, section.rule).catch(reported($, 'inbox'))}
-        />
+        <Button key={`inbox-discuss-${section.rule}`} variant="secondary" label="discuss in chat" onPress={() => discussRule($, section.rule).catch(reported($, 'inbox'))} />
         <Button
           key={`inbox-seen-rule-${section.rule}`}
           variant="secondary"
@@ -251,12 +226,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           {status}
         </Text>
         <Button key="inbox-here" plain label={isHere ? '● here' : '○ here'} onPress={() => toggleHere($)} />
-        <Button
-          key="inbox-sync"
-          plain
-          label={inbox.isSyncing ? 'syncing…' : 'sync'}
-          onPress={() => quietly($, refresh($), 'inbox')}
-        />
+        <Button key="inbox-sync" plain label={inbox.isSyncing ? 'syncing…' : 'sync'} onPress={() => quietly($, refresh($), 'inbox')} />
       </Box>
       {shown.length > 0 && (
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>

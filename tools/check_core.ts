@@ -1,6 +1,6 @@
 // Run by .claude/settings.json after an agent edits a file. When the file is in the core (tsconfig.core.json's "include"),
-// runs the core's tsc and eslint and hands what they say back to the agent: exit 2 with the findings on stderr, which
-// Claude Code shows the model. Silent, exit 0, for any other file or a clean one.
+// runs the core's tsc and eslint and Biome's format check, and hands what they say back to the agent: exit 2 with the findings on
+// stderr, which Claude Code shows the model. Silent, exit 0, for any other file or a clean one.
 //
 // It runs the binaries in this repository's own node_modules, at the versions package.json pins (`npm ci` installs them),
 // and says so instead of checking when they are missing or are other versions. It starts them with an argument list, not a
@@ -59,8 +59,11 @@ function main(): number {
   const tools = [
     { name: 'typescript-7', script: join(ROOT, 'node_modules', 'typescript-7', 'bin', 'tsc'), args: ['-p', 'tsconfig.core.json'] },
     { name: 'eslint', script: join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['--max-warnings', '0', file] },
+    { name: '@biomejs/biome', script: join(ROOT, 'node_modules', '@biomejs', 'biome', 'bin', 'biome'), args: ['format', file] },
   ]
-  const wrong = tools.filter(tool => installed(tool.name) !== pinned(tool.name)).map(tool => `${tool.name} is ${installed(tool.name) ?? 'not installed'}, package.json pins ${pinned(tool.name) ?? '(nothing)'}`)
+  const wrong = tools
+    .filter(tool => installed(tool.name) !== pinned(tool.name))
+    .map(tool => `${tool.name} is ${installed(tool.name) ?? 'not installed'}, package.json pins ${pinned(tool.name) ?? '(nothing)'}`)
   if (wrong.length > 0) {
     console.error(`tools/check_core.ts: nothing was checked after your edit of ${file}, because node_modules does not match package-lock.json (${wrong.join('; ')}). Run: npm ci`)
     return 2
@@ -68,11 +71,15 @@ function main(): number {
   const out = tools.map(tool => {
     const ran = spawnSync(process.execPath, [tool.script, ...tool.args], { cwd: ROOT, encoding: 'utf8' })
     const said = `${ran.stdout}${ran.stderr}`.trim()
-    return ran.status === 0 || said !== '' ? said : `${tool.name} did not run (${ran.error?.message ?? `exit ${ran.status}`})`
+    // A tool that exits 0 found nothing, whatever it prints (Biome says how many files it checked).
+    if (ran.status === 0) {
+      return ''
+    }
+    return said !== '' ? said : `${tool.name} did not run (${ran.error?.message ?? `exit ${ran.status}`})`
   })
   const said = out.filter(each => each !== '').join('\n')
   if (said !== '') {
-    console.error(`The core checks (tsc -p tsconfig.core.json, eslint) found problems after your edit of ${file}:\n${said}`)
+    console.error(`The core checks (tsc -p tsconfig.core.json, eslint, biome format) found problems after your edit of ${file}; formatting is fixed by npm run format:\n${said}`)
     return 2
   }
   return 0

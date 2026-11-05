@@ -142,17 +142,48 @@ const DRAWN = new Map<string, ReadonlySet<string>>([
   [
     'Box',
     new Set([
-      'flexDirection', 'flexWrap', 'alignItems', 'alignSelf', 'justifyContent', 'overflow', 'flexGrow', 'flexShrink', 'gap',
-      'rowGap', 'columnGap', 'width', 'minWidth', 'height', 'minHeight', 'margin', 'marginX', 'marginY', 'marginTop',
-      'marginBottom', 'marginLeft', 'marginRight', 'padding', 'paddingX', 'paddingY', 'paddingTop', 'paddingBottom',
-      'paddingLeft', 'paddingRight', 'backgroundColor', 'borderStyle', 'borderColor', 'borderDimColor', 'position', 'top',
-      'bottom', 'left', 'right', 'display',
+      'flexDirection',
+      'flexWrap',
+      'alignItems',
+      'alignSelf',
+      'justifyContent',
+      'overflow',
+      'flexGrow',
+      'flexShrink',
+      'gap',
+      'rowGap',
+      'columnGap',
+      'width',
+      'minWidth',
+      'height',
+      'minHeight',
+      'margin',
+      'marginX',
+      'marginY',
+      'marginTop',
+      'marginBottom',
+      'marginLeft',
+      'marginRight',
+      'padding',
+      'paddingX',
+      'paddingY',
+      'paddingTop',
+      'paddingBottom',
+      'paddingLeft',
+      'paddingRight',
+      'backgroundColor',
+      'borderStyle',
+      'borderColor',
+      'borderDimColor',
+      'position',
+      'top',
+      'bottom',
+      'left',
+      'right',
+      'display',
     ]),
   ],
-  [
-    'Text',
-    new Set(['color', 'backgroundColor', 'dimColor', 'size', 'weight', 'bold', 'mono', 'tabular', 'italic', 'underline', 'strikethrough', 'inverse', 'wrap']),
-  ],
+  ['Text', new Set(['color', 'backgroundColor', 'dimColor', 'size', 'weight', 'bold', 'mono', 'tabular', 'italic', 'underline', 'strikethrough', 'inverse', 'wrap'])],
   ['Button', new Set(['label', 'variant', 'plain', 'dimColor'])],
   ['Link', new Set(['href', 'label'])],
   ['Svg', new Set(['source', 'alt', 'width', 'height'])],
@@ -169,8 +200,23 @@ const KEPT = new Map<string, ReadonlySet<string>>([
   ['Markdown', new Set(['key', 'pressableLinks'])],
 ])
 const HOVER_PROPS = new Set([
-  'scope', 'color', 'backgroundColor', 'dimColor', 'bold', 'italic', 'underline', 'strikethrough', 'inverse', 'borderStyle',
-  'borderColor', 'borderDimColor', 'display', 'top', 'left', 'right', 'bottom',
+  'scope',
+  'color',
+  'backgroundColor',
+  'dimColor',
+  'bold',
+  'italic',
+  'underline',
+  'strikethrough',
+  'inverse',
+  'borderStyle',
+  'borderColor',
+  'borderDimColor',
+  'display',
+  'top',
+  'left',
+  'right',
+  'bottom',
 ])
 
 /** What the pointer is on: the hover groups it lights, and the keyed Boxes it is inside. */
@@ -233,13 +279,23 @@ function border(props: Props, css: Map<string, string>): string {
 /** A Box's classes, its inline style (layout the tree sets), and whether it is drawn `display: none`. */
 function boxStyle(props: Props): { readonly classes: string; readonly css: string; readonly hidden: boolean } {
   const css = new Map<string, string>()
-  for (const [prop, name] of [['flexDirection', 'flex-direction'], ['flexWrap', 'flex-wrap'], ['alignItems', 'align-items'], ['alignSelf', 'align-self'], ['justifyContent', 'justify-content'], ['overflow', 'overflow']] as const) {
+  for (const [prop, name] of [
+    ['flexDirection', 'flex-direction'],
+    ['flexWrap', 'flex-wrap'],
+    ['alignItems', 'align-items'],
+    ['alignSelf', 'align-self'],
+    ['justifyContent', 'justify-content'],
+    ['overflow', 'overflow'],
+  ] as const) {
     const value = props[prop]
     if (isText(value) && /^[\w-]+$/.test(value)) {
       css.set(name, value)
     }
   }
-  for (const [prop, name] of [['flexGrow', 'flex-grow'], ['flexShrink', 'flex-shrink']] as const) {
+  for (const [prop, name] of [
+    ['flexGrow', 'flex-grow'],
+    ['flexShrink', 'flex-shrink'],
+  ] as const) {
     const value = props[prop]
     if (typeof value === 'number') {
       css.set(name, String(value))
@@ -267,7 +323,12 @@ function boxStyle(props: Props): { readonly classes: string; readonly css: strin
     }
   }
   for (const kind of ['margin', 'padding']) {
-    for (const [edge, axis] of [['Top', 'y'], ['Bottom', 'y'], ['Left', 'x'], ['Right', 'x']] as const) {
+    for (const [edge, axis] of [
+      ['Top', 'y'],
+      ['Bottom', 'y'],
+      ['Left', 'x'],
+      ['Right', 'x'],
+    ] as const) {
       const value = side(props, kind, edge, axis)
       if (value !== null) {
         css.set(`${kind}-${edge.toLowerCase()}`, value)
@@ -281,7 +342,12 @@ function boxStyle(props: Props): { readonly classes: string; readonly css: strin
   const classes = ['box', border(props, css)]
   if (props['position'] === 'absolute') {
     css.set('position', 'absolute')
-    for (const [edge, axis] of [['top', 'y'], ['bottom', 'y'], ['left', 'x'], ['right', 'x']] as const) {
+    for (const [edge, axis] of [
+      ['top', 'y'],
+      ['bottom', 'y'],
+      ['left', 'x'],
+      ['right', 'x'],
+    ] as const) {
       const value = props[edge]
       const cells = typeof value === 'number' ? space(value, axis) : null
       if (cells !== null) {
@@ -354,8 +420,17 @@ function hovered(node: Node, key: string | null, lit: Lit): Props {
 /** Notes any prop or hover prop this renderer was not taught, under the name `Element.prop`. */
 function unknownProps(node: Node): string[] {
   const known = new Set([...(DRAWN.get(node.type) ?? []), ...(KEPT.get(node.type) ?? [])])
-  const props = DRAWN.has(node.type) ? Object.keys(node.props).filter(name => !known.has(name)).map(name => `${node.type}.${name}`) : []
-  return [...props, ...Object.keys(node.hover ?? {}).filter(name => !HOVER_PROPS.has(name)).map(name => `${node.type}.hover.${name}`)]
+  const props = DRAWN.has(node.type)
+    ? Object.keys(node.props)
+        .filter(name => !known.has(name))
+        .map(name => `${node.type}.${name}`)
+    : []
+  return [
+    ...props,
+    ...Object.keys(node.hover ?? {})
+      .filter(name => !HOVER_PROPS.has(name))
+      .map(name => `${node.type}.hover.${name}`),
+  ]
 }
 
 /** The tree as HTML; `unknown` collects what it could not draw, so the run can say so. `key` is the nearest keyed Box around. */
@@ -383,7 +458,12 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, key: string |
     }
     case 'Button': {
       const variant = props['variant']
-      const classes = ['btn', props['plain'] === true ? 'plain' : '', variant === 'primary' || variant === 'secondary' ? variant : '', props['dimColor'] === true ? 'dim' : ''].filter(each => each !== '')
+      const classes = [
+        'btn',
+        props['plain'] === true ? 'plain' : '',
+        variant === 'primary' || variant === 'secondary' ? variant : '',
+        props['dimColor'] === true ? 'dim' : '',
+      ].filter(each => each !== '')
       return `<button class="${classes.join(' ')}">${inner === '' ? label : inner}</button>`
     }
     case 'Svg': {
@@ -439,7 +519,9 @@ function stageMod(into: string): string {
   cpSync(join(ROOT, 'types'), join(mod, 'types'), { recursive: true })
   mkdirSync(join(mod, 'tests'))
   // The helpers the scenes import (fixtures, the fake GitLab); none of the mod's own tests.
-  for (const helper of readdirSync(join(ROOT, 'tests'), { withFileTypes: true }).filter(entry => entry.isFile() && !entry.name.endsWith('.test.ts')).map(entry => entry.name)) {
+  for (const helper of readdirSync(join(ROOT, 'tests'), { withFileTypes: true })
+    .filter(entry => entry.isFile() && !entry.name.endsWith('.test.ts'))
+    .map(entry => entry.name)) {
     copyFileSync(join(ROOT, 'tests', helper), join(mod, 'tests', helper))
   }
   mkdirSync(join(mod, 'tools', 'screens'), { recursive: true })
@@ -535,7 +617,14 @@ async function photograph(pages: ReadonlyMap<string, string>, out: string, scale
     throw new ScreensError(`Chromium would not start (${messageOf(error)}); install it with: npm run screens -- setup`)
   })
   try {
-    const context = await browser.newContext({ viewport: { width: 700, height: 900 }, deviceScaleFactor: scale, colorScheme: 'light', locale: 'en-GB', timezoneId: 'UTC', reducedMotion: 'reduce' })
+    const context = await browser.newContext({
+      viewport: { width: 700, height: 900 },
+      deviceScaleFactor: scale,
+      colorScheme: 'light',
+      locale: 'en-GB',
+      timezoneId: 'UTC',
+      reducedMotion: 'reduce',
+    })
     for (const [name, path] of pages) {
       const page = await context.newPage()
       await page.goto(pathToFileURL(path).href)
@@ -622,7 +711,13 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
 
 const same = (a: string, b: string): boolean => existsSync(a) && existsSync(b) && readFileSync(a).equals(readFileSync(b))
 
-async function render(values: { readonly out: string; readonly options: Options; readonly verify: boolean; readonly check: boolean; readonly fresh: string | null }): Promise<number> {
+async function render(values: {
+  readonly out: string
+  readonly options: Options
+  readonly verify: boolean
+  readonly check: boolean
+  readonly fresh: string | null
+}): Promise<number> {
   const { out, options } = values
   const scratch = mkdtempSync(join(tmpdir(), 'pane-screens-out-'))
   try {

@@ -55,8 +55,8 @@ jobs:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/fresh
         run: |
           claude plugin marketplace add "$GITHUB_REPOSITORY"
-          claude plugin install gitlab-ci@gitlab-pane
-          claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
+          claude plugin install gitlab-pane@gitlab-pane
+          claude plugin list | grep -A3 'gitlab-pane@gitlab-pane' | grep enabled
       # What a team that pins `plugin-v<version>` gets: the tree's own marketplace, built here, installed from its folder.
       - name: Install the release tree, which holds the plugin's files and nothing else
         env:
@@ -64,9 +64,9 @@ jobs:
         run: |
           node tools/release_tree.ts build "$RUNNER_TEMP/tree"
           claude plugin marketplace add "$RUNNER_TEMP/tree"
-          claude plugin install gitlab-ci@gitlab-pane
-          claude plugin list | grep -A3 'gitlab-ci@gitlab-pane' | grep enabled
-          installed=$(jq -r '.plugins["gitlab-ci@gitlab-pane"][0].installPath' "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json")
+          claude plugin install gitlab-pane@gitlab-pane
+          claude plugin list | grep -A3 'gitlab-pane@gitlab-pane' | grep enabled
+          installed=$(jq -r '.plugins["gitlab-pane@gitlab-pane"][0].installPath' "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json")
           test -f "$installed/hooks/hooks.json"
           for dev in tools tests docs .github CONTRIBUTING.md release; do
             if [ -e "$installed/$dev" ]; then

@@ -12,7 +12,7 @@ import type { JobLink, MrCard } from '../types'
 
 // Whether the person leaves the end of failed jobs' logs in a wake: the `failureLogs` setting, taken when the mod loads. On unless
 // the setting is false. The engine reads an atom only in the file that declares it, so it is kept and read here.
-const logsAtom = atom({ plugin: 'gitlab-ci', key: 'logs' } as const, true)
+const logsAtom = atom({ plugin: 'gitlab-pane', key: 'logs' } as const, true)
 
 /** A mod loading takes the `failureLogs` setting. */
 export async function rememberLogs($: EngineInterface, setting: unknown): Promise<void> {

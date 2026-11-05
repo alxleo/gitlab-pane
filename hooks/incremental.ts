@@ -36,8 +36,7 @@ export function cursorAfter(scope: AuthoredScope, startedAt: number, previous: C
 }
 
 /** The open MRs whose pipeline is still going: GitLab does not say, in the changes since, that it moved. */
-export const movingRows = (rows: readonly MrCard[]): MrCard[] =>
-  rows.filter(row => row.isOpen && row.pipeline !== undefined && !isSettled(row.pipeline.status))
+export const movingRows = (rows: readonly MrCard[]): MrCard[] => rows.filter(row => row.isOpen && row.pipeline !== undefined && !isSettled(row.pipeline.status))
 
 /** What one host's read found, to be put with what was known of it. */
 export type HostFound = {

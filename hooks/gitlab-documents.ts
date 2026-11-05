@@ -376,9 +376,7 @@ export const mergeStatusQuery = (features: HostFeatures): Request<MergeStatusQue
  */
 export const pinnedQuery = (pin: Pinned, features: HostFeatures): Request<PinnedQuery | PinnedPlainQuery> => {
   const variables = { path: pin.path, iid: String(pin.iid) } satisfies PinnedQueryVariables
-  return features.hasReviewStates
-    ? { operation: 'Pinned', query: DOCUMENTS.Pinned, variables }
-    : { operation: 'PinnedPlain', query: DOCUMENTS.PinnedPlain, variables }
+  return features.hasReviewStates ? { operation: 'Pinned', query: DOCUMENTS.Pinned, variables } : { operation: 'PinnedPlain', query: DOCUMENTS.PinnedPlain, variables }
 }
 
 /** The recent successful MR pipelines of a project, for how long one usually runs: cheap (`COMPLEXITY.Usual`), so one query each. */
