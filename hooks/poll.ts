@@ -7,9 +7,12 @@ import {
   mergeUsual,
   markUnreachable,
   pinMr,
+  markUsualRead,
   readAnnounced,
   readAvatarsShown,
   readBrowse,
+  readFeaturesKnown,
+  readHosts,
   readPinned as readPins,
   readPoll,
   readRows,
@@ -18,14 +21,18 @@ import {
   readUsualKnown,
   setAnnounced,
   setAvatars,
+  setFeatures,
   setRows,
   unpinKeys,
 } from './data'
+import { Failure, kindOf } from './failure'
 import { clear, quietly, record } from './failures'
-import { serialised } from './in-flight'
-import { decodeGraphql, stringRecord } from './decode'
-import { authoredQuery, lostIn, mergeStatusQuery, pinnedQuery, readMergeStatus, readPinned, readResponse, readUsual, usualQuery } from './gitlab'
-import type { RawResponse, Request } from './gitlab'
+import { joined, serialised } from './in-flight'
+import { stringRecord } from './decode'
+import { lostIn, readFeatures, readMergeStatus, readPinned, readResponse, readUsual } from './gitlab'
+import { authoredQuery, mergeStatusQuery, pinnedQuery, probeQuery, usualQuery } from './gitlab-documents'
+import { ask } from './graphql'
+import { projectOf } from './hosts'
 import { TICKET_FIELDS, readTickets, ticketQuery } from './jira'
 import { ago, ticketOf } from './format'
 import { describe } from './wake'
@@ -35,50 +42,79 @@ import { pictureUri, sizedAvatar } from './picture'
 import { openPane } from './panes'
 import { reconcile } from './reconcile'
 import { isSettled, statusMark } from './status'
-import { runJson } from './tools'
+import { failureOf, runJson } from './tools'
 
-import type { MergeStatus, MrCard, Pinned, Usual } from '../types'
+import type { HostFeatures, MergeStatus, MrCard, Pinned, Usual } from '../types'
 
 const TICKETS_EVERY_MS = 15 * 60_000
 const USUAL_EVERY_MS = 30 * 60_000
 
-/** GitLab.com's edge answers 52x or drops the stream now and then; one retry rides that out. */
-const isTransient = (stderr: string): boolean => /HTTP 5\d\d|stream error/i.test(stderr)
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-async function ask<Data>($: EngineInterface, { query, variables }: Request<Data>): Promise<RawResponse<Data>> {
-  const fields = Object.entries(variables).flatMap(([name, value]) => ['-f', `${name}=${value}`])
-  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`, ...fields], raw => decodeGraphql<Data>(raw), {
-    timeoutMs: 90_000,
-    retryIf: isTransient,
-    isPartialOk: true,
-  })
-  if (!answer.ok) {
-    throw new Error(answer.reason)
+/** An error as a failure that keeps its kind. */
+const asFailure = (error: unknown, label = (message: string) => message): Failure => new Failure(kindOf(error), label(messageOf(error)))
+
+/** Several failures as one, in the kind of the first, with their words joined. */
+const together = (list: readonly Failure[]): Failure => new Failure(list[0]?.kind ?? 'unknown', list.map(one => one.message).join('; '))
+
+/** What a host's schema has of the fields older GitLab versions lack: asked the first time the host is read, then kept. */
+async function featuresOf($: EngineInterface, host: string): Promise<HostFeatures> {
+  const known = (await readFeaturesKnown($))[host]
+  if (known !== undefined) {
+    return known
   }
-  return answer.value
+  const probed = readFeatures(await ask($, host, probeQuery()))
+  await setFeatures($, host, probed)
+  return probed
 }
 
+type HostRead = { rows: MrCard[]; lost: number; notes: Failure[] }
+
 /**
- * The authored list, then only the pinned MRs it lacks, one query each. `lost` counts
- * authored MRs GitLab timed out and sent back null, whose keys it therefore never said.
+ * One host's authored list, then only the pinned MRs on it that the list lacks, one query each. `lost` counts authored
+ * MRs GitLab timed out and sent back null, whose keys it therefore never said. `notes` are what went wrong without
+ * failing the read.
  */
-async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promise<{ rows: MrCard[]; lost: number }> {
-  // The merge verdict comes from a query of its own, read alongside; if it fails, no card says it can merge.
+async function readHost($: EngineInterface, host: string, pinned: readonly Pinned[]): Promise<HostRead> {
+  const features = await featuresOf($, host)
+  const notes: Failure[] = []
+  // The merge verdict comes from a query of its own, read alongside; a host without it, or a failed read of it, leaves
+  // every card without a verdict, and none says it can merge.
   const [authored, verdicts] = await Promise.all([
-    ask($, authoredQuery()),
-    ask($, mergeStatusQuery())
-      .then(readMergeStatus)
-      .catch(async (error: unknown) => {
-        await record($, 'gitlab', `merge status: ${error instanceof Error ? error.message : String(error)}`)
-        return new Map<string, MergeStatus>()
-      }),
+    ask($, host, authoredQuery(features)),
+    features.hasMergeVerdict
+      ? ask($, host, mergeStatusQuery())
+          .then(answer => readMergeStatus(host, answer))
+          .catch((error: unknown) => {
+            notes.push(asFailure(error, message => `merge status: ${message}`))
+            return new Map<string, MergeStatus>()
+          })
+      : Promise.resolve(new Map<string, MergeStatus>()),
   ])
-  const rows = readResponse(authored).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
+  const rows = readResponse(host, authored).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
   for (const pin of missing) {
-    rows.push(...readPinned(await ask($, pinnedQuery(pin))))
+    rows.push(...readPinned(host, await ask($, host, pinnedQuery(pin, features))))
   }
-  return { rows, lost: lostIn(authored) }
+  return { rows, lost: lostIn(authored), notes }
+}
+
+type Read = { host: string; answer: HostRead } | { host: string; failure: Failure }
+
+/** Every configured host read at once; one that fails is told apart from the rest, which still count. */
+async function readGitLab($: EngineInterface, hosts: readonly string[], pinned: readonly Pinned[]): Promise<Read[]> {
+  return Promise.all(
+    hosts.map(host =>
+      readHost(
+        $,
+        host,
+        pinned.filter(pin => pin.host === host)
+      ).then(
+        (answer): Read => ({ host, answer }),
+        (error: unknown): Read => ({ host, failure: asFailure(error) })
+      )
+    )
+  )
 }
 
 /**
@@ -98,30 +134,43 @@ async function readJira($: EngineInterface, rows: readonly MrCard[], now: number
   const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
   const found = await runJson($, 'acli', search, readTickets, { timeoutMs: 60_000 })
   if (!found.ok) {
-    await record($, 'jira', found.reason)
+    await record($, 'jira', failureOf(found))
     return
   }
   await clear($, 'jira')
   await mergeTickets($, found.value, now)
 }
 
-/** How long each repo's MR pipelines usually run, every 30 minutes or when a new repo appears; a failure keeps the last. */
-async function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
-  const projects = [...new Set(rows.map(row => row.project))]
-  const [known, poll] = await Promise.all([readUsualKnown($), readPoll($)])
-  const isDue = poll.usualAt === null || now - poll.usualAt >= USUAL_EVERY_MS
-  if (projects.length === 0 || (!isDue && projects.every(path => path in known))) {
-    return
-  }
-  const usual: Record<string, Usual> = {}
-  for (const path of projects) {
-    const times = readUsual(await ask($, usualQuery(path)))
-    if (times !== null) {
-      usual[path] = times
+/**
+ * How long each repo's MR pipelines usually run, every 30 minutes or when a new repo appears; one pass at a time, however
+ * long it takes, each project saved as it is read, so one that fails keeps the last of its own and loses no other's.
+ */
+function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
+  return joined('usual', async () => {
+    const projects = [...new Map(rows.map(row => [row.project, row])).values()]
+    const [known, poll] = await Promise.all([readUsualKnown($), readPoll($)])
+    const isDue = poll.usualAt === null || now - poll.usualAt >= USUAL_EVERY_MS
+    if (projects.length === 0 || (!isDue && projects.every(row => row.project in known))) {
+      return
     }
-  }
-  await clear($, 'usual')
-  await mergeUsual($, usual, now)
+    const failures: Failure[] = []
+    for (const row of projects) {
+      try {
+        const times = readUsual(await ask($, row.host, usualQuery(row.path)))
+        if (times !== null) {
+          await mergeUsual($, { [row.project]: times })
+        }
+      } catch (error) {
+        failures.push(asFailure(error, message => `${row.project}: ${message}`))
+      }
+    }
+    await markUsualRead($, now)
+    if (failures.length > 0) {
+      await record($, 'usual', together(failures))
+    } else {
+      await clear($, 'usual')
+    }
+  })
 }
 
 /** 20 pixels drawn at 14 stays fairly sharp on a Retina screen and costs about 1,000 characters of the drawing. */
@@ -153,7 +202,7 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
   const failed = fetched.filter(pair => pair[1] === null)
   await markUnreachable($, failed.map(pair => pair[0]))
   if (failed.length > 0) {
-    await record($, 'avatars', `${failed.length} picture${failed.length === 1 ? '' : 's'} could not be fetched`)
+    await record($, 'avatars', new Failure('network', `${failed.length} picture${failed.length === 1 ? '' : 's'} could not be fetched`))
   } else {
     await clear($, 'avatars')
   }
@@ -181,23 +230,31 @@ function wake($: EngineInterface, news: readonly ModelLine[]) {
   return $.prompt.submit({ text: lines(news) })
 }
 
-/** One GitLab read for every row; wakes the session for a pinned MR's new result. */
+/** One GitLab read of every configured host, for every row; wakes the session for a pinned MR's new result. */
 async function readOnce($: EngineInterface): Promise<void> {
-  const pinned = await readPins($)
+  const [pinned, hosts] = await Promise.all([readPins($), readHosts($)])
   const attemptedAt = await $.clock.now()
   await clear($, 'gitlab')
-  let rows: MrCard[]
-  let kept: MrCard[]
-  try {
-    const answer = await readGitLab($, pinned)
-    // A read GitLab partly timed out keeps the cards it left out as last seen, so none vanishes or closes for a poll.
-    kept = answer.lost > 0 ? (await readRows($)).filter(row => !answer.rows.some(each => each.key === row.key)) : []
-    rows = [...answer.rows, ...kept]
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    await record($, 'gitlab', message)
-    await changePoll($, poll => ({ ...poll, attemptedAt, error: message, failures: poll.failures + 1 }))
+  const reads = await readGitLab($, hosts, pinned)
+  // With several hosts, each failure says whose it is.
+  const labelled = (host: string, one: Failure) => new Failure(one.kind, hosts.length > 1 ? `${host}: ${one.message}` : one.message)
+  const failures = reads.flatMap(read => ('failure' in read ? [labelled(read.host, read.failure)] : []))
+  const answers = reads.flatMap(read => ('answer' in read ? [{ host: read.host, ...read.answer }] : []))
+  const notes = answers.flatMap(answer => answer.notes.map(note => labelled(answer.host, note)))
+  if (answers.length === 0) {
+    const all = together(failures)
+    await record($, 'gitlab', all)
+    await changePoll($, poll => ({ ...poll, attemptedAt, error: all.message, failures: poll.failures + 1 }))
     return
+  }
+  const fresh = answers.flatMap(answer => answer.rows)
+  // A read GitLab partly timed out, or a host that failed, keeps the cards it left out as last seen, so none vanishes or
+  // closes for a poll.
+  const behind = new Set([...reads.flatMap(read => ('failure' in read ? [read.host] : [])), ...answers.filter(answer => answer.lost > 0).map(answer => answer.host)])
+  const kept = behind.size > 0 ? (await readRows($)).filter(row => behind.has(row.host) && !fresh.some(each => each.key === row.key)) : []
+  const rows = [...fresh, ...kept]
+  if (failures.length + notes.length > 0) {
+    await record($, 'gitlab', together([...failures, ...notes]))
   }
   const now = await $.clock.now()
   const reconciled = reconcile({ pinned, rows, announced: await readAnnounced($), now })
@@ -213,7 +270,7 @@ async function readOnce($: EngineInterface): Promise<void> {
   if (reconciled.unpinned.length > 0) {
     await unpinKeys($, reconciled.unpinned)
   }
-  await changePoll($, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: null, failures: 0, kept: kept.length }))
+  await changePoll($, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: failures.length > 0 ? together(failures).message : null, failures: 0, kept: kept.length }))
   const pinnedKeys = new Set(pinned.map(pinKey))
   const marks = open
     .filter(row => pinnedKeys.has(row.key))
@@ -241,9 +298,10 @@ export async function tick($: EngineInterface): Promise<void> {
 
 /** Pins an MR to this session and answers what it looks like now, saying so when that is stale. */
 export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<ModelLine> {
-  const parsed = parseMrUrl(url)
+  const hosts = await readHosts($)
+  const parsed = parseMrUrl(url, hosts)
   if (parsed === null) {
-    throw new Error(`Not a gitlab.com merge request URL: ${url}`)
+    throw new Error(`Not a merge request URL on ${hosts.join(', ')}: ${url}`)
   }
   await pinMr($, parsed, origin)
   await refresh($)

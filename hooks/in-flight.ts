@@ -20,10 +20,12 @@ export function serialised(name: string, work: () => Promise<void>): Promise<voi
   if (waiting !== undefined) {
     return waiting
   }
-  const next = current.then(() => {
+  // Whether the run in hand ended well or not, the next one goes ahead and the queue clears.
+  const go = () => {
     queued.delete(name)
     return serialised(name, work)
-  })
+  }
+  const next = current.then(go, go)
   queued.set(name, next)
   return next
 }
@@ -39,6 +41,29 @@ export function joined(name: string, work: () => Promise<void>): Promise<void> {
   })
   running.set(name, started)
   return started
+}
+
+// Tokens, which are secrets: they live here, in memory, as resolved promises, and in no atom or store a session saves.
+const tokens = new Map<string, Promise<string | null>>()
+
+/** What `find` gave for `name`, asked once and then remembered, a miss included, until `forgetFound` clears it. */
+export function remembered(name: string, find: () => Promise<string | null>): Promise<string | null> {
+  const known = tokens.get(name)
+  if (known !== undefined) {
+    return known
+  }
+  const asked = find()
+  tokens.set(name, asked)
+  return asked
+}
+
+/** Forgets everything remembered but the tokens given in settings, so the next read asks again. */
+export function forgetFound(): void {
+  for (const name of [...tokens.keys()]) {
+    if (!name.startsWith('setting:')) {
+      tokens.delete(name)
+    }
+  }
 }
 
 const waitingForDraw: (() => void)[] = []

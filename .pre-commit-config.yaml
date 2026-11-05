@@ -100,13 +100,13 @@ repos:
         pass_filenames: false
         files: ^tools/store-probe/
       # The types of GitLab's answers (hooks/gitlab.generated.ts) made again from the schema snapshot and the documents in
-      # hooks/gitlab.ts, and compared: a query edited without regenerating fails here. No network but npm's first install.
+      # hooks/gitlab-documents.ts, and compared: a query edited without regenerating fails here. No network but npm's first install.
       - id: gitlab-types
         name: GitLab types are what the snapshot and queries give
         entry: uv run --locked tools/gitlab_schema.py types --check
         language: system
         pass_filenames: false
-        files: ^(hooks/gitlab(\.generated)?\.ts|tools/gitlab_queries\.ts|tools/gitlab_schema\.py(\.lock)?|tools/gitlab_schema\.snapshot\.json|tools/codegen/.*)$
+        files: ^(hooks/gitlab(-documents|\.generated)?\.ts|tools/gitlab_queries\.ts|tools/gitlab_schema\.py(\.lock)?|tools/gitlab_schema\.snapshot\.json|tools/codegen/.*)$
       # What the compiler cannot state: no casts, `any`, lint-disable comments or module-level state, files kept short, the
       # core's imports, and the type-aware rules on every file. See eslint.config.cjs. The linter's own TypeScript is 6.0,
       # the newest typescript-eslint can load; the tsc hooks above are the ones that pin the compiler.

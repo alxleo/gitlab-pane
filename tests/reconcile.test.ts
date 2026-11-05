@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { NOW, job, pipe, rawMr, stage } from './fixtures'
+import { HOST, NOW, job, pipe, rawMr, stage } from './fixtures'
 
 import { toCard } from '../hooks/gitlab'
 import { reconcile } from '../hooks/reconcile'
@@ -8,11 +8,12 @@ import { reconcile } from '../hooks/reconcile'
 import type { MergeRequestState } from '../hooks/gitlab.generated'
 import type { MergeStatus, MrCard, Pinned } from '../types'
 
-const KEY = 'g/p!12'
+const KEY = 'gitlab.com/g/p!12'
 
 const pin = (origin?: 'raised' | 'watched'): Pinned => ({
   url: 'https://gitlab.com/g/p/-/merge_requests/12',
-  project: 'g/p',
+  host: HOST,
+  path: 'g/p',
   iid: 12,
   ...(origin !== undefined ? { origin } : {}),
 })
@@ -26,7 +27,7 @@ const card = (status: Wire, mergeStatus: MergeStatus | null = null, over: { id?:
     id: `gid://gitlab/Ci::Pipeline/${id}`,
     ...(over.failedJob === true ? { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } } : {}),
   })
-  return { ...toCard(rawMr(12, { headPipeline, state: over.state ?? 'opened' })), mergeStatus }
+  return { ...toCard(HOST, rawMr(12, { headPipeline, state: over.state ?? 'opened' })), mergeStatus }
 }
 
 type Case = {

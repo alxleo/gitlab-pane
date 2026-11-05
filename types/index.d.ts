@@ -117,9 +117,14 @@ export type Person = {
 
 /** One merge request as the pane draws it, from one GraphQL read. */
 export type MrCard = {
-  /** `group/project!iid`. */
+  /** `host/group/project!iid`: unique across hosts. */
   key: string
   url: string
+  /** The GitLab host the MR lives on, such as `gitlab.com`. */
+  host: string
+  /** `group/project` on that host, as GitLab names it. */
+  path: string
+  /** `host/group/project`: where the MR lives, what the pane groups, filters and keeps run times by. */
   project: string
   repo: { name: string; url: string }
   iid: number
@@ -168,13 +173,23 @@ export type Usual = { low: number; high: number }
 
 export type Pinned = {
   url: string
-  project: string
+  host: string
+  /** `group/project` on that host. */
+  path: string
   iid: number
   /**
    * `raised` when this session created the MR, which alone wakes it; `watched` when pinned with `watch_mr`. A pin kept
    * from before this was recorded has none, and wakes as every pin then did.
    */
   origin?: 'raised' | 'watched'
+}
+
+/** What a GitLab host's schema has of the fields that older versions lack, from its first probe. */
+export type HostFeatures = {
+  /** `MergeRequest.detailedMergeStatus` (GitLab 15.3): without it no card has a merge verdict. */
+  hasMergeVerdict: boolean
+  /** `UserMergeRequestInteraction.reviewState`: without it a reviewer's state is not known. */
+  hasReviewStates: boolean
 }
 
 export type Ticket = { type: string; status: string; summary: string }
@@ -241,11 +256,18 @@ export type InboxState = {
   error: string | null
 }
 
+/**
+ * Why something failed, decided where it is detected: a tool that is not installed (exit 127), no token for a GitLab
+ * host, a token GitLab refused (401, 403), a connection that dropped, a request that ran out of time, an answer that is
+ * not what was asked for, a GitLab or its edge that answered with an error, a tool that ran and failed.
+ */
+export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server' | 'failed' | 'unknown'
+
 /** What a background job reports failing, by where it ran. */
 export type ProblemSource = 'gitlab' | 'jira' | 'usual' | 'avatars' | 'inbox' | 'pane'
 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
-export type Problems = { [Source in ProblemSource]?: { message: string; at: number } }
+export type Problems = { [Source in ProblemSource]?: { message: string; kind: FailureKind; at: number } }
 
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }
@@ -261,10 +283,14 @@ declare module 'claude-code' {
       inboxCards: string[]
       /** This session's MRs, drawn first and the only ones that wake it. */
       pinned: Pinned[]
+      /** The GitLab hosts the settings name, home first. */
+      hosts: string[]
+      /** Per host, what its schema has, once probed; a session probes each host again. */
+      features: Record<string, HostFeatures>
       rows: MrCard[]
       /** Jira tickets by key, as acli last read them. */
       tickets: Record<string, Ticket>
-      /** Pipeline run times by project path. */
+      /** Pipeline run times by project, as `host/group/project`. */
       usual: Record<string, Usual>
       /** Small avatar pictures as `data:` URIs, by the avatar URL GitLab gave. */
       avatars: Record<string, string>

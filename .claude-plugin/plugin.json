@@ -10,6 +10,21 @@
   "description": "A pane of your GitLab merge requests (pipelines, reviewers, what blocks the merge) and an inbox of reviews from mr-inbox; wakes a session when an MR it opened fails its pipeline or can merge.",
   "types": "./types/index.d.ts",
   "userConfig": {
+    "gitlabHosts": {
+      "type": "string",
+      "multiple": true,
+      "title": "GitLab hosts",
+      "description": "The GitLab hosts to read, such as gitlab.com or git.example.com. The first is home: its projects show without the host. Merge request addresses on any of them can be pinned.",
+      "default": ["gitlab.com"]
+    },
+    "gitlabTokens": {
+      "type": "string",
+      "multiple": true,
+      "sensitive": true,
+      "title": "GitLab tokens",
+      "description": "Last resort when neither GITLAB_TOKEN nor glab holds a token for a host: one host=token per entry, such as git.example.com=glpat-…; a bare token is for the first host. A token needs the read_api scope.",
+      "default": []
+    },
     "jiraUrl": {
       "type": "string",
       "title": "Jira site",

@@ -22,7 +22,10 @@ What it catches, before anyone sees an empty pane:
   * the schema moving under the types: a field turning nullable, an enum gaining a value (the snapshot differs from live)
 
 The tests cannot catch these: their GitLab answers are made up, in the shape the code expects. The queries come from
-hooks/gitlab.ts itself, printed by tools/gitlab_queries.ts under Node, so a changed query is checked as it is sent.
+hooks/gitlab-documents.ts itself, printed by tools/gitlab_queries.ts under Node, so a changed query is checked as it is sent.
+The documents an older self-managed GitLab needs (AuthoredPlain, PinnedPlain: no reviewState) and the Probe that picks
+them are queries like the rest, so they are checked and typed here too; MergeStatus is simply not sent where
+detailedMergeStatus is missing.
 GitLab answers the schema without a sign-in, so this reads no token and sends nothing of yours.
 
 The types are made by graphql-codegen (tools/codegen, versions locked there) from tools/gitlab_schema.snapshot.json: the
@@ -131,8 +134,10 @@ def marks(schema: GraphQLSchema, name: str, document: Any) -> list[Finding]:
         def enter_argument(self, node: Any, *_: Any) -> None:
             parent, field, argument = info.get_parent_type(), info.get_field_def(), info.get_argument()
             if parent and field and argument:
-                owner = f"{parent.name}.{next(key for key, value in parent.fields.items() if value is field)}"
-                note(f"{owner}({node.name.value}:)", argument.deprecation_reason, argument.description)
+                # Introspection's own fields (`__type`) are in no type's field list, and GitLab does not deprecate them.
+                key = next((key for key, value in parent.fields.items() if value is field), None)
+                if key is not None:
+                    note(f"{parent.name}.{key}({node.name.value}:)", argument.deprecation_reason, argument.description)
 
         def enter_enum_value(self, node: Any, *_: Any) -> None:
             kind = get_named_type(info.get_input_type())
@@ -177,8 +182,9 @@ def used(schema: GraphQLSchema, queries: dict[str, str]) -> tuple[dict[str, set[
         def enter_argument(self, node: Any, *_: Any) -> None:
             parent, field = info.get_parent_type(), info.get_field_def()
             if parent and field and hasattr(parent, "fields"):
-                owner = next(key for key, value in parent.fields.items() if value is field)
-                arguments.setdefault((parent.name, owner), set()).add(node.name.value)
+                owner = next((key for key, value in parent.fields.items() if value is field), None)
+                if owner is not None:
+                    arguments.setdefault((parent.name, owner), set()).add(node.name.value)
 
         def enter_variable_definition(self, node: Any, *_: Any) -> None:
             if kind := get_named_type(info.get_input_type()):
@@ -259,7 +265,7 @@ def dump(snapshot: dict[str, Any]) -> str:
 
 
 def generate(schema_file: Path, node: str) -> str:
-    """What graphql-codegen writes for the queries in hooks/gitlab.ts against the schema in the file."""
+    """What graphql-codegen writes for the queries in hooks/gitlab-documents.ts against the schema in the file."""
     npm = shutil.which("npm")
     if not npm:
         raise SchemaError("npm is needed to run graphql-codegen (tools/codegen)")
@@ -270,7 +276,7 @@ def generate(schema_file: Path, node: str) -> str:
             raise SchemaError(f"cannot install graphql-codegen with npm ci in tools/codegen:\n{ran.stderr[-800:]}")
     with tempfile.TemporaryDirectory() as scratch:
         out = Path(scratch) / "gitlab.generated.ts"
-        env = {**os.environ, "GITLAB_SCHEMA": str(schema_file.resolve()), "GITLAB_DOCS": str(ROOT / "hooks" / "gitlab.ts"), "GITLAB_TYPES": str(out)}
+        env = {**os.environ, "GITLAB_SCHEMA": str(schema_file.resolve()), "GITLAB_DOCS": str(ROOT / "hooks" / "gitlab-documents.ts"), "GITLAB_TYPES": str(out)}
         ran = subprocess.run(
             [node, str(CODEGEN / "node_modules" / "@graphql-codegen" / "cli" / "esm" / "bin.js"), "--config", "codegen.yml", "--silent"],
             cwd=CODEGEN,
@@ -342,7 +348,7 @@ def types(
     check: Annotated[bool, typer.Option("--check", help="Write nothing; fail if the file differs from what the snapshot and queries give")] = False,
     node: Annotated[str, typer.Option(help="The Node that runs graphql-codegen")] = "node",
 ) -> None:
-    """Write hooks/gitlab.generated.ts, the types of every query and fragment in hooks/gitlab.ts, from the snapshot. No network once npm has installed graphql-codegen."""
+    """Write hooks/gitlab.generated.ts, the types of every query and fragment in hooks/gitlab-documents.ts, from the snapshot. No network once npm has installed graphql-codegen."""
     try:
         made = generate(SNAPSHOT, shutil.which(node) or node)
     except (SchemaError, OSError) as error:
