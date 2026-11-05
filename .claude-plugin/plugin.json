@@ -15,7 +15,9 @@
       "multiple": true,
       "title": "GitLab hosts",
       "description": "The GitLab hosts to read, such as gitlab.com or git.example.com. The first is home: its projects show without the host. Merge request addresses on any of them can be pinned.",
-      "default": ["gitlab.com"]
+      "default": [
+        "gitlab.com"
+      ]
     },
     "gitlabTokens": {
       "type": "string",

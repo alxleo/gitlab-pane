@@ -26,6 +26,9 @@
     }
   },
   "json": { "formatter": { "trailingCommas": "none" }, "parser": { "allowComments": true } },
+  // release-please rewrites these two on every release with JSON.stringify, which puts each array item and object member
+  // on its own line; formatted the same way here, the release commit passes `format:check` on main as it stands.
+  "overrides": [{ "includes": [".claude-plugin/plugin.json", ".release-please-manifest.json"], "json": { "formatter": { "expand": "always" } } }],
   "files": {
     // TypeScript, TSX, JavaScript, CommonJS and JSON, all of them: the generated files too, because the tools that make
     // them (tools/gitlab_schema.ts, tools/docs.ts) run their output through Biome before they write or compare it. The one
