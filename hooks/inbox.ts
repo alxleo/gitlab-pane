@@ -1,10 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import { readHosts } from './data'
 import { isFilled } from './decode'
+import { Failure } from './failure'
 import { readInboxJson } from './inbox-json'
 import { clear, quietly, record } from './failures'
 import { joined } from './in-flight'
+import { parseMrUrl } from './mr-url'
 import { runJson, runText } from './tools'
 
 import type { InboxState } from '../types'
@@ -43,7 +46,7 @@ export async function readInbox($: EngineInterface): Promise<void> {
   if (result.ok) {
     await clear($, 'inbox')
   } else {
-    await record($, 'inbox', unprefixed(result.reason))
+    await record($, 'inbox', new Failure(result.kind, unprefixed(result.reason)))
   }
   await update($, inboxAtom, state =>
     result.ok ? { ...state, ...result.value, readAt, error: null } : { ...state, readAt, error: unprefixed(result.reason) }
@@ -56,7 +59,7 @@ export function syncInbox($: EngineInterface): Promise<void> {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
     const ran = await runText($, 'mr-inbox', ['sync', '--if-older-than', SYNC_IF_OLDER_THAN, '--json', ...(await repoArgs($))], { timeoutMs: 600_000 })
     if (!ran.ok) {
-      await record($, 'inbox', unprefixed(ran.reason))
+      await record($, 'inbox', new Failure(ran.kind, unprefixed(ran.reason)))
     }
     await update($, inboxAtom, state => ({ ...state, isSyncing: false, ...(ran.ok ? {} : { error: unprefixed(ran.reason) }) }))
     await readInbox($)
@@ -105,7 +108,7 @@ export async function markSeen($: EngineInterface, target: { key: string } | { r
   const args = 'key' in target ? ['seen', target.key] : ['seen', '--rule', target.rule, ...(await repoArgs($))]
   const ran = await runText($, 'mr-inbox', args, { timeoutMs: 30_000 })
   if (!ran.ok) {
-    await record($, 'inbox', unprefixed(ran.reason))
+    await record($, 'inbox', new Failure(ran.kind, unprefixed(ran.reason)))
     await update($, inboxAtom, state => ({ ...state, error: unprefixed(ran.reason) }))
     return
   }
@@ -122,7 +125,14 @@ export async function briefCommand($: EngineInterface, input: string): Promise<{
     const rules = sections.map(section => `${section.rule} (${section.items.length})`).join(', ')
     return { text: rules !== '' ? `${USAGE}\nRules: ${rules}` : USAGE }
   }
-  const ran = await runText($, 'mr-inbox', ['brief', ...args, ...(await repoArgs($))], { timeoutMs: 120_000 })
+  // An address must be an MR on one of the configured hosts; mr-inbox gets it in its canonical form.
+  const hosts = await readHosts($)
+  const refs = args.map(arg => (/^https?:\/\//.test(arg) ? (parseMrUrl(arg, hosts)?.url ?? null) : arg))
+  const stray = refs.indexOf(null)
+  if (stray >= 0) {
+    return { text: `/mrs: ${args[stray] ?? ''} is not a merge request on ${hosts.join(', ')}` }
+  }
+  const ran = await runText($, 'mr-inbox', ['brief', ...refs.filter(isFilled), ...(await repoArgs($))], { timeoutMs: 120_000 })
   if (!ran.ok) {
     return { text: `/mrs failed: ${unprefixed(ran.reason)}` }
   }
