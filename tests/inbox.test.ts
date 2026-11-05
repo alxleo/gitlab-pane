@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { shortHash as hashOf } from '../hooks/identity'
 import { AVATAR_BASE64, NOW, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
 
 const PANE = {
@@ -348,5 +349,26 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
   await ui.unmount()
 })
 
-const hashOf = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
+test('an actor who wrote an MR in the inbox has the initials of their name, like on Mine; any other has their username', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const who = (actor: string) => ({ kind: 'approved', actor, at: MINUTES_AGO(5), url: null, excerpt: '' })
+  const ines = { ...item(1, 1), author: { username: 'ixm5302', name: 'Ines Mendel', is_me: false }, activity: [who('ixm5302'), who('zed99')] }
+  engine(on, { sections: [{ rule: 'people', title: 'People', note: null, items: [ines] }], sync: { ok: true, finished_at: MINUTES_AGO(2) } })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'tab-inbox' })
+  await ui.press({ key: 'inbox-rule-people' })
+  await ui.press({ key: `inbox-open-${hashOf('g/p!1')}` })
+  const discs = (await ui.findAll({ type: 'Svg' })).map(svg => [svg.props.alt, /<text[^>]*>([^<]*)</.exec(String(svg.props.source))?.[1]])
+  // mr-inbox names the author of an MR, not an actor of its activity: the others stay as the username gives them.
+  expect(discs).toEqual([
+    ['ixm5302', 'IM'],
+    ['zed99', 'ZE'],
+  ])
+  expect(await ui.find({ type: 'Text', text: '✓ Ines approved' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '✓ zed99 approved' })).toBeDefined()
+  await ui.unmount()
+})
+

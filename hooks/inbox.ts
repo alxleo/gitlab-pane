@@ -93,6 +93,7 @@ export function readInboxJson(stdout: string): Pick<InboxState, 'sections' | 'sy
         title: text(item.title),
         url: text(item.url),
         author: text((item.author as { username?: unknown } | undefined)?.username),
+        authorName: text((item.author as { name?: unknown } | undefined)?.name),
         isMine: (item.author as { is_me?: unknown } | undefined)?.is_me === true,
         state: text(item.state),
         isDraft: item.draft === true,

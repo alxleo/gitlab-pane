@@ -1,3 +1,5 @@
+import { initials } from './identity'
+
 import type { CiStatus, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
 const GITLAB = 'https://gitlab.com'
@@ -251,18 +253,6 @@ const toJob = (job: RawJob): Job => ({
 
 const jobLink = (job: Job): JobLink => ({ name: job.name, url: job.url })
 
-const words = (name: string): string[] => name.split(/[\s._-]+/).filter(word => /^\p{L}/u.test(word))
-
-/** First and last initial; one word gives its first two letters. */
-export function initials(name: string, longer = false): string {
-  const [first = '?', ...rest] = words(name)
-  const last = rest.at(-1)
-  if (!last) {
-    return first.slice(0, longer ? 3 : 2).toUpperCase()
-  }
-  return `${first.charAt(0).toUpperCase()}${last.charAt(0).toUpperCase()}${longer ? last.charAt(1) : ''}`
-}
-
 /** Who to talk to first; `open` is a person with open threads, who comes after one asking for changes. */
 const STATE_RANK: Record<PersonState | 'open', number> = {
   requested_changes: 0,
@@ -337,7 +327,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
       username,
       name: person.name,
       isBot: person.isBot,
-      initials: initials(person.name),
+      initials: initials(person.name, username),
       avatarUrl: person.avatarUrl,
       state,
       openThreads: person.openThreads,
@@ -350,7 +340,7 @@ function toPeople(raw: RawMr, project: string, threads: { isOpen: boolean; notes
   // Bots leave a summary on nearly every MR; only one holding the merge, by an open thread or asking for changes, is shown.
   return people
     .filter(person => !person.isBot || person.state === 'requested_changes' || person.openThreads > 0)
-    .map(person => (shared.has(person.initials) ? { ...person, initials: initials(person.name, true) } : person))
+    .map(person => (shared.has(person.initials) ? { ...person, initials: initials(person.name, person.username, true) } : person))
     .sort((a, b) => Number(a.isBot) - Number(b.isBot) || order(a) - order(b) || a.name.localeCompare(b.name))
 }
 

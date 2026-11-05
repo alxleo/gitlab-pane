@@ -21,6 +21,7 @@
     "hooks/avatar.ts",
     "hooks/ci.ts",
     "hooks/gitlab.ts",
+    "hooks/identity.ts",
     "hooks/jira.ts",
     "hooks/markdown.ts",
     "hooks/reconcile.ts",

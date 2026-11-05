@@ -1,3 +1,4 @@
+import { shortHash } from './identity'
 import { flatOf } from './markdown'
 
 import type { CiStatus, MergeStatus, MrCard, Person, Pinned, Stage, Usual } from '../types'
@@ -176,9 +177,7 @@ export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
   }
 }
 
-/** Keeps a hover scope or key short whatever the project path or username. */
-export const shortHash = (text: string): string =>
-  [...text].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7).toString(36)
+export { shortHash }
 
 /**
  * The key of an MR's title button, which the pane scrolls back to after the MR's page. The desktop reports where only

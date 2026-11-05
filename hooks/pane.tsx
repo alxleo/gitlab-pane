@@ -29,6 +29,7 @@ import {
   verdictOf,
 } from './ci'
 import { BOT_MARKS, discMarks } from './avatar'
+import { firstName } from './identity'
 import { inboxView } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { ticketUrl } from './jira'
@@ -426,7 +427,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ? person.name.length > BOT_NAME_ROOM
           ? `${person.name.slice(0, BOT_NAME_ROOM - 1)}…`
           : person.name
-        : person.name.split(/[\s._]+/)[0] || person.initials
+        : firstName(person.name, person.username) || person.initials
     )
     const callName = (person: Person, i: number) => {
       const first = firstNames[i] ?? person.initials
