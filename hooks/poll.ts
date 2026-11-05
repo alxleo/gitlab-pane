@@ -30,7 +30,7 @@ import { stringRecord } from './decode'
 import { lostIn, readFeatures, readMergeStatus, readPinned, readResponse, readUsual } from './gitlab'
 import { authoredQuery, mergeStatusQuery, pinnedQuery, probeQuery, usualQuery } from './gitlab-documents'
 import { ask } from './graphql'
-import { projectOf } from './hosts'
+import { hostStatuses, projectOf } from './hosts'
 import { TICKET_FIELDS, readTickets, ticketQuery } from './jira'
 import { ago, ticketOf } from './format'
 import { describe } from './wake'
@@ -233,10 +233,11 @@ async function readOnce($: EngineInterface): Promise<void> {
   const failures = reads.flatMap(read => ('failure' in read ? [labelled(read.host, read.failure)] : []))
   const answers = reads.flatMap(read => ('answer' in read ? [{ host: read.host, ...read.answer }] : []))
   const notes = answers.flatMap(answer => answer.notes.map(note => labelled(answer.host, note)))
+  const outcomes = reads.map(read => ({ host: read.host, error: 'failure' in read ? read.failure.message : null }))
   if (answers.length === 0) {
     const all = together(failures)
     await record($, 'gitlab', all)
-    await changePoll($, poll => ({ ...poll, attemptedAt, error: all.message, failures: poll.failures + 1 }))
+    await changePoll($, poll => ({ ...poll, attemptedAt, error: all.message, hosts: hostStatuses(poll.hosts, outcomes, attemptedAt), failures: poll.failures + 1 }))
     return
   }
   const fresh = answers.flatMap(answer => answer.rows)
@@ -262,7 +263,15 @@ async function readOnce($: EngineInterface): Promise<void> {
   if (reconciled.unpinned.length > 0) {
     await unpinKeys($, reconciled.unpinned)
   }
-  await changePoll($, poll => ({ ...poll, fetchedAt: now, attemptedAt, error: failures.length > 0 ? together(failures).message : null, failures: 0, kept: kept.length }))
+  await changePoll($, poll => ({
+    ...poll,
+    fetchedAt: now,
+    attemptedAt,
+    error: failures.length > 0 ? together(failures).message : null,
+    hosts: hostStatuses(poll.hosts, outcomes, now),
+    failures: 0,
+    kept: kept.length,
+  }))
   if (reconciled.wakes.length > 0 && (await readWake($))) {
     quietly($, wake($, reconciled.wakes))
   }
@@ -293,8 +302,10 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
   await refresh($)
   const [rows, poll, now] = await Promise.all([readRows($), readPoll($), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
-  const age = poll.fetchedAt !== null ? line`; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : EMPTY
-  const stale = poll.error !== null ? line`GitLab could not be read (${foreign(poll.error, URL_ROOM)})${age}` : EMPTY
+  // Only the MR's own host is told of: another host failing says nothing of this answer.
+  const status = poll.hosts[parsed.host]
+  const age = status?.fetchedAt != null ? line`; this is ${ago(new Date(status.fetchedAt).toISOString(), now)} old` : EMPTY
+  const stale = status?.error != null ? line`GitLab could not be read (${foreign(status.error, URL_ROOM)})${age}` : EMPTY
   if (row !== undefined) {
     return dotted([describe(row, now), stale])
   }
