@@ -3,6 +3,8 @@
 // that must announce a drawing may not write an atom (the engine denies a write while drawing). A reload empties it, which
 // is right, as nothing started before the reload can finish after it.
 
+import type { HostFeatures } from '../types'
+
 const running = new Map<string, Promise<void>>()
 const queued = new Map<string, Promise<void>>()
 
@@ -43,6 +45,23 @@ export function joined(name: string, work: () => Promise<void>): Promise<void> {
   return started
 }
 
+// What each GitLab host's schema was found to have, asked once per host and shared by every read that comes while it is asked.
+const probes = new Map<string, Promise<HostFeatures>>()
+
+/** What `find` gave for `host`, asked once and then remembered until the mod reloads; a failed ask is forgotten, to be asked again. */
+export function probed(host: string, find: () => Promise<HostFeatures>): Promise<HostFeatures> {
+  const known = probes.get(host)
+  if (known !== undefined) {
+    return known
+  }
+  const asked = find()
+  probes.set(host, asked)
+  asked.catch(() => {
+    probes.delete(host)
+  })
+  return asked
+}
+
 // Tokens, which are secrets: they live here, in memory, as resolved promises, and in no atom or store a session saves.
 const tokens = new Map<string, Promise<string | null>>()
 
@@ -80,3 +99,9 @@ export const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDr
 
 /** Where the window sat at the last drawing. */
 export const rowDrawn = (): number => drawnAtRow
+
+/** A session starting asks each host's schema again, and finds each token again where a session before it left one. */
+export function forgetProbed(): void {
+  probes.clear()
+  forgetFound()
+}

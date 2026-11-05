@@ -1,5 +1,5 @@
 /*
- * How the pane's element tree looks on the Claude desktop app, as a web page: tools/pane_screens.py turns each element
+ * How the pane's element tree looks on the Claude desktop app, as a web page: tools/pane_screens.ts turns each element
  * into the HTML these rules style. The sizes are the one place to tune a look: --ux and --uy are what one terminal
  * cell across and down become (a Box's gap, padding and margin count in cells), and the type steps are Text's `size`.
  */

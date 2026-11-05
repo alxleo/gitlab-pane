@@ -1,16 +1,17 @@
-import { atom, read, update } from 'claude-code'
+import { atom, derive, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import { isEqual } from './equal.ts'
 import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { cardFacts } from './row-facts.ts'
 
-import type { HostFeatures, MrCard, Pinned, PollState, Ticket, Usual } from '../types'
+import type { MrCard, Pinned, PollState, Ticket, Usual } from '../types'
 
 // What GitLab, Jira and avatar fetches gave, and the polling's bookkeeping. The engine reads an atom only in the file that
 // declares it, so everything that reads or writes these goes through the functions below.
 const pinnedAtom = atom({ plugin: 'gitlab-ci', key: 'pinned' } as const, [])
 const hostsAtom = atom({ plugin: 'gitlab-ci', key: 'hosts' } as const, ['gitlab.com'])
-const featuresAtom = atom({ plugin: 'gitlab-ci', key: 'features' } as const, {})
 const rowsAtom = atom({ plugin: 'gitlab-ci', key: 'rows' } as const, [])
 const ticketsAtom = atom({ plugin: 'gitlab-ci', key: 'tickets' } as const, {})
 const usualAtom = atom({ plugin: 'gitlab-ci', key: 'usual' } as const, {})
@@ -27,18 +28,24 @@ const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
   usualAt: null,
 } satisfies PollState)
 
+// The rows with what each says by itself (badges, verdict, words, the Markdown cut from its text, its faces with their
+// pictures), made again only when the rows or the pictures change, not for every drawing.
+const drawnRowsOf = derive([rowsAtom, avatarsAtom], (rows, avatars) => ({
+  rows,
+  facts: Object.fromEntries(rows.map(row => [row.key, cardFacts(row, avatars)])),
+}))
+
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnData($: EngineInterface) {
-  const [pinned, rows, tickets, usual, avatars, poll, browse] = await Promise.all([
+  const [pinned, drawn, tickets, usual, poll, browse] = await Promise.all([
     read($, pinnedAtom),
-    read($, rowsAtom),
+    read($, drawnRowsOf),
     read($, ticketsAtom),
     read($, usualAtom),
-    read($, avatarsAtom),
     read($, pollAtom),
     read($, jiraAtom),
   ])
-  return { pinned, rows, tickets, usual, avatars, poll, browse }
+  return { pinned, rows: drawn.rows, facts: drawn.facts, tickets, usual, poll, browse }
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
@@ -47,13 +54,6 @@ export function readPinned($: EngineInterface): Promise<Pinned[]> {
 /** The GitLab hosts the settings name, home first. */
 export function readHosts($: EngineInterface): Promise<string[]> {
   return read($, hostsAtom)
-}
-/** What each probed host's schema has. */
-export function readFeaturesKnown($: EngineInterface): Promise<Record<string, HostFeatures>> {
-  return read($, featuresAtom)
-}
-export function setFeatures($: EngineInterface, host: string, features: HostFeatures): Promise<void> {
-  return update($, featuresAtom, known => ({ ...known, [host]: features })).then(() => undefined)
 }
 export function readRows($: EngineInterface): Promise<MrCard[]> {
   return read($, rowsAtom)
@@ -81,11 +81,10 @@ export function readBrowse($: EngineInterface): Promise<string> {
   return read($, jiraAtom)
 }
 
-/** A mod loading takes its settings, and forgets which pictures failed and what each host's schema had, so each is tried again. */
+/** A mod loading takes its settings and forgets which pictures failed, so each is tried again. */
 export async function startData($: EngineInterface, jiraSite: unknown, hosts: readonly string[]): Promise<void> {
   await update($, jiraAtom, () => browseUrl(jiraSite))
   await update($, hostsAtom, () => [...hosts])
-  await update($, featuresAtom, () => ({}))
   await update($, unreachableAtom, () => [])
 }
 
@@ -102,35 +101,53 @@ export async function unpinKeys($: EngineInterface, keys: readonly string[]): Pr
   await update($, pinnedAtom, list => list.filter(each => !keys.includes(pinKey(each))))
 }
 
-export function setRows($: EngineInterface, rows: MrCard[]): Promise<void> {
-  return update($, rowsAtom, () => rows).then(() => undefined)
+// A write redraws every reader, changed or not, so each setter below writes only what differs from what the atom holds.
+export async function setRows($: EngineInterface, rows: MrCard[]): Promise<void> {
+  if (!isEqual(await read($, rowsAtom), rows)) {
+    await update($, rowsAtom, () => rows)
+  }
 }
-export function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {
-  return update($, announcedAtom, () => announced).then(() => undefined)
+export async function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {
+  if (!isEqual(await read($, announcedAtom), announced)) {
+    await update($, announcedAtom, () => announced)
+  }
 }
-export function setAvatars($: EngineInterface, kept: Record<string, string>): Promise<void> {
-  return update($, avatarsAtom, () => kept).then(() => undefined)
+export async function setAvatars($: EngineInterface, kept: Record<string, string>): Promise<void> {
+  if (!isEqual(await read($, avatarsAtom), kept)) {
+    await update($, avatarsAtom, () => kept)
+  }
 }
-export function markUnreachable($: EngineInterface, urls: readonly string[]): Promise<void> {
-  return update($, unreachableAtom, list => [...list, ...urls]).then(() => undefined)
+export async function markUnreachable($: EngineInterface, urls: readonly string[]): Promise<void> {
+  if (urls.length > 0) {
+    await update($, unreachableAtom, list => [...list, ...urls])
+  }
 }
 
 /** Adds what Jira said about tickets, and when it was asked. */
 export async function mergeTickets($: EngineInterface, found: Record<string, Ticket>, at: number): Promise<void> {
-  await update($, ticketsAtom, previous => ({ ...previous, ...found }))
-  await update($, pollAtom, previous => ({ ...previous, ticketsAt: at }))
+  const known = await read($, ticketsAtom)
+  if (!isEqual(known, { ...known, ...found })) {
+    await update($, ticketsAtom, previous => ({ ...previous, ...found }))
+  }
+  await changePoll($, poll => ({ ...poll, ticketsAt: at }))
 }
 
 /** Adds the pipeline run times read for projects, by `host/group/project`. */
 export async function mergeUsual($: EngineInterface, usual: Record<string, Usual>): Promise<void> {
-  await update($, usualAtom, previous => ({ ...previous, ...usual }))
+  const known = await read($, usualAtom)
+  if (!isEqual(known, { ...known, ...usual })) {
+    await update($, usualAtom, previous => ({ ...previous, ...usual }))
+  }
 }
 
 /** Records when a pass over the projects' run times ended. */
 export async function markUsualRead($: EngineInterface, at: number): Promise<void> {
-  await update($, pollAtom, previous => ({ ...previous, usualAt: at }))
+  await changePoll($, poll => ({ ...poll, usualAt: at }))
 }
 
-export function changePoll($: EngineInterface, change: (poll: PollState) => PollState): Promise<void> {
-  return update($, pollAtom, change).then(() => undefined)
+export async function changePoll($: EngineInterface, change: (poll: PollState) => PollState): Promise<void> {
+  const previous = await read($, pollAtom)
+  if (!isEqual(previous, change(previous))) {
+    await update($, pollAtom, change)
+  }
 }
