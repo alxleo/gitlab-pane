@@ -5,7 +5,7 @@ import { isFilled } from './decode.ts'
 import type { HostStatus } from '../types'
 
 /** The host used when the setting names none; its projects are drawn without the host before them. */
-export const DEFAULT_HOST = 'gitlab.com'
+const DEFAULT_HOST = 'gitlab.com'
 
 const HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/
 

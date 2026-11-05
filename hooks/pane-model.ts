@@ -27,7 +27,7 @@ export const MINE_SHOWN = 10
 /** The least a row can draw to; with less room than this, no row is tried. */
 const ROW_FLOOR = 300
 
-export type Link = { href: string; text: string }
+type Link = { href: string; text: string }
 
 export type PersonRow = {
   username: string
