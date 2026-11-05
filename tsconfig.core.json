@@ -1,0 +1,29 @@
+{
+  // The core: files that run on plain data and import nothing from the engine. This config has no engine types, so a
+  // core file that imports 'claude-code' fails to compile here, which is the layering rule enforced by the compiler.
+  // types/index.d.ts is the plugin's contract and `claude plugin validate` makes it one self-contained file, so the
+  // domain types cannot move out of it; its `declare module 'claude-code'` block needs no engine to compile.
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noEmit": true,
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": []
+  },
+  "include": [
+    "hooks/avatar.ts",
+    "hooks/ci.ts",
+    "hooks/gitlab.ts",
+    "hooks/jira.ts",
+    "hooks/markdown.ts",
+    "hooks/reconcile.ts",
+    "types/index.d.ts"
+  ]
+}

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { InboxActivity, InboxItem, InboxSection, InboxState } from '../types'
+import type { InboxActivity, InboxItem, InboxKind, InboxSection, InboxState } from '../types'
 
 // mr-inbox owns the GitLab reads, the cache and the rules; this module only asks it.
 const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
@@ -48,6 +48,34 @@ async function repoArgs($: EngineInterface): Promise<string[]> {
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '')
 
+const INBOX_KINDS: Record<InboxKind, true> = {
+  changes_requested: true,
+  unapproved: true,
+  approved: true,
+  review: true,
+  comment: true,
+  review_requested: true,
+  pushed: true,
+  opened: true,
+  merged: true,
+  unknown: true,
+}
+
+/** A kind `mr-inbox` may add to without notice: one the pane has no word for is `unknown`, and drawn as such. */
+const kindOf = (kind: string): InboxKind => (Object.hasOwn(INBOX_KINDS, kind) ? (kind as InboxKind) : 'unknown')
+
+/** Counts by kind; a card has never counted a kind the pane has no word for, and still does not. */
+function countsOf(raw: Record<string, unknown>): InboxItem['counts'] {
+  const counts: InboxItem['counts'] = {}
+  for (const [name, count] of Object.entries(raw)) {
+    const kind = kindOf(name)
+    if (typeof count === 'number' && kind !== 'unknown') {
+      counts[kind] = count
+    }
+  }
+  return counts
+}
+
 /** The inbox as the pane keeps it, from `mr-inbox inbox --json`; throws on anything else. */
 export function readInboxJson(stdout: string): Pick<InboxState, 'sections' | 'syncedAt' | 'syncError'> {
   const raw = JSON.parse(stdout) as { sync?: Record<string, unknown>; sections?: unknown }
@@ -69,14 +97,10 @@ export function readInboxJson(stdout: string): Pick<InboxState, 'sections' | 'sy
         state: text(item.state),
         isDraft: item.draft === true,
         unseen: typeof item.unseen === 'number' ? item.unseen : 0,
-        counts: Object.fromEntries(
-          Object.entries((item.counts as Record<string, unknown> | undefined) ?? {}).filter(
-            (entry): entry is [string, number] => typeof entry[1] === 'number'
-          )
-        ),
+        counts: countsOf((item.counts as Record<string, unknown> | undefined) ?? {}),
         activity: ((item.activity as Record<string, unknown>[] | undefined) ?? []).slice(0, ACTIVITY_KEPT).map(
           (one): InboxActivity => ({
-            kind: text(one.kind),
+            kind: kindOf(text(one.kind)),
             actor: text(one.actor),
             at: text(one.at),
             url: text(one.url) || null,

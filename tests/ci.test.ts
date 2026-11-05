@@ -17,12 +17,14 @@ import {
   ticketOf,
   verdictOf,
 } from '../hooks/ci'
-import { cleanBody, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
+import { ciStatusOf, cleanBody, mergeStatusOf, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
 import { readTickets, ticketQuery } from '../hooks/jira'
 import { flatOf } from '../hooks/markdown'
 import { NOW, job, note, pipe, rawMr, reviewer, stage, thread, user } from './fixtures'
 
-const view = (status: string, id = 7, failed: unknown[] = []) => ({ id, status, failed })
+import type { CiStatus, MergeStatus } from '../types'
+
+const view = (status: CiStatus, id = 7, failed: unknown[] = []) => ({ id, status, failed })
 
 const marks = (iid: number, over: Parameters<typeof rawMr>[1] = {}) =>
   badges(toCard(rawMr(iid, over))).map(badge => `${badge.glyph}${badge.count}`)
@@ -234,8 +236,8 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
 })
 
 test("GitLab's merge verdict reads as words in its tone, and as nothing while GitLab is still deciding", async () => {
-  const card = (mergeStatus: string | null, approvalsLeft = 2) => ({ ...toCard(rawMr(1, { approvalsLeft, approvalsRequired: 2 })), mergeStatus })
-  const said = (mergeStatus: string | null, approvalsLeft?: number) => {
+  const card = (mergeStatus: MergeStatus | null, approvalsLeft = 2) => ({ ...toCard(rawMr(1, { approvalsLeft, approvalsRequired: 2 })), mergeStatus })
+  const said = (mergeStatus: MergeStatus | null, approvalsLeft?: number) => {
     const verdict = verdictOf(card(mergeStatus, approvalsLeft))
     return verdict && [verdict.words, verdict.tone]
   }
@@ -248,10 +250,23 @@ test("GitLab's merge verdict reads as words in its tone, and as nothing while Gi
   expect(said('CI_STILL_RUNNING')).toEqual(['CI running', 'subtle'])
   expect(said('DISCUSSIONS_NOT_RESOLVED')).toEqual(['threads open', 'warning'])
   expect(said('DRAFT_STATUS')).toEqual(['draft', 'subtle'])
-  expect(said('JIRA_ASSOCIATION_MISSING')).toEqual(['jira association missing', 'subtle'])
-  for (const quiet of ['UNCHECKED', 'CHECKING', 'PREPARING', 'APPROVALS_SYNCING', 'NOT_OPEN', null]) {
+  expect(said('JIRA_ASSOCIATION')).toEqual(['jira association', 'subtle'])
+  expect(said(mergeStatusOf('A_VERDICT_GITLAB_ADDS_LATER'))).toEqual(['merge status unknown', 'subtle'])
+  for (const quiet of ['UNCHECKED', 'CHECKING', 'PREPARING', 'APPROVALS_SYNCING', 'NOT_OPEN', null] as const) {
     expect(said(quiet)).toBe(null)
   }
+})
+
+test('a status GitLab adds later reads as unknown, drawn as such, and a known one keeps its name', async () => {
+  expect(ciStatusOf('WAITING_FOR_RESOURCE')).toBe('waiting_for_resource')
+  expect(ciStatusOf('A_STATUS_GITLAB_ADDS_LATER')).toBe('unknown')
+  const card = toCard(rawMr(1, { headPipeline: pipe('A_STATUS_GITLAB_ADDS_LATER' as never) }))
+  expect(card.pipeline?.status).toBe('unknown')
+  expect(card.pipeline?.stages.map(stage => [stage.status, stage.jobs.map(one => one.status)])).toEqual([
+    ['unknown', ['unknown']],
+    ['unknown', ['unknown']],
+  ])
+  expect(card.pipeline?.failed).toEqual([])
 })
 
 test('an MR reads by its first paragraph, not its headings', async () => {

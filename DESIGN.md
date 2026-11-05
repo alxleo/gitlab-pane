@@ -45,6 +45,7 @@ Hovering a card that opens turns its border the theme's `claude` colour.
 | ⏸ | waiting on a manual job |
 | ⊘ | skipped, canceled |
 | ○ | no pipeline |
+| ? | a status GitLab sent that the pane has no name for |
 
 A failed job is ✗ and a job allowed to fail is ⚠, each with its run time.
 

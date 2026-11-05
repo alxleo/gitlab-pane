@@ -1,11 +1,15 @@
 import type { RawJob, RawMr } from '../hooks/gitlab'
+import type { CiStatus, ReviewState } from '../types'
 
 export const NOW = Date.parse('2026-10-23T15:10:00Z')
 
 type Pipe = NonNullable<RawMr['headPipeline']>
 type RawStage = Pipe['stages']['nodes'][number]
 
-export const job = (name: string, status: string, over: Partial<RawJob> = {}): RawJob => ({
+/** A status as GitLab's API spells it. */
+type Wire<T extends string> = Uppercase<T>
+
+export const job = (name: string, status: Wire<CiStatus>, over: Partial<RawJob> = {}): RawJob => ({
   name,
   status,
   allowFailure: false,
@@ -15,10 +19,10 @@ export const job = (name: string, status: string, over: Partial<RawJob> = {}): R
   ...over,
 })
 
-export const stage = (name: string, status: string, jobs: RawJob[]): RawStage => ({ name, status, jobs: { nodes: jobs } })
+export const stage = (name: string, status: Wire<CiStatus>, jobs: RawJob[]): RawStage => ({ name, status, jobs: { nodes: jobs } })
 
 /** A pipeline of two stages; a failed one's jobs passed unless `stages` says which failed. */
-export const pipe = (status: string, over: Partial<Pipe> = {}): Pipe => {
+export const pipe = (status: Wire<CiStatus>, over: Partial<Pipe> = {}): Pipe => {
   const jobStatus = status === 'FAILED' ? 'SUCCESS' : status
   return {
     id: 'gid://gitlab/Ci::Pipeline/99',
@@ -95,7 +99,7 @@ export const thread = (body: string, author = 'reviewer', resolved = false, reso
   notes: { nodes: [note(body, author, { author: user(author, bot) })] },
 })
 
-export const reviewer = (username: string, reviewState: string, bot = false) => ({
+export const reviewer = (username: string, reviewState: Wire<ReviewState>, bot = false) => ({
   ...user(username, bot),
   mergeRequestInteraction: { reviewState },
 })

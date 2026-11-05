@@ -1,11 +1,35 @@
 import { flatOf } from './markdown'
 
-import type { MrCard, Person, Pinned, Stage, Usual } from '../types'
+import type { CiStatus, MergeStatus, MrCard, Person, Pinned, Stage, Usual } from '../types'
+
+/** Ends a switch over a union, so a new member is a compile error at every switch that does not name it. */
+export function assertNever(value: never): never {
+  throw new Error(`Unhandled value: ${String(value)}`)
+}
 
 /** A pipeline in one of these waits for nothing but a person. */
-const SETTLED = ['success', 'failed', 'canceled', 'skipped', 'manual']
-
-export const isSettled = (status: string): boolean => SETTLED.includes(status)
+export function isSettled(status: CiStatus): boolean {
+  switch (status) {
+    case 'success':
+    case 'failed':
+    case 'canceled':
+    case 'skipped':
+    case 'manual':
+      return true
+    case 'created':
+    case 'waiting_for_resource':
+    case 'preparing':
+    case 'waiting_for_callback':
+    case 'pending':
+    case 'running':
+    case 'canceling':
+    case 'scheduled':
+    case 'unknown':
+      return false
+    default:
+      return assertNever(status)
+  }
+}
 
 const MR_URL = /^https:\/\/gitlab\.com\/(.+?)\/-\/merge_requests\/(\d+)/
 
@@ -31,7 +55,7 @@ export type Due = 'failed' | 'mergeable'
  */
 export function advance(
   announced: readonly string[],
-  card: { pipeline?: { id: number; status: string; failed: readonly unknown[] }; mergeStatus: string | null }
+  card: { pipeline?: { id: number; status: CiStatus; failed: readonly unknown[] }; mergeStatus: MergeStatus | null }
 ): { announced: string[]; due: Due | null } {
   const id = card.pipeline?.id ?? 0
   const mine = announced.filter(key => key.startsWith(`${id}:`))
@@ -81,7 +105,7 @@ export const byAttention = (a: MrCard, b: MrCard): number =>
 
 export type Tone = 'success' | 'error' | 'warning' | 'subtle' | 'suggestion'
 
-export function statusMark(status: string | undefined): { glyph: string; tone: Tone } {
+export function statusMark(status: CiStatus | undefined): { glyph: string; tone: Tone } {
   switch (status) {
     case 'success':
       return { glyph: '✓', tone: 'success' }
@@ -94,8 +118,19 @@ export function statusMark(status: string | undefined): { glyph: string; tone: T
       return { glyph: '⊘', tone: 'subtle' }
     case undefined:
       return { glyph: '○', tone: 'subtle' }
-    default:
+    case 'unknown':
+      return { glyph: '?', tone: 'subtle' }
+    case 'created':
+    case 'waiting_for_resource':
+    case 'preparing':
+    case 'waiting_for_callback':
+    case 'pending':
+    case 'running':
+    case 'canceling':
+    case 'scheduled':
       return { glyph: '●', tone: 'suggestion' }
+    default:
+      return assertNever(status)
   }
 }
 
@@ -132,12 +167,12 @@ export const DRAWING_BUDGET = 85_000
 /** What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos. */
 export const CHROME_SIZE = 6_000
 
-/** A tree's size as the app receives it. */
-export const measure = (tree: unknown): number => {
+/** A tree's size as the app receives it; one that cannot be serialized counts as `unreadable`, a whole budget by default. */
+export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
   try {
     return JSON.stringify(tree)?.length ?? 0
   } catch {
-    return DRAWING_BUDGET
+    return unreadable
   }
 }
 
@@ -151,16 +186,31 @@ export const shortHash = (text: string): string =>
  */
 export const titleKey = (mr: { iid: number; project: string }): string => `open-${mr.iid}-${shortHash(mr.project)}`
 
-export const stageTone = (status: string): Tone =>
-  status === 'success'
-    ? 'success'
-    : status === 'failed'
-      ? 'error'
-      : status === 'manual'
-        ? 'warning'
-        : isSettled(status) || status === 'created'
-          ? 'subtle'
-          : 'suggestion'
+export function stageTone(status: CiStatus): Tone {
+  switch (status) {
+    case 'success':
+      return 'success'
+    case 'failed':
+      return 'error'
+    case 'manual':
+      return 'warning'
+    case 'canceled':
+    case 'skipped':
+    case 'created':
+    case 'unknown':
+      return 'subtle'
+    case 'waiting_for_resource':
+    case 'preparing':
+    case 'waiting_for_callback':
+    case 'pending':
+    case 'running':
+    case 'canceling':
+    case 'scheduled':
+      return 'suggestion'
+    default:
+      return assertNever(status)
+  }
+}
 
 export type BadgeKind =
   | 'failed'
@@ -249,43 +299,44 @@ export function rowBadges(card: MrCard): Badge[] {
   })
 }
 
-/** What GitLab's verdict already says, so the pane's own marker for it would only repeat it. */
-const SAID_BY: Record<string, readonly BadgeKind[]> = {
-  MERGEABLE: ['ready', 'approvals'],
-  NOT_APPROVED: ['approvals'],
-  REQUESTED_CHANGES: ['changes'],
-  CONFLICT: ['conflicts'],
-  NEED_REBASE: ['rebase'],
-  CI_MUST_PASS: ['failed'],
-  DISCUSSIONS_NOT_RESOLVED: ['threads'],
-}
+type Verdict = { words: string; tone: Tone; covers: readonly BadgeKind[] }
 
-/** Still being worked out by GitLab, or about an MR that has left: nothing worth saying. */
-const QUIET = ['UNCHECKED', 'CHECKING', 'PREPARING', 'APPROVALS_SYNCING', 'NOT_OPEN']
+const said = (words: string, tone: Tone, covers: readonly BadgeKind[] = []): Verdict => ({ words, tone, covers })
 
 /**
- * GitLab's own verdict on whether the MR can merge (`detailedMergeStatus`), in words and a tone, with the pane's markers
- * it already covers; null while GitLab is deciding, or when it was not read.
+ * What each of GitLab's verdicts says, in words and a tone, with the pane's markers it already covers so they would only
+ * repeat it. Null for one still being worked out by GitLab, or about an MR that has left: nothing worth saying.
  */
-export function verdictOf(card: MrCard): { words: string; tone: Tone; covers: readonly BadgeKind[] } | null {
-  const status = card.mergeStatus
-  if (!status || QUIET.includes(status)) {
-    return null
-  }
-  const words: Record<string, [string, Tone]> = {
-    MERGEABLE: ['✓ mergeable', 'success'],
-    NOT_APPROVED: [card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'needs approval', 'subtle'],
-    REQUESTED_CHANGES: ['changes requested', 'error'],
-    CONFLICT: ['conflicts', 'error'],
-    NEED_REBASE: ['needs rebase', 'warning'],
-    CI_MUST_PASS: ['CI must pass', 'error'],
-    CI_STILL_RUNNING: ['CI running', 'subtle'],
-    DISCUSSIONS_NOT_RESOLVED: ['threads open', 'warning'],
-    DRAFT_STATUS: ['draft', 'subtle'],
-  }
-  const [said, tone] = words[status] ?? [status.toLowerCase().replace(/_/g, ' '), 'subtle']
-  return { words: said, tone, covers: SAID_BY[status] ?? [] }
+const VERDICT: Record<MergeStatus, (card: MrCard) => Verdict | null> = {
+  MERGEABLE: () => said('✓ mergeable', 'success', ['ready', 'approvals']),
+  NOT_APPROVED: card => said(card.approvalsLeft > 0 ? `needs ${plural(card.approvalsLeft, 'approval')}` : 'needs approval', 'subtle', ['approvals']),
+  REQUESTED_CHANGES: () => said('changes requested', 'error', ['changes']),
+  CONFLICT: () => said('conflicts', 'error', ['conflicts']),
+  NEED_REBASE: () => said('needs rebase', 'warning', ['rebase']),
+  CI_MUST_PASS: () => said('CI must pass', 'error', ['failed']),
+  CI_STILL_RUNNING: () => said('CI running', 'subtle'),
+  DISCUSSIONS_NOT_RESOLVED: () => said('threads open', 'warning', ['threads']),
+  DRAFT_STATUS: () => said('draft', 'subtle'),
+  COMMITS_STATUS: () => said('commits status', 'subtle'),
+  BLOCKED_STATUS: () => said('blocked status', 'subtle'),
+  EXTERNAL_STATUS_CHECKS: () => said('external status checks', 'subtle'),
+  JIRA_ASSOCIATION: () => said('jira association', 'subtle'),
+  LOCKED_PATHS: () => said('locked paths', 'subtle'),
+  LOCKED_LFS_FILES: () => said('locked lfs files', 'subtle'),
+  MERGE_TIME: () => said('merge time', 'subtle'),
+  SECURITY_POLICIES_VIOLATIONS: () => said('security policies violations', 'subtle'),
+  TITLE_NOT_MATCHING: () => said('title not matching', 'subtle'),
+  SECURITY_POLICY_PIPELINE_CHECK: () => said('security policy pipeline check', 'subtle'),
+  UNKNOWN: () => said('merge status unknown', 'subtle'),
+  UNCHECKED: () => null,
+  CHECKING: () => null,
+  PREPARING: () => null,
+  APPROVALS_SYNCING: () => null,
+  NOT_OPEN: () => null,
 }
+
+/** GitLab's own verdict on whether the MR can merge (`detailedMergeStatus`); null while GitLab is deciding, or when it was not read. */
+export const verdictOf = (card: MrCard): Verdict | null => (card.mergeStatus ? VERDICT[card.mergeStatus](card) : null)
 
 /** A person's icon colour: asked for changes, open threads, approved, or nothing pending. */
 export const personTone = (person: Person): Tone =>
