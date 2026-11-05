@@ -98,3 +98,14 @@ export const reviewer = (username: string, reviewState: MergeRequestReviewState,
   ...user(username, bot),
   mergeRequestInteraction: { reviewState },
 })
+
+/** What the MergeStatus query answers for these MRs: the verdict GitLab holds, null for one that has none. */
+export const mergeStatuses = (mrs: readonly Mr[]) => ({
+  data: {
+    currentUser: {
+      authoredMergeRequests: {
+        nodes: mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus ?? null })),
+      },
+    },
+  },
+})

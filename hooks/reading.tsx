@@ -71,13 +71,13 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
       <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
       <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
-      {verdict && (
+      {verdict !== null && (
         <Text bold={verdict.tone === 'success'} color={verdict.tone}>
           {verdict.words}
         </Text>
       )}
       <Text dimColor>
-        {`${mr.branch.source} → ${mr.branch.target}${mr.diff ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
+        {`${mr.branch.source} → ${mr.branch.target}${mr.diff !== null ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
       </Text>
     </Box>,
   ]
@@ -134,7 +134,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       continue
     }
     const cut = 'text' in part ? cutToFit(part.text, room, text => measure(markdown(text))) : EMPTY_MARKDOWN
-    if (cut) {
+    if (cut.length > 0) {
       described.push(markdown(cut))
     }
     isCut = true

@@ -16,7 +16,7 @@ import { foreign } from '../hooks/model-text'
 import { raw, svg } from '../hooks/svg'
 import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
-import type { CiStatus, MergeStatus } from '../types'
+import type { CiStatus, MergeStatus, Stage } from '../types'
 
 const view = (status: CiStatus, id = 7, failed: unknown[] = []) => ({ id, status, failed })
 
@@ -183,7 +183,7 @@ test("a bot's request for changes and its open threads are its icon's; only what
 
 test('run time counts only while jobs run, not while a manual gate waits', async () => {
   const at = (minute: number) => new Date(NOW - (60 - minute) * 60_000).toISOString()
-  const stages = [
+  const stages: Stage[] = [
     { name: 'a', status: 'success', jobs: [{ name: 'x', status: 'success', allowFailure: false, url: '', startedAt: at(0), finishedAt: at(10) }] },
     {
       name: 'b',
@@ -240,7 +240,7 @@ test("GitLab's merge verdict reads as words in its tone, and as nothing while Gi
   const card = (mergeStatus: MergeStatus | null, approvalsLeft = 2) => ({ ...toCard(rawMr(1, { approvalsLeft, approvalsRequired: 2 })), mergeStatus })
   const said = (mergeStatus: MergeStatus | null, approvalsLeft?: number) => {
     const verdict = verdictOf(card(mergeStatus, approvalsLeft))
-    return verdict && [verdict.words, verdict.tone]
+    return verdict !== null ? [verdict.words, verdict.tone] : null
   }
   expect(said('MERGEABLE')).toEqual(['✓ mergeable', 'success'])
   expect(said('NOT_APPROVED')).toEqual(['needs 2 approvals', 'subtle'])
@@ -263,7 +263,7 @@ test('a status GitLab adds later reads as unknown, drawn as such, and a known on
   expect(ciStatusOf('A_STATUS_GITLAB_ADDS_LATER')).toBe('unknown')
   // The status arrives as text from `glab`, so the test sends one the types do not name through the same decoder.
   const unseen = 'A_STATUS_GITLAB_ADDS_LATER'
-  const unseenStage = (name: string) => ({ ...stage(name, 'RUNNING', [{ ...job(name, 'RUNNING'), status: unseen }]), status: unseen })
+  const unseenStage = (name: string) => ({ ...stage(name, 'RUNNING', []), status: unseen, jobs: { nodes: [{ ...job(name, 'RUNNING'), status: unseen }] } })
   const wire = { data: { project: { mergeRequest: { ...rawMr(1), headPipeline: { ...pipe('RUNNING'), status: unseen, stages: { nodes: [unseenStage('build'), unseenStage('test')] } } } } } }
   const [card] = readPinned(decodeGraphql<PinnedQuery>(parseJson(JSON.stringify(wire))))
   if (card === undefined) {
