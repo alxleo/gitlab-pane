@@ -2,9 +2,10 @@ import type { AuthoredQuery, AuthoredQueryVariables, MergeStatusQuery, MrFieldsF
 import { isFilled, isSome } from './decode.ts'
 import { ciStatusOf, mergeStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { initials } from './identity.ts'
+import { fromGitLab } from './markdown.ts'
 import { firstDifference } from './order.ts'
 
-import type { CiStatus, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
+import type { CiStatus, GitLabMarkdown, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
 const GITLAB = 'https://gitlab.com'
 
@@ -152,13 +153,13 @@ export type RawJob = NodeOf<RawStage['jobs']>
 const absolute = (url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${GITLAB}${url}` : url) : null)
 
 /** Markdown as GitLab stores it, HTML and all, its links made absolute; markdown.ts makes it drawable. */
-export function cleanBody(body: string, project: string): string {
-  return body
+export function cleanBody(body: string, project: string): GitLabMarkdown {
+  return fromGitLab(body
     .replace(/\]\(\/uploads\//g, `](${GITLAB}/${project}/uploads/`)
     .replace(/\]\(\//g, `](${GITLAB}/`)
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
+    .trim())
 }
 
 /** A note without an address of its own links to its MR. */

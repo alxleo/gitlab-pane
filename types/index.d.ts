@@ -78,10 +78,13 @@ export type Job = {
 
 export type Stage = { name: string; status: CiStatus; jobs: Job[] }
 
+/** Markdown as GitLab sent it for a description or a note: the only text `markdown.ts` reads to draw. Made by `fromGitLab` in `markdown.ts`. */
+export type GitLabMarkdown = string & { readonly __brand: 'GitLabMarkdown' }
+
 export type Note = {
   author: string
   /** Markdown, cleaned of HTML and hidden markers. */
-  body: string
+  body: GitLabMarkdown
   url: string
   at: string
   /** `path:line` of a note on the diff. */
@@ -125,7 +128,7 @@ export type MrCard = {
   iid: number
   title: string
   author: string
-  description: string
+  description: GitLabMarkdown
   branch: { source: string; target: string }
   diff: { additions: number; deletions: number; files: number } | null
   isDraft: boolean

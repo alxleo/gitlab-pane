@@ -233,7 +233,7 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
   expect(clean).toContain('See ![shot](https://gitlab.com/g/p/uploads/abc/shot.png)')
   expect(flatOf(clean)).toBe('### Locate test timeout undercuts ready wait\n\nThe locate spec waits up to `ORDER_PAGE_READY_TIMEOUT`.\n\nSee')
   expect(excerpt(clean)).toBe('Locate test timeout undercuts ready wait')
-  expect(excerpt('## Summary\n\nDoes a thing that is long', 12)).toBe('Summary')
+  expect(excerpt(cleanBody('## Summary\n\nDoes a thing that is long', 'g/p'), 12)).toBe('Summary')
 })
 
 test("GitLab's merge verdict reads as words in its tone, and as nothing while GitLab is still deciding", async () => {
@@ -278,8 +278,8 @@ test('a status GitLab adds later reads as unknown, drawn as such, and a known on
 })
 
 test('an MR reads by its first paragraph, not its headings', async () => {
-  expect(lead('## Summary\nDoes **thing** [12](https://x).\nMore.\n\n## Testing\n\nRan it.')).toBe('Does thing 12. More.')
-  expect(lead('Short', 3)).toBe('Sh…')
+  expect(lead(cleanBody('## Summary\nDoes **thing** [12](https://x).\nMore.\n\n## Testing\n\nRan it.', 'g/p'))).toBe('Does thing 12. More.')
+  expect(lead(cleanBody('Short', 'g/p'), 3)).toBe('Sh…')
 })
 
 test("a bot's approval does not count", async () => {
