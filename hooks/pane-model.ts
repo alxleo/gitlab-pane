@@ -6,6 +6,7 @@ import { firstDifference } from './order.ts'
 import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
+import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { aboutLines, blockerLines, detailOf, personLines } from './row-lines.ts'
@@ -16,7 +17,7 @@ import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { MrCard, Pinned, PollState } from '../types'
+import type { MrCard, Pinned, PollState, Problems } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
@@ -91,6 +92,8 @@ export type PaneInput = {
   news: number
   poll: PollState
   isWaking: boolean
+  /** What each source last failed with. */
+  failures: Problems
 }
 
 export type PaneModel = {
@@ -99,6 +102,8 @@ export type PaneModel = {
   session: RowModel[]
   mine: { heading: string; isEmpty: boolean; rows: RowModel[]; more: string | null; isMoreOpen: boolean }
   drafts: { label: string; isOpen: boolean; rows: RowModel[] } | null
+  /** While nothing has been read and a source has failed: one line each, with what to do about it. */
+  firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
   footer: { text: string; isWarning: boolean; wake: string }
@@ -203,7 +208,13 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   const showMore = input.expanded.includes('more')
   const mineShown = showMore ? mine : mine.slice(0, MINE_SHOWN)
   const isInbox = input.view === 'inbox'
-  const context: RowContext = { tickets: input.tickets, usual: input.usual, browse: input.browse, homeRepo: home }
+  const context: RowContext = {
+    tickets: input.tickets,
+    usual: input.usual,
+    browse: input.browse,
+    homeRepo: home,
+    isJiraUnavailable: input.failures.jira?.kind === 'not-installed',
+  }
 
   const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showDrafts ? drafts : [])] : []
   const built = wanted.flatMap(card => {
@@ -271,6 +282,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       all: { label: `All ${rows.length}`, isActive: input.repoFilter === '' },
       each: repos.map(([project, count]) => ({ project, label: `${repoName(project)} ${count}`, isActive: input.repoFilter === project })),
     },
+    firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     mine: {
       heading: `Mine · ${mine.length}`,

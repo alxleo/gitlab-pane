@@ -135,7 +135,7 @@ export function readUsual(response: RawResponse<UsualQuery>): Usual | null {
 }
 
 /** The nodes of a connection that GitLab sent: it may send none, or null in place of one it timed out. */
-const present = <T>(nodes: readonly (T | null)[] | null | undefined): T[] => (nodes ?? []).filter((node): node is T => node !== null)
+const present = <T>(nodes: readonly (T | null)[] | null | undefined): T[] => (nodes ?? []).filter(node => node !== null)
 
 type NodeOf<Connection> = Connection extends { nodes: Array<infer Node> | null } ? NonNullable<Node> : never
 

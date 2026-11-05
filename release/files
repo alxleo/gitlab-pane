@@ -54,3 +54,4 @@ hooks/pane-model.ts
 hooks/row-facts.ts
 hooks/row-lines.ts
 hooks/strip-model.ts
+hooks/first-run.ts

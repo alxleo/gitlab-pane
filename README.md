@@ -41,7 +41,7 @@ For a whole team, add the marketplace to a project's `.claude/settings.json`. An
 }
 ```
 
-That follows main: each update installs whatever main holds, and the plugin runs with your own GitLab and Jira sign-ins, so trust whoever can push to this repository as you would trust them with those. To stay on one released version until you choose to move, add `"ref": "plugin-v0.3.0"` beside `"repo"` (a release's tag with `plugin-` before its `v`; the releases are listed [here](https://github.com/alxleo/gitlab-pane/releases)) and raise it when you update. That installs only the plugin's files, not this repository's tools and tests.
+That follows main: each update installs whatever main holds, and the plugin runs with your own GitLab and Jira sign-ins, so trust whoever can push to this repository as you would trust them with those. To stay on one released version until you choose to move, add `"ref": "v0.2.1"` beside `"repo"` (a release's tag; the releases are listed [here](https://github.com/alxleo/gitlab-pane/releases)) and raise it when you update. That installs the whole repository at that tag. From the first plugin release, `"ref": "plugin-v<version>"` pins the same way and installs only the plugin's files, not this repository's tools and tests.
 
 To run from a clone instead, see [CONTRIBUTING.md](https://github.com/alxleo/gitlab-pane/blob/main/CONTRIBUTING.md#set-up-a-clone).
 

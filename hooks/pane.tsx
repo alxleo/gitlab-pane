@@ -17,7 +17,7 @@ import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, facts, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, browse, now } = await view($)
+  const { pinned, rows, facts, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, browse, failures, now } = await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
@@ -68,6 +68,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       news: await inboxNews($),
       poll,
       isWaking,
+      failures,
     },
     now,
     { hasSvg: kit.Svg !== undefined },
@@ -107,6 +108,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         <Button key={`repo-${repo.project}`} label={repo.label} variant={repo.isActive ? 'primary' : 'secondary'} onPress={() => filterRepo($, repo.project)} />
       ))}
     </Box>,
+    ...model.firstRun.map(line => (
+      <Text color="warning" size="footnote">
+        {line}
+      </Text>
+    )),
     ...(model.session.length > 0 ? [<Text bold>This session</Text>, ...model.session.map(draw)] : []),
     <Text bold>{mine.heading}</Text>,
     ...(mine.isEmpty ? [<Text dimColor>Nothing open here.</Text>] : []),

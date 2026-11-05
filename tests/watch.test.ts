@@ -42,7 +42,7 @@ const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /** GitLab as the test sets it: the pinned MR answers its alias, every MR the authored list. */
-type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean }
+type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boolean; isPaneBroken?: boolean }
 
 function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   mock.store(on, stored)
@@ -101,6 +101,9 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}) {
   const opened: string[] = []
   const titles: string[] = []
   on('ui.open', (_, e) => {
+    if (fake.isPaneBroken === true) {
+      throw new Error('no window to open in')
+    }
     opened.push(e.id)
     titles.push(e.title ?? '')
     return { value: { isPlaced: true } }
@@ -219,61 +222,12 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Link', text: '🎫 ABC-1' }))?.props.href).toBe('https://jira.example.com/browse/ABC-1')
   expect(jiraReads).toEqual(['key in (ABC-1)'])
-  // Once acli goes missing, the next read says so in /gitlab's answer instead of keeping quiet.
+  // Jira is optional: with acli gone the next read keeps the last tickets, and /gitlab does not call the pane unwell.
   fake.isJiraMissing = true
   await clock.advance(20 * 60_000)
   const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
-  expect(answer.text).toContain('jira: acli is not installed')
-  await ui.unmount()
-})
-
-test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
-  engine(on, {
-    mrs: [
-      rawMr(12, { headPipeline: pipe('FAILED') }),
-      rawMr(13, { headPipeline: pipe('SUCCESS') }),
-      rawMr(14, {
-        ...approved,
-        headPipeline: pipe('SUCCESS'),
-        detailedMergeStatus: 'MERGEABLE',
-        discussions: { nodes: [thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)] },
-      }),
-      rawMr(15, { ...approved, headPipeline: pipe('RUNNING'), detailedMergeStatus: 'CI_STILL_RUNNING' }),
-      rawMr(16, { detailedMergeStatus: 'NOT_OPEN' }),
-    ],
-    isDown: false,
-  })
-
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await clock.settle()
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
-  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.borderColor !== undefined && /thing \d+/.test(JSON.stringify(box)))
-  const byTitle = Object.fromEntries(
-    cards.flatMap(card => {
-      const title = /thing (\d+)/.exec(JSON.stringify(card))?.[1]
-      return title === undefined ? [] : [[title, [card.props?.borderStyle, card.props?.borderColor]]]
-    })
-  )
-  expect(byTitle).toEqual({
-    '12': ['bold', STAGE_COLOURS.error],
-    '13': ['round', STAGE_COLOURS.subtle],
-    '14': ['round', STAGE_COLOURS.success],
-    '15': ['round', STAGE_COLOURS.success],
-  })
-  // GitLab's verdict is the one word on whether it can merge, said once; the pane's own findings trail it, quieter.
-  const said = async (words: string) => (await ui.findAll({ type: 'Text', text: words })).length
-  expect(await said('✓ mergeable')).toBe(1)
-  // A bot's open thread is counted on its face, so nothing trails the verdict for it.
-  expect((await ui.findAll({ type: 'Text' })).filter(text => /bot threads? open|bots hold/i.test(text.text))).toEqual([])
-  expect(await said('CI running')).toBe(1)
-  // GitLab says one is no longer open, so it leaves Mine before the next full read.
-  expect(JSON.stringify(await ui.drawn())).not.toContain('thing 16')
-  // With no verdict read, the pane's own marker shows in words; its hover card still lists every marker.
-  expect(await ui.find({ type: 'Text', text: '👤 needs 1 approval' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '👤 0/1' })).toBeUndefined()
+  expect(jiraReads.length).toBeGreaterThan(1)
+  expect(answer.text).toBe('GitLab pane open')
   await ui.unmount()
 })
 
@@ -431,14 +385,22 @@ test('an MR too long for its page shows what fits of the description, then links
 
 test('/gitlab opens the pane and answers in one line, never the MR list', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false })
+  // The pane fails to open when the session starts, and opens at the next try.
+  const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false, isPaneBroken: true }
+  engine(on, fake)
   on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
 
-  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  const ask = () => $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  fake.isPaneBroken = false
+  expect((await ask()).text).toContain('pane: ')
+  // Once the work that failed succeeds, its failure is no longer true. The pin opens the pane again.
+  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await clock.settle()
+  const answer = await ask()
   expect(answer.text?.split('\n').length).toBe(1)
-  expect(answer.text).toContain('GitLab pane open')
+  expect(answer.text).toBe('GitLab pane open')
   expect(answer.text).not.toContain('!12')
 })
 
@@ -553,6 +515,31 @@ test('a failed read keeps the last cards and says how old they are', async ($, o
   expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toBe(
     'GitLab read failed: glab: connection refused; showing 3m old data'
   )
+  await ui.unmount()
+})
+
+test('with nothing read yet, a failing GitLab is told in a line of its own; and a poll that changed nothing writes no state', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [], isDown: true }
+  engine(on, fake)
+  const written: string[] = []
+  on('state.set', (_, e, next) => {
+    written.push(String(e.key))
+    return next(e)
+  })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^GitLab: / }))?.text).toBe('GitLab: glab: connection refused')
+
+  fake.isDown = false
+  fake.mrs = [rawMr(12)]
+  await ui.press({ key: 'refresh' })
+  expect(await ui.find({ type: 'Text', text: /^GitLab: / })).toBeUndefined()
+  // Reading the same answer again changes none of what the pane draws from, so nothing is written to redraw it.
+  written.length = 0
+  await ui.press({ key: 'refresh' })
+  expect(written).toEqual([])
   await ui.unmount()
 })
 

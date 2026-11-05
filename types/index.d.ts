@@ -247,8 +247,11 @@ export type InboxState = {
 /** What a background job reports failing, by where it ran. */
 export type ProblemSource = 'gitlab' | 'jira' | 'usual' | 'avatars' | 'inbox' | 'pane'
 
-/** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
-export type Problems = { [Source in ProblemSource]?: { message: string; at: number } }
+/** Why a source failed, which decides what the pane tells the person to do about it. */
+export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server'
+
+/** The last failure of each source, for `/gitlab` to list; a source that works again has none. `kind` is absent where the failure was not classified. */
+export type Problems = { [Source in ProblemSource]?: { message: string; at: number; kind?: FailureKind } }
 
 /** What the person chose in the pane: one value, so a drawing reads it once and a choice that touches two things redraws once. */
 export type Choices = {

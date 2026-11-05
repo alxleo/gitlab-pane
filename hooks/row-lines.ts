@@ -2,6 +2,7 @@
 // depend on the time (how long ago, how long a job ran), so they are made for each drawing, and only for the rows that
 // are drawn. Pure.
 import type { Badge } from './attention.ts'
+import { isFilled } from './decode.ts'
 import { REVIEW_STATE } from './face-model.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { JOBS_SHOWN, pipelineJobs } from './job-lines.ts'
@@ -32,7 +33,7 @@ const text = (words: string, how: { bold?: boolean; dim?: boolean; tone?: Tone }
 
 /** A note's byline words: where in the code, and when. */
 export const whereAndWhen = (note: NoteFacts, now: number): string =>
-  [note.where, ago(note.at, now)].filter((part): part is string => part !== undefined && part !== '').join(' · ')
+  [note.where, ago(note.at, now)].filter(isFilled).join(' · ')
 
 const noteLine = (note: NoteFacts, now: number, who = note.author): Line => ({
   kind: 'note',
@@ -50,6 +51,8 @@ export type RowContext = {
   browse: string
   /** The repo most cards belong to, whose name a card leaves out. */
   homeRepo: string | undefined
+  /** Jira cannot be read here (its tool is not installed), so a ticket will not be filled in. */
+  isJiraUnavailable: boolean
 }
 
 /** The card under the first line: what the MR is, its pipeline and ticket. */
@@ -71,7 +74,7 @@ export function aboutLines(card: MrCard, facts: CardFacts, ctx: RowContext, tick
         ]
       : []),
     ...(facts.ticket !== null && ticketLink !== null
-      ? [text(jira !== undefined ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}` : `${facts.ticket}: not read from Jira yet`)]
+      ? [text(jira !== undefined ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}` : `${facts.ticket}: ${ctx.isJiraUnavailable ? 'Jira is not available here' : 'not read from Jira yet'}`)]
       : []),
     ...(card.project !== ctx.homeRepo ? [text(card.project, { dim: true })] : []),
   ]
