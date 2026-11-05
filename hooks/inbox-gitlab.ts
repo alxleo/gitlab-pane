@@ -3,7 +3,7 @@
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
 import { foreign } from './model-text.ts'
 
-import type { InboxAuthoredQuery, InboxFollowProjectQuery, InboxFollowUserQuery, InboxQueueQuery, InboxTodosQuery } from './gitlab.generated.ts'
+import type { InboxAuthoredQuery, InboxFollowProjectQuery, InboxFollowUserQuery, InboxQueueQuery, InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
 import type { InboxKind, InboxMr, InboxSignal } from '../types'
 
 /** What a document gave of the inbox: who is signed in, and the MRs it named. */
@@ -131,11 +131,20 @@ function cutoffOf(notes: Notes): number | null {
   return notes.pageInfo.hasPreviousPage && times.length > 0 ? Math.min(...times) : null
 }
 
+/** A to-do as either document gives it: what it was about is `targetEntity` (GitLab 17.4 and newer) or `target`. */
+type Todo = {
+  action: string
+  createdAt: string
+  body: string
+  targetUrl: string | null
+  author: { username: string }
+  target: MrFields | { webUrl: string | null } | null
+}
+
 /** The MRs that wait on the user's to-dos, with who asked or said what. */
-export function todoMrs(host: string, data: InboxTodosQuery | null): Found {
-  const me = data?.currentUser?.username ?? null
-  const mrs = present(data?.currentUser?.todos?.nodes).flatMap((todo): InboxMr[] => {
-    const target = todo.targetEntity
+function mrsOfTodos(host: string, me: string | null, todos: readonly Todo[]): Found {
+  const mrs = todos.flatMap((todo): InboxMr[] => {
+    const { target } = todo
     const kind = todoKind(todo.action)
     const at = timeOf(todo.createdAt)
     if (me === null || target === null || !('iid' in target) || kind === null || at === null) {
@@ -145,6 +154,16 @@ export function todoMrs(host: string, data: InboxTodosQuery | null): Found {
     return [mrOf(host, me, target, [signal], PLAIN)]
   })
   return { user: me, mrs }
+}
+
+type EntityTodo = NonNullable<NonNullable<NonNullable<NonNullable<InboxTodosQuery['currentUser']>['todos']>['nodes']>[number]>
+type PlainTodo = NonNullable<NonNullable<NonNullable<NonNullable<InboxTodosPlainQuery['currentUser']>['todos']>['nodes']>[number]>
+
+/** The MRs that wait on the user's to-dos, from whichever document the host was sent. */
+export function todoMrs(host: string, data: InboxTodosQuery | InboxTodosPlainQuery | null): Found {
+  const nodes: readonly (EntityTodo | PlainTodo | null)[] = data?.currentUser?.todos?.nodes ?? []
+  const todos = present(nodes).map((todo): Todo => ('targetEntity' in todo ? { ...todo, target: todo.targetEntity } : todo))
+  return mrsOfTodos(host, data?.currentUser?.username ?? null, todos)
 }
 
 /** The MRs the user is a reviewer of and has not approved, with the pushes since. */

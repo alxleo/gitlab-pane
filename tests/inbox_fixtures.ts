@@ -39,8 +39,8 @@ export type World = {
   followed: Record<string, { opened: { nodes: OpenMr[] }; merged: { nodes: MergedMr[] } }>
   briefs: Record<string, BriefMr | null>
   isDown: boolean
-  /** What the host answers the to-do document instead of its data: an error. */
-  todosError?: string
+  /** The host is older than GitLab 17.4: it has no `Todo.targetEntity`, and answers the plain document with `target`. */
+  isOlder?: boolean
 }
 
 export const ALICE: Person = { username: 'alice', name: 'Alice' }
@@ -127,11 +127,14 @@ export const brief = (iid: number, over: Partial<BriefMr> = {}): BriefMr => ({
 
 
 /** GitLab's answers to the inbox documents (and the brief) as `world` holds them; `isDown` is the network's, set on the fake host. */
-export const inboxAnswers = (world: World): Pick<Answers, 'InboxTodos' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject'> => ({
+export const inboxAnswers = (world: World): Pick<Answers, 'InboxTodos' | 'InboxTodosPlain' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject'> => ({
   InboxTodos: () =>
-    world.todosError === undefined
+    world.isOlder !== true
       ? { data: { currentUser: { username: world.user, todos: { nodes: world.todos } } } }
-      : { errors: [{ message: world.todosError }] },
+      : { errors: [{ message: "Field 'targetEntity' doesn't exist on type 'Todo'", extensions: { code: 'undefinedField', typeName: 'Todo', fieldName: 'targetEntity' } }] },
+  InboxTodosPlain: () => ({
+    data: { currentUser: { username: world.user, todos: { nodes: world.todos.map(({ targetEntity: target, ...rest }) => ({ ...rest, target })) } } },
+  }),
   InboxQueue: () => ({ data: { currentUser: { username: world.user, reviewRequestedMergeRequests: { nodes: world.queue } } } }),
   InboxAuthored: () => ({ data: { currentUser: { username: world.user, opened: { nodes: world.opened }, merged: { nodes: world.merged } } } }),
   InboxFollowUser: variables => ({ data: { currentUser: { username: world.user }, user: world.followed[`@${variables.username}`] ?? null } }),

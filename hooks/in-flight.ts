@@ -45,21 +45,17 @@ export function joined(name: string, work: () => Promise<void>): Promise<void> {
   return started
 }
 
-// What each GitLab host's schema was found to have, asked once per host and shared by every read that comes while it is asked.
-const probes = new Map<string, Promise<HostFeatures>>()
+// What each GitLab host was found to lack, learned when it answered a document's field as undefined; whole until then.
+const lacking = new Map<string, HostFeatures>()
 
-/** What `find` gave for `host`, asked once and then remembered until the mod reloads; a failed ask is forgotten, to be asked again. */
-export function probed(host: string, find: () => Promise<HostFeatures>): Promise<HostFeatures> {
-  const known = probes.get(host)
-  if (known !== undefined) {
-    return known
-  }
-  const asked = find()
-  probes.set(host, asked)
-  asked.catch(() => {
-    probes.delete(host)
-  })
-  return asked
+/** What a host has of the fields older GitLab versions lack: all of them until it has said it lacks one. */
+export const featuresOf = (host: string): HostFeatures => lacking.get(host) ?? { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true }
+
+/** Remembers, until the mod reloads, that `host` lacks `feature`; gives what the host has now. */
+export function learnLack(host: string, feature: keyof HostFeatures): HostFeatures {
+  const next = { ...featuresOf(host), [feature]: false }
+  lacking.set(host, next)
+  return next
 }
 
 // Tokens, which are secrets: they live here, in memory, as resolved promises, and in no atom or store a session saves.
@@ -100,8 +96,8 @@ export const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDr
 /** Where the window sat at the last drawing. */
 export const rowDrawn = (): number => drawnAtRow
 
-/** A session starting asks each host's schema again, and finds each token again where a session before it left one. */
+/** A session starting finds out again what each host lacks, and finds each token again where a session before it left one. */
 export function forgetProbed(): void {
-  probes.clear()
+  lacking.clear()
   forgetFound()
 }

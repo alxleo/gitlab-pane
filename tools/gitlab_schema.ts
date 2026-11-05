@@ -18,6 +18,11 @@
 // DOCUMENTS in hooks/gitlab-documents.ts, imported as they are sent. GitLab answers the schema without a sign-in, so this reads no
 // token and sends nothing of yours.
 //
+// It also asks gitlab.com what each document costs: the document is sent with `queryComplexity { score limit }` added, which
+// GitLab answers (its limit is 200 without a sign-in, 250 with one, so this is the stricter reading) before it runs anything.
+// A document fails when its score is not COMPLEXITY's, or is over COMPLEXITY_SHARE of the limit. `--schema` reads no network,
+// so it measures nothing and says so.
+//
 // The types are made by graphql-codegen (the versions in package-lock.json) from tools/gitlab_schema.snapshot.json: the
 // part of the schema the queries use, with its nullability, so a commit needs no network. `check` compares that snapshot
 // with the live schema, which is how a change in GitLab reaches the types.
@@ -26,7 +31,9 @@ import {
   buildClientSchema,
   getIntrospectionQuery,
   getNamedType,
+  Kind,
   parse,
+  print,
   TypeInfo,
   validate,
   visit,
@@ -40,13 +47,14 @@ import {
   type IntrospectionSchema,
   type IntrospectionType,
   type IntrospectionTypeRef,
+  type SelectionNode,
 } from 'graphql'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { DOCUMENTS } from '../hooks/gitlab-documents.ts'
+import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
 import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -54,6 +62,13 @@ const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
 const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
 const ENDPOINT = 'https://gitlab.com/api/graphql'
+/**
+ * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has
+ * said it lacks the newer field. Nothing else is excused.
+ */
+const OLD_HOST_FIELDS: Readonly<Record<string, { field: string; why: string }>> = {
+  InboxTodosPlain: { field: 'Todo.target', why: 'GitLab before 17.4 has no Todo.targetEntity; the document is sent only to a host that answered undefinedField for it' },
+}
 const EXPERIMENT = 'Status: Experiment'
 // GitLab's own directives take its own types, which the queries never use.
 const STANDARD_DIRECTIVES = new Set(['skip', 'include', 'deprecated', 'specifiedBy', 'oneOf'])
@@ -134,6 +149,8 @@ function marks(schema: GraphQLSchema, name: string, document: DocumentNode): Fin
   const note = (what: string, reason: string | null | undefined, description: string | null | undefined): void => {
     if ((reason ?? '').includes(EXPERIMENT) || (description ?? '').includes(EXPERIMENT)) {
       found.push({ query: name, problem: `${what} is an experiment, so it may change without notice`, fails: false })
+    } else if (OLD_HOST_FIELDS[name]?.field === what) {
+      // Named below, for this document alone: it is what a host without the newer field is sent.
     } else if (reason !== undefined && reason !== null && reason !== '') {
       found.push({ query: name, problem: `${what} is deprecated: ${reason}`, fails: true })
     }
@@ -175,6 +192,106 @@ function checkQueries(schema: GraphQLSchema, queries: Queries): Finding[] {
     const errors = validate(schema, document)
     return errors.length > 0 ? errors.map(error => ({ query: name, problem: error.message, fails: true })) : marks(schema, name, document)
   })
+}
+
+// ---- complexity ---------------------------------------------------------------------------------------------------------
+
+/** What GitLab scores a document at and the most a query may score. */
+type Cost = { readonly score: number; readonly limit: number }
+
+const isCost = (value: unknown): value is Cost => isRecord(value) && typeof value['score'] === 'number' && typeof value['limit'] === 'number'
+
+/** Values for the documents' variables: GitLab scores a document before it runs, so any project and number do. */
+const SAMPLE_VARIABLES: Readonly<Record<string, string>> = { path: 'gitlab-org/gitlab', iid: '1', since: '2026-01-01T00:00:00Z', username: 'root' }
+
+/** GitLab refuses a burst of requests with 429; the schedule is weekly, so waiting out a few is cheap. */
+const RATE_LIMIT_TRIES = 4
+const RATE_LIMIT_WAIT_MS = 20_000
+
+const SCORING = ((): readonly SelectionNode[] => {
+  const [operation] = parse('{ queryComplexity { score limit } }').definitions
+  if (operation?.kind !== Kind.OPERATION_DEFINITION) {
+    throw new SchemaError('the complexity selection is not an operation')
+  }
+  return operation.selectionSet.selections
+})()
+
+/** The document with GitLab's own score of it added to its operation, and the variables the operation declares. */
+function scored(text: string): { readonly query: string; readonly variables: Record<string, string> } {
+  const names: string[] = []
+  const document = visit(parse(text), {
+    VariableDefinition(node) {
+      names.push(node.variable.name.value)
+    },
+    OperationDefinition: {
+      leave(node) {
+        return { ...node, selectionSet: { ...node.selectionSet, selections: [...node.selectionSet.selections, ...SCORING] } }
+      },
+    },
+  })
+  return {
+    query: print(document),
+    variables: Object.fromEntries(
+      names.map(name => {
+        const value = SAMPLE_VARIABLES[name]
+        if (value === undefined) {
+          throw new SchemaError(`no sample value for the variable $${name}; add one to SAMPLE_VARIABLES`)
+        }
+        return [name, value]
+      })
+    ),
+  }
+}
+
+/** What GitLab says one document costs, from gitlab.com with no sign-in. */
+async function measure(name: string, text: string): Promise<Cost> {
+  const { query, variables } = scored(text)
+  for (let attempt = 1; ; attempt += 1) {
+    let status: number
+    let answer: unknown
+    try {
+      const response = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'gitlab-pane schema check' },
+        body: JSON.stringify({ query, variables, operationName: name }),
+        signal: AbortSignal.timeout(60_000),
+      })
+      status = response.status
+      answer = status === 429 ? null : parseJson(await response.text())
+    } catch (error) {
+      throw new SchemaError(`cannot ask ${ENDPOINT} what ${name} costs: ${messageOf(error)}`)
+    }
+    if (status === 429 && attempt < RATE_LIMIT_TRIES) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_WAIT_MS))
+      continue
+    }
+    const cost = isRecord(answer) && isRecord(answer['data']) ? answer['data']['queryComplexity'] : undefined
+    if (!isCost(cost)) {
+      throw new SchemaError(`GitLab did not score ${name} (HTTP ${status}): ${JSON.stringify(answer).slice(0, 500)}`)
+    }
+    return cost
+  }
+}
+
+/** Each scored document's cost beside what COMPLEXITY says and the share of the limit it may take. */
+async function complexity(queries: Queries): Promise<Finding[]> {
+  const found: Finding[] = []
+  for (const [name, expected] of Object.entries(COMPLEXITY)) {
+    const text = queries[name]
+    if (text === undefined) {
+      continue
+    }
+    const { score, limit } = await measure(name, text)
+    const share = Math.round((100 * score) / limit)
+    found.push({ query: name, problem: `scores ${score} of GitLab's ${limit} (${share}%)`, fails: false })
+    if (score !== expected) {
+      found.push({ query: name, problem: `scores ${score}, but COMPLEXITY in ${relativeToRoot(QUERIES)} says ${expected}; state its cost`, fails: true })
+    }
+    if (score > COMPLEXITY_SHARE * limit) {
+      found.push({ query: name, problem: `scores ${score}, over the ${Math.round(100 * COMPLEXITY_SHARE)}% of GitLab's ${limit} a document may take`, fails: true })
+    }
+  }
+  return found
 }
 
 // ---- the snapshot -------------------------------------------------------------------------------------------------------
@@ -430,7 +547,11 @@ async function check(schemaFile: string | undefined, save: string | undefined): 
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
-  const findings = [...checkQueries(schema, queries), ...[stale(SNAPSHOT, snapshot), stale(TYPES, types)].filter(found => found !== null)]
+  const costs = schemaFile === undefined ? await complexity(queries) : []
+  if (schemaFile !== undefined) {
+    console.log('· complexity: not measured, as --schema reads no network')
+  }
+  const findings = [...checkQueries(schema, queries), ...costs, ...[stale(SNAPSHOT, snapshot), stale(TYPES, types)].filter(found => found !== null)]
   for (const finding of findings) {
     console.log(`${finding.fails ? '✗' : '·'} ${finding.query}: ${finding.problem}`)
   }

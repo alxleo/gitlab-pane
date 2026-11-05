@@ -5,9 +5,9 @@ import { readHosts } from './data'
 import { isEqual } from './equal'
 import { Failure, kindOf } from './failure'
 import { clear, quietly, record } from './failures'
-import { inboxAuthoredQuery, inboxBriefQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './gitlab-documents'
 import type { RawResponse } from './gitlab-documents'
-import { ask } from './graphql'
+import { ask, askVariant } from './graphql'
+import { inboxAuthoredQuery, inboxBriefQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './inbox-requests'
 import { briefing, readBrief } from './inbox-brief'
 import type { Brief } from './inbox-brief'
 import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from './inbox-gitlab'
@@ -85,7 +85,7 @@ async function tried(label: string, work: Promise<Found>): Promise<Tried> {
 async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[]): Promise<HostRead> {
   const since = new Date(now - HORIZON_MS).toISOString()
   const results = await Promise.all([
-    tried('to-dos', ask($, host, inboxTodosQuery()).then(answer => todoMrs(host, dataOf(answer)))),
+    tried('to-dos', askVariant($, host, inboxTodosQuery).then(answer => todoMrs(host, dataOf(answer)))),
     tried('review queue', ask($, host, inboxQueueQuery()).then(answer => queueMrs(host, dataOf(answer), now))),
     tried('your MRs', ask($, host, inboxAuthoredQuery(since)).then(answer => authoredMrs(host, dataOf(answer), now))),
     ...follows.map(follow =>

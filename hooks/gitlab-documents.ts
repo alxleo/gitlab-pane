@@ -3,21 +3,23 @@
 import type {
   AuthoredPlainQuery,
   AuthoredQuery,
+  FailuresQuery,
+  FailuresQueryVariables,
   InboxAuthoredQuery,
   InboxAuthoredQueryVariables,
   InboxBriefQuery,
+  InboxBriefQueryVariables,
   InboxFollowProjectQuery,
   InboxFollowProjectQueryVariables,
   InboxFollowUserQuery,
   InboxFollowUserQueryVariables,
-  InboxBriefQueryVariables,
   InboxQueueQuery,
+  InboxTodosPlainQuery,
   InboxTodosQuery,
   MergeStatusQuery,
   PinnedPlainQuery,
   PinnedQuery,
   PinnedQueryVariables,
-  ProbeQuery,
   UsualQuery,
   UsualQueryVariables,
 } from './gitlab.generated.ts'
@@ -81,7 +83,7 @@ const AUTHORED_PLAIN = /* GraphQL */ `
 
 const MERGE_STATUS = /* GraphQL */ `
   query MergeStatus {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } detailedMergeStatus } } }
+    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } mergeabilityChecks { identifier status } } } }
   }
 `
 
@@ -97,12 +99,11 @@ const PINNED_PLAIN = /* GraphQL */ `
   }
 `
 
-// The few fields that differ between GitLab versions, asked of a host's schema the first time it is read. The names of
-// every field of two types are cheap to send and to read; `includeDeprecated` keeps a field GitLab has since deprecated.
-const PROBE = /* GraphQL */ `
-  query Probe {
-    mergeRequest: __type(name: "MergeRequest") { fields(includeDeprecated: true) { name } }
-    interaction: __type(name: "UserMergeRequestInteraction") { fields(includeDeprecated: true) { name } }
+// Why a raised MR's failed jobs failed, asked only when its pipeline has just failed: one small query then, and no field
+// on every read for a message few reads need. A host too old to have the field answers an error, and the wake goes without.
+const FAILURES = /* GraphQL */ `
+  query Failures($path: ID!, $iid: String!) {
+    project(fullPath: $path) { mergeRequest(iid: $iid) { headPipeline { jobs(statuses: [FAILED], retried: false) { nodes { webPath allowFailure failureMessage } } } } }
   }
 `
 
@@ -113,7 +114,7 @@ const USUAL = /* GraphQL */ `
 `
 
 // ---- The inbox: what GitLab says happened to the user's MRs ---------------------------------------------------------------
-// Four documents, none of which changes anything. Each costs far less than the 250 a query may, so a host that times one
+// Four documents, none of which changes anything. Each costs far less than a query may (`COMPLEXITY`), so a host that times one
 // out loses only that one. A host without a field (`mergeUser`, `systemNoteMetadata`) needs a GitLab older than the ones
 // the pane supports, so there are no plain variants here.
 
@@ -151,7 +152,8 @@ const INBOX_MERGED_BY_FRAGMENT = /* GraphQL */ `
 `
 
 // What was addressed to the user and is still pending in GitLab's own to-do list; the pane never marks one done. `targetEntity`
-// is GitLab 17.4 and newer (`target` is deprecated there): an older host answers an error, and the inbox then has no to-dos.
+// is GitLab 17.4 and newer, where `target` is deprecated. A host that says it has no `targetEntity` is sent the plain variant,
+// which asks for `target` (see INBOX_TODOS_PLAIN).
 const INBOX_TODOS = /* GraphQL */ `
   query InboxTodos {
     currentUser {
@@ -166,6 +168,26 @@ const INBOX_TODOS = /* GraphQL */ `
           action createdAt body targetUrl
           author { username name }
           targetEntity { webUrl ... on MergeRequest { ...InboxMrFields } }
+        }
+      }
+    }
+  }
+`
+
+const INBOX_TODOS_PLAIN = /* GraphQL */ `
+  query InboxTodosPlain {
+    currentUser {
+      username
+      todos(
+        state: [pending]
+        type: [MERGEREQUEST]
+        action: [review_requested, approval_required, mentioned, directly_addressed, review_submitted, build_failed, unmergeable]
+        first: 50
+      ) {
+        nodes {
+          action createdAt body targetUrl
+          author { username name }
+          target { webUrl ... on MergeRequest { ...InboxMrFields } }
         }
       }
     }
@@ -251,7 +273,7 @@ const INBOX_FOLLOW_PROJECT = /* GraphQL */ `
   }
 `
 
-// One MR whole, for /mrs: its description and its threads. 30 notes of 100 threads costs about 90 of the 250 a query may.
+// One MR whole, for /mrs: its description and its threads. 30 notes of 100 threads is `COMPLEXITY.InboxBrief`.
 const INBOX_BRIEF = /* GraphQL */ `
   query InboxBrief($path: ID!, $iid: String!) {
     project(fullPath: $path) {
@@ -276,18 +298,19 @@ const INBOX_BRIEF = /* GraphQL */ `
 export type Request<Data> = { operation: keyof Operations; query: string; variables: Record<string, string>; readonly answer?: Data }
 
 /** GitLab's answer to a document: its data, or none, and the errors beside either. */
-export type RawResponse<Data> = { data?: Data | null; errors?: { message: string }[] }
+export type RawResponse<Data> = { data?: Data | null; errors?: { message: string; extensions?: { code?: string; typeName?: string; fieldName?: string } }[] }
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
 export type Operations = {
   Authored: { variables: Record<string, never>; data: AuthoredQuery }
   AuthoredPlain: { variables: Record<string, never>; data: AuthoredPlainQuery }
   MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
+  Failures: { variables: FailuresQueryVariables; data: FailuresQuery }
   Pinned: { variables: PinnedQueryVariables; data: PinnedQuery }
   PinnedPlain: { variables: PinnedQueryVariables; data: PinnedPlainQuery }
-  Probe: { variables: Record<string, never>; data: ProbeQuery }
   Usual: { variables: UsualQueryVariables; data: UsualQuery }
   InboxTodos: { variables: Record<string, never>; data: InboxTodosQuery }
+  InboxTodosPlain: { variables: Record<string, never>; data: InboxTodosPlainQuery }
   InboxQueue: { variables: Record<string, never>; data: InboxQueueQuery }
   InboxAuthored: { variables: InboxAuthoredQueryVariables; data: InboxAuthoredQuery }
   InboxBrief: { variables: InboxBriefQueryVariables; data: InboxBriefQuery }
@@ -299,12 +322,13 @@ export type Operations = {
 export const DOCUMENTS = {
   Authored: AUTHORED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   AuthoredPlain: AUTHORED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
+  Failures: FAILURES,
   MergeStatus: MERGE_STATUS,
   Pinned: PINNED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
-  Probe: PROBE,
   Usual: USUAL,
   InboxTodos: INBOX_TODOS + INBOX_MR_FRAGMENT,
+  InboxTodosPlain: INBOX_TODOS_PLAIN + INBOX_MR_FRAGMENT,
   InboxQueue: INBOX_QUEUE + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT,
   InboxAuthored: INBOX_AUTHORED + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
   InboxBrief: INBOX_BRIEF + INBOX_MR_FRAGMENT,
@@ -312,26 +336,47 @@ export const DOCUMENTS = {
   InboxFollowProject: INBOX_FOLLOW_PROJECT + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
 } as const satisfies Record<keyof Operations, string>
 
+/**
+ * What GitLab's `queryComplexity` scores each document, which `node tools/gitlab_schema.ts check` measures against
+ * gitlab.com, with no sign-in. A query may cost no more than the limit, and the check also fails any document that scores
+ * other than this, or more than COMPLEXITY_SHARE of the limit it reports, so a change to a document states its cost.
+ */
+export const COMPLEXITY = {
+  Authored: 151,
+  AuthoredPlain: 148,
+  Failures: 16,
+  InboxAuthored: 70,
+  InboxBrief: 33,
+  InboxFollowProject: 64,
+  InboxFollowUser: 64,
+  InboxQueue: 50,
+  InboxTodos: 39,
+  InboxTodosPlain: 39,
+  MergeStatus: 19,
+  Pinned: 100,
+  PinnedPlain: 98,
+  Usual: 8,
+} as const satisfies Record<keyof Operations, number>
 
-/** Asks a host's schema which of the fields that older GitLab versions lack it has. */
-export const probeQuery = (): Request<ProbeQuery> => ({ operation: 'Probe', query: DOCUMENTS.Probe, variables: {} })
+/** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */
+export const COMPLEXITY_SHARE = 0.8
 
-/** Every open MR the user authored; GitLab scores it 158 of the 250 a query may cost. */
+/** Every open MR the user authored: the heaviest document (`COMPLEXITY.Authored`). */
 export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | AuthoredPlainQuery> =>
   features.hasReviewStates
     ? { operation: 'Authored', query: DOCUMENTS.Authored, variables: {} }
     : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables: {} }
 
 /**
- * GitLab's merge verdict for the same MRs, asked on its own: inside the authored query it answered CONFLICT, twice in a
- * row, for MRs that this query and each MR's own lookup called MERGEABLE.
+ * GitLab's own merge checks for the same MRs, or none for a host that lacks them. Asked on its own: its single verdict (`detailedMergeStatus`) answered
+ * CONFLICT, twice in a row, inside the authored query for MRs that this query and each MR's own lookup called MERGEABLE.
  */
-export const mergeStatusQuery = (): Request<MergeStatusQuery> => ({ operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} })
+export const mergeStatusQuery = (features: HostFeatures): Request<MergeStatusQuery> | null =>
+  features.hasMergeVerdict ? { operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} } : null
 
 /**
- * A pinned MR the authored list lacks (someone else's, or merged), one query each. It costs about 103 of the 250 a query
- * may, so two would fit, but one per query needs no aliases that change with how many are pinned, and a project out of
- * reach loses its own MR and no other.
+ * A pinned MR the authored list lacks (someone else's, or merged), one query each (`COMPLEXITY.Pinned`): that needs no
+ * aliases that change with how many are pinned, and a project out of reach loses its own MR and no other.
  */
 export const pinnedQuery = (pin: Pinned, features: HostFeatures): Request<PinnedQuery | PinnedPlainQuery> => {
   const variables = { path: pin.path, iid: String(pin.iid) } satisfies PinnedQueryVariables
@@ -340,43 +385,16 @@ export const pinnedQuery = (pin: Pinned, features: HostFeatures): Request<Pinned
     : { operation: 'PinnedPlain', query: DOCUMENTS.PinnedPlain, variables }
 }
 
-/** The recent successful MR pipelines of a project, for how long one usually runs; it costs 11, so one query each is cheap. */
+/** The recent successful MR pipelines of a project, for how long one usually runs: cheap (`COMPLEXITY.Usual`), so one query each. */
 export const usualQuery = (path: string): Request<UsualQuery> => ({
   operation: 'Usual',
   query: DOCUMENTS.Usual,
   variables: { path } satisfies UsualQueryVariables,
 })
 
-/** The user's pending to-dos on MRs of the kinds the inbox rules name. */
-export const inboxTodosQuery = (): Request<InboxTodosQuery> => ({ operation: 'InboxTodos', query: DOCUMENTS.InboxTodos, variables: {} })
-
-/** The open MRs the user is a reviewer of, with their latest notes. */
-export const inboxQueueQuery = (): Request<InboxQueueQuery> => ({ operation: 'InboxQueue', query: DOCUMENTS.InboxQueue, variables: {} })
-
-/** The user's open MRs with their latest notes, and the ones merged since `since` (an ISO time). */
-export const inboxAuthoredQuery = (since: string): Request<InboxAuthoredQuery> => ({
-  operation: 'InboxAuthored',
-  query: DOCUMENTS.InboxAuthored,
-  variables: { since } satisfies InboxAuthoredQueryVariables,
-})
-
-/** One MR with its description and threads, for `/mrs`. */
-export const inboxBriefQuery = (path: string, iid: number): Request<InboxBriefQuery> => ({
-  operation: 'InboxBrief',
-  query: DOCUMENTS.InboxBrief,
-  variables: { path, iid: String(iid) } satisfies InboxBriefQueryVariables,
-})
-
-/** The open MRs and the ones merged since `since` of a person, `username` without the `@`. */
-export const inboxFollowUserQuery = (username: string, since: string): Request<InboxFollowUserQuery> => ({
-  operation: 'InboxFollowUser',
-  query: DOCUMENTS.InboxFollowUser,
-  variables: { username, since } satisfies InboxFollowUserQueryVariables,
-})
-
-/** The open MRs and the ones merged since `since` of a project. */
-export const inboxFollowProjectQuery = (path: string, since: string): Request<InboxFollowProjectQuery> => ({
-  operation: 'InboxFollowProject',
-  query: DOCUMENTS.InboxFollowProject,
-  variables: { path, since } satisfies InboxFollowProjectQueryVariables,
+/** Why the failed jobs of an MR's pipeline failed (`COMPLEXITY.Failures`). */
+export const failuresQuery = (path: string, iid: number): Request<FailuresQuery> => ({
+  operation: 'Failures',
+  query: DOCUMENTS.Failures,
+  variables: { path, iid: String(iid) } satisfies FailuresQueryVariables,
 })

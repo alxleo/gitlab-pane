@@ -10,7 +10,7 @@ import type { Mounted } from 'claude-code/testing'
 
 import { isFilled, isRecord } from '../../hooks/decode'
 import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.generated'
-import { NOW, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
+import { NOW, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
 import { fakeGitLab, ran } from '../../tests/gitlab_host'
 import { comment, emptyWorld, fields, inboxAnswers, system } from '../../tests/inbox_fixtures'
@@ -79,7 +79,7 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(6),
     approvalsLeft: 1,
     approvalsRequired: 2,
-    detailedMergeStatus: 'NOT_APPROVED',
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
     diffStatsSummary: { additions: 412, deletions: 38, fileCount: 14 },
     approvedBy: { nodes: [approver(ALICE)] },
     reviewers: { nodes: [who(ALICE, 'APPROVED'), who(BOB, 'REQUESTED_CHANGES'), who(CAROL, 'UNREVIEWED')] },
@@ -110,7 +110,7 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(23),
     approvalsLeft: 1,
     approvalsRequired: 1,
-    detailedMergeStatus: 'NOT_APPROVED',
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
     diffStatsSummary: { additions: 31, deletions: 9, fileCount: 3 },
     reviewers: { nodes: [who(ALICE, 'REVIEWED')] },
     headPipeline: pipe('FAILED', {
@@ -140,7 +140,7 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(52),
     approvalsLeft: 0,
     approvalsRequired: 2,
-    detailedMergeStatus: 'MERGEABLE',
+    mergeabilityChecks: checks(),
     diffStatsSummary: { additions: 240, deletions: 301, fileCount: 9 },
     approvedBy: { nodes: [approver(BOB), approver(ERIN)] },
     reviewers: { nodes: [who(BOB, 'APPROVED'), who(ERIN, 'APPROVED')] },
@@ -161,7 +161,7 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(190),
     approvalsLeft: 1,
     approvalsRequired: 1,
-    detailedMergeStatus: 'NOT_APPROVED',
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
     diffStatsSummary: { additions: 96, deletions: 12, fileCount: 5 },
     reviewers: { nodes: [who(CAROL, 'REVIEW_STARTED'), who(DAVE, 'UNREVIEWED')] },
     headPipeline: pipe('SUCCESS', {
@@ -182,7 +182,7 @@ const mine = (): Mr[] => [
     conflicts: true,
     approvalsLeft: 1,
     approvalsRequired: 1,
-    detailedMergeStatus: 'CONFLICT',
+    mergeabilityChecks: checks({ CONFLICT: 'FAILED' }),
     diffStatsSummary: { additions: 22, deletions: 4, fileCount: 2 },
     reviewers: { nodes: [who(ERIN, 'UNREVIEWED')] },
     headPipeline: pipe('SUCCESS', {

@@ -302,19 +302,24 @@ test('a failed read says why and keeps the rules it last applied', async ($, on)
   await ui.unmount()
 })
 
-test('a host without GitLab 17.4 has no to-dos, and the review queue and your MRs still come', async ($, on) => {
+test('a host without GitLab 17.4 is asked for the older to-do field once it says so, and its to-dos still come', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = busyWorld()
-  engine(on, world)
-  world.todosError = "Field 'targetEntity' doesn't exist on type 'Todo'"
+  world.isOlder = true
+  world.todos = [todo('mentioned', fields(4), 'dave', 30, '@me look')]
+  const gitlab = engine(on, world)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'tab-inbox' })
-  expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toBe("sync failed: to-dos: Field 'targetEntity' doesn't exist on type 'Todo'")
-  await ui.press({ key: 'inbox-rule-on-my-mrs' })
-  expect(await titleOf(ui, 1)).toBeDefined()
+  await ui.press({ key: 'inbox-sync' })
+  // Told once that it lacks the field, then asked for the plain document, and from then on only that.
+  expect(gitlab.requests.filter(request => request === 'gitlab.com InboxTodos')).toHaveLength(1)
+  expect(gitlab.requests.filter(request => request === 'gitlab.com InboxTodosPlain').length).toBeGreaterThan(1)
+  await ui.press({ key: 'tab-inbox' })
+  expect(await ui.find({ type: 'Text', text: /sync failed/ })).toBeUndefined()
+  expect(JSON.stringify(await ui.drawn())).toContain('"Mentions · 1 new"')
   await ui.unmount()
 })
 

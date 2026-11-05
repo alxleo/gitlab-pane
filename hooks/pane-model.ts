@@ -2,6 +2,7 @@
 // colours and links, which are open, and how much of each fits the drawing's room. The draw files only map this to
 // elements. Pure: the one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to,
 // which it asks once for each piece it needs and never for a piece it will not use.
+import { hasLeft } from './attention.ts'
 import { firstDifference } from './order.ts'
 import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
@@ -200,7 +201,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
  */
 export function buildPane(input: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
   // GitLab says an MR is no longer open before the authored list drops it.
-  const rows = input.cards.filter(row => row.mergeStatus !== 'NOT_OPEN')
+  const rows = input.cards.filter(row => !hasLeft(row))
   const pinnedKeys = new Set(input.pinned.map(pinKey))
   const counts = rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())
   const repos = [...counts].sort((a, b) => b[1] - a[1])

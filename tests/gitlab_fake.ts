@@ -6,11 +6,10 @@ export type Answers = {
   [Name in keyof Operations]?: (variables: Operations[Name]['variables']) => RawResponse<Operations[Name]['data']>
 }
 
-/** The names of the schema's fields that vary between GitLab versions, as an introspection of a current GitLab lists them. */
-export const CURRENT = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'detailedMergeStatus' }] }, interaction: { fields: [{ name: 'reviewState' }] } }
-
-/** What the probe reads of an older self-managed GitLab: neither `detailedMergeStatus` nor `reviewState` is in its schema. */
-export const OLDER = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'mergeStatus' }] }, interaction: { fields: [{ name: 'canMerge' }] } }
+/** GitLab's answer to a document with a field its schema lacks, as an older self-managed GitLab gives it: no data, and where. */
+export const undefinedField = (typeName: string, fieldName: string) => ({
+  errors: [{ message: `Field '${fieldName}' doesn't exist on type '${typeName}'`, extensions: { code: 'undefinedField', typeName, fieldName } }],
+})
 
 /** What an account with nothing waiting on it answers to the three inbox documents unless a test sets them: the user is `me`. */
 const NOTHING = {
@@ -59,9 +58,25 @@ export function sent(url: string, init: { method?: string; headers?: Record<stri
   return { host: match[1], operation: body.operationName, variables: stringRecord(body.variables), token: header?.replace(/^Bearer /, '') }
 }
 
+/** A job's log asked for on the REST API: the host, the project path and job number it names, and the bearer token. */
+export type Traced = { host: string; path: string; job: string; token: string | undefined }
+
+/** The request `$.http.fetch(url, init)` is given, read as a GET of a job's trace, or none when it is something else. */
+export function traced(url: string, init: { method?: string; headers?: Record<string, string> } | undefined): Traced | null {
+  const match = /^https:\/\/([^/]+)\/api\/v4\/projects\/([^/]+)\/jobs\/(\d+)\/trace$/.exec(url)
+  if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+    return null
+  }
+  if (init?.method !== undefined && init.method !== 'GET') {
+    throw new Error(`the pane read a job's trace with ${init.method}`)
+  }
+  const header = Object.entries(init?.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
+  return { host: match[1], path: decodeURIComponent(match[2]), job: match[3], token: header?.replace(/^Bearer /, '') }
+}
+
 /**
  * What a GitLab host answers a request: 401 unless the bearer is the token that host accepts, else the test's answer to the
- * operation, a Probe answered as a current GitLab unless the test sets it (`OLDER` is what an older one lists).
+ * operation.
  */
 export function serve(request: Sent, answers: Answers, accepted: string | undefined): Served {
   if (accepted === undefined || request.token !== accepted) {
@@ -69,14 +84,14 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
   }
   const { operation, variables } = request
   switch (operation) {
-    case 'Probe':
-      return reply(200, answers.Probe !== undefined ? answers.Probe({}) : { data: CURRENT })
     case 'Authored':
       return reply(200, set(answers.Authored, operation)({}))
     case 'AuthoredPlain':
       return reply(200, set(answers.AuthoredPlain, operation)({}))
     case 'MergeStatus':
       return reply(200, set(answers.MergeStatus, operation)({}))
+    case 'Failures':
+      return reply(200, set(answers.Failures, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'Pinned':
       return reply(200, set(answers.Pinned, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'PinnedPlain':
@@ -85,6 +100,8 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, set(answers.Usual, operation)({ path: need(variables, 'path') }))
     case 'InboxTodos':
       return reply(200, answers.InboxTodos !== undefined ? answers.InboxTodos({}) : NOTHING.InboxTodos)
+    case 'InboxTodosPlain':
+      return reply(200, answers.InboxTodosPlain !== undefined ? answers.InboxTodosPlain({}) : NOTHING.InboxTodos)
     case 'InboxQueue':
       return reply(200, answers.InboxQueue !== undefined ? answers.InboxQueue({}) : NOTHING.InboxQueue)
     case 'InboxAuthored':

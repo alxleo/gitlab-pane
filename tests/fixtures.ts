@@ -1,4 +1,4 @@
-import type { CiJobStatus, DetailedMergeStatus, MergeRequestReviewState, MrFieldsFragment, PipelineStatusEnum, ReviewerFieldsFragment } from '../hooks/gitlab.generated.ts'
+import type { CiJobStatus, MergeabilityCheckIdentifier, MergeabilityCheckStatus, MergeRequestReviewState, MrFieldsFragment, PipelineStatusEnum, ReviewerFieldsFragment } from '../hooks/gitlab.generated.ts'
 import type { RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
 
 /** The host the made-up GitLab answers as, unless a test says another. */
@@ -57,11 +57,39 @@ export const user = (username: string, bot = false) => ({
 /** What `curl | base64` prints for a 24-pixel avatar: a PNG's first bytes, padded to a real one's size. */
 export const AVATAR_BASE64 = `iVBORw0KGgo${'A'.repeat(1300)}\n`
 
-/** An MR as the fake GitLab holds it: what MrFields asks for, and the merge verdict that only the MergeStatus query gives. */
+export type MergeabilityCheck = { identifier: MergeabilityCheckIdentifier; status: MergeabilityCheckStatus }
+
+/** The checks GitLab runs on an MR, in the order it lists them. */
+const GITLAB_CHECKS: readonly MergeabilityCheckIdentifier[] = [
+  'NOT_OPEN',
+  'DRAFT_STATUS',
+  'STATUS_CHECKS_MUST_PASS',
+  'JIRA_ASSOCIATION_MISSING',
+  'MERGE_TIME',
+  'MERGE_REQUEST_BLOCKED',
+  'REQUESTED_CHANGES',
+  'TITLE_REGEX',
+  'SECURITY_POLICY_VIOLATIONS',
+  'LOCKED_LFS_FILES',
+  'DISCUSSIONS_NOT_RESOLVED',
+  'CI_MUST_PASS',
+  'COMMITS_STATUS',
+  'LOCKED_PATHS',
+  'NOT_APPROVED',
+  'SECURITY_POLICY_PIPELINE_CHECK',
+  'NEED_REBASE',
+  'CONFLICT',
+]
+
+/** GitLab's merge checks for an MR that can merge, with the ones in `over` given the status they name. */
+export const checks = (over: Partial<Record<MergeabilityCheckIdentifier, MergeabilityCheckStatus>> = {}): MergeabilityCheck[] =>
+  GITLAB_CHECKS.map(identifier => ({ identifier, status: over[identifier] ?? 'SUCCESS' }))
+
+/** An MR as the fake GitLab holds it: what MrFields asks for, and the merge checks that only the MergeStatus query gives. */
 export type Mr = MrFieldsFragment & {
   /** The reviewers with their review state, as a current GitLab sends them. */
   reviewers: { nodes: Array<ReviewerFieldsFragment | null> | null } | null
-  detailedMergeStatus?: DetailedMergeStatus | null
+  mergeabilityChecks?: MergeabilityCheck[]
 }
 
 export const rawMr = (iid: number, over: Partial<Mr> = {}): Mr => ({
@@ -109,12 +137,12 @@ export const reviewer = (username: string, reviewState: MergeRequestReviewState,
   mergeRequestInteraction: { reviewState },
 })
 
-/** What the MergeStatus query answers for these MRs: the verdict GitLab holds, null for one that has none. */
+/** What the MergeStatus query answers for these MRs: the checks GitLab holds, none for an MR that has none. */
 export const mergeStatuses = (mrs: readonly Mr[]) => ({
   data: {
     currentUser: {
       authoredMergeRequests: {
-        nodes: mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, detailedMergeStatus: mr.detailedMergeStatus ?? null })),
+        nodes: mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, mergeabilityChecks: mr.mergeabilityChecks ?? [] })),
       },
     },
   },
