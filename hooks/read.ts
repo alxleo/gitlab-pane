@@ -15,7 +15,7 @@ import {
   usualQuery,
 } from './gitlab'
 import type { RawResponse } from './gitlab'
-import { dotted, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
+import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
 import { reconcile } from './reconcile'
 
@@ -427,14 +427,10 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
   await refresh($)
   const [rows, poll, now] = await Promise.all([read($, rowsAtom), read($, pollAtom), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
-  const stale = foreign(
-    poll.error !== null
-      ? `GitLab could not be read (${poll.error})${poll.fetchedAt ? `; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : ''}`
-      : '',
-    URL_ROOM
-  )
+  const age = poll.fetchedAt ? line`; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : EMPTY
+  const stale = poll.error !== null ? line`GitLab could not be read (${foreign(poll.error, URL_ROOM)})${age}` : EMPTY
   if (row) {
-    return stale ? dotted([describe(row, now), stale]) : describe(row, now)
+    return dotted([describe(row, now), stale])
   }
-  return line`Pinned !${parsed.iid}; ${stale || foreign('GitLab did not return it.')}`
+  return line`Pinned !${parsed.iid}; ${stale || line`GitLab did not return it.`}`
 }
