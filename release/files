@@ -54,7 +54,9 @@ hooks/view.ts
 hooks/wake.ts
 hooks/equal.ts
 hooks/face-model.ts
+hooks/job-failures.ts
 hooks/job-lines.ts
+hooks/job-tail.ts
 hooks/pane-model.ts
 hooks/row-facts.ts
 hooks/row-lines.ts
