@@ -118,10 +118,6 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others
       avatars.push(e.argv.at(-1) ?? '')
       return ran(AVATAR_BASE64)
     }
-    // The inbox's own tests cover mr-inbox; here it is an empty inbox.
-    if (e.argv.includes('mr-inbox')) {
-      return ran(JSON.stringify({ sync: { ok: true, finished_at: null }, sections: [] }))
-    }
     return gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`)
   })
   on('prompt.submit', (_, e) => {
@@ -272,7 +268,10 @@ test(
     expect(new Set(gitlab.tokens)).toEqual(new Set([`gitlab.com ${TOKEN}`, `${SELF_MANAGED} corp-token`]))
     expect(gitlab.glabAsked).toEqual([SELF_MANAGED, 'git.empty.example'])
     // The older host says once that it lacks reviewState and mergeabilityChecks, then gets the documents without them; the current one gets all.
-    const asked = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
+    const askedAll = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
+    // The inbox has its own tests; its documents go to every host that has a token, and only to those.
+    const asked = (host: string) => askedAll(host).filter(name => !name.startsWith('Inbox'))
+    expect(new Set(askedAll(SELF_MANAGED).filter(name => name.startsWith('Inbox')))).toEqual(new Set(['InboxTodos', 'InboxQueue', 'InboxAuthored']))
     expect(asked(SELF_MANAGED).filter(name => name === 'Authored' || name === 'MergeStatus')).toEqual(expect.arrayContaining(['Authored', 'MergeStatus']))
     expect(asked(SELF_MANAGED).filter(name => name === 'Authored')).toHaveLength(1)
     expect(asked(SELF_MANAGED).filter(name => name === 'MergeStatus')).toHaveLength(1)
