@@ -4,7 +4,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "package-name": "gitlab-ci",
+      "package-name": "gitlab-pane",
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
       "extra-files": [

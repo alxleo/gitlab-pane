@@ -7,9 +7,9 @@ import { leaderProblems, problemLines, reportedProblems, withoutProblem, without
 import type { Problems, ProblemSource } from '../types'
 
 // Where background failures go instead of vanishing: the last one per source, for `/gitlab` to list.
-const problemsAtom = atom({ plugin: 'gitlab-ci', key: 'problems' } as const, {})
+const problemsAtom = atom({ plugin: 'gitlab-pane', key: 'problems' } as const, {})
 // What the session that reads GitLab failed with, as it told this one in its snapshot; this session's own are above.
-const reportedAtom = atom({ plugin: 'gitlab-ci', key: 'reported' } as const, {})
+const reportedAtom = atom({ plugin: 'gitlab-pane', key: 'reported' } as const, {})
 
 /**
  * Keeps `error` as the source's last, replacing an older one. An optional tool that is not installed is kept too, as

@@ -25,16 +25,16 @@ import type { InboxFollow, InboxHost, InboxMr, InboxSnapshot, InboxState } from 
 
 // GitLab owns the data, the rules are inbox-rules.ts, and this module only asks, keeps and marks. What the pane draws is
 // the rules applied to the last snapshot and the marks, so a mark shows at once and needs no read.
-const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
+const inboxAtom = atom({ plugin: 'gitlab-pane', key: 'inbox' } as const, {
   snapshot: NO_SNAPSHOT,
   seen: {},
   isSyncing: false,
   readAt: null,
 } satisfies InboxState)
-const inboxOpenAtom = atom({ plugin: 'gitlab-ci', key: 'inboxOpen' } as const, [])
-const inboxCardsAtom = atom({ plugin: 'gitlab-ci', key: 'inboxCards' } as const, [])
-const inboxHereAtom = atom({ plugin: 'gitlab-ci', key: 'inboxHere' } as const, false)
-const inboxFollowAtom = atom({ plugin: 'gitlab-ci', key: 'inboxFollow' } as const, [])
+const inboxOpenAtom = atom({ plugin: 'gitlab-pane', key: 'inboxOpen' } as const, [])
+const inboxCardsAtom = atom({ plugin: 'gitlab-pane', key: 'inboxCards' } as const, [])
+const inboxHereAtom = atom({ plugin: 'gitlab-pane', key: 'inboxHere' } as const, false)
+const inboxFollowAtom = atom({ plugin: 'gitlab-pane', key: 'inboxFollow' } as const, [])
 
 /** A mod loading takes the `inboxFollow` setting: the people and projects the Following rule lists. */
 export async function setFollow($: EngineInterface, setting: unknown): Promise<void> {

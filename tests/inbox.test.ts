@@ -10,9 +10,9 @@ import type { Fields, Note, Person, World } from './inbox_fixtures'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 
 const PANE = {
-  plugin: 'gitlab-ci',
+  plugin: 'gitlab-pane',
   component: 'Pane',
-  requestId: 'gitlab-ci',
+  requestId: 'gitlab-pane',
   props: {
     title: 'GitLab',
     isFocused: false,
@@ -43,7 +43,7 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('process.run', (_, e) => gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`))
   on('session.repo', () => ({ value: remote === null ? null : { root: '/r', remote, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
-  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return { ...gitlab, store, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }

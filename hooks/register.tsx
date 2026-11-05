@@ -16,8 +16,8 @@ import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
-export const PANE = 'gitlab-ci'
-const TOOL = 'mcp__gitlab-ci__watch_mr'
+export const PANE = 'gitlab-pane'
+const TOOL = 'mcp__gitlab-pane__watch_mr'
 
 /** A tool's answer: only lines from model-text.ts, so text from GitLab cannot reach the model raw. */
 const answer = (result: ModelLine) => ({ result })
@@ -52,7 +52,7 @@ export const register: Register = (on, options) => {
     })
     $.clock.every(TICK_MS, () => quietly($, step($), 'gitlab'))
     // Retires the separate reading pane an earlier version opened; the app keeps a pane across reloads.
-    quietly($, $.ui.close({ id: 'gitlab-ci-mr' }))
+    quietly($, $.ui.close({ id: 'gitlab-pane-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
       await openPane($).catch(reported($, 'pane'))

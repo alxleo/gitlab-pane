@@ -19,9 +19,9 @@ import { STAGE_COLOURS } from '../hooks/status'
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
 
 const PANE = {
-  plugin: 'gitlab-ci',
+  plugin: 'gitlab-pane',
   component: 'Pane',
-  requestId: 'gitlab-ci',
+  requestId: 'gitlab-pane',
   props: {
     title: 'GitLab',
     isFocused: false,
@@ -132,7 +132,7 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others
     return { text: e.text }
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
-  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   const { opened, titles, panes, store, writes } = fakeSession(on, { id: world.session ?? 'session-a', isBroken: () => fake.isPaneBroken === true, store: stored })
   on('tool.call', { tool: 'Bash' }, () => {
     const text = `Creating merge request for thing into main in g/p\n\n${PINNED_URL}\n`
@@ -259,14 +259,14 @@ test(
     const { woken, gitlab } = engine(on, fake, {}, { [SELF_MANAGED]: corp, 'git.empty.example': { answers: {} } }, { glab: { [SELF_MANAGED]: 'corp-token' } })
 
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-    const pinned = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+    const pinned = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: PINNED_URL })
     // Each answer tells of its own host only: the host with no token says nothing of an MR on a host that was read.
     expect(String(pinned.result)).toBe('!12 (ABC-1) ● running 20m so far · needs 1 approval · https://gitlab.com/g/p/-/pipelines/99')
-    const other = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: `https://${SELF_MANAGED}/g/p/-/merge_requests/12` })
+    const other = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: `https://${SELF_MANAGED}/g/p/-/merge_requests/12` })
     expect(String(other.result)).toBe(`!12 (ABC-1) ● running 20m so far · needs 1 approval · https://${SELF_MANAGED}/g/p/-/pipelines/99`)
-    const unread = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: 'https://git.empty.example/g/p/-/merge_requests/3' })
+    const unread = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: 'https://git.empty.example/g/p/-/merge_requests/3' })
     expect(String(unread.result)).toMatch(/^Pinned !3; GitLab could not be read \(no GitLab token for git\.empty\.example: set GITLAB_TOKEN/)
-    const stranger = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: 'https://elsewhere.example/g/p/-/merge_requests/12' })
+    const stranger = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: 'https://elsewhere.example/g/p/-/merge_requests/12' })
     expect(JSON.stringify(stranger)).toContain(`Not a merge request URL on ${HOSTS.join(', ')}`)
 
     fake.mrs = [rawMr(12, { headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } }) })]
@@ -471,7 +471,7 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
 
   // The open card's short detail leads to the whole of it, on a page of its own in this pane.
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
-  expect(new Set(opened)).toEqual(new Set(['gitlab-ci']))
+  expect(new Set(opened)).toEqual(new Set(['gitlab-pane']))
   expect(titles.at(-1)).toBe('GitLab · !12')
   expect(await ui.find({ type: 'Button', key: 'tab-mine' })).toBeUndefined()
   expect((await ui.find({ type: 'Button', key: 'back-top' }))?.props.label).toBe('‹ Mine')
@@ -535,7 +535,7 @@ test('/gitlab opens the pane and answers in one line, never the MR list', async 
   fake.isPaneBroken = false
   expect((await ask()).text).toContain('pane: ')
   // Once the work that failed succeeds, its failure is no longer true. The pin opens the pane again.
-  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: PINNED_URL })
   await clock.settle()
   const answer = await ask()
   expect(answer.text?.split('\n').length).toBe(1)
@@ -614,7 +614,7 @@ test('a pinned MR that merged is read on its own, then unpinned', async ($, on) 
   const { reads } = engine(on, fake)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: PINNED_URL })
   fake.mrs = [rawMr(12, { state: 'merged' }), rawMr(13)]
   await clock.advance(60_000)
 
@@ -757,7 +757,7 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
   )
   on('process.run', () => ran('', 1, 'nothing else is asked'))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
-  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   fakeSession(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
@@ -1055,7 +1055,7 @@ test('a session publishes its own pins under a key of its own, with a beat, and 
   const { store } = engine(on, { mrs: [rawMr(12)], isDown: false })
   store.set('lease', { owner: 'other', renewedAt: NOW })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: PINNED_URL })
   expect(store.get('pins:session-a')).toMatchObject({ session: 'session-a', at: NOW, pins: [{ iid: 12, origin: 'watched' }] })
   // Silent beats are renewed, not rewritten when nothing changed.
   for (let i = 0; i < 7; i++) {
@@ -1134,7 +1134,7 @@ test('an MR another session raised and this one only watches still has its failu
   const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false, reasons: { '/g/p/-/jobs/4711': 'script failure' }, traces: { 'g/p#4711': 'ERROR: Job failed' } }
   const { woken, store } = engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: PINNED_URL })
   store.set('pins:other', { session: 'other', at: clock.now(), pins: [{ url: PINNED_URL, host: HOST, path: 'g/p', iid: 12, origin: 'raised' }] })
   fake.mrs = [rawMr(12, { updatedAt: stamp(clock), headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED', { webPath: '/g/p/-/jobs/4711' })])] } }) })]
   await clock.advance(120_000)

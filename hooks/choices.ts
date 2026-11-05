@@ -9,7 +9,7 @@ import type { Choices } from '../types'
 // What the person chose in the pane: which cards are open, which fold, which tab, which MR is read whole. All of it is one
 // atom, so a drawing reads it once and a choice that touches two things redraws once. The engine reads an atom only in
 // the file that declares it, so everything that reads or writes it goes through the functions below.
-const choicesAtom = atom({ plugin: 'gitlab-ci', key: 'choices' } as const, {
+const choicesAtom = atom({ plugin: 'gitlab-pane', key: 'choices' } as const, {
   expanded: [],
   person: {},
   folds: [],

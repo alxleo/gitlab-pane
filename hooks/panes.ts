@@ -11,10 +11,10 @@ import { titleKey } from './drawing'
 import type { Scrolling } from '../types'
 
 /** The pane's id; register.tsx names it again, since the engine reads a hook's matcher from that file alone. */
-export const PANE_ID = 'gitlab-ci'
+export const PANE_ID = 'gitlab-pane'
 
 // Why the pane's last scroll did not move, and how far going back from a page got; /gitlab reports both.
-const scrollingAtom = atom({ plugin: 'gitlab-ci', key: 'scrolling' } as const, { refused: '', goingBack: '' } satisfies Scrolling)
+const scrollingAtom = atom({ plugin: 'gitlab-pane', key: 'scrolling' } as const, { refused: '', goingBack: '' } satisfies Scrolling)
 
 export function readScrolling($: EngineInterface): Promise<Scrolling> {
   return read($, scrollingAtom)

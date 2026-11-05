@@ -9,20 +9,20 @@ import type { MrCard, Pinned, PollState, ReadClock, Role, Ticket, Usual } from '
 
 // What GitLab, Jira and avatar fetches gave, and the polling's bookkeeping. The engine reads an atom only in the file that
 // declares it, so everything that reads or writes these goes through the functions below.
-const pinnedAtom = atom({ plugin: 'gitlab-ci', key: 'pinned' } as const, [])
-const hostsAtom = atom({ plugin: 'gitlab-ci', key: 'hosts' } as const, ['gitlab.com'])
-const rowsAtom = atom({ plugin: 'gitlab-ci', key: 'rows' } as const, [])
-const detailsAtom = atom({ plugin: 'gitlab-ci', key: 'details' } as const, {})
-const ticketsAtom = atom({ plugin: 'gitlab-ci', key: 'tickets' } as const, {})
-const usualAtom = atom({ plugin: 'gitlab-ci', key: 'usual' } as const, {})
-const avatarsAtom = atom({ plugin: 'gitlab-ci', key: 'avatars' } as const, {})
-const announcedAtom = atom({ plugin: 'gitlab-ci', key: 'announced' } as const, {})
-const unreachableAtom = atom({ plugin: 'gitlab-ci', key: 'unreachable' } as const, [])
-const jiraAtom = atom({ plugin: 'gitlab-ci', key: 'jira' } as const, '')
-const roleAtom = atom({ plugin: 'gitlab-ci', key: 'role' } as const, 'idle' satisfies Role)
-const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, { fetchedAt: null, error: null, hosts: {} } satisfies PollState)
+const pinnedAtom = atom({ plugin: 'gitlab-pane', key: 'pinned' } as const, [])
+const hostsAtom = atom({ plugin: 'gitlab-pane', key: 'hosts' } as const, ['gitlab.com'])
+const rowsAtom = atom({ plugin: 'gitlab-pane', key: 'rows' } as const, [])
+const detailsAtom = atom({ plugin: 'gitlab-pane', key: 'details' } as const, {})
+const ticketsAtom = atom({ plugin: 'gitlab-pane', key: 'tickets' } as const, {})
+const usualAtom = atom({ plugin: 'gitlab-pane', key: 'usual' } as const, {})
+const avatarsAtom = atom({ plugin: 'gitlab-pane', key: 'avatars' } as const, {})
+const announcedAtom = atom({ plugin: 'gitlab-pane', key: 'announced' } as const, {})
+const unreachableAtom = atom({ plugin: 'gitlab-pane', key: 'unreachable' } as const, [])
+const jiraAtom = atom({ plugin: 'gitlab-pane', key: 'jira' } as const, '')
+const roleAtom = atom({ plugin: 'gitlab-pane', key: 'role' } as const, 'idle' satisfies Role)
+const pollAtom = atom({ plugin: 'gitlab-pane', key: 'poll' } as const, { fetchedAt: null, error: null, hosts: {} } satisfies PollState)
 // Not read by the drawing, so writing it redraws nothing.
-const readsAtom = atom({ plugin: 'gitlab-ci', key: 'reads' } as const, {
+const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
   attemptedAt: null,
   failures: 0,
   ticketsAt: null,

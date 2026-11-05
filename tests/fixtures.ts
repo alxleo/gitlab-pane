@@ -1,4 +1,5 @@
 import type { CiJobStatus, MergeabilityCheckIdentifier, MergeabilityCheckStatus, MergeRequestReviewState, MrFieldsFragment, PipelineStatusEnum, ReviewerFieldsFragment } from '../hooks/gitlab.generated.ts'
+import type { CheckStatus, MergeStatus } from '../types'
 import type { RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
 
 /** The host the made-up GitLab answers as, unless a test says another. */
@@ -84,6 +85,10 @@ const GITLAB_CHECKS: readonly MergeabilityCheckIdentifier[] = [
 /** GitLab's merge checks for an MR that can merge, with the ones in `over` given the status they name. */
 export const checks = (over: Partial<Record<MergeabilityCheckIdentifier, MergeabilityCheckStatus>> = {}): MergeabilityCheck[] =>
   GITLAB_CHECKS.map(identifier => ({ identifier, status: over[identifier] ?? 'SUCCESS' }))
+
+/** GitLab's merge checks as the pane holds them: all pass but the ones named, which take the status given. */
+export const gitlabSays = (over: Partial<Record<string, CheckStatus>> = {}): MergeStatus =>
+  checks().map(check => ({ id: check.identifier, status: over[check.identifier] ?? 'success' }))
 
 /** An MR as the fake GitLab holds it: what MrFields asks for, and the merge checks that only the MergeStatus query gives. */
 export type Mr = MrFieldsFragment & {

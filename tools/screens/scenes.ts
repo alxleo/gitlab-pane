@@ -18,9 +18,9 @@ import type { Person, World } from '../../tests/inbox_fixtures'
 
 
 const PANE = {
-  plugin: 'gitlab-ci',
+  plugin: 'gitlab-pane',
   component: 'Pane',
-  requestId: 'gitlab-ci',
+  requestId: 'gitlab-pane',
   props: { title: 'GitLab', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
@@ -250,7 +250,7 @@ function engine(on: On, mrs: Mr[]) {
   )
   on('process.run', (_, e) => ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
-  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('ui.toast', () => ({ value: undefined }))
   on('session.repo', () => ({ value: { root: '/r', remote: 'git@gitlab.com:acme-corp/storefront.git', internal: false, name: null } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))

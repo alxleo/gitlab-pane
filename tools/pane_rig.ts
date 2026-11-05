@@ -25,8 +25,8 @@ import { parseArgs } from 'node:util'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
 
-const PANE_ID = 'gitlab-ci'
-const PLUGIN = 'gitlab-ci'
+const PANE_ID = 'gitlab-pane'
+const PLUGIN = 'gitlab-pane'
 /** Characters a row holds, for estimating how many rows text takes. */
 const WIDTH = 90
 
@@ -129,7 +129,7 @@ class Engine {
     const fresh = lines.slice(this.#debugSeen)
     this.#debugSeen = lines.length
     const trouble = ['refused', 'fail', 'skipped', 'denied', 'threw', 'error', 'warn']
-    return fresh.filter(line => line.includes('ui.scroll ') || (line.includes('gitlab-ci') && trouble.some(word => line.toLowerCase().includes(word))))
+    return fresh.filter(line => line.includes('ui.scroll ') || (line.includes('gitlab-pane') && trouble.some(word => line.toLowerCase().includes(word))))
   }
 
   close(): void {

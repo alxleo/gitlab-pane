@@ -80,3 +80,16 @@ const checksFor = (card: MrCard): MergeStatus => {
 
 /** A card with the checks GitLab would say for it, or none read. */
 export const readCardArb: fc.Arbitrary<MrCard> = fc.tuple(cardArb, fc.boolean()).map(([card, isRead]) => ({ ...card, mergeStatus: isRead ? checksFor(card) : null }))
+
+/** Text with the characters foreign has to deal with in it as often as ordinary ones. */
+export const textArb = fc.string({
+  unit: fc.oneof(
+    fc.constantFrom('\n', '\r', '\t', '\u0000', '\u0007', '\u001B', '\u0085', ' ', ' ', ' ', '​', '‎', '‮', '⁦', '⁩', '﻿', ' ', 'ß', 'é', '…'),
+    fc
+      .integer({ min: 0, max: 0x10ffff })
+      .filter(code => code < 0xd800 || code > 0xdfff)
+      .map(code => String.fromCodePoint(code)),
+    fc.string({ unit: 'binary-ascii', maxLength: 1 })
+  ),
+  maxLength: 300,
+})

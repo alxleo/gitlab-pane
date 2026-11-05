@@ -78,7 +78,7 @@ What users install is not this repository but the plugin's files alone. `release
 - **The default install** reads `.claude-plugin/marketplace.json` on main, whose plugin source is `"./"`: the whole repository. Switching it to the release branch is one line, made in its own commit once the first `plugin-v*` tag exists (`git ls-remote --tags origin 'plugin-v*'`; the canary's release-branch step also runs from then on):
 
   ```json
-  "plugins": [{ "name": "gitlab-ci", "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" } }]
+  "plugins": [{ "name": "gitlab-pane", "source": { "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" } }]
   ```
 
   It waits because until the `release` branch exists that source cannot be installed, and installs from main would fail. After it, the README's "That follows main" becomes "That follows releases", and the canary's install step asserts that no development file arrives from the default install too (`claude plugin install` from the marketplace itself, not only from the built tree).
