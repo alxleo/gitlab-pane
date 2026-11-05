@@ -197,11 +197,22 @@ export type HostFeatures = {
 
 export type Ticket = { type: string; status: string; summary: string }
 
+/** How the last read of one GitLab host went. */
+export type HostStatus = {
+  /** When the host last answered, or null while it never has. */
+  fetchedAt: number | null
+  /** Why its last read failed, or null when it went well; the cards of that host shown are then from `fetchedAt`. */
+  error: string | null
+}
+
 export type PollState = {
+  /** When any host last answered. */
   fetchedAt: number | null
   attemptedAt: number | null
-  /** The last read's error; the cards shown are then from `fetchedAt`. */
+  /** The last read's errors together (each host's own is in `hosts`); null when every host answered. */
   error: string | null
+  /** Per configured host, how its last read went, so the pane and `watch_mr` tell a stale host from a fresh one. */
+  hosts: Record<string, HostStatus>
   failures: number
   /** MRs the last read left out (GitLab timed parts of it out), drawn as the read before saw them. */
   kept?: number

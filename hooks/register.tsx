@@ -1,10 +1,10 @@
 import type { Register } from 'claude-code'
 
-import { readHosts, startData } from './data'
+import { readHosts, readPoll, startData } from './data'
 import { field, isFilled } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
-import { parseHosts } from './hosts'
+import { hostsLine, parseHosts } from './hosts'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
@@ -78,6 +78,7 @@ export const register: Register = (on, options) => {
     const scrolling = await readScrolling($)
     const isGoingBackStuck = scrolling.goingBack !== '' && scrolling.goingBack !== 'done'
     const failures = await problems($)
+    const hostLine = hostsLine((await readPoll($)).hosts)
     if (opened.isPlaced && !health.last.startsWith('threw') && scrolling.refused === '' && !isGoingBackStuck && failures.length === 0) {
       return { text: 'GitLab pane open' }
     }
@@ -87,6 +88,7 @@ export const register: Register = (on, options) => {
         `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
         ...(scrolling.refused !== '' ? [`last scroll refused: ${scrolling.refused}`] : []),
         ...(isGoingBackStuck ? [`going back: ${scrolling.goingBack}`] : []),
+        ...(hostLine !== '' ? [hostLine] : []),
         ...failures,
       ].join(' · '),
     }

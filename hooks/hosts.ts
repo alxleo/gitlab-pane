@@ -2,6 +2,8 @@
 // `git.example.com:8443`; the pane always speaks https to it.
 import { isFilled } from './decode.ts'
 
+import type { HostStatus } from '../types'
+
 /** The host used when the setting names none; its projects are drawn without the host before them. */
 export const DEFAULT_HOST = 'gitlab.com'
 
@@ -67,3 +69,18 @@ export function redact(text: string, secrets: readonly string[]): string {
     .replace(/\b(?:glpat|gloas|glcbt|glptt|gldt|glrt|glsoat|glffct)-[\w-]+/g, '[token]')
     .replace(/\bBearer\s+\S+/gi, 'Bearer [token]')
 }
+
+/** What a read found of one host: why it failed, or null when it answered. */
+export type HostRead = { host: string; error: string | null }
+
+/** The hosts' statuses after a read at `at`: an answering host is fresh as of now, a failing one keeps when it last answered. */
+export const hostStatuses = (previous: Readonly<Record<string, HostStatus>>, reads: readonly HostRead[], at: number): Record<string, HostStatus> =>
+  Object.fromEntries(reads.map(({ host, error }) => [host, { fetchedAt: error === null ? at : (previous[host]?.fetchedAt ?? null), error }]))
+
+/** Which hosts are fresh and which stale, as `gitlab.com fresh, git.corp.com stale`; empty while there is only one host to say it of. */
+export const hostsLine = (statuses: Readonly<Record<string, HostStatus>>): string =>
+  Object.keys(statuses).length > 1
+    ? Object.entries(statuses)
+        .map(([host, { error }]) => `${host} ${error === null ? 'fresh' : 'stale'}`)
+        .join(', ')
+    : ''

@@ -116,15 +116,22 @@ const byFacts = (facts: Readonly<Record<string, CardFacts>>) => (a: MrCard, b: M
   firstDifference((facts[a.key]?.rank ?? 3) - (facts[b.key]?.rank ?? 3), b.updatedAt.localeCompare(a.updatedAt))
 
 function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['footer'] {
-  const fetched = poll.fetchedAt !== null ? ago(new Date(poll.fetchedAt).toISOString(), now) : null
+  const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
+  // A read that kept no status per host (nothing yet to say of any) speaks of GitLab as one.
+  const statuses = Object.entries(Object.keys(poll.hosts).length > 0 ? poll.hosts : { '': { fetchedAt: poll.fetchedAt, error: poll.error } })
+  const stale = statuses.filter(([, status]) => status.error !== null)
+  const fresh = statuses.filter(([, status]) => status.error === null && status.fetchedAt !== null)
+  const named = (host: string, text: string) => (statuses.length > 1 ? `${host}: ${text}` : text)
+  const fetched = age(poll.fetchedAt)
   const keptNote = (poll.kept ?? 0) > 0 ? `; ${plural(poll.kept ?? 0, 'MR')} kept from the last read` : ''
-  const text =
-    poll.error !== null
-      ? `GitLab read failed: ${poll.error}${fetched !== null ? `; showing ${fetched} old data` : ''}`
-      : fetched !== null
-        ? `${updatedLine(fetched)}${keptNote}`
-        : 'reading GitLab…'
-  return { text, isWarning: poll.error !== null, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
+  const failed = stale.map(([host, status]) => {
+    const old = age(status.fetchedAt)
+    return `${named(host, status.error ?? '')}${old !== null ? `; showing ${old} old data` : ''}`
+  })
+  // With several hosts a stale one is told with the age of its own data, and the fresh ones beside it.
+  const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
+  const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : fetched !== null ? `${updatedLine(fetched)}${keptNote}` : 'reading GitLab…'
+  return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
 }
 
 /** A row's two lines, as data; the rest of it is added where the room allows. */
