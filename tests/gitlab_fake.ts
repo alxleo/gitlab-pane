@@ -25,6 +25,12 @@ const need = (variables: Record<string, string>, name: string): string => {
   return value
 }
 
+/** What an authored request asked for: the open MRs (the only state the pane names), or those changed after a moment. */
+const authoredScope = (variables: Record<string, string>): { state?: 'opened'; after?: string } => ({
+  ...(variables.state === 'opened' ? { state: 'opened' as const } : {}),
+  ...(variables.after !== undefined ? { after: variables.after } : {}),
+})
+
 const set = <Handler>(handler: Handler | undefined, operation: string): Handler => {
   if (handler === undefined) {
     throw new Error(`the test set no answer for the ${operation} operation`)
@@ -65,9 +71,9 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
     case 'Probe':
       return reply(200, answers.Probe !== undefined ? answers.Probe({}) : { data: CURRENT })
     case 'Authored':
-      return reply(200, set(answers.Authored, operation)({}))
+      return reply(200, set(answers.Authored, operation)(authoredScope(variables)))
     case 'AuthoredPlain':
-      return reply(200, set(answers.AuthoredPlain, operation)({}))
+      return reply(200, set(answers.AuthoredPlain, operation)(authoredScope(variables)))
     case 'MergeStatus':
       return reply(200, set(answers.MergeStatus, operation)({}))
     case 'Pinned':

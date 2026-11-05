@@ -13,16 +13,19 @@ import type { Piece, RowModel } from './pane-model'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
+import { withDetail } from './slim'
 import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, facts, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, browse, failures, now } = await view($)
+  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, browse, failures, now } = await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
   const isInbox = tab === 'inbox'
-  const reading = rows.find(row => row.key === page)
+  // The cards are the shared ones; an opened card has its description and threads put back (detail.ts reads them).
+  const cards = rows.map(row => withDetail(row, details[row.key]))
+  const reading = cards.find(row => row.key === page)
 
   // A part of a row is drawn once, when the model first asks how big it is or the row is put in the tree, and sized once.
   const drawnParts = new Map<string, { element: RenderChildren; size: number }>()
@@ -55,8 +58,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   const model = buildPane(
     {
-      cards: rows,
-      facts,
+      cards,
+      avatars,
       pinned,
       tickets,
       usual,

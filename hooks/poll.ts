@@ -2,255 +2,62 @@ import type { EngineInterface } from 'claude-code'
 
 import { forgetGone, readWake } from './choices'
 import {
-  changePoll,
-  mergeTickets,
-  mergeUsual,
-  markUnreachable,
+  changeReads,
   pinMr,
-  markUsualRead,
   readAnnounced,
-  readAvatarsShown,
-  readBrowse,
   readHosts,
   readPinned as readPins,
   readPoll,
+  readReads,
+  readRole,
   readRows,
-  readTicketsKnown,
-  readUnreachable,
-  readUsualKnown,
   setAnnounced,
-  setAvatars,
+  setPoll,
+  setRole,
   setRows,
   unpinKeys,
 } from './data'
-import { Failure, kindOf } from './failure'
+import { refreshDetails } from './detail'
+import { Failure, together } from './failure'
 import { clear, quietly, record } from './failures'
-import { joined, probed, serialised } from './in-flight'
-import { stringRecord } from './decode'
-import { lostIn, readFeatures, readMergeStatus, readPinned, readResponse, readUsual } from './gitlab'
-import { authoredQuery, mergeStatusQuery, pinnedQuery, probeQuery, usualQuery } from './gitlab-documents'
-import { ask } from './graphql'
-import { hostStatuses, projectOf } from './hosts'
-import { TICKET_FIELDS, readTickets, ticketQuery } from './jira'
-import { ago, ticketOf } from './format'
+import { serialised } from './in-flight'
+import { leaseTick } from './lease-store'
+import { ago } from './format'
 import { describe } from './wake'
 import { parseMrUrl, pinKey } from './mr-url'
 import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
-import { pictureUri, sizedAvatar } from './picture'
-import { openPane } from './panes'
+import { isPaneDrawn, openPane } from './panes'
+import { readGitLab, readRaised, readSingle } from './read-gitlab'
+import type { HostAsk } from './read-gitlab'
 import { reconcile } from './reconcile'
-import { isSettled } from './status'
-import { failureOf, runJson } from './tools'
+import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
+import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
+import { isMoving, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
+import type { Cursor, ReadResult, Snapshot } from './snapshot'
 
-import type { HostFeatures, MergeStatus, MrCard, Pinned, Usual } from '../types'
+import type { MrCard, Pinned, PollState } from '../types'
 
-const TICKETS_EVERY_MS = 15 * 60_000
-const USUAL_EVERY_MS = 30 * 60_000
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
-/** An error as a failure that keeps its kind. */
-const asFailure = (error: unknown, label = (message: string) => message): Failure => new Failure(kindOf(error), label(messageOf(error)))
-
-/** Several failures as one, in the kind of the first, with their words joined. */
-const together = (list: readonly Failure[]): Failure => new Failure(list[0]?.kind ?? 'unknown', list.map(one => one.message).join('; '))
-
-/** What a host's schema has of the fields older GitLab versions lack: asked the first time the host is read, then kept. */
-function featuresOf($: EngineInterface, host: string): Promise<HostFeatures> {
-  return probed(host, async () => readFeatures(await ask($, host, probeQuery())))
-}
-
-type HostRead = { rows: MrCard[]; lost: number; notes: Failure[] }
-
-/**
- * One host's authored list, then only the pinned MRs on it that the list lacks, one query each. `lost` counts authored
- * MRs GitLab timed out and sent back null, whose keys it therefore never said. `notes` are what went wrong without
- * failing the read.
- */
-async function readHost($: EngineInterface, host: string, pinned: readonly Pinned[]): Promise<HostRead> {
-  const features = await featuresOf($, host)
-  const notes: Failure[] = []
-  // The merge verdict comes from a query of its own, read alongside; a host without it, or a failed read of it, leaves
-  // every card without a verdict, and none says it can merge.
-  const [authored, verdicts] = await Promise.all([
-    ask($, host, authoredQuery(features)),
-    features.hasMergeVerdict
-      ? ask($, host, mergeStatusQuery())
-          .then(answer => readMergeStatus(host, answer))
-          .catch((error: unknown) => {
-            notes.push(asFailure(error, message => `merge status: ${message}`))
-            return new Map<string, MergeStatus>()
-          })
-      : Promise.resolve(new Map<string, MergeStatus>()),
-  ])
-  const rows = readResponse(host, authored).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
-  const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
-  for (const pin of missing) {
-    rows.push(...readPinned(host, await ask($, host, pinnedQuery(pin, features))))
-  }
-  return { rows, lost: lostIn(authored), notes }
-}
-
-type Read = { host: string; answer: HostRead } | { host: string; failure: Failure }
-
-/** Every configured host read at once; one that fails is told apart from the rest, which still count. */
-async function readGitLab($: EngineInterface, hosts: readonly string[], pinned: readonly Pinned[]): Promise<Read[]> {
-  return Promise.all(
-    hosts.map(host =>
-      readHost(
-        $,
-        host,
-        pinned.filter(pin => pin.host === host)
-      ).then(
-        (answer): Read => ({ host, answer }),
-        (error: unknown): Read => ({ host, failure: asFailure(error) })
-      )
-    )
-  )
-}
-
-/**
- * Jira's view of the tickets the titles name, every 15 minutes or when a new one appears, while a Jira site is set; a
- * failure (no `acli` installed or signed in, say) keeps the last.
- */
-async function readJira($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
-  if ((await readBrowse($)) === '') {
-    return
-  }
-  const keys = [...new Set(rows.map(row => ticketOf(row.title)).filter(key => key !== null))]
-  const [known, poll] = await Promise.all([readTicketsKnown($), readPoll($)])
-  const isDue = poll.ticketsAt === null || now - poll.ticketsAt >= TICKETS_EVERY_MS
-  if (keys.length === 0 || (!isDue && keys.every(key => key in known))) {
-    return
-  }
-  const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
-  const found = await runJson($, 'acli', search, readTickets, { timeoutMs: 60_000 })
-  if (!found.ok) {
-    await record($, 'jira', failureOf(found))
-    return
-  }
-  await clear($, 'jira')
-  await mergeTickets($, found.value, now)
-}
-
-/**
- * How long each repo's MR pipelines usually run, every 30 minutes or when a new repo appears; one pass at a time, however
- * long it takes, each project saved as it is read, so one that fails keeps the last of its own and loses no other's.
- */
-function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
-  return joined('usual', async () => {
-    const projects = [...new Map(rows.map(row => [row.project, row])).values()]
-    const [known, poll] = await Promise.all([readUsualKnown($), readPoll($)])
-    const isDue = poll.usualAt === null || now - poll.usualAt >= USUAL_EVERY_MS
-    if (projects.length === 0 || (!isDue && projects.every(row => row.project in known))) {
-      return
-    }
-    const failures: Failure[] = []
-    for (const row of projects) {
-      try {
-        const times = readUsual(await ask($, row.host, usualQuery(row.path)))
-        if (times !== null) {
-          await mergeUsual($, { [row.project]: times })
-        }
-      } catch (error) {
-        failures.push(asFailure(error, message => `${row.project}: ${message}`))
-      }
-    }
-    await markUsualRead($, now)
-    if (failures.length > 0) {
-      await record($, 'usual', together(failures))
-    } else {
-      await clear($, 'usual')
-    }
-  })
-}
-
-/** 20 pixels drawn at 14 stays fairly sharp on a Retina screen and costs about 1,000 characters of the drawing. */
-const AVATAR_PX = 20
-/** Base64 past this is no thumbnail: GitLab sent the full picture. */
-const AVATAR_MOST = 6_000
-const AVATAR_STORE = 'avatars'
-
-/** Each person's avatar, fetched once and kept across sessions by the URL GitLab gave, so a new picture is a new URL. */
-async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
-  const urls = [...new Set(rows.flatMap(row => row.people.map(person => person.avatarUrl)))].filter(
-    url => url !== null
-  )
-  const shown = await readAvatarsShown($)
-  const known: Record<string, string> = Object.keys(shown).length > 0 ? shown : stringRecord(await $.store.get(AVATAR_STORE))
-  // A picture that failed is not asked for again until the mod reloads.
-  const unreachable = await readUnreachable($)
-  const wanted = urls.filter(url => !(url in known) && !unreachable.includes(url))
-  const fetched = await Promise.all(
-    wanted.map(async url => {
-      const run = await $.process.run(
-        // The URL comes from GitLab's answer, so curl is held to https, redirects included.
-        ['/bin/sh', '-c', 'curl -sfL --proto =https --proto-redir =https --max-time 10 --url "$1" | base64', 'avatar', sizedAvatar(url, AVATAR_PX)],
-        { timeoutMs: 15_000 }
-      )
-      return [url, run.exitCode === 0 ? pictureUri(run.stdout, AVATAR_MOST) : null] as const
-    })
-  )
-  const failed = fetched.filter(pair => pair[1] === null)
-  await markUnreachable($, failed.map(pair => pair[0]))
-  if (failed.length > 0) {
-    await record($, 'avatars', new Failure('network', `${failed.length} picture${failed.length === 1 ? '' : 's'} could not be fetched`))
-  } else {
-    await clear($, 'avatars')
-  }
-  const fresh = Object.fromEntries(fetched.flatMap(([url, picture]) => (picture !== null ? [[url, picture] as const] : [])))
-  // Only the people on the pane are kept, so the store never outgrows them.
-  const kept: Record<string, string> = Object.fromEntries(
-    urls.flatMap(url => {
-      const uri = fresh[url] ?? known[url]
-      return uri !== undefined && uri !== '' ? [[url, uri]] : []
-    })
-  )
-  await setAvatars($, kept)
-  if (Object.keys(fresh).length > 0 || Object.keys(known).some(url => !(url in kept))) {
-    await $.store.set(AVATAR_STORE, kept)
-  }
-}
-
-/** Reads one after another; a caller arriving mid-read gets the next read, which sees its pin. */
-export function refresh($: EngineInterface): Promise<void> {
-  return serialised('refresh', () => readOnce($))
-}
+// Who reads GitLab, and what each session does with what was read. The lease (lease.ts) elects one leader among the
+// sessions that draw the pane; it alone reads GitLab, and writes what it read as a snapshot (snapshot.ts) in the store. The
+// other sessions that draw the pane adopt each new snapshot and read nothing. A session that draws nothing but raised an MR
+// reads that MR alone, slowly, so its wakes still fire. Every session, whichever it is, decides its own wakes: from the
+// cards it was given, its own pins and what it announced already.
 
 /** The only way text reaches the model unasked: lines built by model-text.ts, so a foreign value cannot arrive raw. */
 function wake($: EngineInterface, news: readonly ModelLine[]) {
   return $.prompt.submit({ text: lines(news) })
 }
 
-/** One GitLab read of every configured host, for every row; wakes the session for a pinned MR's new result. */
-async function readOnce($: EngineInterface): Promise<void> {
-  const [pinned, hosts] = await Promise.all([readPins($), readHosts($)])
-  const attemptedAt = await $.clock.now()
-  await clear($, 'gitlab')
-  const reads = await readGitLab($, hosts, pinned)
-  // With several hosts, each failure says whose it is.
-  const labelled = (host: string, one: Failure) => new Failure(one.kind, hosts.length > 1 ? `${host}: ${one.message}` : one.message)
-  const failures = reads.flatMap(read => ('failure' in read ? [labelled(read.host, read.failure)] : []))
-  const answers = reads.flatMap(read => ('answer' in read ? [{ host: read.host, ...read.answer }] : []))
-  const notes = answers.flatMap(answer => answer.notes.map(note => labelled(answer.host, note)))
-  const outcomes = reads.map(read => ({ host: read.host, error: 'failure' in read ? read.failure.message : null }))
-  if (answers.length === 0) {
-    const all = together(failures)
-    await record($, 'gitlab', all)
-    await changePoll($, poll => ({ ...poll, attemptedAt, error: all.message, hosts: hostStatuses(poll.hosts, outcomes, attemptedAt), failures: poll.failures + 1 }))
-    return
-  }
-  const fresh = answers.flatMap(answer => answer.rows)
-  // A read GitLab partly timed out, or a host that failed, keeps the cards it left out as last seen, so none vanishes or
-  // closes for a poll.
-  const behind = new Set([...reads.flatMap(read => ('failure' in read ? [read.host] : [])), ...answers.filter(answer => answer.lost > 0).map(answer => answer.host)])
-  const kept = behind.size > 0 ? (await readRows($)).filter(row => behind.has(row.host) && !fresh.some(each => each.key === row.key)) : []
-  const rows = [...fresh, ...kept]
-  if (failures.length + notes.length > 0) {
-    await record($, 'gitlab', together([...failures, ...notes]))
-  }
-  const now = await $.clock.now()
-  const reconciled = reconcile({ pinned, rows, announced: await readAnnounced($), now })
+/** An MR this session raised wakes it; one it only watches does not. A pin kept from before this was recorded wakes, as every pin then did. */
+const isRaised = (pin: Pinned): boolean => pin.origin !== 'watched'
+
+/**
+ * What a session does with cards it was given: toasts and wakes for its own pins' news, the open cards for the pane, the
+ * pins that ended. `cards` are open ones and the pinned ones that closed. Gives the open cards.
+ */
+async function applyCards($: EngineInterface, cards: readonly MrCard[], now: number): Promise<MrCard[]> {
+  const [pinned, announced] = await Promise.all([readPins($), readAnnounced($)])
+  const reconciled = reconcile({ pinned, rows: cards, announced, now })
   reconciled.toasts.forEach(text => $.ui.toast(text))
   const open = reconciled.rows
   const isShown = (key: string) => open.some(row => row.key === key)
@@ -263,32 +70,191 @@ async function readOnce($: EngineInterface): Promise<void> {
   if (reconciled.unpinned.length > 0) {
     await unpinKeys($, reconciled.unpinned)
   }
-  await changePoll($, poll => ({
-    ...poll,
-    fetchedAt: now,
-    attemptedAt,
-    error: failures.length > 0 ? together(failures).message : null,
-    hosts: hostStatuses(poll.hosts, outcomes, now),
-    failures: 0,
-    kept: kept.length,
-  }))
   if (reconciled.wakes.length > 0 && (await readWake($))) {
     quietly($, wake($, reconciled.wakes))
   }
-  quietly($, readJira($, open, now), 'jira')
-  quietly($, readUsualTimes($, open, now), 'usual')
-  quietly($, readAvatars($, open), 'avatars')
+  quietly($, refreshDetails($))
+  return open
 }
 
-/** Every minute while a pinned pipeline runs, every three otherwise; backs off to ten after errors. */
-export async function tick($: EngineInterface): Promise<void> {
-  const [poll, rows, pinned, now] = await Promise.all([readPoll($), readRows($), readPins($), $.clock.now()])
-  const pinnedKeys = new Set(pinned.map(pinKey))
-  const isMoving = rows.some(row => pinnedKeys.has(row.key) && row.pipeline !== undefined && !isSettled(row.pipeline.status))
-  const every = poll.failures > 0 ? Math.min(600_000, 60_000 * 2 ** poll.failures) : isMoving ? 60_000 : 180_000
-  if (poll.attemptedAt === null || now - poll.attemptedAt >= every) {
-    await refresh($)
+/** What the footer says of a snapshot. */
+const pollOf = (snapshot: Snapshot): PollState => ({
+  fetchedAt: snapshot.fetchedAt,
+  error: snapshot.error,
+  hosts: snapshot.hosts,
+  ...(snapshot.kept > 0 ? { kept: snapshot.kept } : {}),
+})
+
+/**
+ * Draws from a snapshot: its cards, with those of this session's own pins that the leader has not yet read left as they were,
+ * so an MR just pinned does not blink out; the footer; the pictures and run times the leader kept. Beside the cards, a
+ * session that draws also reads Jira's view of the tickets itself, as that is not GitLab.
+ */
+async function adopt($: EngineInterface, snapshot: Snapshot, isLeader = false): Promise<void> {
+  const [pinned, held, reads, now] = await Promise.all([readPins($), readRows($), readReads($), $.clock.now()])
+  const own = new Set(pinned.map(pinKey))
+  const read = new Set(snapshot.rows.map(row => row.key))
+  const waiting = held.filter(row => own.has(row.key) && !read.has(row.key) && !snapshot.pinned.includes(row.key))
+  // The leader keeps the pictures and run times itself, but loads those an earlier leader left when it first draws.
+  if (!isLeader || reads.adopted === '') {
+    await loadShared($)
   }
+  await setPoll($, pollOf(snapshot))
+  const open = await applyCards($, [...snapshot.rows, ...waiting], now)
+  await changeReads($, reads => ({ ...reads, adopted: snapshot.version }))
+  quietly($, readJira($, open, now), 'jira')
+}
+
+/** Puts a snapshot in the store for the other sessions. A store that cannot take it does not stop this session drawing it. */
+async function share($: EngineInterface, snapshot: Snapshot): Promise<void> {
+  try {
+    await saveSnapshot($, snapshot)
+    await clear($, 'store')
+  } catch (error) {
+    await record($, 'store', error)
+  }
+}
+
+/** What the leader read: one snapshot from every host's answer, for it and for the sessions that follow. */
+async function lead($: EngineInterface, previous: Snapshot | null, pins: readonly Pinned[], isFresh: boolean): Promise<void> {
+  const [hosts, me, startedAt] = await Promise.all([readHosts($), $.session.id(), $.clock.now()])
+  // Marked before the read, so a read that goes wrong is tried again at the pace, not at the next tick.
+  await changeReads($, state => ({ ...state, attemptedAt: startedAt }))
+  await clear($, 'gitlab')
+  const base = previous?.rows ?? []
+  const extras = new Set(previous?.extras ?? [])
+  const inputs = hosts.map(
+    (host): HostAsk => ({
+      host,
+      base: base.filter(row => row.host === host),
+      pinned: pins.filter(pin => pin.host === host),
+      extras,
+      cursor: previous?.cursors[host],
+      isFresh,
+      now: startedAt,
+    })
+  )
+  const reads = await readGitLab($, inputs)
+  // With several hosts, each failure says whose it is.
+  const labelled = (host: string, one: Failure) => new Failure(one.kind, hosts.length > 1 ? `${host}: ${one.message}` : one.message)
+  const failures = reads.flatMap(read => ('failure' in read ? [labelled(read.host, read.failure)] : []))
+  const answers = reads.flatMap(read => ('answer' in read ? [{ host: read.host, ...read.answer }] : []))
+  const notes = answers.flatMap(answer => answer.notes.map(note => labelled(answer.host, note)))
+  const outcomes = reads.map(read => ({ host: read.host, error: 'failure' in read ? read.failure.message : null }))
+  const now = await $.clock.now()
+  if (answers.length === 0) {
+    const all = together(failures)
+    await record($, 'gitlab', all)
+    await changeReads($, state => ({ ...state, failures: state.failures + 1 }))
+    const failed = nextSnapshot(previous, { rows: base, outcomes, error: all.message, kept: previous?.kept ?? 0, cursors: previous?.cursors ?? {}, pinned: pins.map(pinKey), extras: [...extras] }, me, now)
+    await share($, failed)
+    await adopt($, failed, true)
+    return
+  }
+  const fresh = answers.flatMap(answer => answer.rows)
+  // A read GitLab partly timed out, or a host that failed, keeps the cards it left out as last seen, so none vanishes or
+  // closes for a poll.
+  const behind = new Set([...reads.flatMap(read => ('failure' in read ? [read.host] : [])), ...answers.filter(answer => answer.lost > 0 && answer.scope === 'open').map(answer => answer.host)])
+  const kept = behind.size > 0 ? base.filter(row => behind.has(row.host) && !fresh.some(each => each.key === row.key)) : []
+  const lostInDelta = answers.filter(answer => answer.scope === 'since').reduce((sum, answer) => sum + answer.lost, 0)
+  if (failures.length + notes.length > 0) {
+    await record($, 'gitlab', together([...failures, ...notes]))
+  }
+  const answeredCursors = Object.fromEntries(answers.map((answer): [string, Cursor] => [answer.host, answer.cursor]))
+  const result: ReadResult = {
+    rows: [...fresh, ...kept],
+    outcomes,
+    error: failures.length > 0 ? together(failures).message : null,
+    kept: kept.length + lostInDelta,
+    cursors: { ...Object.fromEntries(Object.entries(previous?.cursors ?? {}).filter(([host]) => hosts.includes(host))), ...answeredCursors },
+    pinned: pins.map(pinKey),
+    extras: [...answers.flatMap(answer => answer.extras), ...[...extras].filter(key => reads.some(read => 'failure' in read && key.startsWith(`${read.host}/`)))],
+  }
+  const snapshot = nextSnapshot(previous, result, me, now)
+  await share($, snapshot)
+  await changeReads($, state => ({ ...state, failures: 0 }))
+  await adopt($, snapshot, true)
+  quietly($, readUsualTimes($, snapshot.rows.filter(row => row.isOpen), now), 'usual')
+  quietly($, readAvatars($, snapshot.rows.filter(row => row.isOpen)), 'avatars')
+}
+
+/** The leader's turn: reads when a read is due (the pace, a new pin, a request), else draws what is in the store. */
+async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<void> {
+  const [snapshot, reads, now, asked] = await Promise.all([loadSnapshot($), readReads($), $.clock.now(), readRefreshes($)])
+  const pins = await pinsToRead($, own)
+  const last = Math.max(snapshot?.attemptedAt ?? 0, reads.attemptedAt ?? 0)
+  const isAsked = asked > reads.refreshed
+  // A pin the last read did not ask for, and that no card of it holds: an MR just raised, or someone else's just watched.
+  const isNewPin = snapshot !== null && pins.some(pin => !snapshot.pinned.includes(pinKey(pin)) && !snapshot.rows.some(row => row.key === pinKey(pin)))
+  const isDue = snapshot === null || isAsked || isNewPin || now - last >= pollEvery(reads.failures, isMoving(snapshot.rows, pins))
+  if (isDue) {
+    await changeReads($, state => ({ ...state, refreshed: asked }))
+    await lead($, snapshot, pins, isAsked)
+  } else if (snapshot.version !== reads.adopted) {
+    await adopt($, snapshot, true)
+  }
+}
+
+/** A follower's turn: draws the snapshot when it has a version it has not drawn. */
+async function followTick($: EngineInterface): Promise<void> {
+  const [snapshot, reads] = await Promise.all([loadSnapshot($), readReads($)])
+  if (snapshot !== null && snapshot.version !== reads.adopted) {
+    await adopt($, snapshot)
+  }
+}
+
+/** The turn of a session that draws no pane but raised an MR: those MRs alone, slowly. */
+async function watchTick($: EngineInterface, own: readonly Pinned[]): Promise<void> {
+  const [reads, now] = await Promise.all([readReads($), $.clock.now()])
+  if (reads.attemptedAt !== null && now - reads.attemptedAt < Math.max(WAKE_ONLY_EVERY_MS, pollEvery(reads.failures, false))) {
+    return
+  }
+  await changeReads($, state => ({ ...state, attemptedAt: now }))
+  const { cards, failures } = await readRaised($, own.filter(isRaised))
+  if (failures.length > 0) {
+    await record($, 'gitlab', together(failures))
+  } else {
+    await clear($, 'gitlab')
+  }
+  await changeReads($, state => ({ ...state, failures: failures.length > 0 ? state.failures + 1 : 0 }))
+  await applyCards($, cards, now)
+}
+
+/**
+ * The tick, every couple of seconds, in every session: says whether this session's pane is drawn, takes part in the
+ * election, tells the other sessions what it pinned, and does what its role is.
+ */
+async function stepOnce($: EngineInterface): Promise<void> {
+  const own = await readPins($)
+  const tick = await leaseTick($, { isDrawing: await isPaneDrawn($), raisedPins: own.filter(isRaised).length })
+  await setRole($, tick.role)
+  if (tick.problem !== null) {
+    await record($, 'store', tick.problem)
+  } else {
+    await clear($, 'store')
+  }
+  await publishPins($, own)
+  switch (tick.role) {
+    case 'leader':
+      return leadTick($, own)
+    case 'follower':
+      return followTick($)
+    case 'wake-only':
+      return watchTick($, own)
+    case 'idle':
+      return undefined
+  }
+}
+
+/** One tick at a time; a tick arriving mid-tick gets the next one. */
+export function step($: EngineInterface): Promise<void> {
+  return serialised('step', () => stepOnce($))
+}
+
+/** Asks for a read now: the leader reads at its next turn, which this runs at once. */
+export async function refresh($: EngineInterface): Promise<void> {
+  await askForRefresh($)
+  await step($)
 }
 
 /** Pins an MR to this session and answers what it looks like now, saying so when that is stale. */
@@ -299,13 +265,28 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
     throw new Error(`Not a merge request URL on ${hosts.join(', ')}: ${url}`)
   }
   await pinMr($, parsed, origin)
-  await refresh($)
+  await publishPins($, await readPins($))
+  await step($)
+  // The leader's read has it; a session that only draws, or draws nothing, asks GitLab for this one MR itself.
+  let unread: Failure | null = null
+  let card: MrCard | null = null
+  if ((await readRole($)) !== 'leader') {
+    try {
+      card = await readSingle($, parsed)
+    } catch (error) {
+      unread = error instanceof Failure ? error : new Failure('unknown', String(error))
+    }
+  }
+  // What this session knows of the MR now, seen for the first time: its news from here on is news.
+  const known = (await readRows($)).filter(row => row.key !== card?.key)
+  await applyCards($, card !== null ? [...known, card] : known, await $.clock.now())
   const [rows, poll, now] = await Promise.all([readRows($), readPoll($), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
   // Only the MR's own host is told of: another host failing says nothing of this answer.
   const status = poll.hosts[parsed.host]
-  const age = status?.fetchedAt != null ? line`; this is ${ago(new Date(status.fetchedAt).toISOString(), now)} old` : EMPTY
-  const stale = status?.error != null ? line`GitLab could not be read (${foreign(status.error, URL_ROOM)})${age}` : EMPTY
+  const error = unread?.message ?? status?.error ?? null
+  const age = unread === null && status?.fetchedAt != null ? line`; this is ${ago(new Date(status.fetchedAt).toISOString(), now)} old` : EMPTY
+  const stale = error !== null ? line`GitLab could not be read (${foreign(error, URL_ROOM)})${age}` : EMPTY
   if (row !== undefined) {
     return dotted([describe(row, now), stale])
   }

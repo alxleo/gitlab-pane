@@ -1,11 +1,11 @@
 // What an MR card says that depends on the card alone, not on the time or on what is open: its badges, verdict, words and
-// the Markdown cut from its description and notes. It is the costly part of a row, and the same until the card changes,
-// so `data.ts` derives it from the rows: a drawing reads it without rebuilding it. Pure, on plain data.
+// the Markdown cut from its description and notes. It is the costly part of a row, so `buildPane` works it out for the
+// rows it draws and no others. Pure, on plain data.
 import { badges, personTone, rank, reviewTone, rowBadges, verdictOf } from './attention.ts'
 import type { Badge, Verdict } from './attention.ts'
 import { faceFacts, REVIEW_STATE } from './face-model.ts'
 import type { FaceFacts } from './face-model.ts'
-import { bodyOf, excerpt, lead, plural, shortTitle, ticketOf } from './format.ts'
+import { bodyOf, excerpt, plural, shortTitle, ticketOf } from './format.ts'
 import { firstName } from './identity.ts'
 import type { MarkdownText } from './markdown.ts'
 import type { Tone } from './status.ts'
@@ -19,7 +19,6 @@ const THREAD_ROOM = 500
 /** A person's comment in the card opened on their words. */
 const NOTE_ROOM = 1_500
 const DESCRIPTION_ROOM = 400
-const LEAD_ROOM = 160
 
 /** A note with the words it is drawn with cut once: the excerpt a hover shows, the Markdown a card opens onto. */
 export type NoteFacts = {
@@ -41,6 +40,8 @@ export type PersonFacts = {
   isBot: boolean
   initials: string
   openThreads: number
+  /** How many comments they wrote, though `notes` may hold fewer. */
+  noteCount: number
   tone: Tone
   standing: string
   /** `bot`, `@handle`, or nothing where the name already says it. */
@@ -108,6 +109,7 @@ const personFacts = (person: Person, picture: string | undefined): PersonFacts =
     isBot: person.isBot,
     initials: person.initials,
     openThreads: person.openThreads,
+    noteCount: person.noteCount,
     tone: personTone(person),
     standing: standing.join(' · '),
     tag: tagOf(person),
@@ -134,13 +136,14 @@ export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>
     ticket: ticketOf(card.title),
     isStacked: !['main', 'master'].includes(card.branch.target),
     // A card opens only onto what its lines do not already show: the description, failed jobs, open threads.
-    canOpen: card.description.trim() !== '' || card.openThreads.length > 0 || (pipeline?.failed.length ?? 0) > 0 || (pipeline?.amber.length ?? 0) > 0,
+    canOpen: card.hasDescription || card.openThreads.length > 0 || (pipeline?.failed.length ?? 0) > 0 || (pipeline?.amber.length ?? 0) > 0,
     badges: badges(card),
     row: list,
     verdict,
     trailing: verdict !== null ? list.filter(badge => badge.kind !== 'ready' && !verdict.covers.includes(badge.kind)) : [],
-    lead: card.description !== '' ? lead(card.description, LEAD_ROOM) : '',
-    detail: card.description.trim() !== '' ? bodyOf(card.description, DESCRIPTION_ROOM) : null,
+    lead: card.lead,
+    // A shared card has no description; the whole one arrives when the card is opened.
+    detail: card.description !== '' ? bodyOf(card.description, DESCRIPTION_ROOM) : null,
     threads,
     loose: threads.filter(note => !held.has(note.author)),
     people,

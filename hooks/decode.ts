@@ -3,6 +3,8 @@
 import { Failure } from './failure.ts'
 import type { RawResponse } from './gitlab-documents.ts'
 
+import type { Usual } from '../types'
+
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -27,6 +29,16 @@ export const textOrNull = (value: unknown): string | null => {
 /** The string values of an object, by key; anything else gives none. */
 export const stringRecord = (value: unknown): Record<string, string> =>
   isRecord(value) ? Object.fromEntries(Object.entries(value).filter((pair): pair is [string, string] => typeof pair[1] === 'string')) : {}
+
+/** Pipeline run times by project, as the store keeps them; an entry that is not a pair of numbers is left out. */
+export const usualRecord = (value: unknown): Record<string, Usual> =>
+  isRecord(value)
+    ? Object.fromEntries(
+        Object.entries(value).flatMap(([project, times]) =>
+          isRecord(times) && typeof times.low === 'number' && typeof times.high === 'number' ? [[project, { low: times.low, high: times.high }]] : []
+        )
+      )
+    : {}
 
 /** The objects in a list; anything else in it, or a non-list, gives none. */
 export const records = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value.filter(isRecord) : [])

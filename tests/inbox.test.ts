@@ -3,7 +3,7 @@ import type { On } from 'claude-code'
 
 import { shortHash as hashOf } from '../hooks/identity'
 import { AVATAR_BASE64, NOW, job, mergeStatuses, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
-import { fakeGitLab, ran } from './gitlab_host'
+import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 
 const PANE = {
   plugin: 'gitlab-ci',
@@ -73,8 +73,7 @@ function engine(on: On, inbox: Inbox) {
   on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
+  fakeSession(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return calls
 }
@@ -324,8 +323,7 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
   on('session.repo', () => ({ value: { root: '/r', remote: REMOTE, internal: false, name: null } }))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
+  fakeSession(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })

@@ -448,6 +448,18 @@
          "name": "MergeRequestState",
          "ofType": null
         }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "updatedAfter",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Time",
+         "ofType": null
+        }
        }
       ],
       "deprecationReason": null,

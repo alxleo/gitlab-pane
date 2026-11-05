@@ -1,5 +1,7 @@
 import { isRecord } from './decode.ts'
 
+import type { Role } from '../types'
+
 // Which session reads GitLab for all of them. Sessions elect one leader through a record in the plugin's store, which every
 // Claude process on the machine reads and writes. The store has no compare-and-swap, so two sessions can both write at
 // once and the last write wins; that is allowed to happen. The record is read again every tick, so the session that lost
@@ -11,9 +13,6 @@ import { isRecord } from './decode.ts'
 export const RENEW_MS = 4_000
 /** A record not renewed for this long is dead, whoever wrote it: three renewals missed. */
 export const EXPIRY_MS = 12_000
-/** A pane drawn within this long counts as drawn now: the pane draws only when something changes, so a short window
- * would call a pane that sits open and quiet closed. */
-export const ELIGIBLE_MS = 30_000
 /** How often a session runs `decide`: no longer than a renew period, so a double leader is resolved within one. */
 export const TICK_MS = 2_000
 
@@ -23,9 +22,9 @@ export type LeaseRecord = { owner: string; renewedAt: number }
 /**
  * What a session does with GitLab now. A `leader` reads it and writes the snapshot; a `follower` reads the snapshot; a
  * `wake-only` session has no pane drawn anywhere and polls only the MRs it raised, so their wakes still fire; an `idle`
- * session polls nothing.
+ * session polls nothing. (Declared with the other contract types, which `types/index.d.ts` holds.)
  */
-export type Role = 'leader' | 'follower' | 'wake-only' | 'idle'
+export type { Role }
 
 /** Why the record changes: `acquire` a free or expired lease, `take-over` another's expired one, `renew` one's own, `release` it. */
 export type Move = 'keep' | 'acquire' | 'take-over' | 'renew' | 'release'
@@ -41,7 +40,7 @@ export type LeaseInput = {
   /** This session's id. */
   me: string
   now: number
-  /** Whether this session's pane is being drawn (see `isDrawnRecently`). */
+  /** Whether a surface draws this session's pane now: the engine's `$.ui.panes()` says so (see `isPaneDrawn` in panes.ts). */
   isDrawing: boolean
   /** How many MRs this session raised that are still open. */
   raisedPins: number
@@ -54,11 +53,6 @@ export function readRecord(value: unknown): LeaseRecord | null {
   }
   const { owner, renewedAt } = value
   return typeof owner === 'string' && owner !== '' && typeof renewedAt === 'number' && Number.isFinite(renewedAt) ? { owner, renewedAt } : null
-}
-
-/** Whether a pane last drawn at `drawnAt` (null: never) is drawn now. */
-export function isDrawnRecently(drawnAt: number | null, now: number): boolean {
-  return drawnAt !== null && now - drawnAt < ELIGIBLE_MS
 }
 
 /** Whether a record still holds the lease. A renewal stamped far ahead of this clock is no proof of life, so it expires too. */

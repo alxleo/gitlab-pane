@@ -77,11 +77,13 @@ The pane changes nothing on GitLab or Jira. A host's token is the first of: `GIT
 
 | Runs | How often | For | Writes |
 |---|---|---|---|
-| HTTPS POST to `https://<host>/api/graphql` for each configured host | every minute while a pinned pipeline runs, every 3 min otherwise, slower after errors | your MRs and the ones you pin: pipelines, reviewers, comments, and how long each repo's pipelines usually take; as you; the first read of a host also asks its schema which of a few newer fields it has | nothing: queries only |
+| HTTPS POST to `https://<host>/api/graphql` for each configured host, **from one session only**: the one that leads (below) | every 30 s while a pinned pipeline runs, every minute otherwise, slower after errors; each poll asks only for MRs changed since the last (a small query, and one for the merge verdicts), an MR whose pipeline runs is read on its own, and the whole list is read every 5 min; a session that draws no pane but opened an MR reads that MR alone every 5 min | your MRs and the ones you pin: pipelines, reviewers, comments, and how long each repo's pipelines usually take; as you; the first read of a host also asks its schema which of a few newer fields it has; an MR you open in the pane is read once more for its description and threads | the plugin's own store: what the leader read (a small copy of each MR), each session's pins, and which session leads |
 | `glab config get token --host <host>` | once per host per session, when no environment token applies | the token `glab` holds | nothing |
 | `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (a configured host or Gravatar), https only, no token sent; the engine's HTTP returns text, not bytes | nothing; the pictures are kept in the plugin's own store |
 | `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
 | `mr-inbox` | every minute, when installed | the inbox | its own cache, and what you mark seen |
+
+**Several sessions.** Every session that draws the pane takes part in an election through the plugin's store (a file all your Claude sessions share): the one that wins reads GitLab for all of them and writes a snapshot, and the others draw the snapshot and ask GitLab for nothing but the MR you open. When the leader closes its pane another takes over within a few seconds. Each session still decides its own wakes, from the snapshot and the MRs it opened itself.
 
 What reaches Claude, and so the model provider, from GitLab:
 

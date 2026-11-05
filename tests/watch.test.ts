@@ -2,14 +2,17 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
-import { AVATAR_BASE64, NOW, SELF_MANAGED, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { AVATAR_BASE64, HOST, NOW, SELF_MANAGED, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
 import { OLDER } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
-import { fakeGitLab, ran } from './gitlab_host'
+import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
+import { toCard } from '../hooks/gitlab'
+import { slimCard } from '../hooks/slim'
+import { nextSnapshot, readSnapshot } from '../hooks/snapshot'
 import { STAGE_COLOURS } from '../hooks/status'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
@@ -40,6 +43,9 @@ const boxesOf = (node: unknown): Drawn[] => elementsOf(node).filter(element => e
 /** Whether an element's `key` starts with `prefix`. */
 const keyed = (prefix: string) => (element: FoundElement) => element.key?.startsWith(prefix) === true
 
+/** The time on the test's clock as GitLab writes it: an MR that changed since is stamped with it. */
+const stamp = (clock: { now: () => number }): string => new Date(clock.now()).toISOString()
+
 /** The token the made-up GitLab accepts, which the session has in its environment as GITLAB_TOKEN. */
 const TOKEN = 'glpat-test-token'
 
@@ -48,9 +54,10 @@ type Fake = { mrs: Mr[]; isDown: boolean; lost?: string[]; isJiraMissing?: boole
 
 /** What a current GitLab answers for the MRs `fake` holds; `reads` hears of each operation but the run times. */
 function answersFor(fake: () => Mr[], lost: () => string[], reads: string[]): Answers {
-  const authored = () => {
-    reads.push('Authored')
-    const open = fake().filter(mr => mr.state === 'opened')
+  const authored = ({ after }: { after?: string | null } = {}) => {
+    reads.push(after === undefined || after === null ? 'Authored' : 'Authored since')
+    // As GitLab answers: the open MRs, or those of any state updated after a moment (a pipeline moving does not update an MR).
+    const open = after === undefined || after === null ? fake().filter(mr => mr.state === 'opened') : fake().filter(mr => Date.parse(mr.updatedAt) > Date.parse(after))
     // GitLab times parts of a heavy query out: those MRs come back null beside an error each.
     const nodes = open.map(mr => (lost().includes(mr.iid) ? null : mr))
     const errors = lost().map(() => ({ message: 'Timeout on validation of query' }))
@@ -66,11 +73,11 @@ function answersFor(fake: () => Mr[], lost: () => string[], reads: string[]): An
       reads.push('MergeStatus')
       return mergeStatuses(fake().filter(mr => mr.state === 'opened'))
     },
-    Authored: authored,
+    Authored: variables => authored(variables),
     Pinned: pinned,
     // An older GitLab has no reviewState: the same MRs, their reviewers without it.
-    AuthoredPlain: () => {
-      const { data, errors } = authored()
+    AuthoredPlain: variables => {
+      const { data, errors } = authored(variables)
       return { data: { currentUser: { authoredMergeRequests: { nodes: data.currentUser.authoredMergeRequests.nodes.map(plain) } } }, ...(errors !== undefined ? { errors } : {}) }
     },
     PinnedPlain: variables => ({ data: { project: { mergeRequest: plain(pinned(variables).data.project.mergeRequest) } } }),
@@ -83,8 +90,7 @@ const plain = (mr: Mr | null) =>
     ? null
     : { ...mr, reviewers: { nodes: (mr.reviewers?.nodes ?? []).map(one => (one === null ? null : { username: one.username, name: one.name, bot: one.bot, avatarUrl: one.avatarUrl })) } }
 
-function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others: Record<string, FakeHost> = {}, world: { glab?: Record<string, string> } = {}) {
-  mock.store(on, stored)
+function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others: Record<string, FakeHost> = {}, world: { glab?: Record<string, string>; session?: string } = {}) {
   const woken: string[] = []
   /** The operations asked for, but for the run times. */
   const reads: string[] = []
@@ -117,25 +123,14 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  const opened: string[] = []
-  const titles: string[] = []
-  on('ui.open', (_, e) => {
-    if (fake.isPaneBroken === true) {
-      throw new Error('no window to open in')
-    }
-    opened.push(e.id)
-    titles.push(e.title ?? '')
-    return { value: { isPlaced: true } }
-  })
-  on('ui.close', () => ({ value: undefined }))
+  const { opened, titles, panes, store } = fakeSession(on, { id: world.session ?? 'session-a', isBroken: () => fake.isPaneBroken === true, store: stored })
   on('tool.call', { tool: 'Bash' }, () => {
     const text = `Creating merge request for thing into main in g/p\n\n${PINNED_URL}\n`
     return { result: { stdout: text, stderr: '', interrupted: false }, text }
   })
   on('ui.toast', () => ({ value: undefined }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { woken, reads, avatars, jiraReads, shells, opened, titles, gitlab }
+  return { woken, reads, avatars, jiraReads, shells, opened, titles, gitlab, panes, store }
 }
 
 /** Runs `glab mr create` as the session would; the engine fake answers with the new MR's address. */
@@ -161,12 +156,21 @@ test('only an MR this session raised wakes it, once, in one short line with no c
   ]
   await clock.advance(60_000)
   expect(woken).toEqual(['!12 pipeline failed in 10m: lint · https://gitlab.com/g/p/-/pipelines/99'])
+  // GitLab does not say, in what changed since, that a pipeline moved, so each MR whose pipeline ran was read on its own.
+  const single = reads.filter(read => read.startsWith('Pinned'))
+  expect(single).toEqual(['Pinned g/p!12', 'Pinned g/p!13'])
 
   await clock.advance(180_000)
   expect(woken).toHaveLength(1)
-  // A pinned MR in the authored list costs no query of its own.
-  expect(reads.filter(read => read.startsWith('Pinned'))).toEqual([])
+  // A pinned MR in the authored list costs no query of its own once its pipeline has settled.
+  expect(reads.filter(read => read.startsWith('Pinned'))).toEqual(single)
 })
+
+/** The most characters the snapshot of fifty of the fixtures' heaviest MRs may take: about a quarter of the store. */
+const SNAPSHOT_BUDGET = 1_000_000
+
+/** State the MR list is not drawn from: the reads' own clock, and the inbox, which has its own timer. */
+const NOT_THE_LIST = ['reads', 'inbox']
 
 const HOSTS = ['gitlab.com', SELF_MANAGED, 'git.empty.example']
 
@@ -203,10 +207,11 @@ test(
     expect(new Set(gitlab.tokens)).toEqual(new Set([`gitlab.com ${TOKEN}`, `${SELF_MANAGED} corp-token`]))
     expect(gitlab.glabAsked).toEqual([SELF_MANAGED, 'git.empty.example'])
     // The older host is probed once, then gets the documents without review state or merge verdict; the current one gets all.
+    // Both pipelines ran, so each MR was also read on its own, as what changed since says nothing of a pipeline.
     const asked = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
     expect(asked(SELF_MANAGED).filter(name => name === 'Probe')).toHaveLength(1)
-    expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Probe', 'AuthoredPlain', 'Usual']))
-    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Probe', 'Authored', 'MergeStatus', 'Usual']))
+    expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Probe', 'AuthoredPlain', 'PinnedPlain', 'Usual']))
+    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Probe', 'Authored', 'MergeStatus', 'Pinned', 'Usual']))
     expect(asked('git.empty.example')).toEqual([])
 
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -275,7 +280,6 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12)], isDown: false }
   const { jiraReads, shells } = engine(on, fake)
-  on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -450,7 +454,6 @@ test('/gitlab opens the pane and answers in one line, never the MR list', async 
   // The pane fails to open when the session starts, and opens at the next try.
   const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false, isPaneBroken: true }
   engine(on, fake)
-  on('ui.panes', () => ({ value: [{ id: 'gitlab-ci', title: 'GitLab', isShown: true, isFocused: false, isPlaced: true }] }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
 
@@ -583,7 +586,7 @@ test('a failed read keeps the last cards and says how old they are', async ($, o
 test('with nothing read yet, a failing GitLab is told in a line of its own; and a poll that changed nothing writes no state', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [], isDown: true }
-  engine(on, fake)
+  const { gitlab } = engine(on, fake)
   const written: string[] = []
   on('state.set', (_, e, next) => {
     written.push(String(e.key))
@@ -598,10 +601,19 @@ test('with nothing read yet, a failing GitLab is told in a line of its own; and 
   fake.mrs = [rawMr(12)]
   await ui.press({ key: 'refresh' })
   expect(await ui.find({ type: 'Text', text: /^GitLab: / })).toBeUndefined()
-  // Reading the same answer again changes none of what the pane draws from, so nothing is written to redraw it.
+  // Reading the same answer again changes none of what the pane draws from, so nothing is written to redraw it. (The reads'
+  // own clock is state too, but the drawing does not read it.)
   written.length = 0
   await ui.press({ key: 'refresh' })
-  expect(written).toEqual([])
+  expect(written.filter(key => !NOT_THE_LIST.includes(key))).toEqual([])
+
+  // Two quiet minutes: each poll asks for what changed and for the verdicts, which is two requests, and finding nothing new
+  // redraws nothing.
+  const asked = gitlab.requests.length
+  written.length = 0
+  await clock.advance(120_000)
+  expect(operations(gitlab.requests.slice(asked))).toEqual(['Authored', 'MergeStatus', 'Authored', 'MergeStatus'])
+  expect(written.filter(key => !NOT_THE_LIST.includes(key))).toEqual([])
   await ui.unmount()
 })
 
@@ -614,16 +626,19 @@ test('an MR a partly failed read leaves out keeps its last card, still open, and
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.key ?? '' })
 
+  // MR 13 changed, and GitLab timed that part of the answer out: it comes back null.
+  fake.mrs = [rawMr(12), rawMr(13, { title: 'fix: newer 13', updatedAt: stamp(clock) })]
   fake.lost = ['13']
   await clock.advance(180_000)
   expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.props.label).toBe('▾ thing 13')
-  expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toBe('updated just now; 1 MR kept from the last read')
+  // The footer's age is that of the last change, or of the last five minutes: a quiet poll redraws nothing.
+  expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toMatch(/^updated (just now|\dm ago); 1 MR kept from the last read$/)
 
   fake.lost = []
   await clock.advance(180_000)
   expect(await ui.find({ type: 'Text', text: /kept from the last read/ })).toBeUndefined()
-  // A complete read still drops what has closed.
-  fake.mrs = [rawMr(12)]
+  // Once it merges, the changes since say so, and its card goes.
+  fake.mrs = [rawMr(12), rawMr(13, { state: 'merged', updatedAt: stamp(clock) })]
   await clock.advance(180_000)
   expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))).toBeUndefined()
   await ui.unmount()
@@ -640,19 +655,19 @@ test('an MR that merges while read whole leaves its page, and the title follows'
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
   expect(titles.at(-1)).toBe('GitLab · !12')
 
-  fake.mrs = [rawMr(13)]
+  fake.mrs = [rawMr(12, { state: 'merged', updatedAt: stamp(clock) }), rawMr(13)]
   await clock.advance(180_000)
   expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
   expect(titles.at(-1)).toBe('GitLab · Mine')
   // Back, the MR does not bring its page with it.
-  fake.mrs = [rawMr(12), rawMr(13)]
+  fake.mrs = [rawMr(12, { updatedAt: stamp(clock) }), rawMr(13)]
   await clock.advance(180_000)
   expect(await ui.find({ type: 'Button', key: 'back-top' })).toBeUndefined()
   await ui.unmount()
 })
 
 test('one transient GitLab error is retried, not shown', async ($, on) => {
-  mock.clock(on, { now: NOW })
+  const clock = mock.clock(on, { now: NOW })
   let calls = 0
   const reads: string[] = []
   fakeGitLab(
@@ -669,11 +684,11 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
   on('process.run', () => ran('', 1, 'nothing else is asked'))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
+  fakeSession(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
   expect(await ui.find({ type: 'Text', text: /GitLab read failed/ })).toBeUndefined()
@@ -730,10 +745,26 @@ test('cards you opened keep their detail when the unfolded list fills the drawin
 
 test('fifty MRs with full pipelines and long threads stay inside the 100,000 characters a drawing holds', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  engine(on, fiftyBusy())
+  const { store } = engine(on, fiftyBusy())
+  let reads = 0
+  let bytes = 0
+  on('state.get', async (_, e, next) => {
+    const answer = await next(e)
+    reads += 1
+    bytes += JSON.stringify(answer.value).length
+    return answer
+  })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
+  // The store is one file every session rewrites whole and the engine caps at 4 MiB. These fifty MRs are the worst the
+  // fixtures make (180 failed jobs each, named and linked, in a pipeline of nine stages): the snapshot holds slim cards.
+  expect(JSON.stringify(store.get('snapshot')).length).toBeLessThan(SNAPSHOT_BUDGET)
+  reads = 0
+  bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
+  expect(reads).toBeLessThanOrEqual(11)
+  expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
@@ -857,4 +888,102 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     await ui.press({ key: 'more' })
     await ui.unmount()
   }
+})
+
+/** The card the leader shares for an MR, as a snapshot another session wrote holds it. */
+const sharedCard = (iid: number) => slimCard(toCard(HOST, rawMr(iid)))
+
+/** A snapshot of `rows` as the session `by` wrote it at `at`. */
+const snapshotOf = (rows: ReturnType<typeof sharedCard>[], by: string, at: number) =>
+  nextSnapshot(null, { rows, outcomes: [{ host: HOST, error: null }], error: null, kept: 0, cursors: {}, pinned: [], extras: [] }, by, at)
+
+/** The operations a test's GitLab was asked, less the schema probe. */
+const operations = (requests: string[]) => requests.map(request => request.split(' ')[1]).filter(name => name !== 'Probe')
+
+test('with another session leading, a session asks GitLab for nothing and draws what the leader read', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { gitlab, store } = engine(on, { mrs: [], isDown: false })
+  store.set('lease', { owner: 'other', renewedAt: NOW })
+  store.set('snapshot', snapshotOf([sharedCard(12)], 'other', NOW))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  // The leader renews its lease as long as it lives; a minute of that passes.
+  for (let i = 0; i < 6; i++) {
+    store.set('lease', { owner: 'other', renewedAt: clock.now() })
+    await clock.advance(10_000)
+  }
+  expect(gitlab.requests).toEqual([])
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  // The lease stays the leader's: a follower never writes it.
+  expect(store.get('lease')).toEqual({ owner: 'other', renewedAt: clock.now() - 10_000 })
+  await ui.unmount()
+})
+
+test('a leader that closes its pane hands over: the session that draws takes the lease and carries on reading at the leader\'s pace', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { gitlab, store } = engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false })
+  store.set('lease', { owner: 'other', renewedAt: NOW })
+  store.set('snapshot', snapshotOf([sharedCard(12)], 'other', NOW))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(4_000)
+  expect(gitlab.requests).toEqual([])
+  // The other session closes its pane and releases the lease; this one takes it at its next tick and reads at once.
+  store.delete('lease')
+  await clock.advance(4_000)
+  expect(store.get('lease')).toMatchObject({ owner: 'session-a' })
+  // It carries on from the snapshot the last leader left, at the leader's pace: nothing is read until a read is due.
+  expect(gitlab.requests).toEqual([])
+  await clock.advance(60_000)
+  expect(operations(gitlab.requests).filter(name => name !== 'Usual')).toEqual(['Authored', 'MergeStatus'])
+  expect(readSnapshot(store.get('snapshot'))?.rows.map(row => row.iid)).toEqual([12, 13])
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  await ui.unmount()
+})
+
+test('with no pane drawn anywhere, a session that raised an MR still wakes, reading that MR alone and slowly', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false, isPaneBroken: true }
+  const { woken, gitlab, store } = engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await raise($)
+  await clock.advance(10_000)
+  fake.mrs = [rawMr(12, { headPipeline: pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } }) })]
+  await clock.advance(4 * 60_000)
+  expect(woken).toEqual([])
+  await clock.advance(2 * 60_000)
+  expect(woken).toEqual(['!12 pipeline failed in 10m: lint · https://gitlab.com/g/p/-/pipelines/99'])
+  // Only the one MR was asked for, never the list, and no lease or snapshot was taken.
+  expect(new Set(operations(gitlab.requests))).toEqual(new Set(['Pinned']))
+  expect(store.get('lease')).toBeUndefined()
+  expect(store.get('snapshot')).toBeUndefined()
+})
+
+test("a pin another session published reaches the leader, and is let go when that session goes silent", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const pin = { url: 'https://gitlab.com/g/q/-/merge_requests/77', host: HOST, path: 'g/q', iid: 77, origin: 'watched' as const }
+  const { store } = engine(on, { mrs: [rawMr(12), rawMr(77, { project: project('g/q') })], isDown: false })
+  store.set('pins:other', { session: 'other', at: NOW, pins: [pin] })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(4_000)
+  expect(readSnapshot(store.get('snapshot'))?.pinned).toEqual(['gitlab.com/g/q!77'])
+  // The other session beats no more: after its record expires the leader stops asking for the MR and removes the record.
+  await clock.advance(200_000)
+  expect(readSnapshot(store.get('snapshot'))?.pinned).toEqual([])
+  expect(store.get('pins:other')).toBeUndefined()
+})
+
+test('a session publishes its own pins under a key of its own, with a beat, and none once it pins nothing', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { store } = engine(on, { mrs: [rawMr(12)], isDown: false })
+  store.set('lease', { owner: 'other', renewedAt: NOW })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
+  expect(store.get('pins:session-a')).toMatchObject({ session: 'session-a', at: NOW, pins: [{ iid: 12, origin: 'watched' }] })
+  // Silent beats are renewed, not rewritten when nothing changed.
+  for (let i = 0; i < 4; i++) {
+    store.set('lease', { owner: 'other', renewedAt: clock.now() })
+    await clock.advance(10_000)
+  }
+  expect(store.get('pins:session-a')).toMatchObject({ at: NOW + 30_000 })
 })

@@ -2,7 +2,9 @@
 // tools/gitlab_schema.py, and graphql-codegen reads the documents in this file for the types in gitlab.generated.ts.
 import type {
   AuthoredPlainQuery,
+  AuthoredPlainQueryVariables,
   AuthoredQuery,
+  AuthoredQueryVariables,
   MergeStatusQuery,
   PinnedPlainQuery,
   PinnedQuery,
@@ -58,14 +60,14 @@ const REVIEWER_PLAIN_FRAGMENT = /* GraphQL */ `
 `
 
 const AUTHORED = /* GraphQL */ `
-  query Authored {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerFields } } } } }
+  query Authored($state: MergeRequestState, $after: Time) {
+    currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerFields } } } } }
   }
 `
 
 const AUTHORED_PLAIN = /* GraphQL */ `
-  query AuthoredPlain {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerPlain } } } } }
+  query AuthoredPlain($state: MergeRequestState, $after: Time) {
+    currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerPlain } } } } }
   }
 `
 
@@ -113,8 +115,8 @@ export type RawResponse<Data> = { data?: Data | null; errors?: { message: string
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
 export type Operations = {
-  Authored: { variables: Record<string, never>; data: AuthoredQuery }
-  AuthoredPlain: { variables: Record<string, never>; data: AuthoredPlainQuery }
+  Authored: { variables: AuthoredQueryVariables; data: AuthoredQuery }
+  AuthoredPlain: { variables: AuthoredPlainQueryVariables; data: AuthoredPlainQuery }
   MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
   Pinned: { variables: PinnedQueryVariables; data: PinnedQuery }
   PinnedPlain: { variables: PinnedQueryVariables; data: PinnedPlainQuery }
@@ -137,11 +139,22 @@ export const DOCUMENTS = {
 /** Asks a host's schema which of the fields that older GitLab versions lack it has. */
 export const probeQuery = (): Request<ProbeQuery> => ({ operation: 'Probe', query: DOCUMENTS.Probe, variables: {} })
 
-/** Every open MR the user authored; GitLab scores it 158 of the 250 a query may cost. */
-export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | AuthoredPlainQuery> =>
-  features.hasReviewStates
-    ? { operation: 'Authored', query: DOCUMENTS.Authored, variables: {} }
-    : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables: {} }
+/** How many authored MRs one read asks for: the `first:` of the Authored documents, past which a delta may have more behind it. */
+export const AUTHORED_PAGE = 50
+
+/** What an authored read asks for: every open MR, or every MR of any state that changed after a moment. */
+export type AuthoredScope = { kind: 'open' } | { kind: 'since'; after: string }
+
+/**
+ * The user's authored MRs; GitLab scores the full list 158 of the 250 a query may cost. A read `since` a moment asks for
+ * MRs of every state updated after it, so one merged or closed since comes back as such instead of vanishing.
+ */
+export const authoredQuery = (features: HostFeatures, scope: AuthoredScope): Request<AuthoredQuery | AuthoredPlainQuery> => {
+  const variables: Record<string, string> = scope.kind === 'open' ? ({ state: 'opened' } satisfies AuthoredQueryVariables) : ({ after: scope.after } satisfies AuthoredQueryVariables)
+  return features.hasReviewStates
+    ? { operation: 'Authored', query: DOCUMENTS.Authored, variables }
+    : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables }
+}
 
 /**
  * GitLab's merge verdict for the same MRs, asked on its own: inside the authored query it answered CONFLICT, twice in a

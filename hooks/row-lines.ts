@@ -62,11 +62,11 @@ export function aboutLines(card: MrCard, facts: CardFacts, ctx: RowContext, tick
   const mark = statusMark(pipeline?.status)
   const jira = facts.ticket !== null ? ctx.tickets[facts.ticket] : undefined
   const diff = card.diff !== null ? ` · +${card.diff.additions} −${card.diff.deletions} · ${plural(card.diff.files, 'file')}` : ''
-  const jobs = pipeline !== undefined ? pipelineJobs(pipeline.stages, now) : { jobs: [], more: 0 }
+  const jobs = pipeline !== undefined ? pipelineJobs(pipeline.stages, now, pipeline.moreJobs) : { jobs: [], more: 0 }
   return [
     text(facts.title, { bold: true }),
     text(`${card.branch.source} → ${card.branch.target}${facts.isStacked ? ' (stacked)' : ''}${diff}`, { dim: true }),
-    ...(card.description !== '' ? [text(facts.lead)] : []),
+    ...(card.hasDescription ? [text(facts.lead)] : []),
     ...(pipeline !== undefined
       ? [
           text(`${mark.glyph} Pipeline ${STATUS_WORD[pipeline.status]} · ${pipelineTime(card, now, ctx.usual[card.project])}`, { bold: true, tone: mark.tone }),
@@ -121,9 +121,9 @@ export function personLines(person: PersonFacts, now: number): Line[] {
       kind: 'hint',
       gap: latest !== undefined,
       text:
-        person.notes.length > 1
-          ? `Click their name for all ${person.notes.length} comments.`
-          : person.notes.length === 1
+        person.noteCount > 1
+          ? `Click their name for all ${person.noteCount} comments.`
+          : person.noteCount === 1
             ? 'Click their name to read it whole.'
             : 'No comments.',
     },
@@ -148,7 +148,7 @@ export function detailOf(card: MrCard, facts: CardFacts, focus: PersonFacts | un
   if (focus !== undefined) {
     return {
       kind: 'person',
-      title: `${focus.name} · ${REVIEW_STATE[focus.state]} · ${plural(focus.notes.length, 'comment')}`,
+      title: `${focus.name} · ${REVIEW_STATE[focus.state]} · ${plural(focus.noteCount, 'comment')}`,
       notes: focus.notes.map(note => ({ who: note.isOpen ? 'open thread' : 'comment', where: whereAndWhen(note, now), url: note.url, body: note.comment })),
     }
   }
