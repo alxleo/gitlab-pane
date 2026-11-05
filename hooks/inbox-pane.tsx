@@ -11,17 +11,19 @@ import { discussRule, inboxView, markSeen, syncInbox, toggleCard, toggleRule } f
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
 
 /** How each kind of activity reads, in the order a card counts them: what blocks or clears a merge first. */
-const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string }> = {
+/** An event with no one to name (a pipeline failing, a merge that cannot happen) reads without an actor. */
+const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string; isImpersonal?: boolean }> = {
   changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes' },
   unapproved: { glyph: '↺', tone: 'warning', word: 'withdrew approval' },
   approved: { glyph: '✓', tone: 'success', word: 'approved' },
   review: { glyph: '●', tone: 'suggestion', word: 'reviewed' },
   comment: { glyph: '💬', word: 'commented' },
+  mentioned: { glyph: '@', word: 'mentioned you' },
   review_requested: { glyph: '?', word: 'asked for a review' },
   pushed: { glyph: '↑', word: 'pushed' },
-  opened: { glyph: '+', word: 'opened' },
   merged: { glyph: '◆', tone: 'merged', word: 'merged' },
-  unknown: { glyph: '·', word: 'acted' },
+  build_failed: { glyph: '✗', tone: 'error', word: 'pipeline failed', isImpersonal: true },
+  unmergeable: { glyph: '⚠', tone: 'warning', word: "can't merge", isImpersonal: true },
 }
 
 const KINDS = Object.keys(VERB).filter((kind): kind is InboxKind => kind in VERB)
@@ -33,29 +35,29 @@ const KINDS = Object.keys(VERB).filter((kind): kind is InboxKind => kind in VERB
 const INBOX_BUDGET = 70_000
 const ITEMS_SHOWN = 30
 
-/** The inbox mr-inbox's rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
+/** The inbox the built-in rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const elements = $.ui.resolve(e)
   const { Box, Text, Button, Link } = elements
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
-  const { inbox, open, cards, now } = await inboxView($)
+  const { inbox, sections: ruled, problem, open, cards, now } = await inboxView($)
   const since = (iso: string) => {
     const age = ago(iso, now)
     return age === 'now' ? 'just now' : `${age} ago`
   }
-  const problem = inbox.error ?? (isFilled(inbox.syncError) ? `sync failed: ${inbox.syncError}` : null)
   const status =
-    problem ??
-    (isFilled(inbox.syncedAt)
-      ? `synced ${since(inbox.syncedAt)}`
-      : inbox.readAt === null || inbox.isSyncing
-        ? 'reading GitLab…'
-        : 'not synced yet')
+    problem !== null
+      ? `sync failed: ${problem}`
+      : inbox.snapshot.at > 0
+        ? `synced ${since(new Date(inbox.snapshot.at).toISOString())}`
+        : inbox.readAt === null || inbox.isSyncing
+          ? 'reading GitLab…'
+          : 'not synced yet'
 
-  // mr-inbox gives a display name only for an MR's author, so an actor is known by name where they wrote an MR here, and
+  // GitLab gives a display name only for an MR's author, so an actor is known by name where they wrote an MR here, and
   // otherwise by username alone: `ixm5302` is IX until some card names them.
-  const names = new Map(inbox.sections.flatMap(section => section.items).map(item => [item.author, item.authorName]))
+  const names = new Map(ruled.flatMap(section => section.items).map(item => [item.author, item.authorName]))
 
   /** An initials disc, coloured by username; where the surface draws no Svg, nothing. */
   const avatar = (username: string) =>
@@ -73,9 +75,9 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     return (
       <Box key={`ev-${shortHash(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
-          {avatar(one.actor)}
+          {verb.isImpersonal !== true && avatar(one.actor)}
           <Box flexShrink={0}>
-            <Text color={verb.tone}>{`${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}</Text>
+            <Text color={verb.tone}>{verb.isImpersonal === true ? `${verb.glyph} ${verb.word}` : `${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}</Text>
           </Box>
           <Box flexGrow={1} flexShrink={1}>
             {!isWhole && said !== '' && (
@@ -176,14 +178,14 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // Each MR shows once, under the first rule that has it.
   const firstRule = new Map<string, string>()
-  for (const section of inbox.sections) {
+  for (const section of ruled) {
     for (const item of section.items) {
       if (!firstRule.has(item.key)) {
         firstRule.set(item.key, section.rule)
       }
     }
   }
-  const sections = inbox.sections.map(section => ({
+  const sections = ruled.map(section => ({
     ...section,
     items: section.items.filter(item => firstRule.get(item.key) === section.rule),
     isAllAbove: section.items.length > 0 && section.items.every(item => firstRule.get(item.key) !== section.rule),
@@ -244,7 +246,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="row" gap={2}>
-        <Text color={isFilled(problem) ? 'warning' : undefined} dimColor={!isFilled(problem)} size="footnote">
+        <Text color={problem !== null ? 'warning' : undefined} dimColor={problem === null} size="footnote">
           {status}
         </Text>
         <Button
@@ -263,7 +265,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       {quiet.length > 0 && (
         <Text dimColor wrap="truncate-end">
           {`Nothing else in: ${quiet
-            .map(section => (isFilled(section.note) ? `${section.title} (${section.note})` : section.isAllAbove ? `${section.title} (all above)` : section.title))
+            .map(section => (section.isAllAbove ? `${section.title} (all above)` : section.title))
             .join(', ')}`}
         </Text>
       )}

@@ -127,7 +127,22 @@ const INBOX_NOTE_FRAGMENT = /* GraphQL */ `
   fragment InboxNoteFields on Note {
     id body system createdAt
     author { username name bot }
+    ...InboxNoteActionFields
+  }
+`
+
+// The fields a host may lack are fragments of their own, so a variant of a document without one is the document without
+// its fragment. A system note's action says what it was.
+const INBOX_NOTE_ACTION_FRAGMENT = /* GraphQL */ `
+  fragment InboxNoteActionFields on Note {
     systemNoteMetadata { action }
+  }
+`
+
+const INBOX_MERGED_BY_FRAGMENT = /* GraphQL */ `
+  fragment InboxMergedByFields on MergeRequest {
+    mergedAt
+    mergeUser { username name }
   }
 `
 
@@ -183,8 +198,7 @@ const INBOX_AUTHORED = /* GraphQL */ `
       merged: authoredMergeRequests(state: merged, mergedAfter: $since, first: 10, sort: MERGED_AT_DESC) {
         nodes {
           ...InboxMrFields
-          mergedAt
-          mergeUser { username name }
+          ...InboxMergedByFields
         }
       }
     }
@@ -243,8 +257,8 @@ export const DOCUMENTS = {
   Probe: PROBE,
   Usual: USUAL,
   InboxTodos: INBOX_TODOS + INBOX_MR_FRAGMENT,
-  InboxQueue: INBOX_QUEUE + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT,
-  InboxAuthored: INBOX_AUTHORED + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT,
+  InboxQueue: INBOX_QUEUE + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT,
+  InboxAuthored: INBOX_AUTHORED + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
   InboxBrief: INBOX_BRIEF + INBOX_MR_FRAGMENT,
 } as const satisfies Record<keyof Operations, string>
 

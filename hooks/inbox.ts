@@ -2,67 +2,134 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { readHosts } from './data'
-import { isFilled } from './decode'
-import { Failure } from './failure'
-import { readInboxJson } from './inbox-json'
+import { isEqual } from './equal'
+import { Failure, kindOf } from './failure'
 import { clear, quietly, record } from './failures'
+import { inboxAuthoredQuery, inboxBriefQuery, inboxQueueQuery, inboxTodosQuery } from './gitlab-documents'
+import type { RawResponse } from './gitlab-documents'
+import { ask } from './graphql'
+import { briefing, readBrief } from './inbox-brief'
+import type { Brief } from './inbox-brief'
+import { authoredMrs, combine, queueMrs, todoMrs } from './inbox-gitlab'
+import type { Found } from './inbox-gitlab'
+import { isRefTo, parseRef, parseRemote } from './inbox-refs'
+import { HORIZON_MS, RULES, bounded, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
+import { NO_SNAPSHOT, carryOver, problemOf } from './inbox-snapshot'
+import { cardKey } from './hosts'
 import { joined } from './in-flight'
 import { parseMrUrl } from './mr-url'
-import { runJson, runText } from './tools'
 
-import type { InboxState } from '../types'
+import type { InboxHost, InboxMr, InboxSnapshot, InboxState } from '../types'
 
-// mr-inbox owns the GitLab reads, the cache and the rules; this module only asks it.
+// GitLab owns the data, the rules are inbox-rules.ts, and this module only asks, keeps and marks. What the pane draws is
+// the rules applied to the last snapshot and the marks, so a mark shows at once and needs no read.
 const inboxAtom = atom({ plugin: 'gitlab-ci', key: 'inbox' } as const, {
-  sections: [],
-  syncedAt: null,
-  syncError: null,
+  snapshot: NO_SNAPSHOT,
+  seen: {},
   isSyncing: false,
   readAt: null,
-  error: null,
 } satisfies InboxState)
 const inboxOpenAtom = atom({ plugin: 'gitlab-ci', key: 'inboxOpen' } as const, [])
 const inboxCardsAtom = atom({ plugin: 'gitlab-ci', key: 'inboxCards' } as const, [])
 
-/** Many sessions share one sync: mr-inbox skips it when another finished within this many seconds. */
-const SYNC_IF_OLDER_THAN = '60'
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** mr-inbox's own `mr-inbox: ` lead says nothing the pane's line does not. */
-const unprefixed = (reason: string): string => reason.replace(/^mr-inbox: /, '')
+/** A document's data; an answer without any is the errors GitLab gave in its place. */
+function dataOf<Data>(answer: RawResponse<Data>): Data {
+  if (answer.data === null || answer.data === undefined) {
+    throw new Failure('bad-answer', answer.errors?.map(one => one.message).join('; ') ?? 'GitLab answered without data')
+  }
+  return answer.data
+}
 
-async function repoArgs($: EngineInterface): Promise<string[]> {
+type HostRead = { found: Found; failure: InboxHost['failure'] }
+
+type Tried = { label: string; found: Found } | { label: string; error: unknown }
+
+async function tried(label: string, work: Promise<Found>): Promise<Tried> {
   try {
-    const remote = (await $.session.repo())?.remote
-    return isFilled(remote) ? ['--repo', remote] : []
-  } catch {
-    return []
+    return { label, found: await work }
+  } catch (error) {
+    return { label, error }
   }
 }
 
-/** Reads the rules over mr-inbox's cache; never calls GitLab, so it is quick. A failure keeps the last sections. */
-export async function readInbox($: EngineInterface): Promise<void> {
-  const result = await runJson($, 'mr-inbox', ['inbox', '--json', ...(await repoArgs($))], readInboxJson, { timeoutMs: 30_000 })
+/**
+ * One host's three documents, asked at once: a host that times one out loses only that one. What came is kept; why the
+ * rest did not is the failure, with the document named unless every one failed the same way.
+ */
+async function readHost($: EngineInterface, host: string, now: number): Promise<HostRead> {
+  const since = new Date(now - HORIZON_MS).toISOString()
+  const results = await Promise.all([
+    tried('to-dos', ask($, host, inboxTodosQuery()).then(answer => todoMrs(host, dataOf(answer)))),
+    tried('review queue', ask($, host, inboxQueueQuery()).then(answer => queueMrs(host, dataOf(answer), now))),
+    tried('your MRs', ask($, host, inboxAuthoredQuery(since)).then(answer => authoredMrs(host, dataOf(answer), now))),
+  ])
+  const founds = results.flatMap(one => ('found' in one ? [one.found] : []))
+  const failed = results.flatMap(one => ('error' in one ? [{ label: one.label, error: one.error }] : []))
+  const [first] = failed
+  const isSame = failed.length === results.length && new Set(failed.map(one => messageOf(one.error))).size === 1
+  return {
+    found: combine(founds),
+    failure:
+      first === undefined
+        ? null
+        : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : failed.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
+  }
+}
+
+/**
+ * Reads the inbox of every host from GitLab: the user's pending to-dos, review queue and own MRs, as MRs with the events
+ * the rules count. It is the one read the reader's leader makes. It also drops the seen marks of MRs that are gone from a
+ * host that answered whole, so the store keeps one small value per MR that is still listed. Whatever fails is in the
+ * snapshot, not thrown, so a host that is down leaves the rest.
+ */
+export async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
+  const now = await $.clock.now()
+  const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now)) })))
+  const snapshot: InboxSnapshot = {
+    at: now,
+    hosts: Object.fromEntries(reads.map(one => [one.host, { user: one.found.user, failure: one.failure }])),
+    mrs: bounded(reads.flatMap(one => one.found.mrs)),
+  }
+  await Promise.all(staleSeenKeys(await $.store.keys(), snapshot).map(key => $.store.delete(key)))
+  return snapshot
+}
+
+/** The marks of the MRs a snapshot lists, from the store, by key. */
+async function marksOf($: EngineInterface, mrs: readonly InboxMr[], snapshot: InboxSnapshot): Promise<Record<string, number>> {
+  const keys = mrs.flatMap(mr => seenKeyOf(snapshot, mr) ?? [])
+  const marks = await Promise.all(keys.map(async key => [key, await $.store.get(key)] as const))
+  return Object.fromEntries(marks.flatMap(([key, at]) => (typeof at === 'number' ? [[key, at]] : [])))
+}
+
+/**
+ * Shows a snapshot: the pane draws the rules over it from now on. A host that did not answer at all keeps what it last
+ * said, with the reason; every session calls this, with its own read or the leader's.
+ */
+export async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): Promise<void> {
   const readAt = await $.clock.now()
-  if (result.ok) {
+  const shown = carryOver((await read($, inboxAtom)).snapshot, snapshot)
+  const seen = await marksOf($, shown.mrs, shown)
+  const problem = problemOf(shown)
+  const failing = Object.values(shown.hosts).find(one => one.failure !== null)?.failure
+  if (problem === null || failing === null || failing === undefined) {
     await clear($, 'inbox')
   } else {
-    await record($, 'inbox', new Failure(result.kind, unprefixed(result.reason)))
+    await record($, 'inbox', new Failure(failing.kind, problem))
   }
-  await update($, inboxAtom, state =>
-    result.ok ? { ...state, ...result.value, readAt, error: null } : { ...state, readAt, error: unprefixed(result.reason) }
-  )
+  await update($, inboxAtom, state => (isEqual(state.snapshot, shown) && isEqual(state.seen, seen) ? { ...state, readAt } : { ...state, snapshot: shown, seen, readAt }))
 }
 
-/** Brings mr-inbox's cache up to date, then reads the inbox; a call mid-sync joins it. */
+/** Reads the inbox and shows it; a call mid-read joins it. For a session that reads for itself. */
 export function syncInbox($: EngineInterface): Promise<void> {
   return joined('inbox-sync', async () => {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
-    const ran = await runText($, 'mr-inbox', ['sync', '--if-older-than', SYNC_IF_OLDER_THAN, '--json', ...(await repoArgs($))], { timeoutMs: 600_000 })
-    if (!ran.ok) {
-      await record($, 'inbox', new Failure(ran.kind, unprefixed(ran.reason)))
+    try {
+      await applyInbox($, await readInbox($, await readHosts($)))
+    } finally {
+      await update($, inboxAtom, state => ({ ...state, isSyncing: false }))
     }
-    await update($, inboxAtom, state => ({ ...state, isSyncing: false, ...(ran.ok ? {} : { error: unprefixed(ran.reason) }) }))
-    await readInbox($)
   })
 }
 
@@ -75,8 +142,8 @@ export async function inboxTick($: EngineInterface): Promise<void> {
 
 /** How many MRs have news, as the inbox counts them: one MR counts once, whichever rules list it. */
 export async function inboxNews($: EngineInterface): Promise<number> {
-  const { sections } = await read($, inboxAtom)
-  return new Set(sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
+  const { snapshot, seen } = await read($, inboxAtom)
+  return new Set(sectionsOf(snapshot, seen).flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
 }
 
 export async function inboxView($: EngineInterface) {
@@ -86,7 +153,7 @@ export async function inboxView($: EngineInterface) {
     read($, inboxCardsAtom),
     $.clock.now(),
   ])
-  return { inbox, open, cards, now }
+  return { inbox, sections: sectionsOf(inbox.snapshot, inbox.seen), problem: problemOf(inbox.snapshot), open, cards, now }
 }
 
 /** Opens one rule, as a tab, closing the one open before; the open one closes. */
@@ -109,42 +176,124 @@ export async function discussRule($: EngineInterface, rule: string): Promise<voi
   $.ui.toast(copied.isCopied ? `Copied ${command}: paste it in the prompt` : `Type ${command} in the prompt to discuss these`)
 }
 
-/** Marks one MR, or everything a rule shows, as looked at; the inbox is read again after. */
+/**
+ * Marks one MR, or everything a rule shows, as looked at. The mark is the time, kept in the plugin store under a key of its
+ * own, on this machine: GitLab is not told, and its to-dos stay as they are.
+ */
 export async function markSeen($: EngineInterface, target: { key: string } | { rule: string }): Promise<void> {
-  const args = 'key' in target ? ['seen', target.key] : ['seen', '--rule', target.rule, ...(await repoArgs($))]
-  const ran = await runText($, 'mr-inbox', args, { timeoutMs: 30_000 })
-  if (!ran.ok) {
-    await record($, 'inbox', new Failure(ran.kind, unprefixed(ran.reason)))
-    await update($, inboxAtom, state => ({ ...state, error: unprefixed(ran.reason) }))
-    return
-  }
-  await readInbox($)
+  const { snapshot, seen } = await read($, inboxAtom)
+  const sections = sectionsOf(snapshot, seen)
+  const keys = new Set('key' in target ? [target.key] : (sections.find(section => section.rule === target.rule)?.items ?? []).map(item => item.key))
+  const marks = snapshot.mrs.flatMap(mr => (keys.has(cardKey(mr.host, mr.path, mr.iid)) ? (seenKeyOf(snapshot, mr) ?? []) : []))
+  const at = await $.clock.now()
+  await Promise.all(marks.map(key => $.store.set(key, at)))
+  await update($, inboxAtom, state => ({ ...state, seen: { ...state.seen, ...Object.fromEntries(marks.map(key => [key, at])) } }))
 }
 
 const USAGE = 'Usage: /mrs <repo!iid or MR URL …> or /mrs --rule <name>'
+/** The most MRs one briefing carries, so it stays a briefing. */
+const BRIEF_MOST = 10
+
+type Wanted = { hosts: string[]; path: string; iid: number }
+
+/** Where an argument of `/mrs` points: a URL on a configured host, or a reference found in the inbox, or in the session's repo, or on any host. */
+async function wanted($: EngineInterface, arg: string, hosts: readonly string[], mrs: readonly InboxMr[]): Promise<Wanted | string> {
+  if (/^https?:\/\//.test(arg)) {
+    const parsed = parseMrUrl(arg, hosts)
+    return parsed === null ? `${arg} is not a merge request on ${hosts.join(', ')}` : { hosts: [parsed.host], path: parsed.path, iid: parsed.iid }
+  }
+  const ref = parseRef(arg)
+  if (ref === null) {
+    return `${arg} is not repo!iid or a merge request URL`
+  }
+  const listed = mrs.filter(mr => isRefTo(ref, mr.path, mr.iid))
+  const [only] = listed
+  if (only !== undefined && listed.length === 1) {
+    return { hosts: [only.host], path: only.path, iid: only.iid }
+  }
+  if (ref.path.includes('/')) {
+    return { hosts: [...hosts], path: ref.path, iid: ref.iid }
+  }
+  const remote = parseRemote((await $.session.repo().catch(() => null))?.remote ?? '')
+  if (remote !== null && hosts.includes(remote.host) && isRefTo(ref, remote.path, ref.iid)) {
+    return { hosts: [remote.host], path: remote.path, iid: ref.iid }
+  }
+  return listed.length > 1 ? `${arg} names more than one MR in your inbox: use group/project!${ref.iid}` : `${arg} is not in your inbox or this session's repo: use group/project!${ref.iid} or the URL`
+}
+
+/** The first host that holds the MR; one that fails is a failure only if none does. */
+async function briefOf($: EngineInterface, target: Wanted): Promise<Brief | null> {
+  const failures: Failure[] = []
+  for (const host of target.hosts) {
+    try {
+      const found = readBrief(dataOf(await ask($, host, inboxBriefQuery(target.path, target.iid))))
+      if (found !== null) {
+        return found
+      }
+    } catch (error) {
+      failures.push(new Failure(kindOf(error), messageOf(error)))
+    }
+  }
+  const [first] = failures
+  if (first !== undefined && failures.length === target.hosts.length) {
+    throw first
+  }
+  return null
+}
+
+/** The MRs a rule shows, as what to ask GitLab for; at most the briefing carries. */
+function ruleTargets(name: string, snapshot: InboxSnapshot, seen: Readonly<Record<string, number>>): Wanted[] {
+  const items = sectionsOf(snapshot, seen).find(section => section.rule === name)?.items ?? []
+  return items
+    .slice(0, BRIEF_MOST)
+    .flatMap(item => snapshot.mrs.filter(mr => cardKey(mr.host, mr.path, mr.iid) === item.key))
+    .map(mr => ({ hosts: [mr.host], path: mr.path, iid: mr.iid }))
+}
 
 /** `/mrs`: a Markdown briefing on several MRs, handed to the model and kept out of the transcript. */
 export async function briefCommand($: EngineInterface, input: string): Promise<{ text: string; context?: string[] }> {
   const args = input.trim().split(/\s+/).filter(Boolean)
+  const { snapshot, seen } = await read($, inboxAtom)
   if (args.length === 0) {
-    const { sections } = await read($, inboxAtom)
-    const rules = sections.map(section => `${section.rule} (${section.items.length})`).join(', ')
-    return { text: rules !== '' ? `${USAGE}\nRules: ${rules}` : USAGE }
+    const rules = sectionsOf(snapshot, seen).map(section => `${section.rule} (${section.items.length})`).join(', ')
+    return { text: `${USAGE}\nRules: ${rules}` }
   }
-  // An address must be an MR on one of the configured hosts; mr-inbox gets it in its canonical form.
   const hosts = await readHosts($)
-  const refs = args.map(arg => (/^https?:\/\//.test(arg) ? (parseMrUrl(arg, hosts)?.url ?? null) : arg))
-  const stray = refs.indexOf(null)
-  if (stray >= 0) {
-    return { text: `/mrs: ${args[stray] ?? ''} is not a merge request on ${hosts.join(', ')}` }
+  const rule = args[0] === '--rule' ? ruleNamed(args.slice(1).join(' ')) : undefined
+  if (args[0] === '--rule' && rule === undefined) {
+    return { text: `/mrs: ${args.slice(1).join(' ')} is not a rule. Rules: ${RULES.map(one => one.name).join(', ')}` }
   }
-  const ran = await runText($, 'mr-inbox', ['brief', ...refs.filter(isFilled), ...(await repoArgs($))], { timeoutMs: 120_000 })
-  if (!ran.ok) {
-    return { text: `/mrs failed: ${unprefixed(ran.reason)}` }
+  const asked = rule === undefined ? await Promise.all(args.slice(0, BRIEF_MOST).map(arg => wanted($, arg, hosts, snapshot.mrs))) : ruleTargets(rule.name, snapshot, seen)
+  const stray = asked.find((one): one is string => typeof one === 'string')
+  if (stray !== undefined) {
+    return { text: `/mrs: ${stray}` }
   }
-  const count = (ran.value.match(/^## /gm) ?? []).length
+  const targets = asked.filter((one): one is Wanted => typeof one !== 'string')
+  const briefs: Brief[] = []
+  const missing: string[] = []
+  try {
+    for (const target of targets) {
+      const brief = await briefOf($, target)
+      if (brief === null) {
+        missing.push(`${target.path}!${target.iid}`)
+      } else {
+        briefs.push(brief)
+      }
+    }
+  } catch (error) {
+    return { text: `/mrs failed: ${messageOf(error)}` }
+  }
+  if (briefs.length === 0) {
+    return { text: rule === undefined ? `/mrs: GitLab returned none of ${missing.join(', ')}` : `/mrs: nothing in ${rule.title} right now` }
+  }
+  const left = rule === undefined ? args.length - BRIEF_MOST : 0
+  const text = briefing(briefs)
+  const notes = [
+    ...(missing.length > 0 ? [`Not found: ${missing.join(', ')}.`] : []),
+    ...(left > 0 ? [`${left} more were left out: ${BRIEF_MOST} at most.`] : []),
+  ]
   return {
-    text: `Briefed ${count} MR${count === 1 ? '' : 's'} (${ran.value.length.toLocaleString('en-GB')} characters) into this conversation. Thread refs like repo!iid#note_N name each thread.`,
-    context: [ran.value],
+    text: [`Briefed ${briefs.length} MR${briefs.length === 1 ? '' : 's'} (${text.length.toLocaleString('en-GB')} characters) into this conversation. Thread refs like repo!iid#note_N name each thread.`, ...notes].join(' '),
+    context: [text],
   }
 }

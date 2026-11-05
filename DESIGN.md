@@ -65,7 +65,9 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 
 ## Inbox
 
-Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`): ✗ requested changes, ↺ withdrew approval, ✓ approved, ● reviewed, 💬 commented, ? asked for a review, ↑ pushed, + opened, ◆ merged. A card with news has an amber border and says `N new`; one without is grey.
+Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`): ✗ requested changes, ↺ withdrew approval, ✓ approved, ● reviewed, 💬 commented, @ mentioned you, ? asked for a review, ↑ pushed, ◆ merged, ✗ pipeline failed, ⚠ can't merge. The last two have no one to name. A card with news has an amber border and says `N new`; one without is grey (a review you were asked for stays, grey, until you approve it).
+
+The tabs are the five rules of `hooks/inbox-rules.ts`: Review requested, Mentions, Build failed, Can't merge, On my MRs. An MR shows once, under the first that has it. ✓ marks seen on this machine only; GitLab is not told.
 
 ## Text
 

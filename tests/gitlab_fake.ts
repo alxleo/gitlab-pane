@@ -12,6 +12,13 @@ export const CURRENT = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'deta
 /** What the probe reads of an older self-managed GitLab: neither `detailedMergeStatus` nor `reviewState` is in its schema. */
 export const OLDER = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'mergeStatus' }] }, interaction: { fields: [{ name: 'canMerge' }] } }
 
+/** What an account with nothing waiting on it answers to the three inbox documents unless a test sets them: the user is `me`. */
+const NOTHING = {
+  InboxTodos: { data: { currentUser: { username: 'me', todos: { nodes: [] } } } },
+  InboxQueue: { data: { currentUser: { username: 'me', reviewRequestedMergeRequests: { nodes: [] } } } },
+  InboxAuthored: { data: { currentUser: { username: 'me', opened: { nodes: [] }, merged: { nodes: [] } } } },
+} as const
+
 /** What `$.http.fetch` resolves with. */
 export type Served = { status: number; ok: boolean; headers: Record<string, string>; text: string }
 
@@ -76,6 +83,14 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, set(answers.PinnedPlain, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'Usual':
       return reply(200, set(answers.Usual, operation)({ path: need(variables, 'path') }))
+    case 'InboxTodos':
+      return reply(200, answers.InboxTodos !== undefined ? answers.InboxTodos({}) : NOTHING.InboxTodos)
+    case 'InboxQueue':
+      return reply(200, answers.InboxQueue !== undefined ? answers.InboxQueue({}) : NOTHING.InboxQueue)
+    case 'InboxAuthored':
+      return reply(200, answers.InboxAuthored !== undefined ? answers.InboxAuthored({ since: need(variables, 'since') }) : NOTHING.InboxAuthored)
+    case 'InboxBrief':
+      return reply(200, set(answers.InboxBrief, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     default:
       throw new Error(`the pane sent an operation the fake does not know: ${operation}`)
   }

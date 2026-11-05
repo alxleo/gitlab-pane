@@ -1,6 +1,6 @@
 # gitlab-pane
 
-A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions. It shows your open merge requests: each pipeline's stages and run time against the repo's usual, what blocks the merge, and a face for each reviewer or commenter that opens their comments on a click. A second tab, Inbox, lists reviews and comments from `mr-inbox`.
+A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions. It shows your open merge requests: each pipeline's stages and run time against the repo's usual, what blocks the merge, and a face for each reviewer or commenter that opens their comments on a click. A second tab, Inbox, lists what needs you, read from GitLab itself: reviews asked of you, mentions, failed builds, MRs that cannot merge, and what reviewers did on your MRs.
 
 MRs pinned to a session sit on top: the ones Claude pins with `watch_mr` and the ones opened from the session with `glab mr create`. An MR opened from the session also wakes it when its pipeline fails or it can merge.
 
@@ -8,7 +8,7 @@ MRs pinned to a session sit on top: the ones Claude pins with `watch_mr` and the
 
 <p>
   <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png" alt="The Mine tab: five MR cards, bordered by their review, with stage strips, run times and reviewers' faces" width="420">
-  <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png" alt="The Inbox tab: MR cards counting new reviews and comments since last seen" width="420">
+  <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png" alt="The Inbox tab: MR cards counting new reviews and comments since last marked seen" width="420">
 </p>
 
 An opened card shows the description, failed jobs and open threads, and `read whole ›` gives the MR a page of its own:
@@ -20,7 +20,7 @@ An opened card shows the description, failed jobs and open threads, and `read wh
 
 The screenshots use made-up data.
 
-Needs a GitLab token for each host (see Settings), which can be the one `glab` holds. Works on gitlab.com, self-managed and Dedicated GitLab, several at once, and where `glab` is not installed. Optional: `mr-inbox` on the PATH for the inbox, and Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
+Needs a GitLab token for each host (see Settings), which can be the one `glab` holds. Works on gitlab.com, self-managed and Dedicated GitLab, several at once, and where `glab` is not installed. Optional: Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in with `acli jira auth login`, for ticket details once a Jira site is set.
 
 ## Install
 
@@ -73,7 +73,7 @@ echo '{"jiraUrl":"https://example.atlassian.net"}' | claude plugin configure git
 
 ## What it runs on your machine
 
-The pane changes nothing on GitLab or Jira. A host's token is the first of: `GITLAB_TOKEN` (or `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`; for `GITLAB_HOST` if set, else the first host), the one `glab` holds for that host (asked once per host per session, kept in memory only), the `gitlabTokens` setting. With none, the pane says which host has no token. A token is never logged or shown. `acli` and `mr-inbox` use the sign-ins you already have; they run through a login shell, so they are found wherever your own shell finds them and your shell's start-up files run each time: your `$SHELL` when it is bash, zsh or fish and exists, else `/bin/zsh` where there is one, else `/bin/sh`.
+The pane changes nothing on GitLab or Jira. A host's token is the first of: `GITLAB_TOKEN` (or `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`; for `GITLAB_HOST` if set, else the first host), the one `glab` holds for that host (asked once per host per session, kept in memory only), the `gitlabTokens` setting. With none, the pane says which host has no token. A token is never logged or shown. `acli` uses the sign-in you already have; it runs through a login shell, so they are found wherever your own shell finds them and your shell's start-up files run each time: your `$SHELL` when it is bash, zsh or fish and exists, else `/bin/zsh` where there is one, else `/bin/sh`.
 
 | Runs | How often | For | Writes |
 |---|---|---|---|
@@ -81,12 +81,12 @@ The pane changes nothing on GitLab or Jira. A host's token is the first of: `GIT
 | `glab config get token --host <host>` | once per host per session, when no environment token applies | the token `glab` holds | nothing |
 | `curl`, through `/bin/sh` | once per new face | avatars, at the addresses GitLab gives (a configured host or Gravatar), https only, no token sent; the engine's HTTP returns text, not bytes | nothing; the pictures are kept in the plugin's own store |
 | `acli jira workitem search` | every 15 min, when a Jira site is set | ticket type, status and summary | nothing |
-| `mr-inbox` | every minute, when installed | the inbox | its own cache, and what you mark seen |
+| HTTPS POST to `https://<host>/api/graphql` for each configured host, the Inbox's three queries | every minute while a pane is drawn | your pending to-dos on MRs (review requested, mentioned, build failed, unmergeable, review submitted), the MRs you are a reviewer of, your open MRs with their latest notes, and the ones merged lately; as you | nothing on GitLab: queries only. **✓ mark seen** is kept in the plugin's own store on this machine, one small value per MR, and does not mark a to-do done on GitLab |
 
 What reaches Claude, and so the model provider, from GitLab:
 
 - **Wakes.** When an MR opened from a session fails its pipeline or can merge, the pane sends that session a message saying so, with the names of the failed jobs. Job names come from the repo's CI configuration, so treat them as text from that repo, not instructions. They are cut to one line of 80 characters with control and bidi characters removed before they reach the model. The pane's `wake Claude` switch turns this off.
-- **`/mrs`** puts the MRs' descriptions and other people's comments into the conversation, and **`watch_mr`** answers with an MR's pipeline and what blocks it.
+- **`/mrs`** puts the MRs' descriptions and other people's comments into the conversation only, never into a wake. Each line of their words has control and bidi characters removed and sits behind a `│` margin, under a line saying it is data to read and not instructions. **`watch_mr`** answers with an MR's pipeline and what blocks it.
 - **Bash commands.** The pane reads each Bash command a session runs, and the output of `glab mr create`, to pin the MR it opens. Nothing is sent anywhere for this.
 
 ## Contributing

@@ -150,6 +150,10 @@ export type InboxMrFieldsFragment = { iid: string, state: MergeRequestState, tit
 
 export type InboxNoteFieldsFragment = { id: string, body: string, system: boolean, createdAt: string, author: { username: string, name: string, bot: boolean } | null, systemNoteMetadata: { action: string | null } | null };
 
+export type InboxNoteActionFieldsFragment = { systemNoteMetadata: { action: string | null } | null };
+
+export type InboxMergedByFieldsFragment = { mergedAt: string | null, mergeUser: { username: string, name: string } | null };
+
 export type InboxTodosQueryVariables = Exact<{ [key: string]: never; }>;
 
 
@@ -172,7 +176,7 @@ export type InboxAuthoredQueryVariables = Exact<{
 }>;
 
 
-export type InboxAuthoredQuery = { currentUser: { username: string, opened: { nodes: Array<{ iid: string, state: MergeRequestState, title: string, webUrl: string | null, draft: boolean, createdAt: string, notes: { nodes: Array<{ id: string, body: string, system: boolean, createdAt: string, author: { username: string, name: string, bot: boolean } | null, systemNoteMetadata: { action: string | null } | null } | null> | null }, author: { username: string, name: string } | null, project: { fullPath: string } } | null> | null } | null, merged: { nodes: Array<{ mergedAt: string | null, iid: string, state: MergeRequestState, title: string, webUrl: string | null, draft: boolean, createdAt: string, mergeUser: { username: string, name: string } | null, author: { username: string, name: string } | null, project: { fullPath: string } } | null> | null } | null } | null };
+export type InboxAuthoredQuery = { currentUser: { username: string, opened: { nodes: Array<{ iid: string, state: MergeRequestState, title: string, webUrl: string | null, draft: boolean, createdAt: string, notes: { nodes: Array<{ id: string, body: string, system: boolean, createdAt: string, author: { username: string, name: string, bot: boolean } | null, systemNoteMetadata: { action: string | null } | null } | null> | null }, author: { username: string, name: string } | null, project: { fullPath: string } } | null> | null } | null, merged: { nodes: Array<{ iid: string, state: MergeRequestState, title: string, webUrl: string | null, draft: boolean, createdAt: string, mergedAt: string | null, author: { username: string, name: string } | null, project: { fullPath: string }, mergeUser: { username: string, name: string } | null } | null> | null } | null } | null };
 
 export type InboxBriefQueryVariables = Exact<{
   path: string;

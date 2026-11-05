@@ -17,7 +17,7 @@ import { rememberSettings } from './tokens'
 export const PANE = 'gitlab-ci'
 const TOOL = 'mcp__gitlab-ci__watch_mr'
 const TICK_MS = 30_000
-/** mr-inbox shares one sync across sessions, so asking every minute costs GitLab at most one pass a minute. */
+/** The inbox reads GitLab (three small queries per host) at most this often. */
 const INBOX_TICK_MS = 60_000
 /** The inbox starts a moment after the pane's own read, so the two do not race for the first answers. */
 const INBOX_FIRST_MS = 2_000

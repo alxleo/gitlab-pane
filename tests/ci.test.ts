@@ -20,7 +20,7 @@ import { bareHost, parseHosts, parseTokens, projectLabel, redact } from '../hook
 import { mrUrls, parseMrUrl, pinKey } from '../hooks/mr-url'
 import { decodeGraphql, parseJson } from '../hooks/decode'
 import type { PinnedQuery } from '../hooks/gitlab.generated'
-import { readInboxJson } from '../hooks/inbox-json'
+import { readSnapshot } from '../hooks/inbox-snapshot'
 import { readTickets, ticketQuery } from '../hooks/jira'
 import { flatOf } from '../hooks/markdown'
 import type { MarkdownText } from '../hooks/markdown'
@@ -384,10 +384,12 @@ test('Jira is asked only about ticket keys, and its rows are read by key', async
 test('what the outside tools print is checked, not cast', async () => {
   expect(() => readTickets({ error: 'not signed in' })).toThrow('acli answered something other than a list')
   expect(readTickets([null, { key: 7 }, { key: 'ABC-1', fields: { summary: 4 } }])).toEqual({ 'ABC-1': { type: '', status: '', summary: '' } })
-  expect(() => readInboxJson({ sync: {} })).toThrow('mr-inbox answered without sections')
-  expect(readInboxJson({ sections: [null, { rule: 'r', items: [{ key: 'g/p!1', author: { username: 'a', name: 'A' }, counts: { merged: 1, nope: 2, approved: 'x' } }] }] }).sections).toMatchObject([
-    { rule: 'r', items: [{ key: 'g/p!1', author: 'a', authorName: 'A', counts: { merged: 1 }, activity: [] }] },
-  ])
+  expect(readSnapshot({ at: 1, hosts: { h: { user: 'u', failure: { kind: 'nope', message: 'm' } } }, mrs: [null, { host: 'h', path: 'g/p', iid: 1, signals: [{ kind: 'merged', at: 5 }, { kind: 'nope', at: 6 }, { kind: 'comment', at: 'x' }] }, { host: 'h' }] })).toEqual({
+    at: 1,
+    hosts: { h: { user: 'u', failure: { kind: 'unknown', message: 'm' } } },
+    mrs: [{ host: 'h', path: 'g/p', iid: 1, title: '', url: '', author: '', authorName: '', isMine: false, state: '', isDraft: false, inQueue: false, signals: [{ kind: 'merged', actor: '', at: 5, note: null, excerpt: '' }] }],
+  })
+  expect(readSnapshot({ at: 'soon', hosts: {}, mrs: [] })).toBeNull()
   expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })
   expect(() => decodeGraphql([])).toThrow('GitLab answered something other than an object')
   expect(() => decodeGraphql({ data: 'x' })).toThrow('data that is not an object')
@@ -464,7 +466,7 @@ test('a failure carries the kind it was detected as, and only an absent optional
   expect(withProblem({}, 'gitlab', new Failure('no-token', 'no GitLab token for git.corp.com'), 0)).toEqual({ gitlab: { message: 'no GitLab token for git.corp.com', kind: 'no-token', at: 0 } })
   expect(withProblem({}, 'gitlab', new Error('boom'), 0).gitlab?.kind).toBe('unknown')
   expect(isAbsentOptional('jira', 'not-installed')).toBe(true)
-  expect(isAbsentOptional('inbox', 'not-installed')).toBe(true)
+  expect(isAbsentOptional('inbox', 'not-installed')).toBe(false)
   expect(isAbsentOptional('gitlab', 'not-installed')).toBe(false)
   expect(isAbsentOptional('jira', 'failed')).toBe(false)
   expect(() => decodeGraphql([])).toThrow(Failure)
