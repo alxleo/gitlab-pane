@@ -74,7 +74,6 @@ function engine(on: On, inbox: Inbox) {
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   return calls
@@ -326,7 +325,6 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.status', () => ({ value: undefined }))
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
