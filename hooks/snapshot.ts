@@ -37,6 +37,8 @@ export const MOVING_EVERY_MS = 30_000
 export const QUIET_EVERY_MS = 60_000
 /** After failures it backs off from QUIET_EVERY_MS doubling, to this. */
 export const BACKOFF_MAX_MS = 600_000
+/** The inbox is read, by the leader, no more often than this, and a session that draws what the leader shared looks at its marks as often. */
+export const INBOX_EVERY_MS = 60_000
 /** A session that draws no pane but raised an MR looks at it this often, so its wakes still fire. */
 export const WAKE_ONLY_EVERY_MS = 300_000
 

@@ -166,6 +166,6 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
 })
 
 test('a pinned MR is asked for by its path and number, one query each, and a project of its own host', () => {
-  expect(pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true }).variables).toEqual({ path: 'g/q', iid: '7' })
+  expect(pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true }).variables).toEqual({ path: 'g/q', iid: '7' })
   expect(project('g/q').fullPath).toBe('g/q')
 })

@@ -29,6 +29,8 @@ const readsAtom = atom({ plugin: 'gitlab-ci', key: 'reads' } as const, {
   usualAt: null,
   adopted: '',
   refreshed: 0,
+  inboxAt: null,
+  inboxSeen: null,
 } satisfies ReadClock)
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */

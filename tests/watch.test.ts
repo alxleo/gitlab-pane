@@ -124,10 +124,6 @@ function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others
       avatars.push(e.argv.at(-1) ?? '')
       return ran(AVATAR_BASE64)
     }
-    // The inbox's own tests cover mr-inbox; here it is an empty inbox.
-    if (e.argv.includes('mr-inbox')) {
-      return ran(JSON.stringify({ sync: { ok: true, finished_at: null }, sections: [] }))
-    }
     return gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`)
   })
   on('prompt.submit', (_, e) => {
@@ -277,7 +273,10 @@ test(
     expect(gitlab.glabAsked).toEqual([SELF_MANAGED, 'git.empty.example'])
     // The older host says once that it lacks reviewState and mergeabilityChecks, then gets the documents without them; the current one gets all.
     // Both pipelines ran, so each MR was also read on its own, as what changed since says nothing of a pipeline.
-    const asked = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
+    const askedAll = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
+    // The inbox has its own tests; its documents go to every host that has a token, and only to those.
+    const asked = (host: string) => askedAll(host).filter(name => !name.startsWith('Inbox'))
+    expect(new Set(askedAll(SELF_MANAGED).filter(name => name.startsWith('Inbox')))).toEqual(new Set(['InboxTodos', 'InboxQueue', 'InboxAuthored']))
     expect(asked(SELF_MANAGED).filter(name => name === 'Authored')).toHaveLength(1)
     expect(asked(SELF_MANAGED).filter(name => name === 'MergeStatus')).toHaveLength(1)
     expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Authored', 'MergeStatus', 'AuthoredPlain', 'PinnedPlain', 'Usual']))
@@ -833,7 +832,8 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
-  expect(reads).toBeLessThanOrEqual(11)
+  // (Thirteen since the inbox's own atoms are read by the same drawing.)
+  expect(reads).toBeLessThanOrEqual(13)
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
@@ -967,8 +967,8 @@ const sharedCard = (iid: number) => slimCard(toCard(HOST, rawMr(iid)))
 const snapshotOf = (rows: ReturnType<typeof sharedCard>[], by: string, at: number) =>
   nextSnapshot(null, { rows, outcomes: [{ host: HOST, error: null }], error: null, kept: 0, cursors: {}, pinned: [], extras: [] }, by, at)
 
-/** The operations a test's GitLab was asked, less the schema probe. */
-const operations = (requests: string[]) => requests.map(request => request.split(' ')[1]).filter(name => name !== 'Probe')
+/** The operations a test's GitLab was asked for the MRs, less the schema probe and the inbox's three. */
+const operations = (requests: string[]) => requests.map(request => request.split(' ')[1] ?? '').filter(name => name !== 'Probe' && !name.startsWith('Inbox'))
 
 test('with another session leading, a session asks GitLab for nothing and draws what the leader read', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
@@ -1001,8 +1001,10 @@ test('a leader that closes its pane hands over: the session that draws takes the
   store.delete('lease')
   await clock.advance(4_000)
   expect(store.get('lease')).toMatchObject({ owner: 'session-a' })
-  // It carries on from the snapshot the last leader left, at the leader's pace: nothing is read until a read is due.
-  expect(gitlab.requests).toEqual([])
+  // It carries on from the snapshot the last leader left, at the leader's pace: the MRs are not read until a read is due, and
+  // the inbox, which it now reads for all, once.
+  expect(operations(gitlab.requests)).toEqual([])
+  expect(gitlab.requests.filter(request => request.includes(' Inbox'))).toHaveLength(3)
   await clock.advance(60_000)
   expect(operations(gitlab.requests).filter(name => name !== 'Usual')).toEqual(['Authored', 'MergeStatus'])
   expect(readSnapshot(store.get('snapshot'))?.rows.map(row => row.iid)).toEqual([12, 13])

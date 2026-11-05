@@ -36,7 +36,9 @@ export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeat
       ? ['hasReviewStates' as const]
       : typeName === 'MergeRequest' && fieldName === 'mergeabilityChecks'
         ? ['hasMergeVerdict' as const]
-        : []
+        : typeName === 'Todo' && fieldName === 'targetEntity'
+          ? ['hasTodoEntity' as const]
+          : []
   })
 }
 

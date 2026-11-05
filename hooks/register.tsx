@@ -1,12 +1,12 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { Register } from 'claude-code'
 
-import { readHosts, readPoll, readRole, startData } from './data'
+import { readHosts, readPoll, startData } from './data'
 import { field, isFilled } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
 import { hostsLine, parseHosts } from './hosts'
-import { briefCommand, inboxTick, readInbox } from './inbox'
+import { briefCommand, setFollow } from './inbox'
 import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
@@ -18,23 +18,6 @@ import { rememberSettings } from './tokens'
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
 export const PANE = 'gitlab-ci'
 const TOOL = 'mcp__gitlab-ci__watch_mr'
-/** mr-inbox shares one sync across sessions, so asking every minute costs GitLab at most one pass a minute. */
-const INBOX_TICK_MS = 60_000
-/** The inbox starts a moment after the pane's own read, so the two do not race for the first answers. */
-const INBOX_FIRST_MS = 2_000
-
-/**
- * What the inbox does on its timer, by role: the leader asks mr-inbox to sync with GitLab, which sessions share, and reads;
- * a session that only draws reads mr-inbox's own cache, which never calls GitLab; one that draws nothing does nothing.
- */
-async function inboxTurn($: EngineInterface): Promise<void> {
-  const role = await readRole($)
-  if (role === 'leader') {
-    await inboxTick($)
-  } else if (role === 'follower') {
-    await readInbox($)
-  }
-}
 
 /** A tool's answer: only lines from model-text.ts, so text from GitLab cannot reach the model raw. */
 const answer = (result: ModelLine) => ({ result })
@@ -46,7 +29,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     forgetProbed()
     const hosts = parseHosts(options.gitlabHosts)
-    await Promise.all([startData($, options.jiraUrl, hosts), rememberSettings(options.gitlabTokens, hosts), rememberLogs($, options.failureLogs), forgetProblems($), forgetScrolling($)])
+    await Promise.all([startData($, options.jiraUrl, hosts), setFollow($, options.inboxFollow), rememberSettings(options.gitlabTokens, hosts), rememberLogs($, options.failureLogs), forgetProblems($), forgetScrolling($)])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)
     await $.command.register({
       name: 'gitlab',
@@ -68,13 +51,11 @@ export const register: Register = (on, options) => {
       description: 'Brief several GitLab MRs into this conversation, threads and all: /mrs <repo!iid …> or /mrs --rule <name>',
     })
     $.clock.every(TICK_MS, () => quietly($, step($), 'gitlab'))
-    $.clock.every(INBOX_TICK_MS, () => quietly($, inboxTurn($), 'inbox'))
     // Retires the separate reading pane an earlier version opened; the app keeps a pane across reloads.
     quietly($, $.ui.close({ id: 'gitlab-ci-mr' }))
     // Opened unasked only where something draws it, or the engine logs the miss.
     if ((await $.session.surfaces()).length > 0) {
       await openPane($).catch(reported($, 'pane'))
-      $.clock.after(INBOX_FIRST_MS, () => quietly($, inboxTurn($), 'inbox'))
     }
     // A start or a reload takes its part at once (the pane is open by now, or is not to be), so what is drawn first is a
     // snapshot of the leader's, or the leader's own first read, and not rows kept from an older version.
