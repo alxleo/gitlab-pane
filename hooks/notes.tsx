@@ -1,3 +1,4 @@
+import { isFilled } from './decode'
 import { LINK } from './drawing'
 import { ago, excerpt } from './format'
 import type { Kit } from './kit'
@@ -6,7 +7,7 @@ import type { Note } from '../types'
 
 /** Where in the code, and when: the line under a name. */
 export const whereAndWhen = (note: Note, now: number): string =>
-  [note.where, ago(note.at, now)].filter((part): part is string => part !== undefined && part !== '').join(' · ')
+  [note.where, ago(note.at, now)].filter(isFilled).join(' · ')
 
 export const noteKind = (note: Note): string => (note.isOpen ? 'open thread' : 'comment')
 

@@ -9,10 +9,10 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
 export const parseJson = (json: string): unknown => JSON.parse(json)
 
 /** Not null or undefined, for an optional value tested without a loose truthiness check (`0` and `''` are values). */
-export const isSome = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined
+export const isSome = <T>(value: T | null | undefined) => value !== null && value !== undefined
 
 /** A string with something in it; null, undefined and the empty string are none. */
-export const isFilled = (value: string | null | undefined): value is string => value !== null && value !== undefined && value !== ''
+export const isFilled = (value: string | null | undefined): value is string => typeof value === 'string' && value !== ''
 
 /** A string, or empty for anything else. */
 export const text = (value: unknown): string => (typeof value === 'string' ? value : '')
