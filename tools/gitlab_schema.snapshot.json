@@ -426,6 +426,18 @@
         }
        },
        {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "mergedAfter",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Time",
+         "ofType": null
+        }
+       },
+       {
         "defaultValue": "created_desc",
         "deprecationReason": null,
         "description": null,
@@ -459,10 +471,182 @@
        "name": "MergeRequestConnection",
        "ofType": null
       }
+     },
+     {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "first",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Int",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": "created_desc",
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "sort",
+        "type": {
+         "kind": "ENUM",
+         "name": "MergeRequestSort",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "state",
+        "type": {
+         "kind": "ENUM",
+         "name": "MergeRequestState",
+         "ofType": null
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "reviewRequestedMergeRequests",
+      "type": {
+       "kind": "OBJECT",
+       "name": "MergeRequestConnection",
+       "ofType": null
+      }
+     },
+     {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "action",
+        "type": {
+         "kind": "LIST",
+         "name": null,
+         "ofType": {
+          "kind": "NON_NULL",
+          "name": null,
+          "ofType": {
+           "kind": "ENUM",
+           "name": "TodoActionEnum",
+           "ofType": null
+          }
+         }
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "first",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Int",
+         "ofType": null
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "state",
+        "type": {
+         "kind": "LIST",
+         "name": null,
+         "ofType": {
+          "kind": "NON_NULL",
+          "name": null,
+          "ofType": {
+           "kind": "ENUM",
+           "name": "TodoStateEnum",
+           "ofType": null
+          }
+         }
+        }
+       },
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "type",
+        "type": {
+         "kind": "LIST",
+         "name": null,
+         "ofType": {
+          "kind": "NON_NULL",
+          "name": null,
+          "ofType": {
+           "kind": "ENUM",
+           "name": "TodoTargetEnum",
+           "ofType": null
+          }
+         }
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "todos",
+      "type": {
+       "kind": "OBJECT",
+       "name": "TodoConnection",
+       "ofType": null
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "username",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "webUrl",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
      }
     ],
     "inputFields": null,
-    "interfaces": [],
+    "interfaces": [
+     {
+      "kind": "INTERFACE",
+      "name": "Todoable",
+      "ofType": null
+     }
+    ],
     "kind": "OBJECT",
     "name": "CurrentUser",
     "possibleTypes": null
@@ -924,6 +1108,22 @@
       "deprecationReason": null,
       "description": null,
       "isDeprecated": false,
+      "name": "createdAt",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "Time",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
       "name": "description",
       "type": {
        "kind": "SCALAR",
@@ -1024,6 +1224,59 @@
        "ofType": {
         "kind": "SCALAR",
         "name": "String",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "mergeUser",
+      "type": {
+       "kind": "OBJECT",
+       "name": "UserCore",
+       "ofType": null
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "mergedAt",
+      "type": {
+       "kind": "SCALAR",
+       "name": "Time",
+       "ofType": null
+      }
+     },
+     {
+      "args": [
+       {
+        "defaultValue": null,
+        "deprecationReason": null,
+        "description": null,
+        "isDeprecated": false,
+        "name": "last",
+        "type": {
+         "kind": "SCALAR",
+         "name": "Int",
+         "ofType": null
+        }
+       }
+      ],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "notes",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "OBJECT",
+        "name": "NoteConnection",
         "ofType": null
        }
       }
@@ -1166,7 +1419,13 @@
      }
     ],
     "inputFields": null,
-    "interfaces": [],
+    "interfaces": [
+     {
+      "kind": "INTERFACE",
+      "name": "Todoable",
+      "ofType": null
+     }
+    ],
     "kind": "OBJECT",
     "name": "MergeRequest",
     "possibleTypes": null
@@ -1175,6 +1434,22 @@
     "description": null,
     "enumValues": null,
     "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "name",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
+     },
      {
       "args": [],
       "deprecationReason": null,
@@ -1190,10 +1465,32 @@
         "ofType": null
        }
       }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "webUrl",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
      }
     ],
     "inputFields": null,
-    "interfaces": [],
+    "interfaces": [
+     {
+      "kind": "INTERFACE",
+      "name": "Todoable",
+      "ofType": null
+     }
+    ],
     "kind": "OBJECT",
     "name": "MergeRequestAuthor",
     "possibleTypes": null
@@ -1347,10 +1644,32 @@
         "ofType": null
        }
       }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "webUrl",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
      }
     ],
     "inputFields": null,
-    "interfaces": [],
+    "interfaces": [
+     {
+      "kind": "INTERFACE",
+      "name": "Todoable",
+      "ofType": null
+     }
+    ],
     "kind": "OBJECT",
     "name": "MergeRequestReviewer",
     "possibleTypes": null
@@ -1619,6 +1938,22 @@
       "deprecationReason": null,
       "description": null,
       "isDeprecated": false,
+      "name": "id",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "NoteID",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
       "name": "position",
       "type": {
        "kind": "OBJECT",
@@ -1640,6 +1975,18 @@
         "name": "Boolean",
         "ofType": null
        }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "systemNoteMetadata",
+      "type": {
+       "kind": "OBJECT",
+       "name": "SystemNoteMetadata",
+       "ofType": null
       }
      },
      {
@@ -1686,6 +2033,16 @@
     "interfaces": [],
     "kind": "OBJECT",
     "name": "NoteConnection",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
+    "fields": null,
+    "inputFields": null,
+    "interfaces": null,
+    "kind": "SCALAR",
+    "name": "NoteID",
     "possibleTypes": null
    },
    {
@@ -2035,7 +2392,13 @@
      }
     ],
     "inputFields": null,
-    "interfaces": [],
+    "interfaces": [
+     {
+      "kind": "INTERFACE",
+      "name": "Todoable",
+      "ofType": null
+     }
+    ],
     "kind": "OBJECT",
     "name": "Project",
     "possibleTypes": null
@@ -2105,12 +2468,470 @@
    {
     "description": null,
     "enumValues": null,
+    "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "action",
+      "type": {
+       "kind": "SCALAR",
+       "name": "String",
+       "ofType": null
+      }
+     }
+    ],
+    "inputFields": null,
+    "interfaces": [],
+    "kind": "OBJECT",
+    "name": "SystemNoteMetadata",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
     "fields": null,
     "inputFields": null,
     "interfaces": null,
     "kind": "SCALAR",
     "name": "Time",
     "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
+    "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "action",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "ENUM",
+        "name": "TodoActionEnum",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "author",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "OBJECT",
+        "name": "UserCore",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "body",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "createdAt",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "Time",
+        "ofType": null
+       }
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "targetEntity",
+      "type": {
+       "kind": "INTERFACE",
+       "name": "Todoable",
+       "ofType": null
+      }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "targetUrl",
+      "type": {
+       "kind": "SCALAR",
+       "name": "String",
+       "ofType": null
+      }
+     }
+    ],
+    "inputFields": null,
+    "interfaces": [],
+    "kind": "OBJECT",
+    "name": "Todo",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": [
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "added_approver"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "approval_required"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "assigned"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "build_failed"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "directly_addressed"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "duo_core_access_granted"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "duo_enterprise_access_granted"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "duo_pro_access_granted"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "duo_workflow_input_required"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "marked"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "member_access_requested"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "mentioned"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "merge_train_removed"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "okr_checkin_requested"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "review_requested"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "review_submitted"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "ssh_key_expired"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "ssh_key_expiring_soon"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "transfer_failed"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "unmergeable"
+     }
+    ],
+    "fields": null,
+    "inputFields": null,
+    "interfaces": null,
+    "kind": "ENUM",
+    "name": "TodoActionEnum",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
+    "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "nodes",
+      "type": {
+       "kind": "LIST",
+       "name": null,
+       "ofType": {
+        "kind": "OBJECT",
+        "name": "Todo",
+        "ofType": null
+       }
+      }
+     }
+    ],
+    "inputFields": null,
+    "interfaces": [],
+    "kind": "OBJECT",
+    "name": "TodoConnection",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": [
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "done"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "pending"
+     }
+    ],
+    "fields": null,
+    "inputFields": null,
+    "interfaces": null,
+    "kind": "ENUM",
+    "name": "TodoStateEnum",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": [
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "ALERT"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "COMMIT"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "COMPLIANCE_VIOLATION"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "DESIGN"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "DUO_WORKFLOW"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "EPIC"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "ISSUE"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "KEY"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "MERGEREQUEST"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "NAMESPACE"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "PROJECT"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "USER"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "VULNERABILITY"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "WIKIPAGEMETA"
+     },
+     {
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "WORKITEM"
+     }
+    ],
+    "fields": null,
+    "inputFields": null,
+    "interfaces": null,
+    "kind": "ENUM",
+    "name": "TodoTargetEnum",
+    "possibleTypes": null
+   },
+   {
+    "description": null,
+    "enumValues": null,
+    "fields": [
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "webUrl",
+      "type": {
+       "kind": "SCALAR",
+       "name": "String",
+       "ofType": null
+      }
+     }
+    ],
+    "inputFields": null,
+    "interfaces": [],
+    "kind": "INTERFACE",
+    "name": "Todoable",
+    "possibleTypes": [
+     {
+      "kind": "OBJECT",
+      "name": "CurrentUser",
+      "ofType": null
+     },
+     {
+      "kind": "OBJECT",
+      "name": "MergeRequest",
+      "ofType": null
+     },
+     {
+      "kind": "OBJECT",
+      "name": "MergeRequestAuthor",
+      "ofType": null
+     },
+     {
+      "kind": "OBJECT",
+      "name": "MergeRequestReviewer",
+      "ofType": null
+     },
+     {
+      "kind": "OBJECT",
+      "name": "Project",
+      "ofType": null
+     },
+     {
+      "kind": "OBJECT",
+      "name": "UserCore",
+      "ofType": null
+     }
+    ]
    },
    {
     "description": null,
@@ -2175,10 +2996,32 @@
         "ofType": null
        }
       }
+     },
+     {
+      "args": [],
+      "deprecationReason": null,
+      "description": null,
+      "isDeprecated": false,
+      "name": "webUrl",
+      "type": {
+       "kind": "NON_NULL",
+       "name": null,
+       "ofType": {
+        "kind": "SCALAR",
+        "name": "String",
+        "ofType": null
+       }
+      }
      }
     ],
     "inputFields": null,
-    "interfaces": [],
+    "interfaces": [
+     {
+      "kind": "INTERFACE",
+      "name": "Todoable",
+      "ofType": null
+     }
+    ],
     "kind": "OBJECT",
     "name": "UserCore",
     "possibleTypes": null

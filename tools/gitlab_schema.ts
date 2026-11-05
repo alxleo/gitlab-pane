@@ -256,25 +256,58 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
   const full: IntrospectionSchema = introspection.__schema
   const types = new Map(full.types.map(kind => [kind.name, kind]))
   const { fields, arguments: args, variables } = used(buildClientSchema(introspection), queries)
-  const keep = new Set<string>()
-  const todo = [full.queryType.name, ...variables]
-  for (let name = todo.pop(); name !== undefined; name = todo.pop()) {
-    if (keep.has(name)) {
-      continue
+  /** The types the queries reach from the query type: through the fields they select, and the types they name. */
+  const reach = (): Set<string> => {
+    const reached = new Set<string>()
+    const todo = [full.queryType.name, ...variables]
+    for (let name = todo.pop(); name !== undefined; name = todo.pop()) {
+      if (reached.has(name)) {
+        continue
+      }
+      reached.add(name)
+      const kind = types.get(name)
+      if (kind === undefined) {
+        throw new SchemaError(`the queries use ${name}, which the schema does not hold`)
+      }
+      for (const field of fieldsOf(kind)) {
+        if (fields.get(name)?.has(field.name) === true) {
+          todo.push(unwrap(field.type))
+          todo.push(...field.args.filter(arg => args.get(`${name}.${field.name}`)?.has(arg.name) === true).map(arg => unwrap(arg.type)))
+        }
+      }
+      todo.push(...(inputFieldsOf(kind) ?? []).map(field => unwrap(field.type)))
+      todo.push(...(possibleTypesOf(kind) ?? []).map(possible => possible.name).filter(possible => fields.has(possible)))
     }
-    keep.add(name)
-    const kind = types.get(name)
-    if (kind === undefined) {
-      throw new SchemaError(`the queries use ${name}, which the schema does not hold`)
-    }
-    for (const field of fieldsOf(kind)) {
-      if (fields.get(name)?.has(field.name) === true) {
-        todo.push(unwrap(field.type))
-        todo.push(...field.args.filter(arg => args.get(`${name}.${field.name}`)?.has(arg.name) === true).map(arg => unwrap(arg.type)))
+    return reached
+  }
+
+  /**
+   * A type that implements a kept interface must keep each field the queries select on the interface, or the pruned
+   * schema is not valid (a query that selects `webUrl` on an interface reaches every kept type that implements it).
+   * Gives whether a field was added, which can reach new types.
+   */
+  const inherit = (reached: ReadonlySet<string>): boolean => {
+    let added = false
+    for (const name of reached) {
+      const kind = types.get(name)
+      for (const parent of kind === undefined ? [] : (interfacesOf(kind) ?? [])) {
+        for (const field of fields.get(parent.name) ?? []) {
+          if (fields.get(name)?.has(field) !== true) {
+            into(fields, name, field)
+            for (const arg of args.get(`${parent.name}.${field}`) ?? []) {
+              into(args, `${name}.${field}`, arg)
+            }
+            added = true
+          }
+        }
       }
     }
-    todo.push(...(inputFieldsOf(kind) ?? []).map(field => unwrap(field.type)))
-    todo.push(...(possibleTypesOf(kind) ?? []).map(possible => possible.name).filter(possible => fields.has(possible)))
+    return added
+  }
+
+  let keep = reach()
+  while (inherit(keep)) {
+    keep = reach()
   }
 
   const slimArgument = (arg: IntrospectionInputValue) => ({ ...arg, description: null })
@@ -352,7 +385,7 @@ async function generate(schemaFile: string): Promise<string> {
           useTypeImports: true,
           // A scalar not named below is `unknown`, so a new one cannot slip in as `any`.
           defaultScalarType: 'unknown',
-          scalars: { ID: 'string', Time: 'string' },
+          scalars: { ID: 'string', Time: 'string', NoteID: 'string' },
         },
       },
     },
