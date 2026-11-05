@@ -1,4 +1,4 @@
-// The two rules ESLint has no built-in for, written here so that what each forbids and what it allows is in one place, and
+// The rules ESLint has no built-in for, written here so that what each forbids and what it allows is in one place, and
 // the allowance is an option of the rule in eslint.config.cjs, with its reason, never a comment next to the code.
 
 const MUTATORS = new Set([
@@ -387,4 +387,53 @@ const noTypeAssertion = {
   },
 }
 
-module.exports = { rules: { 'no-module-state': noModuleState, 'no-type-assertion': noTypeAssertion } }
+/**
+ * A name only the listed files may import, so a function that stamps a value as trusted can be called from one place and
+ * nowhere else. Options: `{ restricted: { <name>: { allowed: [<file ending>…], module: <source ending>, reason } } }`. It
+ * refuses importing the name, re-exporting it, and a namespace import of its module, which would reach it by another way.
+ */
+const onlyImporters = {
+  meta: {
+    type: 'problem',
+    schema: [{ type: 'object' }],
+    messages: {
+      name: '{{name}} may be imported only by {{allowed}}: {{reason}}',
+      namespace: 'A namespace import of {{module}} reaches {{name}}, which only {{allowed}} may use: {{reason}}',
+    },
+  },
+  create(context) {
+    const restricted = Object.entries(context.options[0]?.restricted ?? {})
+    const file = context.filename.replaceAll('\\', '/')
+    const refuse = (node, name, rule, messageId) => {
+      if (!rule.allowed.some(ending => file.endsWith(ending))) {
+        context.report({ node, messageId, data: { name, allowed: rule.allowed.join(', '), reason: rule.reason, module: rule.module } })
+      }
+    }
+    const endsModule = (source, rule) => source === rule.module || source.endsWith(`/${rule.module}`) || source.endsWith(`/${rule.module}.ts`)
+    return {
+      ImportSpecifier(node) {
+        for (const [name, rule] of restricted) {
+          if (node.imported.name === name) {
+            refuse(node, name, rule, 'name')
+          }
+        }
+      },
+      ExportSpecifier(node) {
+        for (const [name, rule] of restricted) {
+          if (node.parent.source && node.local.name === name) {
+            refuse(node, name, rule, 'name')
+          }
+        }
+      },
+      ImportNamespaceSpecifier(node) {
+        for (const [name, rule] of restricted) {
+          if (endsModule(node.parent.source.value, rule)) {
+            refuse(node, name, rule, 'namespace')
+          }
+        }
+      },
+    }
+  },
+}
+
+module.exports = { rules: { 'no-module-state': noModuleState, 'no-type-assertion': noTypeAssertion, 'only-importers': onlyImporters } }

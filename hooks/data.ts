@@ -23,6 +23,7 @@ const pollAtom = atom({ plugin: 'gitlab-ci', key: 'poll' } as const, {
   fetchedAt: null,
   attemptedAt: null,
   error: null,
+  hosts: {},
   failures: 0,
   ticketsAt: null,
   usualAt: null,

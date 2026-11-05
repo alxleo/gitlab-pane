@@ -186,10 +186,12 @@ test(
 
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     const pinned = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: PINNED_URL })
-    // The host with no token is told beside the answer, which is from the hosts that could be read.
-    expect(String(pinned.result)).toMatch(/^!12 \(ABC-1\) ● running 20m so far · needs 1 approval · https:\/\/gitlab\.com\/g\/p\/-\/pipelines\/99 · GitLab could not be read \(git\.empty\.example: no GitLab token/)
+    // Each answer tells of its own host only: the host with no token says nothing of an MR on a host that was read.
+    expect(String(pinned.result)).toBe('!12 (ABC-1) ● running 20m so far · needs 1 approval · https://gitlab.com/g/p/-/pipelines/99')
     const other = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: `https://${SELF_MANAGED}/g/p/-/merge_requests/12` })
-    expect(String(other.result)).toContain(`!12 (ABC-1) ● running 20m so far · needs 1 approval · https://${SELF_MANAGED}/g/p/-/pipelines/99`)
+    expect(String(other.result)).toBe(`!12 (ABC-1) ● running 20m so far · needs 1 approval · https://${SELF_MANAGED}/g/p/-/pipelines/99`)
+    const unread = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: 'https://git.empty.example/g/p/-/merge_requests/3' })
+    expect(String(unread.result)).toMatch(/^Pinned !3; GitLab could not be read \(no GitLab token for git\.empty\.example: set GITLAB_TOKEN/)
     const stranger = await $.tool.call({ tool: 'mcp__gitlab-ci__watch_mr', url: 'https://elsewhere.example/g/p/-/merge_requests/12' })
     expect(JSON.stringify(stranger)).toContain(`Not a merge request URL on ${HOSTS.join(', ')}`)
 
@@ -211,9 +213,13 @@ test(
     expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
     // The same project path and number on two hosts are two cards.
     expect((await ui.findAll({ type: 'Button' })).filter(keyed('open-12-'))).toHaveLength(2)
-    expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toMatch(/^GitLab read failed: git\.empty\.example: no GitLab token for git\.empty\.example: set GITLAB_TOKEN/)
+    // The footer names the stale host and, beside it, the hosts that are fresh.
+    expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toMatch(
+      /^GitLab read failed: git\.empty\.example: no GitLab token for git\.empty\.example: set GITLAB_TOKEN.* · gitlab\.com updated (just now|\d+m ago), git\.corp\.com updated (just now|\d+m ago)$/
+    )
     const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
     expect(answer.text).toContain('gitlab: git.empty.example: no GitLab token for git.empty.example')
+    expect(answer.text).toContain('gitlab.com fresh, git.corp.com fresh, git.empty.example stale')
     expect(JSON.stringify(answer)).not.toContain('corp-token')
     await ui.unmount()
   }
