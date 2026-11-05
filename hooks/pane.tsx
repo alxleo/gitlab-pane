@@ -37,6 +37,7 @@ import { drawReading } from './reading'
 import { raw, svg } from './svg'
 
 import type { Badge, Tone } from './ci'
+import type { MarkdownText } from './markdown'
 import type { CiStatus, Job, MrCard, Note, Person, PersonState, Stage } from '../types'
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
@@ -115,6 +116,8 @@ const BOT_NAME_ROOM = 14
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const elements = $.ui.resolve(e)
   const { Box, Text, Button, Link, Markdown } = elements
+  /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
+  const markdown = (text: MarkdownText) => <Markdown text={text} />
   // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
   const { pinned, rows: lastRead, tickets, usual, avatars, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, now } = await view($)
@@ -474,14 +477,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {focus.notes.map(note => (
           <Box key={`pn-${note.url}`} flexDirection="column">
             {byline('who', noteKind(note), [note.where, ago(note.at, now)].filter(Boolean).join(' · '), note.url)}
-            <Markdown text={bodyOf(note.body, 1_500)} />
+            {markdown(bodyOf(note.body, 1_500))}
           </Box>
         ))}
         {foot}
       </Box>
     ) : (
       <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-        {mr.description.trim() && <Markdown text={bodyOf(mr.description, 400)} />}
+        {mr.description.trim() && markdown(bodyOf(mr.description, 400))}
         {pipeline && pipeline.failed.length + pipeline.amber.length > 0 && (
           <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             {[...pipeline.failed.map(job => ({ job, glyph: '✗' })), ...pipeline.amber.map(job => ({ job, glyph: '⚠' }))]
@@ -497,7 +500,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {mr.openThreads.map(note => (
           <Box key={`t-${note.url}`} flexDirection="column">
             {byline('who', note.author, [note.where, ago(note.at, now)].filter(Boolean).join(' · '), note.url)}
-            <Markdown text={bodyOf(note.body, THREAD_ROOM)} />
+            {markdown(bodyOf(note.body, THREAD_ROOM))}
           </Box>
         ))}
         {mr.people.length > 0 && <Text dimColor>Click a name to read only their comments.</Text>}
