@@ -1,71 +1,88 @@
 # Design language
 
-What each colour, border and mark in the pane means. Each rule names the code that holds it, so a change there is a change here.
+What each colour, border and mark in the pane means, and the code that holds it.
 
 ## Principles
 
-- **What needs you comes first.** Rows sort by what you can act on now: something failing or blocked, then running, then waiting on others, then ready (`rank` in `hooks/attention.ts`).
-- **Colour means the same thing everywhere.** One small palette serves pipeline stages, card borders and reviewer rings.
-- **Words beat icons for what blocks a merge.** The worst blocker is said in words on the card's second line; other markers only trail it.
-- **Small enough to draw.** The desktop app draws nothing for a tree past 100,000 characters. So rows you opened come first, then the other rows, then hover cards, then avatars (`DRAWING_BUDGET` in `hooks/drawing.ts`). Rows that do not fit are counted, not silently dropped.
-- **Bots show only when they hold the merge,** by an open thread or a request for changes. Then a bot gets a face like anyone's; otherwise its summary comments stay out of the way.
+| Rule | Means | Code |
+|---|---|---|
+| What needs you comes first | failing or blocked, then running, then waiting on others, then ready | `rank`, `hooks/attention.ts` |
+| Colour means the same everywhere | one palette for stages, card borders and reviewer rings | `STAGE_COLOURS`, `hooks/status.ts` |
+| Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
+| Small enough to draw | the desktop draws nothing past 100,000 characters, so opened rows come first, then other rows, then hover cards, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
+| Bots show only when they hold the merge | by an open thread or a request for changes; then a bot gets a face like anyone's; otherwise its summary comments stay out of the way | `toCard`, `hooks/gitlab.ts` |
 
 ## Colour
 
-The palette is `STAGE_COLOURS` in `hooks/status.ts`, the same in light and dark.
+The same in light and dark. Hovering a card that opens turns its border the theme's `claude` colour.
 
 | Tone | Colour | Means |
 |---|---|---|
-| success | `#2da44e` green | passed, approved |
-| error | `#cf222e` red | failed, changes requested, conflicts |
-| warning | `#bf8700` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
-| suggestion | `#0969da` blue | running, reviewed |
-| subtle | `#8c959f` grey | skipped, canceled, not started, waiting on a review |
-
-Hovering a card that opens turns its border the theme's `claude` colour.
+| `success` | `#2da44e` green | passed, approved |
+| `error` | `#cf222e` red | failed, changes requested, conflicts |
+| `warning` | `#bf8700` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
+| `suggestion` | `#0969da` blue | running, reviewed |
+| `subtle` | `#8c959f` grey | skipped, canceled, not started, waiting on a review |
 
 ## MR cards
 
-- **Border colour is the review** (`reviewTone`): red while someone asked for changes or the MR cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits.
-- **Border weight is whether it needs you**: bold at rank 0, round otherwise.
-- **Line 1** is the title, `▸` while closed and `▾` while open, and the time since the last update. An open card ends with `▴ less` and `read whole ›`, which gives the MR a page of its own.
-- **Line 2** is the card's links, the pipeline's stage strip and run time against how long that repo's pipelines usually take, GitLab's merge verdict in words with any other blockers trailing it dimly, then the people. Passed stages fold into one run, counted in its tooltip.
+| Part | Shows | Code |
+|---|---|---|
+| Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
+| Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
+| Line 1 | `▸` closed or `▾` open, the title, the time since the last update; open, it ends with `▴ less` and `read whole ›` (the MR as a page) | `card.tsx` |
+| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict with other blockers trailing dimly, then the people | `row-facts.ts` |
 
 ## Merge checks
 
-The words of a row's blockers are GitLab's own `mergeabilityChecks` (`hooks/attention.ts`), named by their identifier (`CI_MUST_PASS` reads `CI must pass`), so a check GitLab adds needs no change here.
+A blocker's words are GitLab's own `mergeabilityChecks`, named by identifier (`CI_MUST_PASS` reads `CI must pass`), so a check GitLab adds needs no change here.
 
 | Where | Says |
 |---|---|
-| Verdict | the first check that fails, in GitLab's order (the one `detailedMergeStatus` reports), in the check's tone |
-| Verdict | the first check still being made, with `(checking)`, grey, when none fails |
-| Verdict | `✓ mergeable`, green, when none fails or is being made |
+| Verdict | the first check that fails, in GitLab's order (the one `detailedMergeStatus` reports), in that check's tone |
+| Verdict | else the first check still being made, with `(checking)`, grey |
+| Verdict | else `✓ mergeable`, green |
 | Trailing, dim | each other failing check in its tone, then each warning in amber |
 | Nothing | a check that passed or the project turned off |
 
-A failing check's tone is what it asks of you (`CHECK_TONE` in `hooks/attention.ts`, typed over GitLab's identifiers, so a new check cannot be added without one): red to fix (`CONFLICT`, `REQUESTED_CHANGES`, `CI_MUST_PASS`, `COMMITS_STATUS`, the lock and security checks), amber for a smaller fix (`NEED_REBASE`, `DISCUSSIONS_NOT_RESOLVED`, `TITLE_REGEX`, `JIRA_ASSOCIATION_MISSING`), grey for waiting on others or on time (`NOT_APPROVED`, `DRAFT_STATUS`, `MERGE_TIME`, `MERGE_REQUEST_BLOCKED`, `STATUS_CHECKS_MUST_PASS`). `NOT_APPROVED` says `needs 2 approvals` where the pane knows the count.
+A failing check's tone is what it asks of you (`CHECK_TONE` in `hooks/attention.ts`, typed over GitLab's identifiers; one it does not know is red):
 
-The pane keeps its own marker only for what the checks do not say: failed, amber and manual jobs (with the stage strip and the run time), who asked for changes, threads, approvals and bots (the people). A marker that gives the detail of a check (the failed jobs for `CI_MUST_PASS`, the approvals count for `NOT_APPROVED`) stands in its place. A GitLab without `mergeabilityChecks` gets the pane's own `⇄ conflicts` and `↻ needs rebase` instead, and no verdict.
+| Tone | Asks | Checks |
+|---|---|---|
+| `error` | a fix | `CI_MUST_PASS`, `COMMITS_STATUS`, `CONFLICT`, `LOCKED_LFS_FILES`, `LOCKED_PATHS`, `REQUESTED_CHANGES`, `SECURITY_POLICY_PIPELINE_CHECK`, `SECURITY_POLICY_VIOLATIONS` |
+| `warning` | a smaller fix | `DISCUSSIONS_NOT_RESOLVED`, `JIRA_ASSOCIATION_MISSING`, `NEED_REBASE`, `TITLE_REGEX` |
+| `subtle` | waiting on others or on time | `DRAFT_STATUS`, `MERGE_REQUEST_BLOCKED`, `MERGE_TIME`, `NOT_APPROVED`, `NOT_OPEN`, `STATUS_CHECKS_MUST_PASS` |
+
+- `NOT_APPROVED` says `needs 2 approvals` where the pane knows the count.
+- The pane's own markers cover only what the checks do not say: failed, amber and manual jobs (with the strip and run time), who asked for changes, threads, approvals and bots. A marker that details a check (failed jobs for `CI_MUST_PASS`, the count for `NOT_APPROVED`) stands in its place.
+- A GitLab without `mergeabilityChecks` gets the pane's own `⇄ conflicts` and `↻ needs rebase`, and no verdict.
 
 ## Pipeline marks
 
-`statusMark` in `hooks/status.ts`:
+`statusMark` in `hooks/status.ts`. A failed job is ✗; a job allowed to fail is ⚠, amber; each with its run time.
 
-| Mark | Status |
-|---|---|
-| ✓ | passed |
-| ✗ | failed |
-| ● | running, queued, scheduled |
-| ⏸ | waiting on a manual job |
-| ⊘ | skipped, canceled |
-| ○ | no pipeline |
-| ? | a status GitLab sent that the pane has no name for |
-
-A failed job is ✗ and a job allowed to fail is ⚠, each with its run time.
+| Mark | Tone | Status |
+|---|---|---|
+| ✓ | `success` | `success` |
+| ✗ | `error` | `failed` |
+| ● | `suggestion` | `created`, `waiting_for_resource`, `preparing`, `waiting_for_callback`, `pending`, `running`, `canceling`, `scheduled` |
+| ⏸ | `warning` | `manual` |
+| ⊘ | `subtle` | `skipped`, `canceled` |
+| ? | `subtle` | `unknown`: a status the pane has no name for |
+| ○ | `subtle` | no pipeline |
 
 ## People
 
-A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot. The ring takes the palette's tones: red for changes requested, amber for open threads, green for approved, grey otherwise. It is heavy once they have a say and thin while they have none. A ✓ or ✕ badge in the corner marks an approval or a request for changes (`REVIEW_MARK` in `hooks/faces.tsx`). Where the surface draws no images, as in the terminal, the person is a coloured `●`, or the badge's own glyph.
+A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot.
+
+- **Ring** (`personTone`): red for changes requested, else amber for open threads, else green for approved, else grey. Heavy once they have a say, thin while they have none.
+- **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below.
+- **Without images** (the terminal): a coloured `●`, `◉` for the person whose comments are open, or the badge's glyph.
+
+| Badge | Means |
+|---|---|
+| ✓ | approved |
+| ✕ | requested changes |
 
 ## Links
 
@@ -81,9 +98,38 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 
 ## Inbox
 
-Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`): ✗ requested changes, ↺ withdrew approval, ✓ approved, ● reviewed, 💬 commented, @ mentioned you, ? asked for a review, ↑ pushed, ◆ merged, ✗ pipeline failed, ⚠ can't merge. The last two have no one to name. A card with news has an amber border and says `N new`; one without is grey (a review you were asked for stays, grey, until you approve it).
+Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`). The last two name no one.
 
-The tabs are the six rules of `hooks/inbox-rules.ts`: Review requested, Mentions, Build failed, Can't merge, On my MRs, Following (the MRs of the people and projects the `inboxFollow` setting names). An MR shows once, under the first that has it. ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project. A count with a `+` (`3+ new`) is a lower bound: GitLab sent only the latest 30 notes of that MR and the mark is older than the oldest. A tab with nothing says why when it can, in the line below the tabs: no token for a host, no repo for `here`, nobody followed.
+| Mark | Event |
+|---|---|
+| ✗ | requested changes |
+| ↺ | withdrew approval |
+| ✓ | approved |
+| ● | reviewed |
+| 💬 | commented |
+| @ | mentioned you |
+| ? | asked for a review |
+| ↑ | pushed |
+| ◆ | merged |
+| ✗ | pipeline failed |
+| ⚠ | can't merge |
+
+The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's name or title.
+
+| Tab | Name | Lists |
+|---|---|---|
+| Review requested | `review-requested` | others' MRs you were asked to review: requests and pushes; stays, grey, until you approve |
+| Mentions | `mentions` | MRs where you were mentioned |
+| Build failed | `build-failed` | failed-build to-dos |
+| Can't merge | `cant-merge` | can't-merge to-dos |
+| On my MRs | `on-my-mrs` | changes requested, approvals and their withdrawal, reviews, comments, pushes and merges on yours |
+| Following | `following` | the same on MRs of the people and projects `inboxFollow` names |
+
+- A card with news has an amber border and says `N new`; one without is grey.
+- An MR can show under several tabs; the Inbox tab's count counts it once.
+- `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.
+- ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project.
+- An empty tab says why when it can: no token for a host, no repo for `here`, nobody followed.
 
 ## Text
 
