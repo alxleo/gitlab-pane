@@ -1,20 +1,21 @@
 // What `/gitlab` says about background failures: the last one per source, as plain data the atom in failures.ts holds.
-import type { Problems, ProblemSource } from '../types'
+import { kindOf } from './failure.ts'
+
+import type { FailureKind, Problems, ProblemSource } from '../types'
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /** `all` with `error` as the source's last, replacing an older one in the same place. */
 export const withProblem = (all: Problems, source: ProblemSource, error: unknown, at: number): Problems => ({
   ...all,
-  [source]: { message: messageOf(error), at },
+  [source]: { message: messageOf(error), kind: kindOf(error), at },
 })
 
 /**
- * Whether `error` only says that an optional tool is not installed. mr-inbox and acli are not needed for the pane to work,
+ * Whether a failure only says that an optional tool is not installed. mr-inbox and acli are not needed for the pane to work,
  * so their absence is not a failure to list in `/gitlab`: the Inbox tab and a ticket say it where it matters.
  */
-export const isAbsentOptional = (source: ProblemSource, error: unknown): boolean =>
-  (source === 'inbox' || source === 'jira') && /^\S+ is not installed$/.test(messageOf(error))
+export const isAbsentOptional = (source: ProblemSource, kind: FailureKind): boolean => (source === 'inbox' || source === 'jira') && kind === 'not-installed'
 
 /** `all` without the source: it worked, so whatever it last failed with is no longer true. */
 export const withoutProblem = (all: Problems, source: ProblemSource): Problems =>
