@@ -1,5 +1,11 @@
-import type { CiJobStatus, DetailedMergeStatus, MergeRequestReviewState, PipelineStatusEnum } from '../hooks/gitlab.generated.ts'
-import type { RawJob, RawMr, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
+import type { CiJobStatus, DetailedMergeStatus, MergeRequestReviewState, MrFieldsFragment, PipelineStatusEnum, ReviewerFieldsFragment } from '../hooks/gitlab.generated.ts'
+import type { RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
+
+/** The host the made-up GitLab answers as, unless a test says another. */
+export const HOST = 'gitlab.com'
+
+/** A second host, as a self-managed GitLab. */
+export const SELF_MANAGED = 'git.corp.com'
 
 export const NOW = Date.parse('2026-10-23T15:10:00Z')
 
@@ -32,10 +38,10 @@ export const pipe = (status: PipelineStatusEnum, over: Partial<RawPipeline> = {}
   }
 }
 
-export const project = (fullPath = 'g/p') => ({
+export const project = (fullPath = 'g/p', host = HOST) => ({
   fullPath,
   name: fullPath.split('/').pop() ?? fullPath,
-  webUrl: `https://gitlab.com/${fullPath}`,
+  webUrl: `https://${host}/${fullPath}`,
 })
 
 export const user = (username: string, bot = false) => ({
@@ -52,7 +58,11 @@ export const user = (username: string, bot = false) => ({
 export const AVATAR_BASE64 = `iVBORw0KGgo${'A'.repeat(1300)}\n`
 
 /** An MR as the fake GitLab holds it: what MrFields asks for, and the merge verdict that only the MergeStatus query gives. */
-export type Mr = RawMr & { detailedMergeStatus?: DetailedMergeStatus | null }
+export type Mr = MrFieldsFragment & {
+  /** The reviewers with their review state, as a current GitLab sends them. */
+  reviewers: { nodes: Array<ReviewerFieldsFragment | null> | null } | null
+  detailedMergeStatus?: DetailedMergeStatus | null
+}
 
 export const rawMr = (iid: number, over: Partial<Mr> = {}): Mr => ({
   iid: String(iid),

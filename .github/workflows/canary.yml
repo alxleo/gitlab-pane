@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - hooks/gitlab.ts
+      - hooks/gitlab-documents.ts
       - hooks/gitlab.generated.ts
       - tools/codegen/**
       - tools/gitlab_schema.snapshot.json
