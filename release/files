@@ -27,8 +27,14 @@ hooks/graphql.ts
 hooks/hosts.ts
 hooks/identity.ts
 hooks/in-flight.ts
-hooks/inbox-json.ts
+hooks/inbox-brief.ts
+hooks/inbox-follow.ts
+hooks/inbox-gitlab.ts
 hooks/inbox-pane.tsx
+hooks/inbox-refs.ts
+hooks/inbox-requests.ts
+hooks/inbox-rules.ts
+hooks/inbox-snapshot.ts
 hooks/inbox.ts
 hooks/jira.ts
 hooks/kit.tsx

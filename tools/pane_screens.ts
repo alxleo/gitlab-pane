@@ -9,7 +9,7 @@
 //
 // (`npm run screens -- <command>` is the same.) How it works, so nobody has to remember it:
 //
-//   1. tools/screens/scenes.ts runs under `claude plugin test`, in a scratch copy of the mod, with GitLab and mr-inbox
+//   1. tools/screens/scenes.ts runs under `claude plugin test`, in a scratch copy of the mod, with GitLab
 //      answered by made-up data (acme-corp, alice, bob) and the clock held still. For each scene it prints the element
 //      tree the pane draws on the desktop surface, exactly as the engine validated it.
 //   2. This script turns that tree into a web page (tools/screens/pane.css) and Chromium photographs it, with the fonts

@@ -1,4 +1,4 @@
-// Draws the pane on the desktop surface for each README scene, from GitLab and mr-inbox answers made up here, and prints
+// Draws the pane on the desktop surface for each README scene, from GitLab answers made up here, and prints
 // every drawn tree as one `PANE-SCENE <json>` line on the test's output. tools/pane_screens.ts copies this file into a
 // scratch copy of the mod as `scenes.test.ts` and reads those lines back; it is not named *.test.ts here so that
 // `claude plugin test .` never runs it as one of the mod's own tests.
@@ -13,6 +13,8 @@ import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.ge
 import { NOW, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
 import { fakeGitLab, ran } from '../../tests/gitlab_host'
+import { comment, emptyWorld, fields, inboxAnswers, system } from '../../tests/inbox_fixtures'
+import type { Person, World } from '../../tests/inbox_fixtures'
 
 
 const PANE = {
@@ -193,61 +195,39 @@ const mine = (): Mr[] => [
   }),
 ]
 
-const item = (repo: string, iid: number, title: string, author: string, unseen: number, counts: Record<string, number>, activity: unknown[]) => ({
-  key: `${repo}!${iid}`,
-  ref: `${repo.split('/')[1]}!${iid}`,
-  project: repo,
-  iid,
-  title,
-  url: url(repo, iid),
-  author: { username: author, name: author, is_me: false },
-  state: 'opened',
-  draft: false,
-  unseen,
-  counts,
-  activity,
-})
-
-const event = (kind: string, actor: string, minutes: number, excerpt = '', note = 0) => ({
-  kind,
-  actor,
-  at: minutesAgo(minutes),
-  url: kind === 'comment' ? `https://gitlab.com/acme-corp/billing-api/-/merge_requests/140#note_${note}` : null,
-  excerpt,
-})
-
-const inboxSections = () => [
-  {
-    rule: 'people',
-    title: 'Reviews: people I follow',
-    note: null,
-    items: [
-      item('acme-corp/billing-api', 140, 'feat: [BILL-95] Retry failed invoice emails', ALICE, 2, { comment: 1, approved: 1 }, [
-        event('comment', BOB, 11, 'Should the retries back off, or is a fixed delay fine here?', 71),
-        event('approved', ERIN, 64),
-        event('pushed', ALICE, 140),
-      ]),
-      item('acme-corp/storefront', 488, 'fix: [SHOP-220] Guard the empty cart at checkout', CAROL, 1, { review: 1 }, [
-        event('review', DAVE, 38),
-        event('pushed', CAROL, 95),
-      ]),
+/** The inbox the screenshot shows: a review asked of the viewer, and what others did on the viewer's own MR. */
+const inboxWorld = (): World => {
+  const billing = (iid: number, title: string, author: Person) => ({ ...fields(iid, author, { title, webUrl: url('acme-corp/billing-api', iid), createdAt: minutesAgo(3_000) }), project: { fullPath: 'acme-corp/billing-api' } })
+  const named = (username: string): Person => ({ username, name: username.split('.').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ') })
+  const infra = { ...fields(61, named(ERIN), { title: 'chore: [OPS-14] Pin the runner image by digest', webUrl: url('acme-corp/infra', 61), createdAt: minutesAgo(27) }), project: { fullPath: 'acme-corp/infra' } }
+  const storefront = { ...fields(488, named(CAROL), { title: 'fix: [SHOP-220] Guard the empty cart at checkout', webUrl: url('acme-corp/storefront', 488), createdAt: minutesAgo(2_000) }), project: { fullPath: 'acme-corp/storefront' } }
+  return {
+    ...emptyWorld(),
+    user: 'alex',
+    queue: [
+      { ...infra, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] }, approvedBy: { nodes: [] } },
+      { ...storefront, notes: { pageInfo: { hasPreviousPage: false }, nodes: [system(8, CAROL, 95, 'commit', 'added 1 commit')] }, approvedBy: { nodes: [] } },
     ],
-  },
-  {
-    rule: 'to-review',
-    title: 'To review',
-    note: null,
-    items: [
-      item('acme-corp/infra', 61, 'chore: [OPS-14] Pin the runner image by digest', ERIN, 1, { review_requested: 1 }, [
-        event('review_requested', ERIN, 27),
-      ]),
+    opened: [
+      {
+        ...billing(140, 'feat: [BILL-95] Retry failed invoice emails', { username: 'alex', name: 'Alex' }),
+        notes: {
+          pageInfo: { hasPreviousPage: false },
+          nodes: [
+            system(1, ALICE, 140, 'commit', 'added 2 commits'),
+            system(2, ERIN, 64, 'approved'),
+            comment(71, BOB, 11, 'Should the retries back off, or is a fixed delay fine here?'),
+          ],
+        },
+      },
     ],
-  },
-]
+  }
+}
 
-/** GitLab and mr-inbox as the scenes set them; every command not listed here fails, so nothing real is ever asked. */
+/** GitLab as the scenes set it; every command not listed here fails, so nothing real is ever asked. */
 function engine(on: On, mrs: Mr[]) {
   mock.store(on, {})
+  const world = inboxWorld()
   const titles: string[] = []
   fakeGitLab(
     on,
@@ -257,23 +237,14 @@ function engine(on: On, mrs: Mr[]) {
           Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
           MergeStatus: () => mergeStatuses(mrs),
           Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+          ...inboxAnswers(world),
         },
         accepts: 'scene-token',
       },
     },
     { env: { GITLAB_TOKEN: 'scene-token' } }
   )
-  on('process.run', (_, e) => {
-    const at = e.argv.indexOf('mr-inbox')
-    if (at >= 0) {
-      const sub = e.argv[at + 1]
-      if (sub === 'inbox') {
-        return ran(JSON.stringify({ sync: { ok: true, finished_at: minutesAgo(1) }, sections: inboxSections() }))
-      }
-      return ran('{"ok": true}')
-    }
-    return ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`)
-  })
+  on('process.run', (_, e) => ran('', 1, `nothing in the scenes answers ${e.argv.join(' ')}`))
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-ci__watch_mr' } }))
   on('ui.open', (_, e) => {
@@ -368,7 +339,7 @@ const SCENES: Scene[] = [
     name: 'inbox',
     steps: async ui => {
       await press(ui, 'tab-inbox')
-      await press(ui, 'inbox-rule-people')
+      await press(ui, 'inbox-rule-on-my-mrs')
       await press(ui, 'inbox-open-')
     },
   },

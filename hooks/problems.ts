@@ -12,10 +12,10 @@ export const withProblem = (all: Problems, source: ProblemSource, error: unknown
 })
 
 /**
- * Whether a failure only says that an optional tool is not installed. mr-inbox and acli are not needed for the pane to work,
- * so their absence is not a failure to list in `/gitlab`: the Inbox tab and a ticket say it where it matters.
+ * Whether a failure only says that an optional tool is not installed. acli is not needed for the pane to work, so its
+ * absence is not a failure to list in `/gitlab`: a ticket says it where it matters.
  */
-export const isAbsentOptional = (source: string, kind: FailureKind): boolean => (source === 'inbox' || source === 'jira') && kind === 'not-installed'
+export const isAbsentOptional = (source: string, kind: FailureKind): boolean => source === 'jira' && kind === 'not-installed'
 
 /** `all` without the source: it worked, so whatever it last failed with is no longer true. */
 export const withoutProblem = (all: Problems, source: ProblemSource): Problems =>
