@@ -73,6 +73,12 @@ export async function inboxTick($: EngineInterface): Promise<void> {
   }
 }
 
+/** How many MRs have news, as the inbox counts them: one MR counts once, whichever rules list it. */
+export async function inboxNews($: EngineInterface): Promise<number> {
+  const { sections } = await read($, inboxAtom)
+  return new Set(sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
+}
+
 export async function inboxView($: EngineInterface) {
   const [inbox, open, cards, now] = await Promise.all([
     read($, inboxAtom),

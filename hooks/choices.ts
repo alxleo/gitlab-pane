@@ -1,93 +1,92 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import { isEqual } from './equal'
 import { quietly } from './failures'
 
-// What the person chose in the pane: which cards are open, which fold, which tab, which MR is read whole. The engine reads
-// an atom only in the file that declares it, so everything that reads or writes these goes through the functions below.
-const expandedAtom = atom({ plugin: 'gitlab-ci', key: 'expanded' } as const, [])
-const personAtom = atom({ plugin: 'gitlab-ci', key: 'person' } as const, {})
-const foldsAtom = atom({ plugin: 'gitlab-ci', key: 'folds' } as const, [])
-const repoFilterAtom = atom({ plugin: 'gitlab-ci', key: 'repoFilter' } as const, '')
-const tabAtom = atom({ plugin: 'gitlab-ci', key: 'tab' } as const, 'mine')
-const readingAtom = atom({ plugin: 'gitlab-ci', key: 'reading' } as const, '')
-const wakeAtom = atom({ plugin: 'gitlab-ci', key: 'wake' } as const, true)
+import type { Choices } from '../types'
+
+// What the person chose in the pane: which cards are open, which fold, which tab, which MR is read whole. All of it is one
+// atom, so a drawing reads it once and a choice that touches two things redraws once. The engine reads an atom only in
+// the file that declares it, so everything that reads or writes it goes through the functions below.
+const choicesAtom = atom({ plugin: 'gitlab-ci', key: 'choices' } as const, {
+  expanded: [],
+  person: {},
+  folds: [],
+  repoFilter: '',
+  tab: 'mine',
+  reading: '',
+  wake: true,
+} satisfies Choices)
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnChoices($: EngineInterface) {
-  const [expanded, chosen, folds, repoFilter, tab, page, isWaking] = await Promise.all([
-    read($, expandedAtom),
-    read($, personAtom),
-    read($, foldsAtom),
-    read($, repoFilterAtom),
-    read($, tabAtom),
-    read($, readingAtom),
-    read($, wakeAtom),
-  ])
-  return { expanded, chosen, folds, repoFilter, tab, page, isWaking }
+  const { expanded, person, folds, repoFilter, tab, reading, wake } = await read($, choicesAtom)
+  return { expanded, chosen: person, folds, repoFilter, tab, page: reading, isWaking: wake }
 }
 
-export function readTab($: EngineInterface): Promise<string> {
-  return read($, tabAtom)
+export async function readTab($: EngineInterface): Promise<string> {
+  return (await read($, choicesAtom)).tab
 }
 /** The card key of the MR read whole, or empty. */
-export function readPage($: EngineInterface): Promise<string> {
-  return read($, readingAtom)
+export async function readPage($: EngineInterface): Promise<string> {
+  return (await read($, choicesAtom)).reading
 }
-export function readWake($: EngineInterface): Promise<boolean> {
-  return read($, wakeAtom)
+export async function readWake($: EngineInterface): Promise<boolean> {
+  return (await read($, choicesAtom)).wake
+}
+
+function change($: EngineInterface, how: (choices: Choices) => Choices): Promise<void> {
+  return update($, choicesAtom, how).then(() => undefined)
 }
 
 export function setTab($: EngineInterface, tab: 'mine' | 'inbox'): Promise<void> {
-  return update($, tabAtom, () => tab).then(() => undefined)
+  return change($, choices => ({ ...choices, tab }))
 }
 export function setPage($: EngineInterface, key: string): Promise<void> {
-  return update($, readingAtom, () => key).then(() => undefined)
+  return change($, choices => ({ ...choices, reading: key }))
 }
 
 /** Closes the page of the MR `key` and the folds it had open. */
-export async function closePage($: EngineInterface, key: string): Promise<void> {
-  await update($, readingAtom, () => '')
-  await update($, foldsAtom, list => list.filter(id => !id.startsWith(`${key}#`)))
+export function closePage($: EngineInterface, key: string): Promise<void> {
+  return change($, choices => ({ ...choices, reading: '', folds: choices.folds.filter(id => !id.startsWith(`${key}#`)) }))
 }
 
 const toggled = (list: string[], key: string): string[] => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])
 
+const without = (people: Record<string, string>, key: string): Record<string, string> =>
+  Object.fromEntries(Object.entries(people).filter(([each]) => each !== key))
+
 /** Opens or closes a row (or `drafts`) on what blocks it, never on one person's comments. */
 export function toggle($: EngineInterface, key: string): void {
-  quietly(
-    $,
-    Promise.all([
-      update($, expandedAtom, list => toggled(list, key)),
-      update($, personAtom, ({ [key]: _, ...rest }) => rest),
-    ])
-  )
+  quietly($, change($, choices => ({ ...choices, expanded: toggled(choices.expanded, key), person: without(choices.person, key) })))
 }
 
 /** Opens or closes one `<details>` fold, named `<row key>#<where>`, against how GitLab first shows it. */
 export function toggleFold($: EngineInterface, id: string): void {
-  quietly($, update($, foldsAtom, list => toggled(list, id)))
+  quietly($, change($, choices => ({ ...choices, folds: toggled(choices.folds, id) })))
 }
 
 /** Opens a row on one person's comments alone; asked again for the same person, closes it. */
-export async function showPerson($: EngineInterface, key: string, username: string): Promise<void> {
-  const [expanded, people] = await Promise.all([read($, expandedAtom), read($, personAtom)])
-  if (expanded.includes(key) && people[key] === username) {
-    await update($, expandedAtom, list => list.filter(one => one !== key))
-    await update($, personAtom, ({ [key]: _, ...rest }) => rest)
-    return
-  }
-  await update($, personAtom, previous => ({ ...previous, [key]: username }))
-  await update($, expandedAtom, list => (list.includes(key) ? list : [...list, key]))
+export function showPerson($: EngineInterface, key: string, username: string): Promise<void> {
+  return change($, choices =>
+    choices.expanded.includes(key) && choices.person[key] === username
+      ? { ...choices, expanded: choices.expanded.filter(one => one !== key), person: without(choices.person, key) }
+      : {
+          ...choices,
+          person: { ...choices.person, [key]: username },
+          expanded: choices.expanded.includes(key) ? choices.expanded : [...choices.expanded, key],
+        }
+  )
 }
 
 /** Narrows the list to one repo; the same repo again, or none, shows them all. */
 export function filterRepo($: EngineInterface, project: string): void {
-  quietly($, update($, repoFilterAtom, current => (current === project ? '' : project)))
+  quietly($, change($, choices => ({ ...choices, repoFilter: choices.repoFilter === project ? '' : project })))
 }
 
 export function toggleWake($: EngineInterface): void {
-  quietly($, update($, wakeAtom, value => !value))
+  quietly($, change($, choices => ({ ...choices, wake: !choices.wake })))
 }
 
 /**
@@ -95,13 +94,15 @@ export function toggleWake($: EngineInterface): void {
  * gone, which has left its page.
  */
 export async function forgetGone($: EngineInterface, isShown: (key: string) => boolean): Promise<boolean> {
-  await update($, expandedAtom, list => list.filter(key => key === 'drafts' || key === 'more' || isShown(key)))
-  await update($, personAtom, people => Object.fromEntries(Object.entries(people).filter(([key]) => isShown(key))))
-  await update($, foldsAtom, list => list.filter(id => isShown(id.split('#')[0] ?? '')))
-  const page = await read($, readingAtom)
-  if (page !== '' && !isShown(page)) {
-    await update($, readingAtom, () => '')
-    return true
+  const before = await read($, choicesAtom)
+  const expanded = before.expanded.filter(key => key === 'drafts' || key === 'more' || isShown(key))
+  const person = Object.fromEntries(Object.entries(before.person).filter(([key]) => isShown(key)))
+  const folds = before.folds.filter(id => isShown(id.split('#')[0] ?? ''))
+  const isGone = before.reading !== '' && !isShown(before.reading)
+  const next = { ...before, expanded, person, folds, reading: isGone ? '' : before.reading }
+  // A read that finds nothing gone writes nothing, so it redraws nothing.
+  if (!isEqual(next, before)) {
+    await change($, choices => ({ ...choices, expanded, person, folds, reading: isGone ? '' : choices.reading }))
   }
-  return false
+  return isGone
 }

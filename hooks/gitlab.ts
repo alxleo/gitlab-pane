@@ -17,9 +17,10 @@ import { Failure } from './failure.ts'
 import { ciStatusOf, mergeStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { initials } from './identity.ts'
+import { fromGitLab } from './markdown.ts'
 import { firstDifference } from './order.ts'
 
-import type { CiStatus, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
+import type { CiStatus, GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
 /** What the probe's answer says the host has; a type the host does not have has none of its fields. */
 export function readFeatures(response: RawResponse<ProbeQuery>): HostFeatures {
@@ -79,14 +80,16 @@ const reviewOf = (reviewer: RawReviewer): ReviewState =>
   reviewStateOf('mergeRequestInteraction' in reviewer ? reviewer.mergeRequestInteraction?.reviewState : undefined)
 
 /** Markdown as GitLab stores it, HTML and all, its links made absolute; markdown.ts makes it drawable. */
-export function cleanBody(body: string, host: string, path: string): string {
+export function cleanBody(body: string, host: string, path: string): GitLabMarkdown {
   const site = siteOf(host)
-  return body
-    .replace(/\]\(\/uploads\//g, `](${site}/${path}/uploads/`)
-    .replace(/\]\(\//g, `](${site}/`)
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return fromGitLab(
+    body
+      .replace(/\]\(\/uploads\//g, `](${site}/${path}/uploads/`)
+      .replace(/\]\(\//g, `](${site}/`)
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 }
 
 /** A note without an address of its own links to its MR. */

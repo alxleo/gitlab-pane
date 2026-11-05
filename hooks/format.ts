@@ -2,25 +2,25 @@ import { cutMarkdown, flatOf, type MarkdownText } from './markdown.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
 
-import type { MrCard, Stage, Usual } from '../types'
+import type { GitLabMarkdown, MrCard, Stage, Usual } from '../types'
 
 export const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`
 
 /** The first line worth reading, without its Markdown marks. */
-export function excerpt(body: string, room = 160): string {
+export function excerpt(body: GitLabMarkdown, room = 160): string {
   const line = flatOf(body).split('\n').find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
   const plain = line.replace(/^[#>\s]+|[*_`]/g, '').trim()
   return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
 
 /** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
-export function bodyOf(text: string, room = 1_200): MarkdownText {
+export function bodyOf(text: GitLabMarkdown, room = 1_200): MarkdownText {
   return cutMarkdown(flatOf(text), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */
-export function lead(body: string, room = 240): string {
+export function lead(body: GitLabMarkdown, room = 240): string {
   const paragraph =
     flatOf(body)
       .replace(/^#.*$/gm, '')

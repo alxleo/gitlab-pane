@@ -4,11 +4,20 @@
  * Markdown or goes, as GitLab's sanitiser would drop it. Code is left exactly as written, tags and all.
  */
 
+import type { GitLabMarkdown } from '../types'
+
 /** Text the Markdown element draws: GitLab's own Markdown, read by this file. Never a plain string. */
 export type MarkdownText = string & { readonly __brand: 'MarkdownText' }
 
+/**
+ * GitLab's own Markdown, as it came: made by the GitLab read (`gitlab.ts`) from a description or a note body, and by
+ * nothing else, so a title or a name can never be read as Markdown to draw. Not for text from anywhere but GitLab's
+ * description and note fields.
+ */
+export const fromGitLab = (text: string): GitLabMarkdown => brand<GitLabMarkdown>(text)
+
 /** The one place a string becomes Markdown to draw; not exported, so only GitLab's Markdown read here gets through. */
-const brand = (text: string): MarkdownText => text as MarkdownText
+const brand = <Stamp extends MarkdownText | GitLabMarkdown = MarkdownText>(text: string): Stamp => text as Stamp
 
 /** No Markdown. */
 export const EMPTY_MARKDOWN = brand('')
@@ -130,13 +139,13 @@ function split(masked: string, restore: (out: string) => string): Part[] {
 }
 
 /** GitLab Markdown as parts: Markdown to draw, and a fold for each `<details>`. */
-export function partsOf(source: string): Part[] {
+export function partsOf(source: GitLabMarkdown): Part[] {
   const { masked, restore } = holdCode(source)
   return split(masked, restore)
 }
 
 /** The same as one Markdown string, each fold its summary alone, as GitLab first shows a closed one. */
-export function flatOf(source: string): MarkdownText {
+export function flatOf(source: GitLabMarkdown): MarkdownText {
   const flatten = (parts: Part[]): string =>
     parts.map(part => ('text' in part ? part.text : part.isOpen ? `▾ ${part.summary}\n\n${flatten(part.parts)}` : `▸ ${part.summary}`)).join('\n\n')
   return brand(flatten(partsOf(source)))
