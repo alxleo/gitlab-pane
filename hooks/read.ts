@@ -16,6 +16,7 @@ import {
 } from './gitlab'
 import type { RawResponse } from './gitlab'
 import { decodeGraphql } from './decode'
+import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
 import { clear, record, reported } from './problems'
 import type { Source } from './problems'
@@ -351,6 +352,11 @@ export function refresh($: EngineInterface): Promise<void> {
   return queued
 }
 
+/** The only way text reaches the model unasked: lines built by model-text.ts, so a foreign value cannot arrive raw. */
+function wake($: EngineInterface, news: readonly ModelLine[]) {
+  return $.prompt.submit({ text: lines(news) })
+}
+
 /** One GitLab read for every row; wakes the session for a pinned MR's new result. */
 async function readOnce($: EngineInterface): Promise<void> {
   const pinned = await read($, pinnedAtom)
@@ -398,7 +404,7 @@ async function readOnce($: EngineInterface): Promise<void> {
       .join('  ') || undefined
   )
   if (reconciled.wakes.length > 0 && (await read($, wakeAtom))) {
-    quietly($.prompt.submit({ text: reconciled.wakes.join('\n') }))
+    quietly(wake($, reconciled.wakes))
   }
   quietly(readJira($, open, now), 'jira')
   quietly(readUsualTimes($, open, now), 'usual')
@@ -422,7 +428,7 @@ export async function tick($: EngineInterface): Promise<void> {
 }
 
 /** Pins an MR to this session and answers what it looks like now, saying so when that is stale. */
-export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<string> {
+export async function pin($: EngineInterface, url: string, origin: 'raised' | 'watched'): Promise<ModelLine> {
   const parsed = parseMrUrl(url)
   if (!parsed) {
     throw new Error(`Not a gitlab.com merge request URL: ${url}`)
@@ -435,12 +441,10 @@ export async function pin($: EngineInterface, url: string, origin: 'raised' | 'w
   await refresh($)
   const [rows, poll, now] = await Promise.all([read($, rowsAtom), read($, pollAtom), $.clock.now()])
   const row = rows.find(one => one.key === pinKey(parsed))
-  const stale =
-    poll.error !== null
-      ? `GitLab could not be read (${poll.error})${poll.fetchedAt ? `; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : ''}`
-      : ''
+  const age = poll.fetchedAt ? line`; this is ${ago(new Date(poll.fetchedAt).toISOString(), now)} old` : EMPTY
+  const stale = poll.error !== null ? line`GitLab could not be read (${foreign(poll.error, URL_ROOM)})${age}` : EMPTY
   if (row) {
-    return stale ? `${describe(row, now)} · ${stale}` : describe(row, now)
+    return dotted([describe(row, now), stale])
   }
-  return `Pinned !${parsed.iid}; ${stale || 'GitLab did not return it.'}`
+  return line`Pinned !${parsed.iid}; ${stale || line`GitLab did not return it.`}`
 }

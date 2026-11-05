@@ -27,8 +27,10 @@
     "hooks/inbox-json.ts",
     "hooks/jira.ts",
     "hooks/markdown.ts",
+    "hooks/model-text.ts",
     "hooks/problems.ts",
     "hooks/reconcile.ts",
+    "hooks/svg.ts",
     "types/index.d.ts"
   ]
 }

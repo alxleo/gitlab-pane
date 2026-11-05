@@ -3,6 +3,7 @@ import type { Register } from 'claude-code'
 import { MR_URLS } from './ci'
 import { briefCommand, inboxTick, syncInbox } from './inbox'
 import { useJiraSite } from './jira'
+import type { ModelLine } from './model-text'
 import { drawPane } from './pane'
 import { problems, reported } from './problems'
 import { openPane, paneDrawn, pin, quietly, refresh, scrolling, tick } from './read'
@@ -18,6 +19,9 @@ const INBOX_FIRST_MS = 2_000
 
 /** What the pane last did, so /gitlab can say why it is blank; a reload starts it over. */
 const health = { loadedAt: '', draws: 0, last: 'never asked to draw' }
+
+/** A tool's answer: only lines from model-text.ts, so text from GitLab cannot reach the model raw. */
+const answer = (result: ModelLine) => ({ result })
 
 export const register: Register = (on, options) => {
   useJiraSite(options.jiraUrl)
@@ -83,7 +87,7 @@ export const register: Register = (on, options) => {
     try {
       const result = await pin($, String(url ?? ''), 'watched')
       quietly(openPane($))
-      return { result }
+      return answer(result)
     } catch (error) {
       return { deny: error instanceof Error ? error.message : String(error) }
     }

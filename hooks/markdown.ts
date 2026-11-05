@@ -4,8 +4,39 @@
  * Markdown or goes, as GitLab's sanitiser would drop it. Code is left exactly as written, tags and all.
  */
 
+/** Text the Markdown element draws: GitLab's own Markdown, read by this file. Never a plain string. */
+export type MarkdownText = string & { readonly __brand: 'MarkdownText' }
+
+/** The one place a string becomes Markdown to draw; not exported, so only GitLab's Markdown read here gets through. */
+const asMarkdown = (text: string): MarkdownText => text as MarkdownText
+
+/** No Markdown. */
+export const EMPTY_MARKDOWN = asMarkdown('')
+
+/** The start of `markdown` that fits `room` characters, ended with `…`. */
+export const cutMarkdown = (markdown: MarkdownText, room: number): MarkdownText =>
+  markdown.length > room ? asMarkdown(`${markdown.slice(0, room - 1)}…`) : markdown
+
+/**
+ * The longest start of `markdown` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does.
+ * `sizeOf` measures a candidate's drawing.
+ */
+export function cutToFit(markdown: MarkdownText, room: number, sizeOf: (text: MarkdownText) => number): MarkdownText {
+  let length = Math.min(markdown.length, room)
+  while (length > 0) {
+    const start = markdown.slice(0, length)
+    const end = [start.lastIndexOf('\n\n'), start.lastIndexOf('\n'), start.lastIndexOf(' ')].find(at => at > length / 2) ?? length
+    const cut = asMarkdown(`${start.slice(0, end).trimEnd()} …`)
+    if (sizeOf(cut) <= room) {
+      return cut
+    }
+    length = Math.floor(length * 0.8)
+  }
+  return EMPTY_MARKDOWN
+}
+
 /** Markdown to draw, or a fold: its summary, what it holds, and whether GitLab shows it open. */
-export type Part = { text: string } | { summary: string; parts: Part[]; isOpen: boolean }
+export type Part = { text: MarkdownText } | { summary: string; parts: Part[]; isOpen: boolean }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm
 const SPAN = /(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/g
@@ -65,7 +96,7 @@ function split(masked: string, restore: (out: string) => string): Part[] {
   const text = (raw: string) => {
     const out = restore(markdownOf(raw)).trim()
     if (out) {
-      parts.push({ text: out })
+      parts.push({ text: asMarkdown(out) })
     }
   }
   let rest = masked
@@ -104,8 +135,8 @@ export function partsOf(source: string): Part[] {
 }
 
 /** The same as one Markdown string, each fold its summary alone, as GitLab first shows a closed one. */
-export function flatOf(source: string): string {
+export function flatOf(source: string): MarkdownText {
   const flatten = (parts: Part[]): string =>
     parts.map(part => ('text' in part ? part.text : part.isOpen ? `▾ ${part.summary}\n\n${flatten(part.parts)}` : `▸ ${part.summary}`)).join('\n\n')
-  return flatten(partsOf(source))
+  return asMarkdown(flatten(partsOf(source)))
 }
