@@ -326,24 +326,26 @@ export function toCard(raw: RawMr): MrCard {
     approvers: raw.approvedBy.nodes.filter(user => !user.bot).map(user => user.username),
     reviewers,
     people: toPeople(raw, project, threads),
-    pipeline: pipeline
+    ...(pipeline
       ? {
-          id: Number(pipeline.id.split('/').pop()),
-          status: pipeline.status.toLowerCase(),
-          url: `${GITLAB}${pipeline.path}`,
-          duration: pipeline.duration,
-          startedAt: pipeline.startedAt,
-          finishedAt: pipeline.finishedAt,
-          stages: pipeline.stages.nodes.map(stage => ({
-            name: stage.name,
-            status: stage.status.toLowerCase(),
-            jobs: stage.jobs.nodes.map(toJob),
-          })),
-          failed: jobs.filter(job => job.status === 'FAILED' && !job.allowFailure).map(jobLink),
-          amber: jobs.filter(job => job.status === 'FAILED' && job.allowFailure).map(jobLink),
-          blockedOn: jobs.filter(job => job.status === 'MANUAL' && !job.allowFailure).map(job => job.name),
+          pipeline: {
+            id: Number(pipeline.id.split('/').pop()),
+            status: pipeline.status.toLowerCase(),
+            url: `${GITLAB}${pipeline.path}`,
+            duration: pipeline.duration,
+            startedAt: pipeline.startedAt,
+            finishedAt: pipeline.finishedAt,
+            stages: pipeline.stages.nodes.map(stage => ({
+              name: stage.name,
+              status: stage.status.toLowerCase(),
+              jobs: stage.jobs.nodes.map(toJob),
+            })),
+            failed: jobs.filter(job => job.status === 'FAILED' && !job.allowFailure).map(jobLink),
+            amber: jobs.filter(job => job.status === 'FAILED' && job.allowFailure).map(jobLink),
+            blockedOn: jobs.filter(job => job.status === 'MANUAL' && !job.allowFailure).map(job => job.name),
+          },
         }
-      : undefined,
+      : {}),
     openThreads: open
       .filter(thread => !isBot(thread.first))
       .map(thread => ({ ...toNote(thread.first, project, true), replies: thread.notes.slice(1).map(one => toNote(one, project, true)) })),

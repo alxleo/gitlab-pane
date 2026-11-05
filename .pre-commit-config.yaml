@@ -11,6 +11,7 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-json
+        exclude: ^tsconfig\.core\.json$ # carries a comment, which tsc allows and JSON does not
       - id: check-yaml
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -65,3 +66,12 @@ repos:
         pass_filenames: false
         files: ^(\.claude-plugin|hooks|types|tests)/
         stages: [pre-push]
+      # The core (see tsconfig.core.json) type-checked alone, with the TypeScript pinned here so a release of it cannot
+      # fail a commit nobody touched. The engine's types are not needed, so this runs in CI.
+      - id: tsc-core
+        name: tsc the core
+        entry: tsc -p tsconfig.core.json
+        language: node
+        additional_dependencies: ['typescript@7.0.2']
+        pass_filenames: false
+        files: ^(hooks|types)/|^tsconfig\.core\.json$
