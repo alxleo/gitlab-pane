@@ -76,7 +76,7 @@ type NodeOf<Connection> = Connection extends { nodes: Array<infer Node> | null }
 
 // The shapes below are the generated types of MrFields and NoteFields (gitlab.generated.ts), which carry the schema's
 // nullability: what the schema lets be null is null here too.
-export type RawReviewer = ReviewerFieldsFragment | ReviewerPlainFragment
+type RawReviewer = ReviewerFieldsFragment | ReviewerPlainFragment
 /** An MR as either variant of the documents gives it: its reviewers come with their review state, or without. */
 export type RawMr = MrFieldsFragment & { reviewers?: { nodes?: Array<RawReviewer | null> | null } | null }
 export type RawNote = NoteFieldsFragment

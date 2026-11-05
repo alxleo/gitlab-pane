@@ -63,7 +63,7 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
 }
 
 /** The most the engine's store holds, in characters of JSON. */
-export const STORE_BYTES = 4 * 1024 * 1024
+const STORE_BYTES = 4 * 1024 * 1024
 
 /** A GitLab host as a test sets it: what it answers, and the one token it accepts (none: it rejects every token). */
 export type FakeHost = {

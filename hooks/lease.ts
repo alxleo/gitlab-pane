@@ -32,7 +32,7 @@ export type LeaseRecord = { owner: string; renewedAt: number }
 export type { Role }
 
 /** Why the record changes: `acquire` a free or expired lease, `take-over` another's expired one, `renew` one's own, `release` it. */
-export type Move = 'keep' | 'acquire' | 'take-over' | 'renew' | 'release'
+type Move = 'keep' | 'acquire' | 'take-over' | 'renew' | 'release'
 
 /** What to do to the stored record: leave it, set it, or remove it. */
 export type Write = { kind: 'none' } | { kind: 'set'; record: LeaseRecord } | { kind: 'clear' }

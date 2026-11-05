@@ -1,39 +1,42 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
+import fc from 'fast-check'
 
-import { advance, describe, wakeLine } from '../hooks/wake'
-import { badges, byAttention, rank, rowBadges, verdictOf } from '../hooks/attention'
-import { firstRunLines } from '../hooks/first-run'
-import { buildPane, MINE_SHOWN } from '../hooks/pane-model'
-import { cardFacts } from '../hooks/row-facts'
-import type { PaneInput, Piece, RowModel } from '../hooks/pane-model'
-import { STAGE_COLOURS } from '../hooks/status'
-import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../hooks/format'
-import { pictureUri, sizedAvatar } from '../hooks/picture'
-import { discMarks, discSource } from '../hooks/avatar'
-import { checkStatusOf, ciStatusOf } from '../hooks/gitlab-status'
-import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../hooks/gitlab'
-import { authoredQuery } from '../hooks/authored-request'
-import { mergeStatusQuery, pinnedQuery, usualQuery } from '../hooks/gitlab-documents'
-import { Failure } from '../hooks/failure'
-import { featuresOf, forgetProbed, learnLack, serialised } from '../hooks/in-flight'
-import { isAbsentOptional, withProblem } from '../hooks/problems'
-import { bareHost, parseHosts, parseTokens, projectLabel, redact } from '../hooks/hosts'
-import { mrUrls, parseMrUrl, pinKey } from '../hooks/mr-url'
-import { decodeGraphql, parseJson } from '../hooks/decode'
-import type { PinnedQuery } from '../hooks/gitlab.generated'
-import { readSnapshot } from '../hooks/inbox-snapshot'
-import { readTickets, ticketQuery } from '../hooks/jira'
-import { flatOf } from '../hooks/markdown'
-import type { MarkdownText } from '../hooks/markdown'
-import { foreign } from '../hooks/model-text'
-import { jobIdOf, quotedTail, TAIL_CHARS, TAIL_LINES, tailOf } from '../hooks/job-tail'
-import type { ModelLine, Sayable } from '../hooks/model-text'
-import { raw, svg } from '../hooks/svg'
-import type { RawSvg, SvgSource } from '../hooks/svg'
-import { undefinedField } from './gitlab_fake'
-import { HOST, NOW, SELF_MANAGED, checks, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { advance, describe, wakeLine } from '../../hooks/wake.ts'
+import { badges, byAttention, rank, rowBadges, verdictOf } from '../../hooks/attention.ts'
+import { firstRunLines } from '../../hooks/first-run.ts'
+import { buildPane, MINE_SHOWN } from '../../hooks/pane-model.ts'
+import { cardFacts } from '../../hooks/row-facts.ts'
+import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
+import { STAGE_COLOURS } from '../../hooks/status.ts'
+import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
+import { pictureUri, sizedAvatar } from '../../hooks/picture.ts'
+import { discMarks, discSource } from '../../hooks/avatar.ts'
+import { checkStatusOf, ciStatusOf } from '../../hooks/gitlab-status.ts'
+import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../../hooks/gitlab.ts'
+import { authoredQuery } from '../../hooks/authored-request.ts'
+import { mergeStatusQuery, pinnedQuery, usualQuery } from '../../hooks/gitlab-documents.ts'
+import { Failure } from '../../hooks/failure.ts'
+import { featuresOf, forgetProbed, learnLack, serialised } from '../../hooks/in-flight.ts'
+import { isAbsentOptional, withProblem } from '../../hooks/problems.ts'
+import { bareHost, parseHosts, parseTokens, projectLabel, redact } from '../../hooks/hosts.ts'
+import { mrUrls, parseMrUrl, pinKey } from '../../hooks/mr-url.ts'
+import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
+import type { PinnedQuery } from '../../hooks/gitlab.generated.ts'
+import { readSnapshot } from '../../hooks/inbox-snapshot.ts'
+import { readTickets, ticketQuery } from '../../hooks/jira.ts'
+import { flatOf } from '../../hooks/markdown.ts'
+import type { MarkdownText } from '../../hooks/markdown.ts'
+import { foreign, line } from '../../hooks/model-text.ts'
+import { jobIdOf, quotedTail, TAIL_CHARS, TAIL_LINES, tailOf } from '../../hooks/job-tail.ts'
+import type { ModelLine, Sayable } from '../../hooks/model-text.ts'
+import { raw, svg } from '../../hooks/svg.ts'
+import type { RawSvg, SvgSource } from '../../hooks/svg.ts'
+import { undefinedField } from '../gitlab_fake.ts'
+import { slimCard } from '../../hooks/slim.ts'
+import { readCardArb } from './arbitrary.ts'
+import { HOST, NOW, SELF_MANAGED, checks, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from '../fixtures.ts'
 
-import type { CheckStatus, CiStatus, Job, MergeStatus, MrCard, Stage } from '../types'
+import type { CheckStatus, CiStatus, Job, MergeStatus, MrCard, Stage } from '../../types'
 
 const view = (status: CiStatus, id = 7, failed: unknown[] = []) => ({ id, status, failed })
 
@@ -159,7 +162,7 @@ test('two people with the same initials are told apart', async () => {
   ])
   // A disc draws letters only, so a hostile name adds no markup.
   expect(discMarks('x', 16, `<b/>A'"`)).toContain('>bA</text>')
-  expect(discSource('tessa')).toStartWith("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle")
+  expect(discSource('tessa').startsWith("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle")).toBe(true)
 })
 
 test("an author's own open thread stays a 💬 marker, since no icon holds it", async () => {
@@ -416,6 +419,7 @@ test('the model reads who and where, never the comment itself, and a job name as
   expect(long.endsWith('…')).toBe(true)
   expect(foreign('y'.repeat(200), 300)).toHaveLength(200)
   expect(foreign('a\u200Bb\u2066c')).toBe('abc')
+  expect(foreign('a \u200B b')).toBe('a b')
   expect([refused, said, forged]).toEqual([[true, true, true, true], [false, false, false], false])
 })
 
@@ -727,4 +731,122 @@ test("a job's number is the end of its link", async () => {
   expect(jobIdOf('/g/p/-/jobs/4711?x=1')).toBe(4711)
   expect(jobIdOf('https://gitlab.com/g/p/-/pipelines/99')).toBeNull()
   expect(jobIdOf('https://gitlab.com/g/p/-/jobs/lint')).toBeNull()
+})
+
+// ---- properties -------------------------------------------------------------------------------------------------------
+
+/** What stops a merge, worked out from the card's own fields and nothing in attention.ts. */
+const isBlocked = (card: MrCard): boolean =>
+  card.pipeline?.status === 'failed' ||
+  (card.pipeline?.failed.length ?? 0) > 0 ||
+  card.hasConflicts ||
+  card.needsRebase ||
+  card.changesRequestedBy.length > 0 ||
+  card.openThreads.length > 0
+
+test('a card ranks 0 if and only if something blocks its merge, and a blocked card is neither ready nor mergeable', () => {
+  fc.assert(
+    fc.property(readCardArb, card => {
+      expect(rank(card) === 0).toBe(isBlocked(card))
+      if (isBlocked(card)) {
+        expect(badges(card).some(badge => badge.kind === 'ready')).toBe(false)
+        expect(verdictOf(card)?.tone).not.toBe('success')
+      }
+      if (badges(card).some(badge => badge.kind === 'ready')) {
+        expect(rank(card)).toBe(3)
+      }
+      // A card with no merge checks read marks each blocker itself, so a blocked one always shows a marker or a failed pipeline.
+      if (card.mergeStatus === null && isBlocked(card)) {
+        expect(badges(card).length > 0 || card.pipeline?.status === 'failed').toBe(true)
+      }
+    })
+  )
+})
+
+const spans = fc.array(
+  fc.tuple(fc.integer({ min: 0, max: 5_000_000 }), fc.integer({ min: 0, max: 5_000_000 })).map(([a, b]): [number, number] => [Math.min(a, b), Math.max(a, b)]),
+  { maxLength: 6 }
+)
+const stagesArb = fc.array(
+  fc.record({ done: spans, running: fc.array(fc.integer({ min: 0, max: 5_000_000 }), { maxLength: 3 }) }).map((ran): Stage => ({ name: 's', status: 'success', jobs: [], ran })),
+  { maxLength: 4 }
+)
+
+test('the time jobs ran is never more than the wall time since the first started, and only grows as now does', () => {
+  fc.assert(
+    fc.property(stagesArb, fc.integer({ min: 5_000_000, max: 9_000_000 }), fc.integer({ min: 0, max: 4_000_000 }), (stages, now, later) => {
+      const starts = stages.flatMap(each => [...each.ran.done.map(([start]) => start), ...each.ran.running])
+      const ran = ranFor(stages, now)
+      expect(ran).toBeGreaterThanOrEqual(0)
+      expect(ran).toBeLessThanOrEqual(starts.length > 0 ? Math.round((now - Math.min(...starts)) / 1000) : 0)
+      expect(ranFor(stages, now + later)).toBeGreaterThanOrEqual(ran)
+    })
+  )
+})
+
+/** Text with the characters foreign has to deal with in it as often as ordinary ones. */
+const textArb = fc.string({
+  unit: fc.oneof(
+    fc.constantFrom('\n', '\r', '\t', '\u0000', '\u0007', '\u001B', '\u0085', ' ', ' ', ' ', '​', '‎', '‮', '⁦', '⁩', '﻿', ' ', 'ß', 'é', '…'),
+    fc
+      .integer({ min: 0, max: 0x10ffff })
+      .filter(code => code < 0xd800 || code > 0xdfff)
+      .map(code => String.fromCodePoint(code)),
+    fc.string({ unit: 'binary-ascii', maxLength: 1 })
+  ),
+  maxLength: 300,
+})
+
+test('foreign text is one line without control or bidi characters, within its room, and foreign of foreign changes nothing', () => {
+  fc.assert(
+    fc.property(textArb, fc.integer({ min: 1, max: 120 }), (text, room) => {
+      const out = foreign(text, room)
+      expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+      expect(out).not.toMatch(/\s\s|[^\S ]/u)
+      expect([...out].length).toBeLessThanOrEqual(room)
+      expect(foreign(out, room)).toBe(out)
+    })
+  )
+})
+
+test('a line built of foreign values is one line, whatever they hold', () => {
+  fc.assert(
+    fc.property(textArb, textArb, (name, url) => {
+      const failing = toCard(HOST, rawMr(3, { headPipeline: pipe('FAILED', { stages: { nodes: [stage('t', 'FAILED', [job(name, 'FAILED')])] } }) }))
+      expect(wakeLine(failing, 'failed', NOW)).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+      expect(line`${foreign(name)} at ${foreign(url, 300)}`).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+    })
+  )
+})
+
+test("no string put into an svg template makes markup: the only < > quotes left are the template's own", () => {
+  fc.assert(
+    fc.property(textArb, textArb, fc.double(), (inText, inAttribute, number) => {
+      const out: string = svg`<t a='${inAttribute}' b="${inAttribute}" n='${number}'>${inText}</t>`
+      expect([...out].filter(char => char === '<')).toHaveLength(2)
+      expect([...out].filter(char => char === '>')).toHaveLength(2)
+      expect([...out].filter(char => char === "'")).toHaveLength(4)
+      expect([...out].filter(char => char === '"')).toHaveLength(2)
+      expect(out.replace(/&(?:amp|lt|gt|quot|apos);/g, '')).not.toContain('&')
+    })
+  )
+})
+
+/** What a row draws on the list itself: its lines, faces and marks, not the hover cards and the detail, which a shared card holds as excerpts. */
+const drawnRows = (cards: MrCard[]) => {
+  const model = modelOf(cards, { expanded: ['drafts'] }, () => 1)
+  const strip = (row: RowModel) => ({ ...row, about: null, blocks: null, detail: null, people: row.people.map(person => ({ ...person, card: [] })) })
+  return { session: model.session.map(strip), mine: model.mine.rows.map(strip), drafts: model.drafts?.rows.map(strip) ?? [], more: model.mine.more, leftOut: model.leftOut }
+}
+
+test('the list draws a shared slim card as it draws the whole one', () => {
+  fc.assert(
+    fc.property(fc.array(readCardArb, { maxLength: 6 }), cards => {
+      // One card to a key, as the list holds them.
+      const full = cards.map((one, i) => ({ ...one, key: `${one.key}-${i}`, iid: one.iid + 100 * i }))
+      const whole = drawnRows(full)
+      expect(whole.mine.length + whole.drafts.length).toBe(full.length)
+      expect(drawnRows(full.map(slimCard))).toEqual(whole)
+    })
+  )
 })

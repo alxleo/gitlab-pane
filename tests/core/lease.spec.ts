@@ -1,7 +1,8 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
+import fc from 'fast-check'
 
-import { EXPIRY_MS, RENEW_MS, TICK_MS, decide, isHeld, readRecord } from '../hooks/lease'
-import type { Decision, LeaseRecord, Role } from '../hooks/lease'
+import { EXPIRY_MS, RENEW_MS, TICK_MS, decide, isHeld, readRecord } from '../../hooks/lease.ts'
+import type { Decision, LeaseRecord, Role } from '../../hooks/lease.ts'
 
 type Session = { me: string; isDrawing: boolean; raisedPins: number }
 
@@ -71,17 +72,6 @@ test('two sessions racing for a free lease leave one leader once the loser reads
   expect(settled.roles).toEqual({ a: 'follower', b: 'leader' })
 })
 
-test('a double leader after a race is resolved within one renew period, whichever of them ticks first', () => {
-  const who = [session('a'), session('b')]
-  const raced = race(null, who, T0)
-  for (const order of [who, [...who].reverse()]) {
-    const settled = round(raced.record, order, T0 + RENEW_MS - 1)
-    const leaders = Object.values(settled.roles).filter(role => role === 'leader')
-    expect(leaders).toHaveLength(1)
-    expect(settled.record?.owner).toBe(raced.record?.owner)
-  }
-})
-
 test('a late renewal over a takeover is resolved at the next tick', () => {
   // a stalled past expiry, b took over; then a's renewal, read before the takeover, lands over b's record.
   const expired = { owner: 'a', renewedAt: T0 }
@@ -90,15 +80,6 @@ test('a late renewal over a takeover is resolved at the next tick', () => {
   const overwritten = { owner: 'a', renewedAt: T0 + EXPIRY_MS + 2 }
   const next = round(overwritten, [session('a'), session('b')], T0 + EXPIRY_MS + 3 * TICK_MS)
   expect(next.roles).toEqual({ a: 'leader', b: 'follower' })
-})
-
-test('a leader that died without releasing is replaced once its record expires, not before', () => {
-  const dead = { owner: 'a', renewedAt: T0 }
-  const waiting = tick(dead, session('b'), T0 + EXPIRY_MS - 1)
-  expect(waiting.decision.role).toBe('follower')
-
-  const taken = tick(dead, session('b'), T0 + EXPIRY_MS + 1)
-  expect(taken.decision).toEqual({ role: 'leader', move: 'take-over', write: { kind: 'set', record: { owner: 'b', renewedAt: T0 + EXPIRY_MS + 1 } } })
 })
 
 test('a leader that stalled past expiry and wakes with nobody else drawing takes its own lease again', () => {
@@ -161,4 +142,73 @@ test('only a record with an owner and a finite time is read as a lease', () => {
 test('the lease outlives a missed renewal and a tick is never slower than a renewal', () => {
   expect(EXPIRY_MS).toBeGreaterThanOrEqual(2 * RENEW_MS)
   expect(TICK_MS).toBeLessThanOrEqual(RENEW_MS)
+})
+
+// ---- properties -------------------------------------------------------------------------------------------------------
+
+type Move = { who: 'a' | 'b'; isDrawing: boolean; otherDrawing: boolean; raised: number; dt: number; isSplit: boolean }
+
+const moveArb: fc.Arbitrary<Move> = fc.record({
+  who: fc.constantFrom('a', 'b'),
+  isDrawing: fc.boolean(),
+  otherDrawing: fc.boolean(),
+  raised: fc.integer({ min: 0, max: 2 }),
+  dt: fc.integer({ min: 0, max: 2 * EXPIRY_MS }),
+  isSplit: fc.boolean(),
+})
+
+/**
+ * Two sessions' ticks in any interleaving the store allows. A split tick reads the record, then the other session ticks whole,
+ * and only then does the first write what it decided on the record it had read: the race a store with no compare-and-swap lets happen.
+ */
+const interleaved = (moves: readonly Move[], start: number): { record: LeaseRecord | null; now: number } =>
+  moves.reduce<{ record: LeaseRecord | null; now: number }>(
+    (state, move) => {
+      const now = state.now + move.dt
+      const other = move.who === 'a' ? 'b' : 'a'
+      const me = session(move.who, { isDrawing: move.isDrawing, raisedPins: move.raised })
+      const them = session(other, { isDrawing: move.otherDrawing })
+      if (!move.isSplit) {
+        return { record: tick(tick(state.record, me, now).record, them, now).record, now }
+      }
+      const decision = decide({ record: state.record, me: me.me, now, isDrawing: me.isDrawing, raisedPins: me.raisedPins })
+      const between = tick(state.record, them, now).record
+      return { record: stored(between, decision), now }
+    },
+    { record: null, now: start }
+  )
+
+test('after any interleaving of two sessions ticks, at most one leads once both have ticked in turn, and it stays the one for a renew period', () => {
+  fc.assert(
+    fc.property(fc.array(moveArb, { maxLength: 12 }), fc.boolean(), (moves, aFirst) => {
+      const chaos = interleaved(moves, T0)
+      const who = aFirst ? [session('a'), session('b')] : [session('b'), session('a')]
+      let held = chaos.record
+      let leader: string | undefined
+      for (let at = chaos.now + TICK_MS; at < chaos.now + RENEW_MS; at += TICK_MS) {
+        const settled = round(held, who, at)
+        const leaders = Object.entries(settled.roles).filter(([, role]) => role === 'leader')
+        expect(leaders.length).toBeLessThanOrEqual(1)
+        leader ??= leaders[0]?.[0]
+        // Once settled, the same session keeps leading while its record is renewed.
+        expect(leaders[0]?.[0]).toBe(leader)
+        held = settled.record
+      }
+    })
+  )
+})
+
+test('a leader that dies is followed from while its record holds and replaced by the first tick after it expires', () => {
+  fc.assert(
+    fc.property(fc.integer({ min: 0, max: 10 * EXPIRY_MS }), fc.integer({ min: 0, max: EXPIRY_MS }), (renewedAt, wait) => {
+      const dead: LeaseRecord = { owner: 'a', renewedAt }
+      let held: LeaseRecord | null = dead
+      for (let at = renewedAt + wait; at <= renewedAt + EXPIRY_MS + TICK_MS; at += TICK_MS) {
+        const next = tick(held, session('b'), at)
+        expect(next.decision.role === 'leader').toBe(at - renewedAt >= EXPIRY_MS || held?.owner === 'b')
+        held = next.record
+      }
+      expect(held?.owner).toBe('b')
+    })
+  )
 })

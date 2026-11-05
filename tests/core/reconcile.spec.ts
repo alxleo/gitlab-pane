@@ -1,15 +1,17 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from 'vitest'
+import fc from 'fast-check'
 
-import { HOST, NOW, checks, job, pipe, rawMr, stage } from './fixtures'
+import { HOST, NOW, checks, job, pipe, rawMr, stage } from '../fixtures.ts'
 
-import { toCard } from '../hooks/gitlab'
-import { reconcile } from '../hooks/reconcile'
-import type { FailureReader } from '../hooks/reconcile'
-import { tailOf } from '../hooks/job-tail'
-import { foreign } from '../hooks/model-text'
+import { toCard } from '../../hooks/gitlab.ts'
+import { advance } from '../../hooks/wake.ts'
+import { reconcile } from '../../hooks/reconcile.ts'
+import type { FailureReader } from '../../hooks/reconcile.ts'
+import { tailOf } from '../../hooks/job-tail.ts'
+import { foreign } from '../../hooks/model-text.ts'
 
-import type { MergeRequestState } from '../hooks/gitlab.generated'
-import type { CheckStatus, MrCard, Pinned } from '../types'
+import type { MergeRequestState } from '../../hooks/gitlab.generated.ts'
+import type { CheckStatus, MrCard, Pinned } from '../../types'
 
 const KEY = 'gitlab.com/g/p!12'
 
@@ -240,4 +242,74 @@ test('reconcile: only the first few failed jobs of a pipeline are asked about', 
     },
   })
   expect(asked).toEqual([['a', 'b', 'c']])
+})
+
+// ---- properties -------------------------------------------------------------------------------------------------------
+
+type Step = { grow: number; status: Wire; says: Partial<Record<string, CheckStatus>> | null; failedJob: boolean; isOpen: boolean }
+
+const WIRE: readonly Wire[] = ['FAILED', 'RUNNING', 'SUCCESS', 'MANUAL', 'PENDING']
+const stepArb: fc.Arbitrary<Step> = fc.record({
+  grow: fc.integer({ min: 0, max: 2 }),
+  status: fc.constantFrom(...WIRE),
+  says: fc.constantFrom(null, {}, { CI_MUST_PASS: 'failed' as const }, { NOT_APPROVED: 'failed' as const }),
+  failedJob: fc.boolean(),
+  isOpen: fc.boolean(),
+})
+const historyArb = fc.array(stepArb, { minLength: 1, maxLength: 12 })
+
+/** The cards a history reads, the pipeline's id never going back, as a pipeline's never does. */
+const readsOf = (history: readonly Step[]): MrCard[] => {
+  let id = 90
+  return history.map(step => {
+    id += step.grow
+    return card(step.status, step.says, { id, failedJob: step.failedJob, state: step.isOpen ? 'opened' : 'merged' })
+  })
+}
+
+test('advance: one pipeline never wakes twice for the same thing, whatever it does next, and keeps only its own memory', () => {
+  fc.assert(
+    fc.property(historyArb, history => {
+      let announced: string[] = []
+      const told = new Map<string, number>()
+      for (const one of readsOf(history)) {
+        const next = advance(announced, one)
+        announced = next.announced
+        if (next.due !== null) {
+          const key = `${one.pipeline?.id ?? 0}:${next.due}`
+          told.set(key, (told.get(key) ?? 0) + 1)
+        }
+        expect(announced.length).toBeLessThanOrEqual(2)
+        expect(announced.every(key => key.startsWith(`${one.pipeline?.id ?? 0}:`))).toBe(true)
+      }
+      expect([...told.values()].every(count => count === 1)).toBe(true)
+    })
+  )
+})
+
+test('reconcile: a first sighting never wakes, a watched pin never wakes, and a pin is news at most once per read and kind per pipeline', async () => {
+  await fc.assert(
+    fc.asyncProperty(historyArb, fc.constantFrom<Pinned['origin']>('raised', 'watched', undefined), async (history, origin) => {
+      let announced: Record<string, string[]> = {}
+      let news = 0
+      let isFirst = true
+      for (const one of readsOf(history)) {
+        const done = await reconcile({ pinned: [pin(origin)], rows: [one], announced, now: NOW, failures: noFailures })
+        const unpinning = one.isOpen ? 0 : 1
+        if (isFirst) {
+          expect(done.wakes).toEqual([])
+          expect(done.toasts).toHaveLength(unpinning)
+        }
+        if (origin === 'watched') {
+          expect(done.wakes).toEqual([])
+        }
+        expect(done.toasts.length - unpinning).toBeLessThanOrEqual(1)
+        news += done.toasts.length - unpinning
+        announced = done.announced
+        isFirst = false
+      }
+      const pipelines = new Set(readsOf(history).map(one => one.pipeline?.id))
+      expect(news).toBeLessThanOrEqual(2 * pipelines.size)
+    })
+  )
 })

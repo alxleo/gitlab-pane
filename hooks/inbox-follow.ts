@@ -4,7 +4,7 @@ import { isFilled } from './decode.ts'
 import type { InboxFollow } from '../types'
 
 /** The most entries followed: each costs one small query per host a minute. */
-export const FOLLOW_MOST = 10
+const FOLLOW_MOST = 10
 
 const USER = /^@([\w.-]+)$/
 const PROJECT = /^[\w.-]+(?:\/[\w.-]+)+$/
