@@ -1,5 +1,7 @@
 # Design language
 
+This file describes the current implementation. For the intended experience and redesign decisions, read [PRODUCT_BRIEF.md](PRODUCT_BRIEF.md) first. Its attention model supersedes conflicting design assumptions below; this document does not imply that the redesign has been implemented.
+
 What each colour, border and mark in the pane means. Each rule names the code that holds it, so a change there is a change here.
 
 ## Principles
