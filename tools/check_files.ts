@@ -1,4 +1,4 @@
-// File hygiene over every file git tracks or would add: what the old pre-commit file hooks checked.
+// File hygiene over every file git tracks or would add: json and yaml parse, no merge markers, large files or private keys, one final newline, no trailing whitespace.
 //
 //   node tools/check_files.ts          (npm run files)
 //

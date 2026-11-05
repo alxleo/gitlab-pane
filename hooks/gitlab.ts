@@ -81,7 +81,7 @@ export type Operations = {
   Usual: { variables: UsualQueryVariables; data: UsualQuery }
 }
 
-/** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
+/** The text sent for each document, by operation name, for tools/gitlab_schema.ts to check against GitLab's schema. */
 export const DOCUMENTS = {
   Authored: AUTHORED + MR_FRAGMENT + NOTE_FRAGMENT,
   MergeStatus: MERGE_STATUS,
