@@ -4,18 +4,18 @@ A Claude Code mod (`gitlab-ci`) that draws a GitLab pane beside your sessions. I
 
 MRs pinned to a session sit on top: the ones Claude pins with `watch_mr` and the ones opened from the session with `glab mr create`. An MR opened from the session also wakes it when its pipeline fails or it can merge.
 
-[DESIGN.md](DESIGN.md) says what each colour, border, mark and link icon means.
+[DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md) says what each colour, border, mark and link icon means.
 
 <p>
-  <img src="docs/screens/mine.png" alt="The Mine tab: five MR cards, bordered by their review, with stage strips, run times and reviewers' faces" width="420">
-  <img src="docs/screens/inbox.png" alt="The Inbox tab: MR cards counting new reviews and comments since last seen" width="420">
+  <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png" alt="The Mine tab: five MR cards, bordered by their review, with stage strips, run times and reviewers' faces" width="420">
+  <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png" alt="The Inbox tab: MR cards counting new reviews and comments since last seen" width="420">
 </p>
 
 An opened card shows the description, failed jobs and open threads, and `read whole ›` gives the MR a page of its own:
 
 <p>
-  <img src="docs/screens/mine-open.png" alt="An opened MR card with its description and a review comment" width="420">
-  <img src="docs/screens/reading.png" alt="One MR read as a page of its own" width="420">
+  <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-open.png" alt="An opened MR card with its description and a review comment" width="420">
+  <img src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png" alt="One MR read as a page of its own" width="420">
 </p>
 
 The screenshots use made-up data.
@@ -41,9 +41,9 @@ For a whole team, add the marketplace to a project's `.claude/settings.json`. An
 }
 ```
 
-That follows main: each update installs whatever main holds, and the plugin runs with your own GitLab and Jira sign-ins, so trust whoever can push to this repository as you would trust them with those. To take released versions only, add `"ref": "v0.2.0"` beside `"repo"` and raise it when you choose to update.
+That follows main: each update installs whatever main holds, and the plugin runs with your own GitLab and Jira sign-ins, so trust whoever can push to this repository as you would trust them with those. To stay on one released version until you choose to move, add `"ref": "plugin-v0.3.0"` beside `"repo"` (a release's tag with `plugin-` before its `v`; the releases are listed [here](https://github.com/alxleo/gitlab-pane/releases)) and raise it when you update. That installs only the plugin's files, not this repository's tools and tests.
 
-To run from a clone instead, see [CONTRIBUTING.md](CONTRIBUTING.md#set-up-a-clone).
+To run from a clone instead, see [CONTRIBUTING.md](https://github.com/alxleo/gitlab-pane/blob/main/CONTRIBUTING.md#set-up-a-clone).
 
 `/gitlab` opens the pane. `/mrs repo!123 …` or `/mrs --rule <name>` puts those MRs, threads and all, into the conversation.
 
@@ -88,4 +88,4 @@ What reaches Claude, and so the model provider, from GitLab:
 
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers setting up a clone, the checks every commit passes, and how releases are made.
+[CONTRIBUTING.md](https://github.com/alxleo/gitlab-pane/blob/main/CONTRIBUTING.md) covers setting up a clone, the checks every commit passes, and how releases are made.

@@ -1,26 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import {
-  advance,
-  badges,
-  byAttention,
-  describe,
-  excerpt,
-  lead,
-  pictureUri,
-  pipelineTime,
-  rank,
-  ranFor,
-  rowBadges,
-  wakeLine,
-  shortTitle,
-  sizedAvatar,
-  ticketOf,
-  verdictOf,
-} from '../hooks/ci'
+import { advance, describe, wakeLine } from '../hooks/wake'
+import { badges, byAttention, rank, rowBadges, verdictOf } from '../hooks/attention'
+import { excerpt, lead, pipelineTime, ranFor, shortTitle, ticketOf } from '../hooks/format'
+import { pictureUri, sizedAvatar } from '../hooks/picture'
 import { discMarks, discSource } from '../hooks/avatar'
-import { ciStatusOf, cleanBody, mergeStatusOf, readPinned, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
-import { decodeGraphql } from '../hooks/decode'
+import { ciStatusOf, mergeStatusOf } from '../hooks/gitlab-status'
+import { cleanBody, readPinned, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
+import { decodeGraphql, parseJson } from '../hooks/decode'
+import type { PinnedQuery } from '../hooks/gitlab.generated'
 import { readInboxJson } from '../hooks/inbox-json'
 import { readTickets, ticketQuery } from '../hooks/jira'
 import { flatOf } from '../hooks/markdown'
@@ -273,7 +261,14 @@ test("GitLab's merge verdict reads as words in its tone, and as nothing while Gi
 test('a status GitLab adds later reads as unknown, drawn as such, and a known one keeps its name', async () => {
   expect(ciStatusOf('WAITING_FOR_RESOURCE')).toBe('waiting_for_resource')
   expect(ciStatusOf('A_STATUS_GITLAB_ADDS_LATER')).toBe('unknown')
-  const card = toCard(rawMr(1, { headPipeline: pipe('A_STATUS_GITLAB_ADDS_LATER' as never) }))
+  // The status arrives as text from `glab`, so the test sends one the types do not name through the same decoder.
+  const unseen = 'A_STATUS_GITLAB_ADDS_LATER'
+  const unseenStage = (name: string) => ({ ...stage(name, 'RUNNING', [{ ...job(name, 'RUNNING'), status: unseen }]), status: unseen })
+  const wire = { data: { project: { mergeRequest: { ...rawMr(1), headPipeline: { ...pipe('RUNNING'), status: unseen, stages: { nodes: [unseenStage('build'), unseenStage('test')] } } } } } }
+  const [card] = readPinned(decodeGraphql<PinnedQuery>(parseJson(JSON.stringify(wire))))
+  if (card === undefined) {
+    throw new Error('the pinned MR was not read')
+  }
   expect(card.pipeline?.status).toBe('unknown')
   expect(card.pipeline?.stages.map(stage => [stage.status, stage.jobs.map(one => one.status)])).toEqual([
     ['unknown', ['unknown']],
