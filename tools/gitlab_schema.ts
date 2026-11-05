@@ -269,7 +269,7 @@ async function complexity(queries: Queries): Promise<Finding[]> {
   const found: Finding[] = []
   for (const [name, expected] of Object.entries(COMPLEXITY)) {
     const text = queries[name]
-    if (expected === null || text === undefined) {
+    if (text === undefined) {
       continue
     }
     const { score, limit } = await measure(name, text)

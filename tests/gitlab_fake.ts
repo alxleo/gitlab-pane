@@ -6,11 +6,10 @@ export type Answers = {
   [Name in keyof Operations]?: (variables: Operations[Name]['variables']) => RawResponse<Operations[Name]['data']>
 }
 
-/** The names of the schema's fields that vary between GitLab versions, as an introspection of a current GitLab lists them. */
-export const CURRENT = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'mergeabilityChecks' }] }, interaction: { fields: [{ name: 'reviewState' }] } }
-
-/** What the probe reads of an older self-managed GitLab: neither `mergeabilityChecks` nor `reviewState` is in its schema. */
-export const OLDER = { mergeRequest: { fields: [{ name: 'iid' }, { name: 'mergeStatus' }] }, interaction: { fields: [{ name: 'canMerge' }] } }
+/** GitLab's answer to a document with a field its schema lacks, as an older self-managed GitLab gives it: no data, and where. */
+export const undefinedField = (typeName: string, fieldName: string) => ({
+  errors: [{ message: `Field '${fieldName}' doesn't exist on type '${typeName}'`, extensions: { code: 'undefinedField', typeName, fieldName } }],
+})
 
 /** What `$.http.fetch` resolves with. */
 export type Served = { status: number; ok: boolean; headers: Record<string, string>; text: string }
@@ -70,7 +69,7 @@ export function traced(url: string, init: { method?: string; headers?: Record<st
 
 /**
  * What a GitLab host answers a request: 401 unless the bearer is the token that host accepts, else the test's answer to the
- * operation, a Probe answered as a current GitLab unless the test sets it (`OLDER` is what an older one lists).
+ * operation.
  */
 export function serve(request: Sent, answers: Answers, accepted: string | undefined): Served {
   if (accepted === undefined || request.token !== accepted) {
@@ -78,8 +77,6 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
   }
   const { operation, variables } = request
   switch (operation) {
-    case 'Probe':
-      return reply(200, answers.Probe !== undefined ? answers.Probe({}) : { data: CURRENT })
     case 'Authored':
       return reply(200, set(answers.Authored, operation)({}))
     case 'AuthoredPlain':

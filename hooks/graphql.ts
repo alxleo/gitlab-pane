@@ -4,10 +4,13 @@ import { decodeGraphql, isRecord, parseJson } from './decode'
 import { Failure } from './failure'
 import type { RawResponse, Request } from './gitlab-documents'
 import { redact } from './hosts'
-import { forgetFound } from './in-flight'
+import { missingFeatures } from './gitlab'
+import { featuresOf, forgetFound, learnLack } from './in-flight'
 import { tokenFor } from './tokens'
 import { failureOf } from './tools'
 import type { Found } from './tokens'
+
+import type { HostFeatures } from '../types'
 
 /** The most of an answer the engine's `$.http.fetch` reads; it cuts the rest off, which no longer parses. */
 export const ENGINE_READS_BYTES = 4 * 1024 * 1024
@@ -83,4 +86,29 @@ export async function ask<Data>($: EngineInterface, host: string, request: Reque
   } catch (error) {
     throw new Failure(error instanceof Failure ? error.kind : /\baborted\b/.test(messageOf(error)) ? 'timeout' : 'network', redact(plainly(host, messageOf(error)), [token]))
   }
+}
+
+/**
+ * Sends the document `build` makes for what the host is known to have. If the host answers that a field of it is
+ * undefined, it is remembered to lack the feature, and the document without it is sent once more. `build` gives none for
+ * a host that lacks what the document is for, and nothing is sent.
+ */
+export function askVariant<Data>($: EngineInterface, host: string, build: (features: HostFeatures) => Request<Data>): Promise<RawResponse<Data>>
+export function askVariant<Data>($: EngineInterface, host: string, build: (features: HostFeatures) => Request<Data> | null): Promise<RawResponse<Data> | null>
+export async function askVariant<Data>(
+  $: EngineInterface,
+  host: string,
+  build: (features: HostFeatures) => Request<Data> | null
+): Promise<RawResponse<Data> | null> {
+  const first = build(featuresOf(host))
+  if (first === null) {
+    return null
+  }
+  const answer = await ask($, host, first)
+  const lacks = missingFeatures(answer)
+  if (lacks.length === 0) {
+    return answer
+  }
+  const again = build(lacks.map(feature => learnLack(host, feature)).at(-1) ?? featuresOf(host))
+  return again !== null ? ask($, host, again) : null
 }

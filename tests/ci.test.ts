@@ -11,10 +11,10 @@ import { excerpt, lead, pipelineTime, ranFor, shortTitle, ticketOf } from '../ho
 import { pictureUri, sizedAvatar } from '../hooks/picture'
 import { discMarks, discSource } from '../hooks/avatar'
 import { checkStatusOf, ciStatusOf } from '../hooks/gitlab-status'
-import { cleanBody, readFeatures, readPinned, readResponse, readUsual, toCard } from '../hooks/gitlab'
-import { authoredQuery, pinnedQuery, probeQuery, usualQuery } from '../hooks/gitlab-documents'
+import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../hooks/gitlab'
+import { authoredQuery, mergeStatusQuery, pinnedQuery, usualQuery } from '../hooks/gitlab-documents'
 import { Failure } from '../hooks/failure'
-import { serialised } from '../hooks/in-flight'
+import { featuresOf, forgetProbed, learnLack, serialised } from '../hooks/in-flight'
 import { isAbsentOptional, withProblem } from '../hooks/problems'
 import { bareHost, parseHosts, parseTokens, projectLabel, redact } from '../hooks/hosts'
 import { mrUrls, parseMrUrl, pinKey } from '../hooks/mr-url'
@@ -29,7 +29,7 @@ import { jobIdOf, quotedTail, TAIL_CHARS, TAIL_LINES, tailOf } from '../hooks/jo
 import type { ModelLine, Sayable } from '../hooks/model-text'
 import { raw, svg } from '../hooks/svg'
 import type { RawSvg, SvgSource } from '../hooks/svg'
-import { CURRENT, OLDER } from './gitlab_fake'
+import { undefinedField } from './gitlab_fake'
 import { HOST, NOW, SELF_MANAGED, checks, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
 import type { CheckStatus, CiStatus, MergeStatus, MrCard, Stage } from '../types'
@@ -451,17 +451,30 @@ test('svg escapes every value, in text and in either kind of quote, and leaves a
   expect(svg`<g>${svg`<i/>`}</g>`).toBe('<g>&lt;i/&gt;</g>')
 })
 
-test("a host's schema picks the documents: an older GitLab gets ones with no review state or merge verdict, and its cards read without them", async () => {
-  expect(probeQuery().query).toContain('__type(name: "MergeRequest")')
-  const current = readFeatures({ data: CURRENT })
-  const older = readFeatures({ data: OLDER })
+test("a host that answers a field as undefined is remembered to lack it, read from the error's extensions, and gets the documents without it", async () => {
+  const said = (typeName: string, fieldName: string) => missingFeatures(decodeGraphql(parseJson(JSON.stringify(undefinedField(typeName, fieldName)))))
+  expect(said('UserMergeRequestInteraction', 'reviewState')).toEqual(['hasReviewStates'])
+  expect(said('MergeRequest', 'mergeabilityChecks')).toEqual(['hasMergeVerdict'])
+  // Another type's field of the same name, another field, and the words of the message alone are not it.
+  expect(said('Project', 'reviewState')).toEqual([])
+  expect(said('Query', '__type')).toEqual([])
+  expect(missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"Field reviewState doesn\'t exist on type UserMergeRequestInteraction"}]}')))).toEqual([])
+  expect(missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"x","extensions":{"code":"INTERNAL","typeName":"MergeRequest","fieldName":"mergeabilityChecks"}}]}')))).toEqual([])
+  forgetProbed()
+  const current = featuresOf('git.corp.com')
   expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true })
-  expect(older).toEqual({ hasMergeVerdict: false, hasReviewStates: false })
-  expect(readFeatures({ data: { mergeRequest: null, interaction: null } })).toEqual(older)
+  learnLack('git.corp.com', 'hasReviewStates')
+  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false })
+  const older = featuresOf('git.corp.com')
+  expect(featuresOf('gitlab.com')).toEqual(current)
+  forgetProbed()
+  expect(featuresOf('git.corp.com')).toEqual(current)
   expect(authoredQuery(current).operation).toBe('Authored')
   expect(authoredQuery(current).query).toContain('reviewState')
   expect(authoredQuery(older).operation).toBe('AuthoredPlain')
   expect(authoredQuery(older).query).not.toContain('reviewState')
+  expect(mergeStatusQuery(current)?.operation).toBe('MergeStatus')
+  expect(mergeStatusQuery(older)).toBeNull()
   const pin = { url: 'https://git.corp.com/g/p/-/merge_requests/3', host: SELF_MANAGED, path: 'g/p', iid: 3 }
   expect([pinnedQuery(pin, current).operation, pinnedQuery(pin, older).operation]).toEqual(['Pinned', 'PinnedPlain'])
   expect(pinnedQuery(pin, older).variables).toEqual({ path: 'g/p', iid: '3' })

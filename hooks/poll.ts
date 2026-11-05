@@ -25,11 +25,11 @@ import {
 } from './data'
 import { Failure, kindOf } from './failure'
 import { clear, quietly, record } from './failures'
-import { joined, probed, serialised } from './in-flight'
+import { joined, serialised } from './in-flight'
 import { stringRecord } from './decode'
-import { lostIn, readFeatures, readMergeStatus, readPinned, readResponse, readUsual } from './gitlab'
-import { authoredQuery, mergeStatusQuery, pinnedQuery, probeQuery, usualQuery } from './gitlab-documents'
-import { ask } from './graphql'
+import { lostIn, readMergeStatus, readPinned, readResponse, readUsual } from './gitlab'
+import { authoredQuery, mergeStatusQuery, pinnedQuery, usualQuery } from './gitlab-documents'
+import { ask, askVariant } from './graphql'
 import { hostStatuses, projectOf } from './hosts'
 import { TICKET_FIELDS, readTickets, ticketQuery } from './jira'
 import { ago, ticketOf } from './format'
@@ -43,7 +43,7 @@ import { readFailures } from './job-failures'
 import { isSettled } from './status'
 import { failureOf, runJson } from './tools'
 
-import type { HostFeatures, MergeStatus, MrCard, Pinned, Usual } from '../types'
+import type { MergeStatus, MrCard, Pinned, Usual } from '../types'
 
 const TICKETS_EVERY_MS = 15 * 60_000
 const USUAL_EVERY_MS = 30 * 60_000
@@ -56,11 +56,6 @@ const asFailure = (error: unknown, label = (message: string) => message): Failur
 /** Several failures as one, in the kind of the first, with their words joined. */
 const together = (list: readonly Failure[]): Failure => new Failure(list[0]?.kind ?? 'unknown', list.map(one => one.message).join('; '))
 
-/** What a host's schema has of the fields older GitLab versions lack: asked the first time the host is read, then kept. */
-function featuresOf($: EngineInterface, host: string): Promise<HostFeatures> {
-  return probed(host, async () => readFeatures(await ask($, host, probeQuery())))
-}
-
 type HostRead = { rows: MrCard[]; lost: number; notes: Failure[] }
 
 /**
@@ -69,25 +64,23 @@ type HostRead = { rows: MrCard[]; lost: number; notes: Failure[] }
  * failing the read.
  */
 async function readHost($: EngineInterface, host: string, pinned: readonly Pinned[]): Promise<HostRead> {
-  const features = await featuresOf($, host)
   const notes: Failure[] = []
   // The merge verdict comes from a query of its own, read alongside; a host without it, or a failed read of it, leaves
   // every card without a verdict, and none says it can merge.
   const [authored, verdicts] = await Promise.all([
-    ask($, host, authoredQuery(features)),
-    features.hasMergeVerdict
-      ? ask($, host, mergeStatusQuery())
-          .then(answer => readMergeStatus(host, answer))
-          .catch((error: unknown) => {
-            notes.push(asFailure(error, message => `merge status: ${message}`))
-            return new Map<string, MergeStatus>()
-          })
-      : Promise.resolve(new Map<string, MergeStatus>()),
+    askVariant($, host, authoredQuery),
+    askVariant($, host, mergeStatusQuery)
+      .then(answer => (answer !== null ? readMergeStatus(host, answer) : new Map<string, MergeStatus>()))
+      .catch((error: unknown) => {
+        notes.push(asFailure(error, message => `merge status: ${message}`))
+        return new Map<string, MergeStatus>()
+      }),
   ])
   const rows = readResponse(host, authored).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
   for (const pin of missing) {
-    rows.push(...readPinned(host, await ask($, host, pinnedQuery(pin, features))))
+    const answer = await askVariant($, host, features => pinnedQuery(pin, features))
+    rows.push(...readPinned(host, answer))
   }
   return { rows, lost: lostIn(authored), notes }
 }

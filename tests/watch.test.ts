@@ -5,7 +5,7 @@ import type { Engine, FoundElement } from 'claude-code/testing'
 import { AVATAR_BASE64, NOW, SELF_MANAGED, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
-import { OLDER } from './gitlab_fake'
+import { undefinedField } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 import { fakeGitLab, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
@@ -250,7 +250,7 @@ test(
       rawMr(12, { headPipeline: pipe('RUNNING'), webUrl: `https://${SELF_MANAGED}/g/p/-/merge_requests/12`, project: project('g/p', SELF_MANAGED), reviewers: { nodes: [reviewer('tim', 'APPROVED')] } }),
     ]
     const corpReads: string[] = []
-    const corp = { answers: { ...answersFor(() => corpMrs, () => [], corpReads, () => ({})), Probe: () => ({ data: OLDER }) }, accepts: 'corp-token' }
+    const corp = { answers: { ...answersFor(() => corpMrs, () => [], corpReads, () => ({})), Authored: () => undefinedField('UserMergeRequestInteraction', 'reviewState'), MergeStatus: () => undefinedField('MergeRequest', 'mergeabilityChecks') }, accepts: 'corp-token' }
     const { woken, gitlab } = engine(on, fake, {}, { [SELF_MANAGED]: corp, 'git.empty.example': { answers: {} } }, { glab: { [SELF_MANAGED]: 'corp-token' } })
 
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -271,11 +271,13 @@ test(
     // Each host is asked with its own token: the environment's for the first host, glab's, asked once, for the next.
     expect(new Set(gitlab.tokens)).toEqual(new Set([`gitlab.com ${TOKEN}`, `${SELF_MANAGED} corp-token`]))
     expect(gitlab.glabAsked).toEqual([SELF_MANAGED, 'git.empty.example'])
-    // The older host is probed once, then gets the documents without review state or merge verdict; the current one gets all.
+    // The older host says once that it lacks reviewState and mergeabilityChecks, then gets the documents without them; the current one gets all.
     const asked = (host: string) => gitlab.requests.filter(request => request.startsWith(`${host} `)).map(request => request.slice(host.length + 1))
-    expect(asked(SELF_MANAGED).filter(name => name === 'Probe')).toHaveLength(1)
-    expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Probe', 'AuthoredPlain', 'Usual']))
-    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Probe', 'Authored', 'MergeStatus', 'Usual']))
+    expect(asked(SELF_MANAGED).filter(name => name === 'Authored' || name === 'MergeStatus')).toEqual(expect.arrayContaining(['Authored', 'MergeStatus']))
+    expect(asked(SELF_MANAGED).filter(name => name === 'Authored')).toHaveLength(1)
+    expect(asked(SELF_MANAGED).filter(name => name === 'MergeStatus')).toHaveLength(1)
+    expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Authored', 'MergeStatus', 'AuthoredPlain', 'Usual']))
+    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Authored', 'MergeStatus', 'Usual']))
     expect(asked('git.empty.example')).toEqual([])
 
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })

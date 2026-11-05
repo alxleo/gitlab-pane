@@ -9,7 +9,6 @@ import type {
   PinnedPlainQuery,
   PinnedQuery,
   PinnedQueryVariables,
-  ProbeQuery,
   UsualQuery,
   UsualQueryVariables,
 } from './gitlab.generated.ts'
@@ -89,15 +88,6 @@ const PINNED_PLAIN = /* GraphQL */ `
   }
 `
 
-// The few fields that differ between GitLab versions, asked of a host's schema the first time it is read. The names of
-// every field of two types are cheap to send and to read; `includeDeprecated` keeps a field GitLab has since deprecated.
-const PROBE = /* GraphQL */ `
-  query Probe {
-    mergeRequest: __type(name: "MergeRequest") { fields(includeDeprecated: true) { name } }
-    interaction: __type(name: "UserMergeRequestInteraction") { fields(includeDeprecated: true) { name } }
-  }
-`
-
 // Why a raised MR's failed jobs failed, asked only when its pipeline has just failed: one small query then, and no field
 // on every read for a message few reads need. A host too old to have the field answers an error, and the wake goes without.
 const FAILURES = /* GraphQL */ `
@@ -119,7 +109,7 @@ const USUAL = /* GraphQL */ `
 export type Request<Data> = { operation: keyof Operations; query: string; variables: Record<string, string>; readonly answer?: Data }
 
 /** GitLab's answer to a document: its data, or none, and the errors beside either. */
-export type RawResponse<Data> = { data?: Data | null; errors?: { message: string }[] }
+export type RawResponse<Data> = { data?: Data | null; errors?: { message: string; extensions?: { code?: string; typeName?: string; fieldName?: string } }[] }
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
 export type Operations = {
@@ -129,7 +119,6 @@ export type Operations = {
   Failures: { variables: FailuresQueryVariables; data: FailuresQuery }
   Pinned: { variables: PinnedQueryVariables; data: PinnedQuery }
   PinnedPlain: { variables: PinnedQueryVariables; data: PinnedPlainQuery }
-  Probe: { variables: Record<string, never>; data: ProbeQuery }
   Usual: { variables: UsualQueryVariables; data: UsualQuery }
 }
 
@@ -141,7 +130,6 @@ export const DOCUMENTS = {
   MergeStatus: MERGE_STATUS,
   Pinned: PINNED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
-  Probe: PROBE,
   Usual: USUAL,
 } as const satisfies Record<keyof Operations, string>
 
@@ -149,7 +137,6 @@ export const DOCUMENTS = {
  * What GitLab's `queryComplexity` scores each document, which `node tools/gitlab_schema.ts check` measures against
  * gitlab.com, with no sign-in. A query may cost no more than the limit, and the check also fails any document that scores
  * other than this, or more than COMPLEXITY_SHARE of the limit it reports, so a change to a document states its cost.
- * `null` is a document GitLab does not score (introspection).
  */
 export const COMPLEXITY = {
   Authored: 151,
@@ -158,16 +145,12 @@ export const COMPLEXITY = {
   MergeStatus: 19,
   Pinned: 100,
   PinnedPlain: 98,
-  Probe: null,
   Usual: 8,
-} as const satisfies Record<keyof Operations, number | null>
+} as const satisfies Record<keyof Operations, number>
 
 /** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */
 export const COMPLEXITY_SHARE = 0.8
 
-
-/** Asks a host's schema which of the fields that older GitLab versions lack it has. */
-export const probeQuery = (): Request<ProbeQuery> => ({ operation: 'Probe', query: DOCUMENTS.Probe, variables: {} })
 
 /** Every open MR the user authored: the heaviest document (`COMPLEXITY.Authored`). */
 export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | AuthoredPlainQuery> =>
@@ -176,10 +159,11 @@ export const authoredQuery = (features: HostFeatures): Request<AuthoredQuery | A
     : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables: {} }
 
 /**
- * GitLab's own merge checks for the same MRs, asked on its own: its single verdict (`detailedMergeStatus`) answered
+ * GitLab's own merge checks for the same MRs, or none for a host that lacks them. Asked on its own: its single verdict (`detailedMergeStatus`) answered
  * CONFLICT, twice in a row, inside the authored query for MRs that this query and each MR's own lookup called MERGEABLE.
  */
-export const mergeStatusQuery = (): Request<MergeStatusQuery> => ({ operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} })
+export const mergeStatusQuery = (features: HostFeatures): Request<MergeStatusQuery> | null =>
+  features.hasMergeVerdict ? { operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} } : null
 
 /**
  * A pinned MR the authored list lacks (someone else's, or merged), one query each (`COMPLEXITY.Pinned`): that needs no

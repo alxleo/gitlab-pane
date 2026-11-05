@@ -113,11 +113,6 @@ export type PinnedPlainQueryVariables = Exact<{
 
 export type PinnedPlainQuery = { project: { mergeRequest: { iid: string, state: MergeRequestState, title: string, webUrl: string | null, draft: boolean, conflicts: boolean, shouldBeRebased: boolean, approvalsLeft: number | null, approvalsRequired: number | null, updatedAt: string, description: string | null, sourceBranch: string, targetBranch: string, reviewers: { nodes: Array<{ username: string, name: string, bot: boolean, avatarUrl: string | null } | null> | null } | null, author: { username: string } | null, diffStatsSummary: { additions: number, deletions: number, fileCount: number } | null, project: { fullPath: string, name: string, webUrl: string | null }, approvedBy: { nodes: Array<{ username: string, name: string, bot: boolean, avatarUrl: string | null } | null> | null } | null, headPipeline: { id: string, status: PipelineStatusEnum, duration: number | null, startedAt: string | null, finishedAt: string | null, path: string | null, stages: { nodes: Array<{ name: string | null, status: string | null, jobs: { nodes: Array<{ name: string | null, status: CiJobStatus | null, allowFailure: boolean, startedAt: string | null, finishedAt: string | null, webPath: string | null } | null> | null } | null } | null> | null } | null } | null, discussions: { nodes: Array<{ resolvable: boolean, resolved: boolean, notes: { nodes: Array<{ body: string, system: boolean, url: string | null, createdAt: string, author: { username: string, name: string, bot: boolean, avatarUrl: string | null } | null, position: { filePath: string, newLine: number | null, oldLine: number | null } | null } | null> | null } } | null> | null } } | null } | null };
 
-export type ProbeQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type ProbeQuery = { mergeRequest: { fields: Array<{ name: string }> | null } | null, interaction: { fields: Array<{ name: string }> | null } | null };
-
 export type FailuresQueryVariables = Exact<{
   path: string;
   iid: string;

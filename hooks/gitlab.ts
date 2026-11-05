@@ -6,7 +6,6 @@ import type {
   NoteFieldsFragment,
   PinnedPlainQuery,
   PinnedQuery,
-  ProbeQuery,
   ReviewerFieldsFragment,
   ReviewerPlainFragment,
   UsualQuery,
@@ -22,14 +21,22 @@ import { firstDifference } from './order.ts'
 
 import type { CiStatus, GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
-/** What the probe's answer says the host has; a type the host does not have has none of its fields. */
-export function readFeatures(response: RawResponse<ProbeQuery>): HostFeatures {
-  const names = (type: { fields?: ({ name: string } | null)[] | null } | null | undefined): string[] => present(type?.fields).map(field => field.name)
-  const data = dataOf(response)
-  return {
-    hasMergeVerdict: names(data.mergeRequest).includes('mergeabilityChecks'),
-    hasReviewStates: names(data.interaction).includes('reviewState'),
-  }
+/**
+ * Which features a host lacks, from the answer it gave: GitLab validates a whole document and says, for each field its
+ * schema does not have, `undefinedField` with the type and field in the error's `extensions` (never read from the message).
+ */
+export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeatures)[] {
+  return (response.errors ?? []).flatMap(error => {
+    const { code, typeName, fieldName } = error.extensions ?? {}
+    if (code !== 'undefinedField') {
+      return []
+    }
+    return typeName === 'UserMergeRequestInteraction' && fieldName === 'reviewState'
+      ? ['hasReviewStates' as const]
+      : typeName === 'MergeRequest' && fieldName === 'mergeabilityChecks'
+        ? ['hasMergeVerdict' as const]
+        : []
+  })
 }
 
 /** Each MR's merge checks by card key; an MR missing from the answer, or sent with no checks, has none. */
