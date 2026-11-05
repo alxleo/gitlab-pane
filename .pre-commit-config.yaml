@@ -91,6 +91,14 @@ repos:
         additional_dependencies: ['typescript@7.0.2']
         pass_filenames: false
         files: ^(hooks|types|tests|tools/screens)/|^tsconfig\.json$
+      # The dev-only store probe is a plugin of its own, so the shipped plugin's compile does not take it in.
+      - id: tsc-store-probe
+        name: tsc the store probe
+        entry: tsc -p tools/store-probe/tsconfig.json
+        language: node
+        additional_dependencies: ['typescript@7.0.2']
+        pass_filenames: false
+        files: ^tools/store-probe/
       # The types of GitLab's answers (hooks/gitlab.generated.ts) made again from the schema snapshot and the documents in
       # hooks/gitlab.ts, and compared: a query edited without regenerating fails here. No network but npm's first install.
       - id: gitlab-types
@@ -104,7 +112,7 @@ repos:
       # the newest typescript-eslint can load; the tsc hooks above are the ones that pin the compiler.
       - id: eslint
         name: eslint
-        entry: eslint --max-warnings 0 hooks tests tools/screens
+        entry: eslint --max-warnings 0 hooks tests tools/screens tools/store-probe
         language: node
         additional_dependencies:
           - 'eslint@10.14.0'
@@ -112,4 +120,4 @@ repos:
           - '@eslint-community/eslint-plugin-eslint-comments@4.8.1'
           - 'typescript@6.0.3'
         pass_filenames: false
-        files: ^(hooks|tests|tools/screens)/.*\.tsx?$|^tools/eslint_rules\.cjs$|^eslint\.config\.cjs$|^tsconfig(\.core)?\.json$
+        files: ^(hooks|tests|tools/screens|tools/store-probe)/.*\.tsx?$|^tools/eslint_rules\.cjs$|^eslint\.config\.cjs$|^tsconfig(\.core)?\.json$

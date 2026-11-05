@@ -89,7 +89,7 @@ async function readJira($: EngineInterface, rows: readonly MrCard[], now: number
   if ((await readBrowse($)) === '') {
     return
   }
-  const keys = [...new Set(rows.map(row => ticketOf(row.title)).filter((key): key is string => key !== null))]
+  const keys = [...new Set(rows.map(row => ticketOf(row.title)).filter(key => key !== null))]
   const [known, poll] = await Promise.all([readTicketsKnown($), readPoll($)])
   const isDue = poll.ticketsAt === null || now - poll.ticketsAt >= TICKETS_EVERY_MS
   if (keys.length === 0 || (!isDue && keys.every(key => key in known))) {
@@ -133,7 +133,7 @@ const AVATAR_STORE = 'avatars'
 /** Each person's avatar, fetched once and kept across sessions by the URL GitLab gave, so a new picture is a new URL. */
 async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
   const urls = [...new Set(rows.flatMap(row => row.people.map(person => person.avatarUrl)))].filter(
-    (url): url is string => url !== null
+    url => url !== null
   )
   const shown = await readAvatarsShown($)
   const known: Record<string, string> = Object.keys(shown).length > 0 ? shown : stringRecord(await $.store.get(AVATAR_STORE))
@@ -157,7 +157,7 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
   } else {
     await clear($, 'avatars')
   }
-  const fresh = Object.fromEntries(fetched.filter((pair): pair is readonly [string, string] => pair[1] !== null))
+  const fresh = Object.fromEntries(fetched.flatMap(([url, picture]) => (picture !== null ? [[url, picture] as const] : [])))
   // Only the people on the pane are kept, so the store never outgrows them.
   const kept: Record<string, string> = Object.fromEntries(
     urls.flatMap(url => {
