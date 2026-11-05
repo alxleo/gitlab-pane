@@ -74,4 +74,12 @@ repos:
         language: node
         additional_dependencies: ['typescript@7.0.2']
         pass_filenames: false
-        files: ^(hooks|types)/|^tsconfig\.core\.json$
+        files: ^(hooks|types)/|^tests/(fixtures|gitlab_fake)\.ts$|^tsconfig\.core\.json$
+      # The types of GitLab's answers (hooks/gitlab.generated.ts) made again from the schema snapshot and the documents in
+      # hooks/gitlab.ts, and compared: a query edited without regenerating fails here. No network but npm's first install.
+      - id: gitlab-types
+        name: GitLab types are what the snapshot and queries give
+        entry: uv run --locked tools/gitlab_schema.py types --check
+        language: system
+        pass_filenames: false
+        files: ^(hooks/gitlab(\.generated)?\.ts|tools/gitlab_queries\.ts|tools/gitlab_schema\.py(\.lock)?|tools/gitlab_schema\.snapshot\.json|tools/codegen/.*)$

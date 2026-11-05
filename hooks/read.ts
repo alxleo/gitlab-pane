@@ -3,18 +3,17 @@ import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
 import { ago, describe, isSettled, parseMrUrl, pictureUri, pinKey, sizedAvatar, statusMark, ticketOf, titleKey } from './ci'
 import {
-  PINS_PER_QUERY,
-  PROJECTS_PER_QUERY,
   authoredQuery,
   lostIn,
   mergeStatusQuery,
   pinnedQuery,
   readMergeStatus,
+  readPinned,
   readResponse,
   readUsual,
   usualQuery,
 } from './gitlab'
-import type { RawResponse } from './gitlab'
+import type { RawResponse, Request } from './gitlab'
 import { decodeGraphql } from './decode'
 import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
 import { TICKET_FIELDS, isJiraOn, readTickets, ticketQuery } from './jira'
@@ -23,7 +22,7 @@ import type { Source } from './problems'
 import { reconcile } from './reconcile'
 import { runJson } from './tools'
 
-import type { MergeStatus, MrCard, Pinned, PollState } from '../types'
+import type { MergeStatus, MrCard, Pinned, PollState, Usual } from '../types'
 
 // The engine lists each module's state from the atoms written in that file, so this file alone holds them.
 const pinnedAtom = atom({ plugin: 'gitlab-ci', key: 'pinned' } as const, [])
@@ -203,8 +202,9 @@ const USUAL_EVERY_MS = 30 * 60_000
 /** GitLab.com's edge answers 52x or drops the stream now and then; one retry rides that out. */
 const isTransient = (stderr: string): boolean => /HTTP 5\d\d|stream error/i.test(stderr)
 
-async function ask($: EngineInterface, query: string): Promise<RawResponse> {
-  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`], decodeGraphql, {
+async function ask<Data>($: EngineInterface, { query, variables }: Request<Data>): Promise<RawResponse<Data>> {
+  const fields = Object.entries(variables).flatMap(([name, value]) => ['-f', `${name}=${value}`])
+  const answer = await runJson($, 'glab', ['api', 'graphql', '-f', `query=${query}`, ...fields], raw => decodeGraphql<Data>(raw), {
     timeoutMs: 90_000,
     retryIf: isTransient,
     isPartialOk: true,
@@ -216,7 +216,7 @@ async function ask($: EngineInterface, query: string): Promise<RawResponse> {
 }
 
 /**
- * The authored list, then only the pinned MRs it lacks, a few per query to stay under GitLab's cost limit. `lost` counts
+ * The authored list, then only the pinned MRs it lacks, one query each. `lost` counts
  * authored MRs GitLab timed out and sent back null, whose keys it therefore never said.
  */
 async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promise<{ rows: MrCard[]; lost: number }> {
@@ -230,11 +230,10 @@ async function readGitLab($: EngineInterface, pinned: readonly Pinned[]): Promis
         return new Map<string, MergeStatus>()
       }),
   ])
-  const rows = readResponse(authored, 0).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
+  const rows = readResponse(authored).map(row => ({ ...row, mergeStatus: verdicts.get(row.key) ?? null }))
   const missing = pinned.filter(pin => !rows.some(row => row.key === pinKey(pin)))
-  for (let i = 0; i < missing.length; i += PINS_PER_QUERY) {
-    const chunk = missing.slice(i, i + PINS_PER_QUERY)
-    rows.push(...readResponse(await ask($, pinnedQuery(chunk)), chunk.length))
+  for (const pin of missing) {
+    rows.push(...readPinned(await ask($, pinnedQuery(pin))))
   }
   return { rows, lost: lostIn(authored) }
 }
@@ -272,10 +271,12 @@ async function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: 
   if (projects.length === 0 || (!isDue && projects.every(path => path in known))) {
     return
   }
-  const usual = {}
-  for (let i = 0; i < projects.length; i += PROJECTS_PER_QUERY) {
-    const chunk = projects.slice(i, i + PROJECTS_PER_QUERY)
-    Object.assign(usual, readUsual(await ask($, usualQuery(chunk)), chunk))
+  const usual: Record<string, Usual> = {}
+  for (const path of projects) {
+    const times = readUsual(await ask($, usualQuery(path)))
+    if (times) {
+      usual[path] = times
+    }
   }
   clear('usual')
   await update($, usualAtom, previous => ({ ...previous, ...usual }))

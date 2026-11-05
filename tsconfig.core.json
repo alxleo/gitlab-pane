@@ -22,6 +22,7 @@
     "hooks/avatar.ts",
     "hooks/ci.ts",
     "hooks/decode.ts",
+    "hooks/gitlab.generated.ts",
     "hooks/gitlab.ts",
     "hooks/identity.ts",
     "hooks/inbox-json.ts",
@@ -31,6 +32,8 @@
     "hooks/problems.ts",
     "hooks/reconcile.ts",
     "hooks/svg.ts",
+    "tests/fixtures.ts",
+    "tests/gitlab_fake.ts",
     "types/index.d.ts"
   ]
 }

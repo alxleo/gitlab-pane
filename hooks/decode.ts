@@ -15,10 +15,10 @@ export const records = (value: unknown): Record<string, unknown>[] => (Array.isA
 export const field = (value: unknown, key: string): unknown => (isRecord(value) ? value[key] : undefined)
 
 /**
- * `glab api graphql`'s answer: an object with `data` (an object or null) and perhaps `errors`. What is inside `data`
- * is read where it is used, by gitlab.ts, which owns the queries.
+ * `glab api graphql`'s answer: an object with `data` (an object or null) and perhaps `errors`. What is inside `data` is
+ * read where it is used, by gitlab.ts, which owns the documents.
  */
-export function decodeGraphql(raw: unknown): RawResponse {
+export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (!isRecord(raw)) {
     throw new Error('glab answered something other than an object')
   }
@@ -27,6 +27,7 @@ export function decodeGraphql(raw: unknown): RawResponse {
     throw new Error('glab answered data that is not an object')
   }
   const errors = records(raw.errors).map(error => ({ message: text(error.message) }))
-  // The one cast: `data` is checked to be an object, and its nodes are checked as they are read.
-  return { data: data === undefined ? null : (data as NonNullable<RawResponse['data']> | null), ...(errors.length > 0 ? { errors } : {}) }
+  // The one cast at the GraphQL boundary: GitLab validated this answer against the document and the schema the types
+  // were generated from, so `data` has the shape of `Data`, nulls where the schema allows them.
+  return { data: data === undefined ? null : (data as Data | null), ...(errors.length > 0 ? { errors } : {}) }
 }
