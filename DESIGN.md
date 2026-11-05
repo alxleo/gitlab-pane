@@ -6,15 +6,15 @@ What each colour, border and mark in the pane means. Each rule names the code th
 
 ## Principles
 
-- **What needs you comes first.** Rows sort by what you can act on now: something failing or blocked, then running, then waiting on others, then ready (`rank` in `hooks/ci.ts`).
+- **What needs you comes first.** Rows sort by what you can act on now: something failing or blocked, then running, then waiting on others, then ready (`rank` in `hooks/attention.ts`).
 - **Colour means the same thing everywhere.** One small palette serves pipeline stages, card borders and reviewer rings.
 - **Words beat icons for what blocks a merge.** The worst blocker is said in words on the card's second line; other markers only trail it.
-- **Small enough to draw.** The desktop app draws nothing for a tree past 100,000 characters. So rows you opened come first, then the other rows, then hover cards, then avatars (`DRAWING_BUDGET` in `hooks/ci.ts`). Rows that do not fit are counted, not silently dropped.
+- **Small enough to draw.** The desktop app draws nothing for a tree past 100,000 characters. So rows you opened come first, then the other rows, then hover cards, then avatars (`DRAWING_BUDGET` in `hooks/drawing.ts`). Rows that do not fit are counted, not silently dropped.
 - **Bots show only when they hold the merge,** by an open thread or a request for changes. Then a bot gets a face like anyone's; otherwise its summary comments stay out of the way.
 
 ## Colour
 
-The palette is `STAGE_COLOURS` in `hooks/ci.ts`, the same in light and dark.
+The palette is `STAGE_COLOURS` in `hooks/status.ts`, the same in light and dark.
 
 | Tone | Colour | Means |
 |---|---|---|
@@ -35,7 +35,7 @@ Hovering a card that opens turns its border the theme's `claude` colour.
 
 ## Pipeline marks
 
-`statusMark` in `hooks/ci.ts`:
+`statusMark` in `hooks/status.ts`:
 
 | Mark | Status |
 |---|---|
@@ -51,11 +51,11 @@ A failed job is ✗ and a job allowed to fail is ⚠, each with its run time.
 
 ## People
 
-A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot. The ring takes the palette's tones: red for changes requested, amber for open threads, green for approved, grey otherwise. It is heavy once they have a say and thin while they have none. A ✓ or ✕ badge in the corner marks an approval or a request for changes (`REVIEW_MARK` in `hooks/pane.tsx`). Where the surface draws no images, as in the terminal, the person is a coloured `●`, or the badge's own glyph.
+A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot. The ring takes the palette's tones: red for changes requested, amber for open threads, green for approved, grey otherwise. It is heavy once they have a say and thin while they have none. A ✓ or ✕ badge in the corner marks an approval or a request for changes (`REVIEW_MARK` in `hooks/faces.tsx`). Where the surface draws no images, as in the terminal, the person is a coloured `●`, or the badge's own glyph.
 
 ## Links
 
-Every link says what it opens before its words (`LINK` in `hooks/ci.ts`).
+Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 
 | Mark | Opens |
 |---|---|

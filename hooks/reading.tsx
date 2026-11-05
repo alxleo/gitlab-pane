@@ -1,8 +1,11 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { CHROME_SIZE, DRAWING_BUDGET, LINK, ago, measure, plural, shortHash, verdictOf } from './ci'
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure } from './drawing'
+import { ago, plural } from './format'
+import { shortHash } from './identity'
+import { verdictOf } from './attention'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
-import { toggleFold } from './read'
+import { toggleFold } from './choices'
 
 import type { MarkdownText, Part } from './markdown'
 import type { MrCard, Note } from '../types'

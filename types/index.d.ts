@@ -241,6 +241,15 @@ export type InboxState = {
   error: string | null
 }
 
+/** What a background job reports failing, by where it ran. */
+export type ProblemSource = 'gitlab' | 'jira' | 'usual' | 'avatars' | 'inbox' | 'pane'
+
+/** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
+export type Problems = { [Source in ProblemSource]?: { message: string; at: number } }
+
+/** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
+export type Scrolling = { refused: string; goingBack: string }
+
 declare module 'claude-code' {
   interface PluginState {
     'gitlab-ci': {
@@ -275,6 +284,12 @@ declare module 'claude-code' {
       announced: Record<string, string[]>
       wake: boolean
       poll: PollState
+      /** The base of ticket links (`<jiraUrl>/browse/`); empty while no Jira site is set. */
+      jira: string
+      /** Avatar URLs that failed to fetch, not asked for again until the session loads the mod again. */
+      unreachable: string[]
+      scrolling: Scrolling
+      problems: Problems
     }
   }
 }
