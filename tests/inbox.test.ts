@@ -205,7 +205,12 @@ test('the mark outlives the pane, and an MR that has left the inbox loses its ma
   await ui.press({ key: 'inbox-sync' })
   expect(await titleOf(ui, 1)).toBeUndefined()
   expect(gitlab.marks().length).toBe(1)
+  // A full review queue pushes it past the MRs the snapshot keeps; GitLab still lists it, so its mark stays.
+  world.queue = Array.from({ length: 50 }, (_, i) => queued(200 + i))
+  await ui.press({ key: 'inbox-sync' })
+  expect(gitlab.marks().length).toBe(1)
   // Once GitLab no longer lists it, the next read drops its mark.
+  world.queue = []
   world.opened = []
   await ui.press({ key: 'inbox-sync' })
   expect(gitlab.marks().length).toBe(0)
@@ -281,6 +286,7 @@ test('an MR under two rules shows once, under the first', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = busyWorld()
   world.todos = [todo('mentioned', fields(2), 'dave', 30, '@me what do you think')]
+  world.briefs = { 'g/p!2': brief(2) }
   engine(on, world)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -290,6 +296,8 @@ test('an MR under two rules shows once, under the first', async ($, on) => {
   expect(await ui.find({ type: 'Button', key: 'inbox-rule-mentions' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: "Nothing else in: Mentions (all above), Build failed, Can't merge" })).toBeDefined()
   expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 2 new"')
+  // A rule acts on the MRs its tab shows: the mention is shown under the first rule, so Mentions has none to brief.
+  expect((await $.command.run(typed('--rule mentions'))).text).toBe('/mrs: nothing in Mentions right now')
   await ui.unmount()
 })
 

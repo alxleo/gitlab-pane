@@ -108,20 +108,26 @@ export const register: Register = (on, options) => {
     }
   })
 
-  // An MR opened from this session is pinned as raised here, as the app picks up a GitHub PR; only those wake it.
+  // An MR opened from this session is pinned as raised here, as the app picks up a GitHub PR; only those wake it. Once the
+  // command has run, nothing here may throw: the hook's catch below runs the command again, which could open a second MR.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
     const command = String(field(e, 'command') ?? '')
     if (!/\bmr create\b|merge_request\.create/.test(command) || !isFilled(ran.text)) {
       return ran
     }
-    const urls = new Set(ran.text.match(mrUrls(await readHosts($))) ?? [])
-    for (const url of urls) {
-      await pin($, url, 'raised').catch(reported($, 'gitlab'))
+    const raise = async (text: string) => {
+      const urls = new Set(text.match(mrUrls(await readHosts($))) ?? [])
+      for (const url of urls) {
+        await pin($, url, 'raised').catch(reported($, 'gitlab'))
+      }
+      if (urls.size > 0) {
+        quietly($, openPane($))
+      }
     }
-    if (urls.size > 0) {
-      quietly($, openPane($))
-    }
+    await raise(ran.text)
+      .catch(reported($, 'gitlab'))
+      .catch(() => undefined)
     return ran
   }).catch(($, e, next) => next(e))
 

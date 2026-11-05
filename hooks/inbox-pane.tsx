@@ -7,6 +7,7 @@ import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
 import { quietly, reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
+import { ownedSections } from './inbox-rules'
 import { refresh } from './poll'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -157,20 +158,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
-  // Each MR shows once, under the first rule that has it.
-  const firstRule = new Map<string, string>()
-  for (const section of ruled) {
-    for (const item of section.items) {
-      if (!firstRule.has(item.key)) {
-        firstRule.set(item.key, section.rule)
-      }
-    }
-  }
-  const sections = ruled.map(section => ({
-    ...section,
-    items: section.items.filter(item => firstRule.get(item.key) === section.rule),
-    isAllAbove: section.items.length > 0 && section.items.every(item => firstRule.get(item.key) !== section.rule),
-  }))
+  const sections = ownedSections(ruled)
   const shown = sections.filter(section => section.items.length > 0)
   const quiet = sections.filter(section => section.items.length === 0)
   /** A tab per rule, as the repo filter draws its chips; the open one is filled. */

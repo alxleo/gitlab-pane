@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { badges, byAttention, rank, rowBadges, verdictOf } from '../../hooks/attention.ts'
+import { badges, byAttention, rank, reviewTone, rowBadges, verdictOf } from '../../hooks/attention.ts'
+import { failedCount } from '../../hooks/format.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
 import { checkStatusOf } from '../../hooks/gitlab-status.ts'
 import { toCard } from '../../hooks/gitlab.ts'
@@ -124,6 +125,10 @@ test('a card ranks 0 if and only if something blocks its merge, and a blocked ca
       }
       if (badges(card).some(badge => badge.kind === 'ready')) {
         expect(rank(card)).toBe(3)
+      }
+      // A job that failed turns the border red, as it puts the card under "needs you", even while the pipeline still runs.
+      if (card.pipeline !== undefined && failedCount(card.pipeline) > 0) {
+        expect(reviewTone(card)).toBe('error')
       }
       // A card with no merge checks read marks each blocker itself, so a blocked one always shows a marker or a failed pipeline.
       if (card.mergeStatus === null && isBlocked(card)) {
