@@ -371,4 +371,3 @@ test('an actor who wrote an MR in the inbox has the initials of their name, like
   expect(await ui.find({ type: 'Text', text: '✓ zed99 approved' })).toBeDefined()
   await ui.unmount()
 })
-
