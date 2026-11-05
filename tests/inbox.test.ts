@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { shortHash as hashOf } from '../hooks/identity'
-import { AVATAR_BASE64, NOW, job, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
+import { AVATAR_BASE64, NOW, job, mergeStatuses, pipe, project, rawMr, reviewer, stage, thread } from './fixtures'
 import { answered } from './gitlab_fake'
 
 const PANE = {
@@ -63,7 +63,7 @@ function engine(on: On, inbox: Inbox) {
     }
     const args = e.argv.slice(at + 1)
     calls.push(args)
-    if (inbox.exitCode) {
+    if (inbox.exitCode !== undefined && inbox.exitCode !== 0) {
       return ran('', inbox.exitCode, inbox.stderr ?? '')
     }
     if (args[0] === 'inbox') {
@@ -267,7 +267,7 @@ test('/mrs hands the briefing to the model, out of the transcript', async ($, on
 test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside the 100,000 characters a drawing holds', { timeoutMs: 20_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const long = (name: string) => `${name}-${'x'.repeat(30)}`
-  const busy = (status: string) =>
+  const busy = (status: 'RUNNING' | 'FAILED') =>
     pipe(status, {
       stages: {
         nodes: Array.from({ length: 9 }, (_, s) =>
@@ -280,7 +280,7 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
       project: project(`acme-corp/platform/some-group/another-group/${i % 3 === 0 ? 'repo-one' : 'repo-two'}`),
       headPipeline: busy(i % 2 === 0 ? 'RUNNING' : 'FAILED'),
       reviewers: { nodes: [reviewer('first.reviewer', 'REQUESTED_CHANGES'), reviewer('second.reviewer', 'APPROVED')] },
-      discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 ? 'first.reviewer' : 'second.reviewer')) },
+      discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 === 1 ? 'first.reviewer' : 'second.reviewer')) },
     })
   )
   const rules = ['mine', 'to-review', 'people', 'repos', 'here']
@@ -309,7 +309,7 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
     const text = answered(e.argv, {
       Usual: () => ({ data: { project: { pipelines: { nodes: [{ duration: 600 }] } } } }),
       Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
-      MergeStatus: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
+      MergeStatus: () => mergeStatuses(mrs),
     })
     return ran(text ?? '', text === undefined ? 1 : 0, text === undefined ? `nothing answers ${e.argv.join(' ')}` : '')
   })
@@ -336,7 +336,7 @@ test('a full inbox, each rule open in turn, and fifty busy MRs each stay inside 
     // Every card drawn opened too, so the open rule is at its largest; an opened card pushes the last ones out.
     for (let opened = 0; opened < 30; opened += 1) {
       const closed = (await ui.findAll({ type: 'Button' })).find(isClosed)
-      if (!closed) {
+      if (closed === undefined) {
         break
       }
       await ui.press({ key: closed.key ?? '' })

@@ -48,7 +48,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 ROOT = Path(__file__).resolve().parent.parent
 SCREENS = Path(__file__).resolve().parent / "screens"
 SCENES_FILE = SCREENS / "scenes.ts"
-EXPECTED_CLAUDE = "2.1.308"
+EXPECTED_CLAUDE = "2.1.318"
 MARKER = "PANE-SCENE "
 LISTED = "PANE-SCENES "
 

@@ -4,7 +4,7 @@
 # over the whole history instead of the staged change.
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit, manual]
-exclude: ^(CHANGELOG\.md|tools/screens/fonts/.*|types/engine/.*)$ # types/engine is a copy of what Claude Code wrote, kept as it was
+exclude: ^(CHANGELOG\.md|tools/screens/fonts/.*)$
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -66,8 +66,16 @@ repos:
         pass_filenames: false
         files: ^(\.claude-plugin|hooks|types|tests)/
         stages: [pre-push]
+      # The declarations of the Claude Code on PATH (CI pins it), unpacked from its bundled skill into the git-ignored
+      # .claude-plugin/types/, for the full tsc and the type-aware lint below. Needs no sign-in; does nothing when current.
+      - id: engine-types
+        name: Claude Code's declarations
+        entry: node tools/engine_types.ts
+        language: system
+        pass_filenames: false
+        always_run: true
       # The core (see tsconfig.core.json) type-checked alone, with the TypeScript pinned here so a release of it cannot
-      # fail a commit nobody touched. The engine's types are not needed, so this runs in CI.
+      # fail a commit nobody touched. It has no engine types, so a core file that imports the engine does not compile.
       - id: tsc-core
         name: tsc the core
         entry: tsc -p tsconfig.core.json
@@ -75,6 +83,14 @@ repos:
         additional_dependencies: ['typescript@7.0.2']
         pass_filenames: false
         files: ^(hooks|types)/|^tests/(fixtures|gitlab_fake)\.ts$|^tsconfig\.core\.json$
+      # Every file, against the engine's declarations: the engine-facing files and the tests the core check leaves out.
+      - id: tsc
+        name: tsc everything
+        entry: tsc -p tsconfig.json
+        language: node
+        additional_dependencies: ['typescript@7.0.2']
+        pass_filenames: false
+        files: ^(hooks|types|tests|tools/screens)/|^tsconfig\.json$
       # The types of GitLab's answers (hooks/gitlab.generated.ts) made again from the schema snapshot and the documents in
       # hooks/gitlab.ts, and compared: a query edited without regenerating fails here. No network but npm's first install.
       - id: gitlab-types
@@ -84,8 +100,8 @@ repos:
         pass_filenames: false
         files: ^(hooks/gitlab(\.generated)?\.ts|tools/gitlab_queries\.ts|tools/gitlab_schema\.py(\.lock)?|tools/gitlab_schema\.snapshot\.json|tools/codegen/.*)$
       # What the compiler cannot state: no casts, `any`, lint-disable comments or module-level state, files kept short, the
-      # core's imports, and on the core only the type-aware rules. See eslint.config.cjs. The linter's own TypeScript is 6.0,
-      # the newest typescript-eslint can load; the tsc-core hook above is the one that pins the compiler.
+      # core's imports, and the type-aware rules on every file. See eslint.config.cjs. The linter's own TypeScript is 6.0,
+      # the newest typescript-eslint can load; the tsc hooks above are the ones that pin the compiler.
       - id: eslint
         name: eslint
         entry: eslint --max-warnings 0 hooks tests tools/screens
@@ -96,4 +112,4 @@ repos:
           - '@eslint-community/eslint-plugin-eslint-comments@4.8.1'
           - 'typescript@6.0.3'
         pass_filenames: false
-        files: ^(hooks|tests|tools/screens)/.*\.tsx?$|^tools/eslint_rules\.cjs$|^eslint\.config\.cjs$|^tsconfig\.core\.json$
+        files: ^(hooks|tests|tools/screens)/.*\.tsx?$|^tools/eslint_rules\.cjs$|^eslint\.config\.cjs$|^tsconfig(\.core)?\.json$
