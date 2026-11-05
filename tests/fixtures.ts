@@ -1,15 +1,9 @@
-import type { RawJob, RawMr } from '../hooks/gitlab'
-import type { CiStatus, ReviewState } from '../types'
+import type { CiJobStatus, DetailedMergeStatus, MergeRequestReviewState, PipelineStatusEnum } from '../hooks/gitlab.generated'
+import type { RawJob, RawMr, RawNote, RawPipeline, RawStage } from '../hooks/gitlab'
 
 export const NOW = Date.parse('2026-10-23T15:10:00Z')
 
-type Pipe = NonNullable<RawMr['headPipeline']>
-type RawStage = Pipe['stages']['nodes'][number]
-
-/** A status as GitLab's API spells it. */
-type Wire<T extends string> = Uppercase<T>
-
-export const job = (name: string, status: Wire<CiStatus>, over: Partial<RawJob> = {}): RawJob => ({
+export const job = (name: string, status: CiJobStatus, over: Partial<RawJob> = {}): RawJob => ({
   name,
   status,
   allowFailure: false,
@@ -19,10 +13,10 @@ export const job = (name: string, status: Wire<CiStatus>, over: Partial<RawJob> 
   ...over,
 })
 
-export const stage = (name: string, status: Wire<CiStatus>, jobs: RawJob[]): RawStage => ({ name, status, jobs: { nodes: jobs } })
+export const stage = (name: string, status: CiJobStatus, jobs: RawJob[]): RawStage => ({ name, status, jobs: { nodes: jobs } })
 
 /** A pipeline of two stages; a failed one's jobs passed unless `stages` says which failed. */
-export const pipe = (status: Wire<CiStatus>, over: Partial<Pipe> = {}): Pipe => {
+export const pipe = (status: PipelineStatusEnum, over: Partial<RawPipeline> = {}): RawPipeline => {
   const jobStatus = status === 'FAILED' ? 'SUCCESS' : status
   return {
     id: 'gid://gitlab/Ci::Pipeline/99',
@@ -57,7 +51,10 @@ export const user = (username: string, bot = false) => ({
 /** What `curl | base64` prints for a 24-pixel avatar: a PNG's first bytes, padded to a real one's size. */
 export const AVATAR_BASE64 = `iVBORw0KGgo${'A'.repeat(1300)}\n`
 
-export const rawMr = (iid: number, over: Partial<RawMr> = {}): RawMr => ({
+/** An MR as the fake GitLab holds it: what MrFields asks for, and the merge verdict that only the MergeStatus query gives. */
+export type Mr = RawMr & { detailedMergeStatus?: DetailedMergeStatus | null }
+
+export const rawMr = (iid: number, over: Partial<Mr> = {}): Mr => ({
   iid: String(iid),
   state: 'opened',
   title: `fix: [ABC-1] thing ${iid}`,
@@ -81,8 +78,6 @@ export const rawMr = (iid: number, over: Partial<RawMr> = {}): RawMr => ({
   ...over,
 })
 
-type RawNote = RawMr['discussions']['nodes'][number]['notes']['nodes'][number]
-
 export const note = (body: string, author = 'reviewer', over: Partial<RawNote> = {}): RawNote => ({
   body,
   system: false,
@@ -99,7 +94,7 @@ export const thread = (body: string, author = 'reviewer', resolved = false, reso
   notes: { nodes: [note(body, author, { author: user(author, bot) })] },
 })
 
-export const reviewer = (username: string, reviewState: Wire<ReviewState>, bot = false) => ({
+export const reviewer = (username: string, reviewState: MergeRequestReviewState, bot = false) => ({
   ...user(username, bot),
   mergeRequestInteraction: { reviewState },
 })

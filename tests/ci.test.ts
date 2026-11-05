@@ -19,14 +19,14 @@ import {
   verdictOf,
 } from '../hooks/ci'
 import { discMarks, discSource } from '../hooks/avatar'
-import { ciStatusOf, cleanBody, mergeStatusOf, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
+import { ciStatusOf, cleanBody, mergeStatusOf, readPinned, readResponse, readUsual, toCard, usualQuery } from '../hooks/gitlab'
 import { decodeGraphql } from '../hooks/decode'
 import { readInboxJson } from '../hooks/inbox-json'
 import { readTickets, ticketQuery } from '../hooks/jira'
 import { flatOf } from '../hooks/markdown'
 import { foreign } from '../hooks/model-text'
 import { raw, svg } from '../hooks/svg'
-import { NOW, job, note, pipe, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { NOW, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 
 import type { CiStatus, MergeStatus } from '../types'
 
@@ -218,10 +218,14 @@ test('a running pipeline says how long it has run against how long it usually ta
 })
 
 test('the usual run time is the middle half of recent successful MR pipelines, per project', async () => {
-  expect(usualQuery(['g/p'])).toContain('h0: project(fullPath: "g/p") { pipelines(source: "merge_request_event", status: SUCCESS, first: 20)')
+  const { query, variables } = usualQuery('g/p')
+  expect(query).toContain('pipelines(source: "merge_request_event", status: SUCCESS, first: 20)')
+  expect(query).not.toContain('g/p')
+  expect(variables).toEqual({ path: 'g/p' })
   const durations = [540, 600, 660, 700, 720, 780, 840, 900, 1000, 1200]
-  const usual = readUsual({ data: { h0: { pipelines: { nodes: durations.map(duration => ({ duration })) } }, h1: { pipelines: { nodes: [{ duration: 60 }] } } } }, ['g/p', 'g/q'])
-  expect(usual).toEqual({ 'g/p': { low: 660, high: 900 } })
+  const pipelines = (list: number[]) => ({ data: { project: { pipelines: { nodes: list.map(duration => ({ duration })) } } } })
+  expect(readUsual(pipelines(durations))).toEqual({ low: 660, high: 900 })
+  expect(readUsual(pipelines([60]))).toBeNull()
 })
 
 test('a review bot body draws as Markdown and reads as one line in a hover', async () => {
@@ -288,13 +292,37 @@ test("a bot's approval does not count", async () => {
   expect(card.approvers).toEqual(['tim'])
 })
 
-test('a partial GraphQL error keeps the MRs that came back; no data at all throws', async () => {
-  const cards = readResponse(
-    { data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1)] } }, p0: null }, errors: [{ message: 'no access' }] },
-    1
-  )
+test('a partial GraphQL answer keeps what came back, and what the schema lets be null reads as absent; no data at all throws', async () => {
+  const cards = readResponse({ data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1), null] } } }, errors: [{ message: 'no access' }] })
   expect(cards.map(card => card.iid)).toEqual([1])
-  expect(() => readResponse({ errors: [{ message: 'bad token' }] }, 0)).toThrow('bad token')
+  expect(readPinned({ data: { project: null }, errors: [{ message: 'no access' }] })).toEqual([])
+  expect(() => readResponse({ errors: [{ message: 'bad token' }] })).toThrow('bad token')
+
+  // What the schema lets be null reads as absent, or as the MR's own address: nodes, an address, a name, a status.
+  const nameless = { ...job('x', 'FAILED'), name: null, status: null, webPath: null }
+  const card = toCard(
+    rawMr(7, {
+      webUrl: null,
+      project: { ...project(), webUrl: null },
+      approvedBy: { nodes: null },
+      reviewers: { nodes: [null] },
+      headPipeline: pipe('FAILED', {
+        path: null,
+        stages: { nodes: [null, { name: null, status: null, jobs: { nodes: [null, nameless] } }] },
+      }),
+      discussions: { nodes: [null, { resolvable: true, resolved: false, notes: { nodes: [null, note('rename this', 'reviewer', { url: null })] } }] },
+    })
+  )
+  const mr = 'https://gitlab.com/g/p/-/merge_requests/7'
+  expect(card.url).toBe(mr)
+  expect(card.repo.url).toBe('https://gitlab.com/g/p')
+  expect(card.approvers).toEqual([])
+  expect(card.reviewers).toEqual([])
+  expect(card.pipeline?.url).toBe(mr)
+  expect(card.pipeline?.stages).toEqual([
+    { name: '(unnamed)', status: 'unknown', jobs: [{ name: '(unnamed)', status: 'unknown', allowFailure: false, url: mr, startedAt: '2026-10-23T14:50:00Z', finishedAt: '2026-10-23T15:00:00Z' }] },
+  ])
+  expect(card.openThreads.map(thread => thread.url)).toEqual([mr])
 })
 
 test('the model reads who and where, never the comment itself, and a job name as one capped line', async () => {
