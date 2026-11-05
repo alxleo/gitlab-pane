@@ -1,17 +1,11 @@
 # Keeps docs/screens/*.png, the README's pictures of the pane, true to what the pane draws.
-# The work is `npm run screens -- render`: it runs the mod's own drawing code under the pinned Claude Code and photographs
-# the result in Chromium. This file only installs the tools and runs those commands, so a move to GitLab CI keeps the same
-# steps.
+# The work is `npm run screens -- render --check`: it runs the mod's own drawing code under the pinned Claude Code,
+# photographs the result in Chromium, and fails unless the committed PNGs are exactly those. A stale picture is regenerated
+# by whoever changed the drawing (`npm run screens -- render`) and committed with the change: nothing here pushes a commit,
+# so no head commit is left without checks. A failing run uploads the fresh render as an artifact to look at the difference.
+# This file only installs the tools and runs those commands, so a move to GitLab CI keeps the same steps.
 #
-# - On a pull request from this repository that touches what the pictures are made from, `update` draws them twice (they
-#   must match byte for byte) and commits any change to the pull request's own branch, even when the branch moved while
-#   they were drawn. A push made with GITHUB_TOKEN starts no workflow, so there is no loop; it also starts none of check.yml's,
-#   so run the checks again from the Actions tab if the branch requires them on the newest commit.
-# - A pull request from a fork gets nothing from here: its token cannot write, and a fork's branch is not ours to push to.
-#   Whoever merges it regenerates the pictures.
-# - On main, `verify` writes nothing: it draws twice and fails unless docs/screens already holds exactly those pictures.
-#
-# The write token reaches one step of one job. Checkout keeps no credentials, and the packages are those of package-lock.json.
+# The job reads the repository and nothing more: checkout keeps no credentials and the packages are those of package-lock.json.
 name: screens
 on:
   push:
@@ -23,6 +17,7 @@ on:
       - tests/gitlab_fake.ts
       - tools/pane_screens.ts
       - tools/screens/**
+      - docs/screens/**
       - package-lock.json
       - .claude-plugin/plugin.json
       - .github/workflows/screens.yml
@@ -34,6 +29,7 @@ on:
       - tests/gitlab_fake.ts
       - tools/pane_screens.ts
       - tools/screens/**
+      - docs/screens/**
       - package-lock.json
       - .claude-plugin/plugin.json
       - .github/workflows/screens.yml
@@ -42,12 +38,11 @@ on:
 permissions: {}
 
 concurrency:
-  group: screens-${{ github.ref }}
-  cancel-in-progress: false
+  group: screens-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    if: github.event_name != 'pull_request'
+  screens:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -64,33 +59,11 @@ jobs:
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: npm ci --ignore-scripts
       - run: npm run screens -- setup --with-deps
-      # Draws every scene twice and fails unless the two sets of PNGs match byte for byte and the committed ones are the same.
-      - run: npm run screens -- render --verify --check
-
-  update:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    env:
-      CLAUDE_CODE_VERSION: "2.1.318"
-    steps:
-      # The pull request's own branch, not the merge GitHub makes to test it: the commit made here goes on that branch.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Draws every scene twice, fails unless the two sets match byte for byte, and fails unless docs/screens holds them.
+      - run: npm run screens -- render --verify --check --fresh "$RUNNER_TEMP/fresh"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
-      - run: npm ci --ignore-scripts
-      - run: npm run screens -- setup --with-deps
-      # Draws every scene twice and fails unless the two sets of PNGs match byte for byte, so a push never churns them.
-      - run: npm run screens -- render --verify
-      - name: Commit the screenshots to the pull request's branch if they changed
-        env:
-          PANE_SCREENS_PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: npm run screens -- commit --branch "$BRANCH"
+          name: fresh-screens
+          path: ${{ runner.temp }}/fresh
+          if-no-files-found: ignore
