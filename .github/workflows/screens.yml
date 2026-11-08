@@ -2,7 +2,8 @@
 # The work is `npm run screens -- render --check`: it runs the mod's own drawing code under the pinned Claude Code,
 # photographs the result in Chromium, and fails unless the committed PNGs are exactly those. A stale picture is regenerated
 # by whoever changed the drawing (`npm run screens -- render`) and committed with the change: nothing here pushes a commit,
-# so no head commit is left without checks. A failing run uploads the fresh render as an artifact to look at the difference.
+# so no head commit is left without checks. A failing run names each stale picture; render them locally to look at the
+# difference. Nothing is uploaded: GitHub artifact storage is one small allowance shared by every repository in the account.
 # This file only installs the tools and runs those commands, so a move to GitLab CI keeps the same steps.
 #
 # The job reads the repository and nothing more: checkout keeps no credentials and the packages are those of package-lock.json.
@@ -60,10 +61,4 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run screens -- setup --with-deps
       # Draws every scene twice, fails unless the two sets match byte for byte, and fails unless docs/screens holds them.
-      - run: npm run screens -- render --verify --check --fresh "$RUNNER_TEMP/fresh"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: fresh-screens
-          path: ${{ runner.temp }}/fresh
-          if-no-files-found: ignore
+      - run: npm run screens -- render --verify --check
