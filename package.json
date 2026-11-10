@@ -21,6 +21,7 @@
     "schema": "node tools/gitlab_schema.ts",
     "screens": "node tools/pane_screens.ts",
     "rig": "node tools/pane_rig.ts",
+    "shot": "node tools/pane_shot.ts",
     "release-tree": "node tools/release_tree.ts",
     "docs": "node tools/docs.ts",
     "scan": "node tools/scan.ts",
