@@ -113,7 +113,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
     const command = text(field(e, 'command'))
-    if (!/\bmr create\b|merge_request\.create/.test(command) || !isFilled(ran.text)) {
+    if (!/\bmr create\b|merge_request\.create/u.test(command) || !isFilled(ran.text)) {
       return ran
     }
     const raise = async (output: string) => {

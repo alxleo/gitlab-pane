@@ -98,21 +98,22 @@ test('a leading character is its whole self or a letter with its marks, and neve
       const wholes = charactersOf(text).slice(0, count)
       const out = leading(text, count, size)
       expect(out).toHaveLength(wholes.length)
-      out.forEach((piece, at) => {
-        const whole = wholes[at] ?? ''
+      const cuts = out.map((piece, at) => ({ piece, whole: wholes[at] ?? '' }))
+      for (const { piece, whole } of cuts) {
         expect(piece).not.toMatch(ENDS_IN_JOINER)
         expect(piece.length).toBeLessThanOrEqual(size)
         expect(whole.startsWith(piece)).toBe(true)
-        if (whole.length <= size) {
-          expect(piece).toBe(whole)
-        } else {
-          // Over the size: a first code point, then marks only, ended where the next code point is no mark or does not fit.
-          const [, ...marks] = Array.from(piece)
-          const next = Array.from(whole.slice(piece.length))[0] ?? ''
-          expect(marks.every(mark => MARK.test(mark))).toBe(true)
-          expect(piece.length + next.length > size || (piece !== '' && !MARK.test(next))).toBe(true)
-        }
+      }
+      // Within the size a character stays whole.
+      const kept = cuts.filter(({ whole }) => whole.length <= size)
+      expect(kept.map(({ piece }) => piece)).toEqual(kept.map(({ whole }) => whole))
+      // Over the size: a first code point, then marks only, ended where the next code point is no mark or does not fit.
+      const badlyCut = cuts.filter(({ piece, whole }) => {
+        const [, ...marks] = Array.from(piece)
+        const next = Array.from(whole.slice(piece.length))[0] ?? ''
+        return whole.length > size && !(marks.every(mark => MARK.test(mark)) && (piece.length + next.length > size || (piece !== '' && !MARK.test(next))))
       })
+      expect(badlyCut).toEqual([])
     })
   )
 })

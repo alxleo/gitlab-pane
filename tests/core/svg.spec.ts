@@ -21,7 +21,7 @@ test("no string put into an svg template makes markup: the only < > quotes left 
       expect(out.split('>').length - 1).toBe(2)
       expect(out.split("'").length - 1).toBe(4)
       expect(out.split('"').length - 1).toBe(2)
-      expect(out.replace(/&(?:amp|lt|gt|quot|apos);/g, '')).not.toContain('&')
+      expect(out.replace(/&(?:amp|lt|gt|quot|apos);/gu, '')).not.toContain('&')
     })
   )
 })

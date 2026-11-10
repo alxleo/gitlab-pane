@@ -66,10 +66,10 @@ const excerptOf = (body: string): string => foreign(body, EXCERPT_ROOM)
 const actorOf = (username: string): string => cut(username, ACTOR_ROOM, ACTOR_ROOM)
 
 /** A note's id as the number in its link: `gid://gitlab/Note/123` is `123`. */
-const noteIdOf = (id: string): string | null => /(\d+)$/.exec(id)?.[1] ?? null
+const noteIdOf = (id: string): string | null => /(\d+)$/u.exec(id)?.[1] ?? null
 
 /** The note a to-do's link points at: `…#note_123`. */
-const noteOfUrl = (url: string | null): string | null => /#note_(\d+)$/.exec(url ?? '')?.[1] ?? null
+const noteOfUrl = (url: string | null): string | null => /#note_(\d+)$/u.exec(url ?? '')?.[1] ?? null
 
 const timeOf = (iso: string | null): number | null => {
   const at = iso === null ? Number.NaN : Date.parse(iso)
@@ -231,7 +231,7 @@ export const followedProjectMrs = (host: string, data: InboxFollowProjectQuery |
 
 /** The same MR as several documents saw it becomes one, with all their signals, newest first; a request counts once. */
 function joined(first: InboxMr, all: readonly InboxMr[]): InboxMr {
-  const signals = all.flatMap(mr => mr.signals).sort((a, b) => b.at - a.at)
+  const signals = all.flatMap(mr => mr.signals).toSorted((a, b) => b.at - a.at)
   const request = signals.find(signal => signal.kind === 'review_requested')
   const seen = new Set<string>()
   return {

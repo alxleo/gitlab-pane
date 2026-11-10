@@ -52,7 +52,7 @@ export type Sent = { host: string; operation: string; variables: Record<string, 
  * `init` cannot name the engine's `HttpInit`; its body is `unknown` because the engine's is text or bytes, and only text is a document.
  */
 export function sent(url: string, init: { method?: string; headers?: Record<string, string>; body?: unknown } | undefined): Sent {
-  const match = /^https:\/\/([^/]+)\/api\/graphql$/.exec(url)
+  const match = /^https:\/\/([^/]+)\/api\/graphql$/u.exec(url)
   if (match?.[1] === undefined || init?.method !== 'POST') {
     throw new Error(`the pane fetched something that is not a GraphQL POST: ${init?.method ?? 'GET'} ${url}`)
   }
@@ -63,11 +63,11 @@ export function sent(url: string, init: { method?: string; headers?: Record<stri
   if (!isRecord(body) || typeof body.query !== 'string' || typeof body.operationName !== 'string') {
     throw new Error('the pane sent a body without a query and an operationName')
   }
-  if (new RegExp(`^\\s*query\\s+${body.operationName}\\b`, 'm').exec(body.query) === null) {
+  if (new RegExp(`^\\s*query\\s+${body.operationName}\\b`, 'mu').exec(body.query) === null) {
     throw new Error(`the operationName ${body.operationName} is not the operation of the document sent`)
   }
   const header = Object.entries(init.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
-  return { host: match[1], operation: body.operationName, variables: stringRecord(body.variables), token: header?.replace(/^Bearer /, '') }
+  return { host: match[1], operation: body.operationName, variables: stringRecord(body.variables), token: header?.replace(/^Bearer /u, '') }
 }
 
 /** A job's log asked for on the REST API: the host, the project path and job number it names, and the bearer token. */
@@ -75,7 +75,7 @@ export type Traced = { host: string; path: string; job: string; token: string | 
 
 /** The request `$.http.fetch(url, init)` is given, read as a GET of a job's trace, or none when it is something else. */
 export function traced(url: string, init: { method?: string; headers?: Record<string, string> } | undefined): Traced | null {
-  const match = /^https:\/\/([^/]+)\/api\/v4\/projects\/([^/]+)\/jobs\/(\d+)\/trace$/.exec(url)
+  const match = /^https:\/\/([^/]+)\/api\/v4\/projects\/([^/]+)\/jobs\/(\d+)\/trace$/u.exec(url)
   if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
     return null
   }
@@ -83,7 +83,7 @@ export function traced(url: string, init: { method?: string; headers?: Record<st
     throw new Error(`the pane read a job's trace with ${init.method}`)
   }
   const header = Object.entries(init?.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
-  return { host: match[1], path: decodeURIComponent(match[2]), job: match[3], token: header?.replace(/^Bearer /, '') }
+  return { host: match[1], path: decodeURIComponent(match[2]), job: match[3], token: header?.replace(/^Bearer /u, '') }
 }
 
 /**

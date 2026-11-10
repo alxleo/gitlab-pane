@@ -84,7 +84,7 @@ test('a person keeps one colour and a hash is stable', () => {
   expect(hash('😀')).toBe(1_779_626)
   expect(shortHash('g/p')).toBe(hash('g/p').toString(36))
   expect(discColour('ixm5302')).toBe(discColour('ixm5302'))
-  expect(discColour('ixm5302')).toMatch(/^#[0-9A-F]{6}$/)
+  expect(discColour('ixm5302')).toMatch(/^#[0-9A-F]{6}$/u)
   expect(discSource('ixm5302')).toContain(discColour('ixm5302'))
 })
 

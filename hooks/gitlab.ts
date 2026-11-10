@@ -61,7 +61,7 @@ export function readUsual(response: RawResponse<UsualQuery>): Usual | null {
   const seconds = present(response.data?.project?.pipelines?.nodes)
     .map(pipeline => pipeline.duration)
     .filter((value): value is number => typeof value === 'number')
-    .sort((a, b) => a - b)
+    .toSorted((a, b) => a - b)
   if (seconds.length < 5) {
     return null
   }
@@ -96,10 +96,10 @@ export function cleanBody(body: string, host: string, path: string): GitLabMarkd
   const site = siteOf(host)
   return fromGitLab(
     body
-      .replace(/\]\(\/uploads\//g, `](${site}/${path}/uploads/`)
-      .replace(/\]\(\//g, `](${site}/`)
-      .replace(/[ \t]+$/gm, '')
-      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\]\(\/uploads\//gu, `](${site}/${path}/uploads/`)
+      .replace(/\]\(\//gu, `](${site}/`)
+      .replace(/[ \t]+$/gmu, '')
+      .replace(/\n{3,}/gu, '\n\n')
       .trim()
   )
 }
@@ -145,7 +145,7 @@ const STATE_RANK: Record<PersonState | 'open', number> = {
 }
 
 /** A bot without a picture of its own gets a generated identicon, which says nothing of what it is. */
-const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=identicon\b/.test(url)
+const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=identicon\b/u.test(url)
 
 /** Who to talk to, most pressing first: asked for changes, has open threads, approved, then the rest; bots after people. */
 function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads: { isOpen: boolean; notes: RawNote[] }[]): Person[] {
@@ -204,7 +204,7 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
             : person.notes.length > 0
               ? 'commented'
               : 'unreviewed'
-    const notes = [...person.notes].sort((a, b) => firstDifference(Number(started.has(b)) - Number(started.has(a)), Number(b.isOpen) - Number(a.isOpen), b.at.localeCompare(a.at)))
+    const notes = person.notes.toSorted((a, b) => firstDifference(Number(started.has(b)) - Number(started.has(a)), Number(b.isOpen) - Number(a.isOpen), b.at.localeCompare(a.at)))
     return {
       username,
       name: person.name,
@@ -223,7 +223,7 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
   return people
     .filter(person => !person.isBot || person.state === 'requested_changes' || person.openThreads > 0)
     .map(person => (shared.has(person.initials) ? { ...person, initials: initials(person.name, person.username, true) } : person))
-    .sort((a, b) => firstDifference(Number(a.isBot) - Number(b.isBot), order(a) - order(b), a.name.localeCompare(b.name)))
+    .toSorted((a, b) => firstDifference(Number(a.isBot) - Number(b.isBot), order(a) - order(b), a.name.localeCompare(b.name)))
 }
 
 /** The card for an MR read from `host`. */

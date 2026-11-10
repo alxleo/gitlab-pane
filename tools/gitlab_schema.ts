@@ -53,6 +53,7 @@ import {
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
 import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
@@ -275,7 +276,7 @@ async function measure(name: string, text: string): Promise<Cost> {
       throw new SchemaError(`cannot ask ${ENDPOINT} what ${name} costs: ${messageOf(error)}`)
     }
     if (status === 429 && attempt < RATE_LIMIT_TRIES) {
-      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_WAIT_MS))
+      await sleep(RATE_LIMIT_WAIT_MS)
       continue
     }
     const cost = isRecord(answer) && isRecord(answer['data']) ? answer['data']['queryComplexity'] : undefined
@@ -367,7 +368,7 @@ function used(schema: GraphQLSchema, queries: Queries): Uses {
   return uses
 }
 
-const byName = <T extends { readonly name: string }>(items: readonly T[]): T[] => [...items].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+const byName = <T extends { readonly name: string }>(items: readonly T[]): T[] => items.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 
 // A real answer carries `null` for what a kind does not have (a scalar's fields); the types leave the key out.
 const listOf = <T>(value: readonly T[] | null | undefined): readonly T[] => value ?? []
@@ -384,7 +385,7 @@ const interfacesOf = (kind: IntrospectionType): readonly { readonly name: string
  */
 function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
   const full: IntrospectionSchema = introspection.__schema
-  const types = new Map(full.types.map(kind => [kind.name, kind]))
+  const typeNamed = new Map(full.types.map(kind => [kind.name, kind]))
   const { fields, arguments: args, variables } = used(buildClientSchema(introspection), queries)
   /** The types the queries reach from the query type: through the fields they select, and the types they name. */
   const reach = (): Set<string> => {
@@ -395,7 +396,7 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
         continue
       }
       reached.add(name)
-      const kind = types.get(name)
+      const kind = typeNamed.get(name)
       if (kind === undefined) {
         throw new SchemaError(`the queries use ${name}, which the schema does not hold`)
       }
@@ -419,7 +420,7 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
   const inherit = (reached: ReadonlySet<string>): boolean => {
     let added = false
     for (const name of reached) {
-      const kind = types.get(name)
+      const kind = typeNamed.get(name)
       for (const parent of kind === undefined ? [] : (interfacesOf(kind) ?? [])) {
         for (const field of fields.get(parent.name) ?? []) {
           if (fields.get(name)?.has(field) !== true) {
@@ -477,8 +478,8 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
       queryType: full.queryType,
       mutationType: null,
       subscriptionType: null,
-      types: [...keep].sort().flatMap(name => {
-        const kind = types.get(name)
+      types: [...keep].toSorted().flatMap(name => {
+        const kind = typeNamed.get(name)
         return kind === undefined ? [] : [slim(kind)]
       }),
       directives: byName(full.directives.filter(directive => STANDARD_DIRECTIVES.has(directive.name)).map(slimDirective)),
@@ -494,14 +495,14 @@ function sorted(value: unknown): unknown {
   return isRecord(value)
     ? Object.fromEntries(
         Object.keys(value)
-          .sort()
+          .toSorted()
           .map(key => [key, sorted(value[key])])
       )
     : value
 }
 
 /** The snapshot as it is written: sorted, and formatted as Biome formats the file, so `npm run format:check` leaves it alone. */
-const dump = (snapshot: unknown): string => formatted(`${JSON.stringify(sorted(snapshot), null, 1)}\n`, SNAPSHOT)
+const dump = (pruned: unknown): string => formatted(`${JSON.stringify(sorted(pruned), null, 1)}\n`, SNAPSHOT)
 
 // ---- the generated types ------------------------------------------------------------------------------------------------
 
@@ -535,7 +536,7 @@ async function generate(schemaFile: string): Promise<string> {
 }
 
 function stale(file: string, now: string): Finding | null {
-  let held: string | null = null
+  let held: string | null
   try {
     held = readFileSync(file, 'utf8')
   } catch {
@@ -557,13 +558,13 @@ async function check(schemaFile: string | undefined, save: string | undefined): 
     writeFileSync(save, JSON.stringify(introspection))
   }
   const schema = buildClientSchema(introspection)
-  const snapshot = dump(prune(introspection, queries))
+  const pruned = dump(prune(introspection, queries))
   const scratch = mkdtempSync(join(tmpdir(), 'gitlab-schema-'))
-  let types: string
+  let generated: string
   try {
     const live = join(scratch, 'live.json')
-    writeFileSync(live, snapshot)
-    types = await generate(live)
+    writeFileSync(live, pruned)
+    generated = await generate(live)
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
@@ -571,7 +572,7 @@ async function check(schemaFile: string | undefined, save: string | undefined): 
   if (schemaFile !== undefined) {
     console.log('· complexity: not measured, as --schema reads no network')
   }
-  const findings = [...checkQueries(schema, queries), ...costs, ...[stale(SNAPSHOT, snapshot), stale(TYPES, types)].filter(found => found !== null)]
+  const findings = [...checkQueries(schema, queries), ...costs, ...[stale(SNAPSHOT, pruned), stale(TYPES, generated)].filter(found => found !== null)]
   for (const finding of findings) {
     console.log(`${finding.fails ? '✗' : '·'} ${finding.query}: ${finding.problem}`)
   }

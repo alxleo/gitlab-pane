@@ -60,7 +60,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           {row.pipeline !== null ? <Link href={row.pipeline.href}>{row.pipeline.text}</Link> : <Text dimColor>no pipeline</Text>}
           {row.verdict !== null ? (
             <Box flexDirection="row" gap={1} flexShrink={0}>
-              <Text bold={row.verdict.bold} color={row.verdict.tone}>
+              <Text weight={row.verdict.bold ? 'semibold' : undefined} color={row.verdict.tone}>
                 {row.verdict.words}
               </Text>
               {row.verdict.trailing !== null && <Text dimColor>{row.verdict.trailing}</Text>}
@@ -82,7 +82,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
         </Box>
       )
     }
-    case 'said': {
+    case 'said':
+    default: {
       const { said } = row
       return said !== null ? (
         <Box paddingLeft={2}>
