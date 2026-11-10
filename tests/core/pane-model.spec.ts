@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
+import { hasLeft } from '../../hooks/attention.ts'
 import { firstRunLines } from '../../hooks/first-run.ts'
+import { cardKey } from '../../hooks/hosts.ts'
+import { pinKey } from '../../hooks/mr-url.ts'
 import { cleanBody, toCard } from '../../hooks/gitlab.ts'
 import { buildPane, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
@@ -175,6 +178,23 @@ const drawnRows = (cards: MrCard[]) => {
   const strip = (row: RowModel) => ({ ...row, about: null, blocks: null, detail: null, people: row.people.map(person => ({ ...person, card: [] })) })
   return { session: model.session.map(strip), mine: model.mine.rows.map(strip), drafts: model.drafts?.rows.map(strip) ?? [], more: model.mine.more, leftOut: model.leftOut }
 }
+
+test("the Mine tab, All and the repos count the same MRs, and this session's, the ready ones and the drafts add up to them", () => {
+  const countOf = (label: string | undefined) => Number(/(\d+)$/.exec(label ?? '')?.[1] ?? NaN)
+  fc.assert(
+    fc.property(fc.array(readCardArb, { maxLength: 8 }), fc.array(fc.boolean(), { minLength: 8, maxLength: 8 }), (cards, isPinned) => {
+      // One card to a key, and a pin's key that of its card, as the list holds them.
+      const full = cards.map((one, i) => ({ ...one, iid: one.iid + 100 * i, key: cardKey(one.host, one.path, one.iid + 100 * i) }))
+      const pinned = full.filter((_, i) => isPinned[i] === true).map(card => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin: 'watched' as const }))
+      const model = modelOf(full, { pinned, expanded: ['drafts', 'more'] }, () => 1)
+      expect(model.session.length).toBe(pinned.filter(pin => full.some(card => card.key === pinKey(pin) && !hasLeft(card))).length)
+      const tab = countOf(model.tabs.mine)
+      expect(countOf(model.repos.all.label)).toBe(tab)
+      expect(model.repos.each.reduce((sum, repo) => sum + countOf(repo.label), 0)).toBe(tab)
+      expect(model.session.length + countOf(model.mine.heading) + countOf(model.drafts?.label ?? '0')).toBe(tab)
+    })
+  )
+})
 
 test('the list draws a shared slim card as it draws the whole one', () => {
   fc.assert(

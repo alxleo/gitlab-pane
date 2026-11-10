@@ -300,7 +300,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
 
   return {
     tabs: {
-      mine: `Mine · ${rows.filter(row => !row.isDraft || pinnedKeys.has(row.key)).length}`,
+      // Every MR the tab holds, as `All` counts them: this session's, the ready ones and the drafts add up to it.
+      mine: `Mine · ${rows.length}`,
       inbox: input.news > 0 ? `Inbox · ${input.news} new` : 'Inbox',
       isInbox,
     },
@@ -311,7 +312,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     mine: {
-      heading: `Mine · ${mine.length}`,
+      // GitLab's word for an MR that is not a draft; the tab above already says Mine.
+      heading: `Ready · ${mine.length}`,
       isEmpty: mine.length === 0,
       rows: rowsOf(mineShown),
       more: mine.length > MINE_SHOWN ? (showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`) : null,

@@ -433,13 +433,13 @@ test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label cou
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Button', key: 'tab-mine' }))?.props.variant).toBe('primary')
   expect((await ui.find({ type: 'Button', key: 'tab-inbox' }))?.props.label).toBe('Inbox')
-  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
   await ui.press({ key: 'tab-inbox' })
   expect((await ui.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
-  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeUndefined()
   expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
   await ui.press({ key: 'tab-mine' })
-  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
   await ui.unmount()
 })
 
@@ -557,10 +557,10 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
   const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name))
   expect(jobs.length).toBe(9)
   // The page is drawn alone: no MR list under it.
-  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeUndefined()
 
   await ui.press({ key: 'back-bottom' })
-  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
   expect(titles.at(-1)).toBe('GitLab · Mine')
   // The card it was read from is still open where it was.
   expect((await ui.findAll({ type: 'Button' })).find(button => button.key === open)?.props.label).toBe('▾ thing 12')
@@ -798,7 +798,7 @@ test('an MR that merges while read whole leaves its page, and the title follows'
 
   fake.mrs = [rawMr(12, { state: 'merged', updatedAt: stamp(clock) }), rawMr(13)]
   await clock.advance(180_000)
-  expect(await ui.find({ type: 'Text', text: /^Mine · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
   expect(titles.at(-1)).toBe('GitLab · Mine')
   // Back, the MR does not bring its page with it.
   fake.mrs = [rawMr(12, { updatedAt: stamp(clock) }), rawMr(13)]
@@ -966,7 +966,7 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
 
   for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 25')
+    expect((await ui.find({ type: 'Text', text: /^Ready · / }))?.text).toBe('Ready · 25')
     // Mine shows its ten most pressing; the rest fold behind a button.
     expect((await ui.find({ type: 'Button', key: 'more' }))?.props.label).toBe('▸ 15 more')
     // Each person is their GitLab avatar where the surface draws pictures and room is left after the cards, else a dot.
@@ -1039,7 +1039,7 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
 
     await ui.press({ key: 'repo-gitlab.com/g/q' })
-    expect((await ui.find({ type: 'Text', text: /^Mine · / }))?.text).toBe('Mine · 5')
+    expect((await ui.find({ type: 'Text', text: /^Ready · / }))?.text).toBe('Ready · 5')
     await ui.press({ key: 'repo-all' })
     await ui.press({ key: 'more' })
     await ui.unmount()
