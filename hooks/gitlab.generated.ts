@@ -73,6 +73,7 @@ export type TodoActionEnum =
   | 'mentioned'
   | 'merge_train_removed'
   | 'okr_checkin_requested'
+  | 'orbit_access_granted'
   | 'review_requested'
   | 'review_submitted'
   | 'ssh_key_expired'
