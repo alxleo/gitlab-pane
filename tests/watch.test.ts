@@ -111,7 +111,13 @@ const plain = (mr: Mr | null) =>
         reviewers: { nodes: (mr.reviewers?.nodes ?? []).map(one => (one === null ? null : { username: one.username, name: one.name, bot: one.bot, avatarUrl: one.avatarUrl })) },
       }
 
-function engine(on: On, fake: Fake, stored: Record<string, unknown> = {}, others: Record<string, FakeHost> = {}, world: { glab?: Record<string, string>; session?: string } = {}) {
+function engine(
+  on: On,
+  fake: Fake,
+  stored: Record<string, unknown> = {},
+  others: Record<string, FakeHost> = {},
+  world: { glab?: Record<string, string>; session?: string; held?: () => Promise<void> } = {}
+) {
   const woken: string[] = []
   /** The operations asked for, but for the run times. */
   const reads: string[] = []
@@ -734,11 +740,11 @@ test('with nothing read yet, a failing GitLab is told in a line of its own; and 
   fake.mrs = [rawMr(12)]
   await ui.press({ key: 'refresh' })
   expect(await ui.find({ type: 'Text', text: /^GitLab: / })).toBeUndefined()
-  // Reading the same answer again changes none of what the pane draws from, so nothing is written to redraw it. (The reads'
-  // own clock is state too, but the drawing does not read it.)
+  // Reading the same answer again changes none of what the pane draws from, so nothing is written to redraw it but the ↻ a
+  // person who pressed refresh sees while the read is out. (The reads' own clock is state too, but the drawing does not read it.)
   written.length = 0
   await ui.press({ key: 'refresh' })
-  expect(written.filter(key => !NOT_THE_LIST.includes(key))).toEqual([])
+  expect(written.filter(key => !NOT_THE_LIST.includes(key))).toEqual(['reading', 'reading'])
 
   // Two quiet minutes: each poll asks for what changed and for the verdicts, which is two requests, and finding nothing new
   // redraws nothing.
@@ -764,8 +770,10 @@ test('an MR a partly failed read leaves out keeps its last card, still open, and
   fake.lost = ['13']
   await clock.advance(180_000)
   expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.props.label).toBe('▾ thing 13')
-  // The footer's age is that of the last change, or of the last five minutes: a quiet poll redraws nothing.
-  expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toMatch(/^updated (just now|\dm ago); 1 MR kept from the last read$/)
+  // The footer says what the read left out; the age beside the tabs is that of the last change, or of the last five minutes:
+  // a quiet poll redraws nothing.
+  expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toBe('1 MR kept from the last read')
+  expect((await ui.find({ type: 'Text', text: /^updated / }))?.text).toMatch(/^updated (just now|\dm ago)$/)
 
   fake.lost = []
   await clock.advance(180_000)
@@ -910,8 +918,8 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
-  // (Fourteen since the inbox's own atoms and the problems the leader reported are read by the same drawing.)
-  expect(reads).toBeLessThanOrEqual(14)
+  // (Fifteen since the inbox's own atoms, the problems the leader reported and whether a read is out are read by the same drawing.)
+  expect(reads).toBeLessThanOrEqual(15)
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
@@ -1064,6 +1072,57 @@ test('with another session leading, a session asks GitLab for nothing and draws 
   expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
   // The lease stays the leader's: a follower never writes it.
   expect(store.get('lease')).toEqual({ owner: 'other', renewedAt: clock.now() - 10_000 })
+  await ui.unmount()
+})
+
+test('a session that leads draws the last snapshot at once, with ↻ beside its age, while its own slow read is out', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const { store } = engine(on, { mrs: [rawMr(12), rawMr(13)], isDown: false }, {}, {}, { held: () => answered })
+  // The last session to read left this three hours ago, and none leads now: this one reads, and GitLab is slow to answer.
+  store.set('snapshot', snapshotOf([sharedCard(12)], 'other', NOW - 3 * 3_600_000))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
+
+  answer()
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /^updated / }))?.text).toBe('updated just now')
+  expect(await ui.find({ type: 'Text', text: /^↻ updated/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('an MR this session raised before its pane opened stays drawn beside the last snapshot while the first read is out', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let isHeld = false
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false, isPaneBroken: true }
+  const { store } = engine(on, fake, {}, {}, { held: () => (isHeld ? answered : Promise.resolve()) })
+  store.set('snapshot', snapshotOf([sharedCard(13)], 'other', NOW - 3 * 3_600_000))
+  // With no pane, the session reads only the MR it raised; then a person opens the pane and GitLab is slow to answer.
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await raise($)
+  await clock.advance(10_000)
+  isHeld = true
+  fake.isPaneBroken = false
+  await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  await clock.advance(4_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  answer()
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
   await ui.unmount()
 })
 

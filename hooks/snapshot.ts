@@ -258,6 +258,13 @@ export function isPublished(stored: PinsRecord | null, pins: readonly Pinned[], 
   return stored !== null && now - stored.at < PINS_BEAT_MS && isEqual(stored.pins, pins)
 }
 
+/** The cards of a session's own pins that a snapshot neither read nor asked for: drawn as they were, so a new pin does not blink out. */
+export function waitingRows(snapshot: Snapshot, pinned: readonly Pinned[], held: readonly MrCard[]): MrCard[] {
+  const own = new Set(pinned.map(pinKey))
+  const read = new Set(snapshot.rows.map(row => row.key))
+  return held.filter(row => own.has(row.key) && !read.has(row.key) && !snapshot.pinned.includes(row.key))
+}
+
 /** Whether a pinned MR's pipeline is still going, which is what makes the leader read more often. */
 export const isMoving = (rows: readonly MrCard[], pinned: readonly Pinned[]): boolean => {
   const keys = new Set(pinned.map(pinKey))

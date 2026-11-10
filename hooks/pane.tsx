@@ -18,7 +18,7 @@ import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isWaking, browse, failures, now } = await view($)
+  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, now } = await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
@@ -70,6 +70,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       view: isInbox ? 'inbox' : reading !== undefined ? 'reading' : 'mine',
       news: await inboxNews($),
       poll,
+      isReading,
       isWaking,
       failures,
     },
@@ -128,13 +129,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // An MR read whole is a page over its tab, a way back at each end, so a long one needs no scrolling back up.
   const back = (key: string) => <Button key={key} plain label={isInbox ? '‹ Inbox' : '‹ Mine'} onPress={() => leaveReading($)} />
+  const status =
+    model.status.text !== '' ? (
+      <Text color={model.status.isWarning ? 'warning' : undefined} dimColor={!model.status.isWarning} size="footnote">
+        {model.status.text}
+      </Text>
+    ) : null
   const body =
     reading !== undefined
       ? [back('back-top'), ...drawReading($, e, reading, folds, now), back('back-bottom')]
       : [
-          <Box flexDirection="row" columnGap={1}>
+          <Box flexDirection="row" columnGap={1} alignItems="center">
             <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
             <Button key="tab-inbox" label={model.tabs.inbox} variant={isInbox ? 'primary' : 'secondary'} onPress={() => openTab($, 'inbox')} />
+            {/* The inbox says its own age on the row below its tabs. */}
+            {!isInbox && status}
           </Box>,
           ...(isInbox ? [await drawInbox($, e)] : mineTab),
         ]
@@ -143,9 +152,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     <Box flexDirection="column" gap={1}>
       {body}
       <Box flexDirection="row" gap={2}>
-        <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
-          {model.footer.text}
-        </Text>
+        {/* An MR read whole has no tabs row: the age goes beside its refresh. */}
+        {reading !== undefined && status}
+        {model.footer.text !== '' && (
+          <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
+            {model.footer.text}
+          </Text>
+        )}
         <Button key="refresh" plain label="refresh" onPress={() => quietly($, refresh($))} />
         <Button key="wake" plain label={model.footer.wake} onPress={() => toggleWake($)} />
       </Box>

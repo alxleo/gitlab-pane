@@ -408,15 +408,28 @@ async function flow(options: Options): Promise<number> {
     await engine.ask({ subtype: 'initialize' })
     const desktop = new Desktop(engine, options.bodyRows)
     await desktop.draw()
-    const end = Date.now() + options.waitSeconds * 1000
-    while (desktop.texts().some(text => text.includes('reading GitLab'))) {
+    const startedAt = Date.now()
+    // Only a session whose pane is open reads GitLab, and nothing is attached when the session starts, so the pane stays shut
+    // until a person opens it: the rig opens it as they would, with its tab.
+    if ((await title(engine)) === '(not open)') {
+      await desktop.press('tab-mine')
+    }
+    const seconds = () => ((Date.now() - startedAt) / 1000).toFixed(1)
+    const hasCards = () => desktop.texts().some(text => /^Mine · [1-9]/.test(text.trim()))
+    let cardsAt = hasCards() ? seconds() : null
+    const end = startedAt + options.waitSeconds * 1000
+    // Read once the pane says how old its cards are, with no ↻ beside the age, or says the read failed.
+    const isRead = () => desktop.texts().some(text => /^updated |^GitLab read failed/.test(text.trim()))
+    while (!isRead()) {
       if (Date.now() > end) {
         throw new RigError('GitLab never answered')
       }
-      await desktop.settle(options.settleMs, 5)
+      await desktop.settle(options.settleMs, 1)
+      cardsAt ??= hasCards() ? seconds() : null
     }
+    const readAt = seconds()
     await desktop.settle(options.settleMs)
-    console.log('ready')
+    console.log(`ready: first cards at ${cardsAt ?? readAt}s, the read done at ${readAt}s`)
     console.log((await describe(desktop, engine, options.show, 0)).join('\n'))
     for (const spec of options.presses) {
       const before = desktop.scrolls.length
