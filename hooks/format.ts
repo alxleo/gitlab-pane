@@ -1,3 +1,4 @@
+import { shorten } from './graphemes.ts'
 import { flatOf } from './markdown.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
@@ -20,12 +21,14 @@ function proseLines(body: GitLabMarkdown): string[] {
   return kept
 }
 
-/** The first line worth reading, as plain words: without Markdown's marks, and empty for a body of code or pictures alone. */
+/**
+ * The first line worth reading, as plain words cut between characters: without Markdown's marks, and empty for a body of
+ * code or pictures alone.
+ */
 export function excerpt(body: GitLabMarkdown, room = 160): string {
   const line = proseLines(body).find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
   // Underscores stay: in a review they are mostly names (`fn_name`), rarely emphasis.
-  const plain = line.replace(/^[#>\s]+|[*`]/g, '').trim()
-  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+  return shorten(line.replace(/^[#>\s]+|[*`]/g, '').trim(), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */
@@ -41,7 +44,7 @@ export function lead(body: GitLabMarkdown, room = 240): string {
     .replace(/^[>\-*\s]+/gm, '')
     .replace(/[*_`]/g, '')
     .replace(/\s*\n\s*/g, ' ')
-  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+  return shorten(plain, room)
 }
 
 export const duration = (seconds: number): ModelLine => {

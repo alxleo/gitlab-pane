@@ -23,7 +23,7 @@ import { createInterface } from 'node:readline'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
-import { isRecord, parseJson } from '../hooks/decode.ts'
+import { isRecord, parseJson, text } from '../hooks/decode.ts'
 
 const PANE_ID = 'gitlab-pane'
 const PLUGIN = 'gitlab-pane'
@@ -40,6 +40,10 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
 const num = (value: unknown): number => (typeof value === 'number' ? value : 0)
 const record = (value: unknown): Json => (isRecord(value) ? value : {})
 const rowsOf = (length: number): number => Math.max(1, Math.ceil(length / WIDTH))
+/** The reason an answer gives, or the whole answer when it gives none; an object is printed as JSON, not as `[object Object]`. */
+const reasonOf = (reason: unknown, answer: Json): string => (typeof reason === 'string' ? reason : JSON.stringify(reason ?? answer))
+/** The key a drawn element is pressed by, or empty when it has none. */
+const keyOf = (element: Json): string => text(record(element['props'])['key'])
 
 // ---- the engine ---------------------------------------------------------------------------------------------------------
 
@@ -75,7 +79,7 @@ class Engine {
       }
       if (message['type'] === 'control_response') {
         const response = record(message['response'])
-        this.#responses.set(String(response['request_id'] ?? ''), response)
+        this.#responses.set(text(response['request_id']), response)
       } else {
         this.#events.push(message)
       }
@@ -93,7 +97,7 @@ class Engine {
       if (response !== undefined) {
         this.#responses.delete(id)
         if (response['subtype'] !== 'success') {
-          throw new RigError(`${subtype}: ${String(response['error'] ?? JSON.stringify(response))}`)
+          throw new RigError(`${subtype}: ${reasonOf(response['error'], response)}`)
         }
         return record(response['response'])
       }
@@ -181,7 +185,7 @@ function place(node: unknown, top: number, keyed: Keyed[]): number {
   const kind = node['type']
   let rows: number
   if (kind === 'Markdown') {
-    rows = lines(String(props['text'] ?? '')).reduce((total, line) => total + rowsOf(line.length), 0)
+    rows = lines(text(props['text'])).reduce((total, line) => total + rowsOf(line.length), 0)
     rows = rows === 0 ? 1 : rows
   } else if (kind === 'Text' || kind === 'Button' || kind === 'Link' || kind === 'Svg' || kind === 'Image') {
     rows = rowsOf(textOf(node).length)
@@ -203,9 +207,9 @@ function place(node: unknown, top: number, keyed: Keyed[]): number {
     rows = used + border + pad + marginTop
   }
   // The desktop measures only elements it can press (`[data-press-key]`), so a keyed Box is never reported.
-  const key = props['key']
-  if (key !== undefined && key !== null && key !== '' && isRecord(node['press'])) {
-    keyed.push({ plugin: PLUGIN, key: String(key), top, bottom: top + Math.max(rows, 1) - 1 })
+  const key = text(props['key'])
+  if (key !== '' && isRecord(node['press'])) {
+    keyed.push({ plugin: PLUGIN, key, top, bottom: top + Math.max(rows, 1) - 1 })
   }
   return rows
 }
@@ -310,7 +314,7 @@ class Desktop {
   #find(spec: string): Json {
     const buttons = walk(this.#tree).filter(element => isRecord(element['press']))
     const found = buttons.find(element => {
-      const key = String(record(element['props'])['key'] ?? '')
+      const key = keyOf(element)
       return key === spec || key.startsWith(`${spec}-`) || textOf(element) === spec
     })
     if (found === undefined) {
@@ -337,7 +341,7 @@ class Desktop {
     })
     this.#offset = typeof answer['offset'] === 'number' ? Math.trunc(answer['offset']) : this.#offset
     await this.#moved()
-    const moved = answer['moved'] === true ? 'moved' : String(answer['deny'] ?? JSON.stringify(answer))
+    const moved = answer['moved'] === true ? 'moved' : reasonOf(answer['deny'], answer)
     return `scrolled to row ${row}: ${moved}, at ${this.#offset}, on ${this.#landedOn(this.#offset)}`
   }
 
@@ -346,7 +350,7 @@ class Desktop {
       return this.scrollTo(Number(spec.slice('scroll:'.length)))
     }
     const element = this.#find(spec)
-    const key = String(record(element['props'])['key'] ?? '')
+    const key = keyOf(element)
     const press = record(element['press'])
     await this.#engine.ask({ subtype: 'ui_press', plugin: press['plugin'], handle: press['handle'], key, surface: 'desktop' })
     return `pressed ${key}`
@@ -377,7 +381,7 @@ async function title(engine: Engine): Promise<string> {
 }
 
 async function describe(desktop: Desktop, engine: Engine, show: number, scrollsBefore: number): Promise<string[]> {
-  const keys = new Set(walk(desktop.tree).map(element => String(record(element['props'])['key'] ?? '')))
+  const keys = new Set(walk(desktop.tree).map(keyOf))
   const view = keys.has('back-top') ? 'page' : [...keys].some(key => key.startsWith('inbox')) ? 'inbox' : 'list'
   return [
     `  view ${view} · title ${await title(engine)} · ${desktop.draws} drawings · offset ${desktop.offset} of ${desktop.rows} rows`,

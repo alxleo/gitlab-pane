@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { cleanBody } from '../../hooks/gitlab.ts'
-import { flatOf, partsOf } from '../../hooks/markdown.ts'
+import { cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
 import type { Part } from '../../hooks/markdown.ts'
 import { HOST } from '../fixtures.ts'
 
@@ -28,6 +28,15 @@ test('code keeps the tags it quotes; HTML elsewhere becomes Markdown or goes, as
 
 test('a table cell keeps its line when a <br> breaks it', () => {
   expect(flatOf(cleanBody('| a | one<br>two |', HOST, 'g/p'))).toBe('| a | one two |')
+})
+
+test('the start of a text that fits is cut between characters, dropping a flag that does not fit whole', () => {
+  const unbroken = flatOf(cleanBody(`${'x'.repeat(96)}🇺🇸tail`, HOST, 'g/p'))
+  // Room 99 reaches into the flag, which is four units; the cut ends before it, not after half of it.
+  expect(cutToFit(unbroken, 99, () => 0)).toBe(`${'x'.repeat(96)} …`)
+  // Letters outside the basic plane are two UTF-16 units each: room 50 is cut after a whole one, never between its halves.
+  const astral = flatOf(cleanBody(`a${'𠮷'.repeat(60)}`, HOST, 'g/p'))
+  expect(cutToFit(astral, 50, () => 0)).toBe(`a${'𠮷'.repeat(24)} …`)
 })
 
 test('task boxes and callouts read as marks, outside code only', () => {

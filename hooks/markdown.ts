@@ -4,6 +4,8 @@
  * Markdown or goes, as GitLab's sanitiser would drop it. Code is left exactly as written, tags and all.
  */
 
+import { cut } from './graphemes.ts'
+
 import type { GitLabMarkdown } from '../types'
 
 /** Text the Markdown element draws: GitLab's own Markdown, read by this file. Never a plain string. */
@@ -29,11 +31,11 @@ export const EMPTY_MARKDOWN = brand('')
 export function cutToFit(markdown: MarkdownText, room: number, sizeOf: (text: MarkdownText) => number): MarkdownText {
   let length = Math.min(markdown.length, room)
   while (length > 0) {
-    const start = markdown.slice(0, length)
-    const end = [start.lastIndexOf('\n\n'), start.lastIndexOf('\n'), start.lastIndexOf(' ')].find(at => at > length / 2) ?? length
-    const cut = brand(`${start.slice(0, end).trimEnd()} …`)
-    if (sizeOf(cut) <= room) {
-      return cut
+    const start = cut(markdown, length, length)
+    const end = [start.lastIndexOf('\n\n'), start.lastIndexOf('\n'), start.lastIndexOf(' ')].find(at => at > start.length / 2) ?? start.length
+    const candidate = brand(`${start.slice(0, end).trimEnd()} …`)
+    if (sizeOf(candidate) <= room) {
+      return candidate
     }
     length = Math.floor(length * 0.8)
   }
@@ -45,12 +47,13 @@ export type Part = { text: MarkdownText } | { summary: string; parts: Part[]; is
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm
 const SPAN = /(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/g
-const HELD = /\u0000(\d+)\u0000/g
+/** The marker of a held piece of code: its number between two NUL characters, which is why the pattern names them. */
+const HELD = /\0(\d+)\0/g
 
 /** Swaps code for markers, so nothing below reads inside it; `restore` puts it back. */
 function holdCode(text: string) {
   const held: string[] = []
-  const hold = (code: string) => `\u0000${held.push(code) - 1}\u0000`
+  const hold = (code: string) => `\0${held.push(code) - 1}\0`
   const masked = text.replace(FENCE, hold).replace(SPAN, hold)
   return { masked, restore: (out: string) => out.replace(HELD, (_, i: string) => held[Number(i)] ?? '') }
 }

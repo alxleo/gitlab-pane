@@ -3,6 +3,7 @@ import fc from 'fast-check'
 
 import { describe, wakeLine } from '../../hooks/wake.ts'
 import { toCard } from '../../hooks/gitlab.ts'
+import { cut } from '../../hooks/graphemes.ts'
 import { foreign, line } from '../../hooks/model-text.ts'
 import type { ModelLine, Sayable } from '../../hooks/model-text.ts'
 import type { MarkdownText } from '../../hooks/markdown.ts'
@@ -32,7 +33,7 @@ test('the model reads who and where, never the comment itself, and a job name as
   }
   expect(wakeLine(failedWith('z'.repeat(255)), 'failed', NOW)).not.toContain('z'.repeat(81))
   const long = foreign('x'.repeat(500))
-  expect([...long]).toHaveLength(80)
+  expect(long).toHaveLength(80)
   expect(long.endsWith('…')).toBe(true)
   expect(foreign('y'.repeat(200), 300)).toHaveLength(200)
   expect(foreign('a\u200Bb\u2066c')).toBe('abc')
@@ -43,13 +44,36 @@ test('the model reads who and where, never the comment itself, and a job name as
   expect([refused, said, forged]).toEqual([[true, true, true, true], [false, false, false], false])
 })
 
+test('foreign cuts between characters as a person sees them, and drops one that does not fit whole rather than halve it', () => {
+  // Room 80 is 79 UTF-16 units and the ellipsis. A flag and a skin-toned hand are four units each, an `e` with its acute two.
+  expect(foreign(`${'x'.repeat(75)}🇺🇸tail`)).toBe(`${'x'.repeat(75)}🇺🇸…`)
+  expect(foreign(`${'x'.repeat(76)}🇺🇸tail`)).toBe(`${'x'.repeat(76)}…`)
+  expect(foreign(`${'x'.repeat(77)}e\u{301}tail`)).toBe(`${'x'.repeat(77)}e\u{301}…`)
+  expect(foreign(`${'x'.repeat(78)}e\u{301}tail`)).toBe(`${'x'.repeat(78)}…`)
+  expect(foreign(`${'x'.repeat(76)}👍🏽tail`)).toBe(`${'x'.repeat(76)}…`)
+  // Twenty flags are 80 units and fit; 25 do not, and 19 of them are kept.
+  expect(foreign('🇺🇸'.repeat(20))).toBe('🇺🇸'.repeat(20))
+  expect(foreign('🇺🇸'.repeat(25))).toBe(`${'🇺🇸'.repeat(19)}…`)
+})
+
+test('a character of any number of marks makes foreign no longer: it counts for the units it holds', () => {
+  // One letter and 500 combining marks is one character and 501 units. Room 80 holds neither it nor a hundred of it.
+  const zalgo = `a${'\u{301}'.repeat(500)}`
+  expect(foreign(zalgo)).toBe('…')
+  expect(foreign(`${'x'.repeat(70)}${zalgo}tail`)).toBe(`${'x'.repeat(70)}…`)
+  expect(foreign(zalgo.repeat(100)).length).toBeLessThanOrEqual(80)
+  expect(foreign(`${'x'.repeat(70)}e\u{301}${zalgo}`)).toBe(`${'x'.repeat(70)}e\u{301}…`)
+})
+
 test('foreign text is one line without control or bidi characters, within its room, and foreign of foreign changes nothing', () => {
   fc.assert(
     fc.property(textArb, fc.integer({ min: 1, max: 120 }), (text, room) => {
       const out = foreign(text, room)
       expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}ㅤᅟᅠﾠ]/u)
       expect(out).not.toMatch(/\s\s|[^\S ]/u)
-      expect([...out].length).toBeLessThanOrEqual(room)
+      // Within `room` characters as a person counts them, and within `room` UTF-16 units, which is what a budget counts.
+      expect(cut(out, room, Number.POSITIVE_INFINITY)).toBe(out)
+      expect(out.length).toBeLessThanOrEqual(room)
       expect(foreign(out, room)).toBe(out)
     })
   )

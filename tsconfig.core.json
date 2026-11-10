@@ -30,6 +30,7 @@
     "hooks/gitlab-documents.ts",
     "hooks/gitlab.ts",
     "hooks/gitlab.generated.ts",
+    "hooks/graphemes.ts",
     "hooks/hosts.ts",
     "hooks/identity.ts",
     "hooks/inbox-brief.ts",

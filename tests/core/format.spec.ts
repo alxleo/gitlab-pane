@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
+import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
 import { cleanBody, toCard } from '../../hooks/gitlab.ts'
 import { HOST, NOW, pipe, rawMr } from '../fixtures.ts'
 import type { Job, Stage } from '../../types'
@@ -35,6 +35,13 @@ test('a running pipeline says how long it has run against how long it usually ta
 test('an MR reads by its first paragraph, not its headings', async () => {
   expect(lead(cleanBody('## Summary\nDoes **thing** [12](https://x).\nMore.\n\n## Testing\n\nRan it.', HOST, 'g/p'))).toBe('Does thing 12. More.')
   expect(lead(cleanBody('Short', HOST, 'g/p'), 3)).toBe('Sh…')
+  // Room 240 is 239 UTF-16 units and the ellipsis: a flag is four, so one that would pass 239 goes whole, not halved.
+  expect(lead(cleanBody(`${'x'.repeat(236)}🇺🇸tail`, HOST, 'g/p'))).toBe(`${'x'.repeat(236)}…`)
+})
+
+test('an excerpt is cut to its room between characters, dropping a flag that does not fit whole', () => {
+  expect(excerpt(cleanBody(`${'x'.repeat(96)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(96)}…`)
+  expect(excerpt(cleanBody(`${'x'.repeat(95)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(95)}🇺🇸…`)
 })
 
 test('titles keep the ticket apart and lose their type lead', async () => {

@@ -6,6 +6,7 @@ import type { Badge, Verdict } from './attention.ts'
 import { faceFacts } from './face-model.ts'
 import type { FaceFacts } from './face-model.ts'
 import { excerpt, shortTitle, ticketOf } from './format.ts'
+import { shorten } from './graphemes.ts'
 import { firstName } from './identity.ts'
 import type { Tone } from './status.ts'
 
@@ -47,7 +48,7 @@ export type CardFacts = {
 
 const calledBy = (person: Person): string => {
   if (person.isBot) {
-    return person.name.length > BOT_NAME_ROOM ? `${person.name.slice(0, BOT_NAME_ROOM - 1)}…` : person.name
+    return shorten(person.name, BOT_NAME_ROOM)
   }
   const first = firstName(person.name, person.username)
   return first !== '' ? first : person.initials
