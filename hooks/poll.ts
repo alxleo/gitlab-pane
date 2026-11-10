@@ -36,7 +36,7 @@ import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
 import { followInbox, leadInbox, sharedInboxAt } from './inbox'
-import { FOOTER_MS, INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
+import { FOOTER_MS, INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS, waitingRows } from './snapshot'
 import { failuresFrom, toShared } from './snapshot'
 import type { Cursor, ReadResult, Snapshot } from './snapshot'
 import type { FailureReader } from './reconcile'
@@ -98,9 +98,7 @@ const pollOf = (snapshot: Snapshot): PollState => ({
  */
 async function adopt($: EngineInterface, snapshot: Snapshot, isLeader = false): Promise<void> {
   const [pinned, held, reads, now] = await Promise.all([readPins($), readRows($), readReads($), $.clock.now()])
-  const own = new Set(pinned.map(pinKey))
-  const read = new Set(snapshot.rows.map(row => row.key))
-  const waiting = held.filter(row => own.has(row.key) && !read.has(row.key) && !snapshot.pinned.includes(row.key))
+  const waiting = waitingRows(snapshot, pinned, held)
   // The leader keeps the pictures and run times itself, but loads those an earlier leader left when it first draws.
   if (!isLeader || reads.adopted === '') {
     await loadShared($)
@@ -118,10 +116,9 @@ async function adopt($: EngineInterface, snapshot: Snapshot, isLeader = false): 
  * Only drawn: data that old makes no toast, wake or unpin, and the read's own snapshot is adopted whole when it lands.
  */
 async function preview($: EngineInterface, snapshot: Snapshot): Promise<void> {
-  await loadShared($)
+  const [pinned, held] = await Promise.all([readPins($), readRows($), loadShared($)])
   await setPoll($, pollOf(snapshot))
-  const open = snapshot.rows.filter(row => row.isOpen)
-  await setRows($, open)
+  await setRows($, [...snapshot.rows.filter(row => row.isOpen), ...waitingRows(snapshot, pinned, held)])
 }
 
 /** Puts a snapshot in the store for the other sessions. A store that cannot take it does not stop this session drawing it. */
@@ -275,12 +272,11 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   if (isDue) {
     await changeReads($, state => ({ ...state, refreshed: asked }))
     const isFirst = reads.adopted === ''
+    // ↻ only for a read someone waits on (the first, one asked for, one over stale cards): each write redraws the whole pane.
+    await setReading($, isFirst || isAsked || snapshot === null || now - (snapshot.fetchedAt ?? 0) >= 2 * FOOTER_MS)
     if (snapshot !== null && isFirst) {
       await preview($, snapshot)
     }
-    // ↻ only for a read someone waits on (the first, one asked for, one over stale cards): each write redraws the whole pane.
-    const isWaited = isFirst || isAsked || snapshot === null || now - (snapshot.fetchedAt ?? 0) >= 2 * FOOTER_MS
-    await setReading($, isWaited)
     try {
       await lead($, snapshot, pins, isAsked, isInboxDue)
     } finally {

@@ -42,7 +42,8 @@ test('beside the tabs, the age of the cards, with ↻ while a read is out; the f
   expect(modelOf([], { poll: threeHours }).status).toEqual({ text: 'updated 3h ago', isWarning: false })
   expect(modelOf([], { poll: threeHours, isReading: true }).status).toEqual({ text: '↻ updated 3h ago', isWarning: false })
   expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} }, isReading: true }).status.text).toBe('↻ reading GitLab…')
-  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} } }).status.text).toBe('')
+  // A session that follows has no ↻ of the leader's read, but still says one is out while it has nothing to show.
+  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} } }).status.text).toBe('reading GitLab…')
   expect(modelOf([], { poll: threeHours }).footer.text).toBe('')
   const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
   expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })

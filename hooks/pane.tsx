@@ -129,6 +129,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // An MR read whole is a page over its tab, a way back at each end, so a long one needs no scrolling back up.
   const back = (key: string) => <Button key={key} plain label={isInbox ? '‹ Inbox' : '‹ Mine'} onPress={() => leaveReading($)} />
+  const status =
+    model.status.text !== '' ? (
+      <Text color={model.status.isWarning ? 'warning' : undefined} dimColor={!model.status.isWarning} size="footnote">
+        {model.status.text}
+      </Text>
+    ) : null
   const body =
     reading !== undefined
       ? [back('back-top'), ...drawReading($, e, reading, folds, now), back('back-bottom')]
@@ -137,11 +143,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
             <Button key="tab-inbox" label={model.tabs.inbox} variant={isInbox ? 'primary' : 'secondary'} onPress={() => openTab($, 'inbox')} />
             {/* The inbox says its own age on the row below its tabs. */}
-            {!isInbox && model.status.text !== '' && (
-              <Text color={model.status.isWarning ? 'warning' : undefined} dimColor={!model.status.isWarning} size="footnote">
-                {model.status.text}
-              </Text>
-            )}
+            {!isInbox && status}
           </Box>,
           ...(isInbox ? [await drawInbox($, e)] : mineTab),
         ]
@@ -150,6 +152,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     <Box flexDirection="column" gap={1}>
       {body}
       <Box flexDirection="row" gap={2}>
+        {/* An MR read whole has no tabs row: the age goes beside its refresh. */}
+        {reading !== undefined && status}
         {model.footer.text !== '' && (
           <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
             {model.footer.text}

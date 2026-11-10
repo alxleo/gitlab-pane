@@ -123,9 +123,10 @@ const updatedLine = (age: string): string => (age === 'now' ? 'updated just now'
 export const READING_MARK = '↻'
 
 function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['status'] {
-  const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : isReading ? 'reading GitLab…' : ''
   const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
-  return { text: isReading ? `${READING_MARK} ${age}` : age, isWarning: hasStale }
+  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's, which only it can mark.
+  const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : hasStale ? '' : 'reading GitLab…'
+  return { text: isReading ? `${READING_MARK} ${age}`.trim() : age, isWarning: hasStale }
 }
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */

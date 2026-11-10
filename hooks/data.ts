@@ -98,6 +98,8 @@ export async function startData($: EngineInterface, jiraSite: unknown, hosts: re
   await update($, jiraAtom, () => browseUrl(jiraSite))
   await update($, hostsAtom, () => [...hosts])
   await update($, unreachableAtom, () => [])
+  // A reload mid-read never reaches the read's own reset, and a session that follows never writes this.
+  await update($, readingAtom, () => false)
 }
 
 /** Pins an MR; watching one this session raised keeps it raised, so it still wakes. */

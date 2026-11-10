@@ -27,7 +27,7 @@ const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
 /** The host with `world` behind it; every call is in `requests`. The token comes from the environment. */
-function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE) {
+function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
   const { store } = fakeSession(on)
   const gitlab = fakeGitLab(
@@ -38,7 +38,7 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
         answers: { ...inboxAnswers(world), Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: [] } } } }), MergeStatus: () => mergeStatuses([]) },
       },
     },
-    { env: hasToken ? { GITLAB_TOKEN: TOKEN } : {}, isDown: () => world.isDown }
+    { env: hasToken ? { GITLAB_TOKEN: TOKEN } : {}, isDown: () => world.isDown, ...(held !== undefined ? { held } : {}) }
   )
   on('process.run', (_, e) => gitlab.glab(e.argv) ?? ran('', 1, `nothing answers ${e.argv.join(' ')}`))
   on('session.repo', () => ({ value: remote === null ? null : { root: '/r', remote, internal: false, name: null } }))
@@ -217,33 +217,58 @@ test('the mark outlives the pane, and an MR that has left the inbox loses its ma
   await ui.unmount()
 })
 
+/** An inbox snapshot as a leader shares it, read at `at`: one MR of the user's with a comment. */
+const sharedInbox = (at: number) => ({
+  at,
+  hosts: { 'gitlab.com': { user: 'me', failure: null } },
+  mrs: [
+    {
+      host: 'gitlab.com',
+      path: 'g/p',
+      iid: 1,
+      title: 'thing 1',
+      url: 'https://gitlab.com/g/p/-/merge_requests/1',
+      author: 'me',
+      authorName: 'Me',
+      isMine: true,
+      state: 'opened',
+      isDraft: false,
+      inQueue: false,
+      isFollowed: false,
+      cutoff: null,
+      signals: [{ kind: 'comment', actor: 'carol', at: at - 60_000, note: null, excerpt: 'please rename' }],
+    },
+  ],
+})
+
+test('a session that leads shows the inbox the store keeps while its own slow read is out, and marks nothing', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const kit = engine(on, busyWorld(), true, REMOTE, () => answered)
+  kit.store.set('inbox-snapshot', sharedInbox(NOW - 3 * 3_600_000))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(FIRST_SYNC_MS)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'tab-inbox' })
+  await ui.press({ key: 'inbox-rule-on-my-mrs' })
+  expect(await titleOf(ui, 1)).toBe('▸ thing 1')
+  expect((await ui.find({ type: 'Text', text: /^↻ synced/ }))?.text).toBe('↻ synced 3h ago')
+  expect(kit.marks()).toEqual([])
+
+  answer()
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /synced/ }))?.text).toBe('synced just now')
+  await ui.unmount()
+})
+
 test('a session that only draws shows the inbox the leader shared, asks GitLab for nothing, and keeps the ✓ made there', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const kit = engine(on, busyWorld())
-  const shared = {
-    at: NOW,
-    hosts: { 'gitlab.com': { user: 'me', failure: null } },
-    mrs: [
-      {
-        host: 'gitlab.com',
-        path: 'g/p',
-        iid: 1,
-        title: 'thing 1',
-        url: 'https://gitlab.com/g/p/-/merge_requests/1',
-        author: 'me',
-        authorName: 'Me',
-        isMine: true,
-        state: 'opened',
-        isDraft: false,
-        inQueue: false,
-        isFollowed: false,
-        cutoff: null,
-        signals: [{ kind: 'comment', actor: 'carol', at: NOW - 60_000, note: null, excerpt: 'please rename' }],
-      },
-    ],
-  }
   kit.store.set('lease', { owner: 'other', renewedAt: NOW })
-  kit.store.set('inbox-snapshot', shared)
+  kit.store.set('inbox-snapshot', sharedInbox(NOW))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.advance(10_000)

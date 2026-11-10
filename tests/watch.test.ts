@@ -1088,13 +1088,41 @@ test('a session that leads draws the last snapshot at once, with ↻ beside its 
   await clock.advance(2_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
-  expect((await ui.find({ type: 'Text', text: /^↻ / }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
 
   answer()
   await clock.settle()
   expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
   expect((await ui.find({ type: 'Text', text: /^updated / }))?.text).toBe('updated just now')
-  expect(await ui.find({ type: 'Text', text: /^↻ / })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^↻ updated/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('an MR this session raised before its pane opened stays drawn beside the last snapshot while the first read is out', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let isHeld = false
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false, isPaneBroken: true }
+  const { store } = engine(on, fake, {}, {}, { held: () => (isHeld ? answered : Promise.resolve()) })
+  store.set('snapshot', snapshotOf([sharedCard(13)], 'other', NOW - 3 * 3_600_000))
+  // With no pane, the session reads only the MR it raised; then a person opens the pane and GitLab is slow to answer.
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await raise($)
+  await clock.advance(10_000)
+  isHeld = true
+  fake.isPaneBroken = false
+  await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  await clock.advance(4_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  answer()
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
   await ui.unmount()
 })
 
