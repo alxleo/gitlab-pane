@@ -1,0 +1,50 @@
+{
+  "name": "gitlab-pane",
+  "version": "0.3.0",
+  "author": {
+    "name": "Alexander Leonov"
+  },
+  "homepage": "https://github.com/alxleo/gitlab-pane",
+  "repository": "https://github.com/alxleo/gitlab-pane",
+  "license": "MIT",
+  "description": "A pane of your GitLab merge requests (pipelines, reviewers, what blocks the merge) and an inbox of what needs you (reviews asked, mentions, failed builds, MRs that cannot merge, what reviewers did on yours); wakes a session when an MR it opened fails its pipeline or can merge.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "gitlabHosts": {
+      "type": "string",
+      "multiple": true,
+      "title": "GitLab hosts",
+      "description": "The GitLab hosts to read, such as gitlab.com or git.example.com. The first is home: its projects show without the host. Merge request addresses on any of them can be pinned.",
+      "default": [
+        "gitlab.com"
+      ]
+    },
+    "gitlabTokens": {
+      "type": "string",
+      "multiple": true,
+      "sensitive": true,
+      "title": "GitLab tokens",
+      "description": "Last resort when neither GITLAB_TOKEN nor glab holds a token for a host: one host=token per entry, such as git.example.com=glpat-…; a bare token is for the first host. A token needs the read_api scope.",
+      "default": []
+    },
+    "inboxFollow": {
+      "type": "string",
+      "multiple": true,
+      "title": "Inbox: follow",
+      "description": "People and projects whose merge requests the Inbox's Following tab lists: @username or group/project, up to ten. Each costs one small query per host a minute. Empty leaves the tab empty.",
+      "default": []
+    },
+    "failureLogs": {
+      "type": "boolean",
+      "title": "Failed job logs in wakes",
+      "description": "When an MR opened from a session fails its pipeline, the wake quotes the last lines of each failed job's log (at most 20 lines and 2000 characters), fenced as the job's output. Turn off to send only the job names and GitLab's failure message.",
+      "default": true
+    },
+    "jiraUrl": {
+      "type": "string",
+      "title": "Jira site",
+      "description": "Your Jira address, such as https://example.atlassian.net. Ticket keys in MR titles link there, and their details are read with Atlassian's acli when it is installed and signed in. Empty leaves Jira out.",
+      "default": ""
+    }
+  }
+}

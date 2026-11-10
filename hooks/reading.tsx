@@ -1,0 +1,151 @@
+import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
+
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure } from './drawing'
+import { ago, plural } from './format'
+import { shortHash } from './identity'
+import { verdictOf } from './attention'
+import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
+import { toggleFold } from './choices'
+
+import type { MarkdownText, Part } from './markdown'
+import type { MrCard, Note } from '../types'
+
+/** Room kept for the link that says the rest is on GitLab. */
+const CUT_NOTE_SIZE = 300
+
+/**
+ * One MR whole, as a page of its own drawn alone: the jobs, threads and bot comments that need acting on take the room first,
+ * then the description what is left, cut where it runs out. `folds` are the `<details>` drawn the other way from how
+ * GitLab first shows them.
+ */
+export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, folds: string[], now: number) {
+  const { Box, Text, Button, Link, Markdown } = $.ui.resolve(e)
+  /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
+  const markdown = (text: MarkdownText) => <Markdown text={text} />
+
+  /** GitLab Markdown drawn as GitLab draws it: each `<details>` a toggle under its summary, closed unless asked open. */
+  const rich = (parts: Part[], id: string): RenderChildren[] => parts.flatMap((part, i) => richPart(part, id, i))
+  const richPart = (part: Part, id: string, i: number): RenderChildren[] => {
+    if ('text' in part) {
+      return [markdown(part.text)]
+    }
+    const fold = `${id}.${i}`
+    const isOpen = part.isOpen !== folds.includes(fold)
+    return [
+      <Button key={`fold-${shortHash(fold)}`} plain label={`${isOpen ? '▾' : '▸'} ${part.summary}`} onPress={() => toggleFold($, fold)} />,
+      ...(isOpen
+        ? [
+            <Box flexDirection="column" gap={1} paddingLeft={2}>
+              {rich(part.parts, fold)}
+            </Box>,
+          ]
+        : []),
+    ]
+  }
+
+  const byline = (note: Note) => (
+    <Box flexDirection="row" gap={1}>
+      <Box flexShrink={0}>
+        <Text bold>{note.author}</Text>
+      </Box>
+      <Box flexGrow={1} flexShrink={1}>
+        <Text dimColor wrap="truncate-end">
+          {[note.where, ago(note.at, now)].filter(Boolean).join(' · ')}
+        </Text>
+      </Box>
+      <Link href={note.url}>{LINK.comment}</Link>
+    </Box>
+  )
+  const said = (note: Note) => (
+    <Box flexDirection="column">
+      {byline(note)}
+      {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
+    </Box>
+  )
+
+  const verdict = verdictOf(mr)
+  const head = [
+    <Text size="heading" weight="semibold">
+      {mr.title}
+    </Text>,
+    <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+      <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
+      <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
+      {verdict !== null && (
+        <Text bold={verdict.tone === 'success'} color={verdict.tone}>
+          {verdict.words}
+        </Text>
+      )}
+      <Text dimColor>
+        {`${mr.branch.source} → ${mr.branch.target}${mr.diff !== null ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
+      </Text>
+    </Box>,
+  ]
+
+  const pipeline = mr.pipeline
+  const jobs = [...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗' })), ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠' }))]
+  const threads = mr.openThreads.map(thread => (
+    <Box flexDirection="column" gap={1}>
+      {said(thread)}
+      {(thread.replies ?? []).map(reply => (
+        <Box paddingLeft={2}>{said(reply)}</Box>
+      ))}
+    </Box>
+  ))
+  const botNotes = mr.people.filter(person => person.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
+  const blocks = [
+    ...(jobs.length > 0
+      ? [
+          <Box flexDirection="column">
+            <Text bold color="error">
+              {plural(jobs.length, 'failed job')}
+            </Text>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+              {jobs.map(({ job, glyph }) => (
+                <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
+              ))}
+            </Box>
+          </Box>,
+        ]
+      : []),
+    ...(threads.length > 0 ? [<Text bold>{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
+    ...(botNotes.length > 0 ? [<Text bold>{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(said)] : []),
+  ]
+
+  let room = DRAWING_BUDGET - CHROME_SIZE - CUT_NOTE_SIZE - measure(head)
+  const kept = blocks.filter(block => {
+    const size = measure(block)
+    if (size > room) {
+      room = 0
+      return false
+    }
+    room -= size
+    return true
+  })
+
+  const described: RenderChildren[] = []
+  let isCut = false
+  for (const [i, part] of partsOf(mr.description).entries()) {
+    const drawn = richPart(part, `${mr.key}#d`, i)
+    const size = measure(drawn)
+    if (size <= room) {
+      described.push(...drawn)
+      room -= size
+      continue
+    }
+    const cut = 'text' in part ? cutToFit(part.text, room, text => measure(markdown(text))) : EMPTY_MARKDOWN
+    if (cut.length > 0) {
+      described.push(markdown(cut))
+    }
+    isCut = true
+    break
+  }
+
+  return [
+    ...head,
+    ...described,
+    ...(isCut ? [<Link href={mr.url}>{`${LINK.mr} The rest of the description is on GitLab`}</Link>] : []),
+    ...kept,
+    ...(kept.length < blocks.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of the threads are on GitLab`}</Link>] : []),
+  ]
+}
