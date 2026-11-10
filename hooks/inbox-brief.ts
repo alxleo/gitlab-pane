@@ -1,5 +1,6 @@
 // The briefing `/mrs` hands the model: MRs with their descriptions and threads. Everything other people wrote enters it line
 // by line through `foreign`, behind a margin no line of theirs can forge, and it goes only to the conversation's context.
+import { graphemes } from './graphemes.ts'
 import { foreign, line, lines, NAME_ROOM, URL_ROOM } from './model-text.ts'
 import type { ModelLine } from './model-text.ts'
 
@@ -66,8 +67,9 @@ const MARK = '│'
 
 /** Text written by someone else as lines behind the margin, cut at `room` characters. */
 function quoted(text: string, room: number): ModelLine[] {
-  const cut = [...text].length > room
-  const body = cut ? [...text].slice(0, room).join('') : text
+  const chars = graphemes(text)
+  const cut = chars.length > room
+  const body = cut ? chars.slice(0, room).join('') : text
   return [...body.split(/\r?\n/).map(each => line`${MARK} ${foreign(each, LINE_ROOM)}`), ...(cut ? [line`${MARK} [cut here: the rest is on GitLab]`] : [])]
 }
 

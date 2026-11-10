@@ -20,7 +20,7 @@ import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
 import { firstDifference } from './order.ts'
 
-import type { CiStatus, GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
+import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
 
 /**
  * Which features a host lacks, from the answer it gave: GitLab validates a whole document and says, for each field its

@@ -3,6 +3,7 @@ import fc from 'fast-check'
 
 import { describe, wakeLine } from '../../hooks/wake.ts'
 import { toCard } from '../../hooks/gitlab.ts'
+import { graphemes } from '../../hooks/graphemes.ts'
 import { foreign, line } from '../../hooks/model-text.ts'
 import type { ModelLine, Sayable } from '../../hooks/model-text.ts'
 import type { MarkdownText } from '../../hooks/markdown.ts'
@@ -32,7 +33,7 @@ test('the model reads who and where, never the comment itself, and a job name as
   }
   expect(wakeLine(failedWith('z'.repeat(255)), 'failed', NOW)).not.toContain('z'.repeat(81))
   const long = foreign('x'.repeat(500))
-  expect([...long]).toHaveLength(80)
+  expect(graphemes(long)).toHaveLength(80)
   expect(long.endsWith('…')).toBe(true)
   expect(foreign('y'.repeat(200), 300)).toHaveLength(200)
   expect(foreign('a\u200Bb\u2066c')).toBe('abc')
@@ -43,13 +44,22 @@ test('the model reads who and where, never the comment itself, and a job name as
   expect([refused, said, forged]).toEqual([[true, true, true, true], [false, false, false], false])
 })
 
+test('foreign counts and cuts by characters as a person sees them: a flag or an accented letter is never cut in half', () => {
+  // 80 characters at most, the last being the ellipsis: so 79 before it, a flag or an `e` and its acute among them.
+  expect(foreign(`${'x'.repeat(78)}🇺🇸tail`)).toBe(`${'x'.repeat(78)}🇺🇸…`)
+  expect(foreign(`${'x'.repeat(78)}e\u{301}tail`)).toBe(`${'x'.repeat(78)}e\u{301}…`)
+  expect(foreign(`${'x'.repeat(78)}👍🏽tail`)).toBe(`${'x'.repeat(78)}👍🏽…`)
+  // Fifty flags are 100 code points but 50 characters, so they fit.
+  expect(foreign('🇺🇸'.repeat(50))).toBe('🇺🇸'.repeat(50))
+})
+
 test('foreign text is one line without control or bidi characters, within its room, and foreign of foreign changes nothing', () => {
   fc.assert(
     fc.property(textArb, fc.integer({ min: 1, max: 120 }), (text, room) => {
       const out = foreign(text, room)
       expect(out).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}ㅤᅟᅠﾠ]/u)
       expect(out).not.toMatch(/\s\s|[^\S ]/u)
-      expect([...out].length).toBeLessThanOrEqual(room)
+      expect(graphemes(out).length).toBeLessThanOrEqual(room)
       expect(foreign(out, room)).toBe(out)
     })
   )

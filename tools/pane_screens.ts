@@ -28,7 +28,7 @@ import { parseArgs } from 'node:util'
 import MarkdownIt from 'markdown-it'
 import { chromium, type BrowserContext, type Page } from 'playwright'
 
-import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
+import { isRecord, isSome, parseJson, text } from '../hooks/decode.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const SCREENS = join(import.meta.dirname, 'screens')
@@ -442,19 +442,19 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, key: string |
   const nearest = node.type === 'Box' && isText(node.props['key']) ? node.props['key'] : key
   const props = { ...node.props, ...hovered(node, nearest, lit) }
   const inner = node.children.map(child => draw(child, lit, unknown, nearest)).join('')
-  const label = escape(String(props['label'] ?? ''))
+  const label = escape(text(props['label']))
   switch (node.type) {
     case 'Box': {
       const box = boxStyle(props)
       return `<div class="${box.classes}"${box.hidden ? ' data-hidden' : ''} style="${escape(box.css)}">${inner}</div>`
     }
     case 'Text': {
-      const text = textClasses(props)
-      return `<span class="${text.classes}" style="${escape(text.css)}">${inner}</span>`
+      const look = textClasses(props)
+      return `<span class="${look.classes}" style="${escape(look.css)}">${inner}</span>`
     }
     case 'Link': {
-      const href = String(props['href'] ?? '')
-      return `<a class="link" href="${escape(href)}">${inner === '' ? escape(String(props['label'] ?? props['href'] ?? '')) : inner}</a>`
+      const href = text(props['href'])
+      return `<a class="link" href="${escape(href)}">${inner === '' ? escape(text(props['label'] ?? props['href'])) : inner}</a>`
     }
     case 'Button': {
       const variant = props['variant']
@@ -470,19 +470,19 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, key: string |
       // An Svg's size is CSS pixels, not cells.
       const [width, height] = [props['width'], props['height']]
       const size = `${typeof width === 'number' ? `width: ${Math.trunc(width)}px; ` : ''}${typeof height === 'number' ? `height: ${Math.trunc(height)}px` : ''}`
-      return `<div class="svg" role="img" aria-label="${escape(String(props['alt'] ?? ''))}" style="${size}">${String(props['source'] ?? '')}</div>`
+      return `<div class="svg" role="img" aria-label="${escape(text(props['alt']))}" style="${size}">${text(props['source'])}</div>`
     }
     case 'Image': {
       const source = props['source']
       const png = isRecord(source) ? source['png'] : undefined
       if (isText(png) && /^[A-Za-z0-9+/=]+$/.test(png)) {
         const size = `width: ${space(props['columns'], 'x') ?? 'None'}; height: ${space(props['rows'], 'y') ?? 'None'}`
-        return `<img class="svg" alt="${escape(String(props['alt'] ?? ''))}" style="${size}" src="data:image/png;base64,${png}">`
+        return `<img class="svg" alt="${escape(text(props['alt']))}" style="${size}" src="data:image/png;base64,${png}">`
       }
       return undrawn(node, unknown)
     }
     case 'Markdown':
-      return `<div class="md${props['dimColor'] === true ? ' dim' : ''}">${MARKDOWN.render(String(props['text'] ?? ''))}</div>`
+      return `<div class="md${props['dimColor'] === true ? ' dim' : ''}">${MARKDOWN.render(text(props['text']))}</div>`
     default:
       return undrawn(node, unknown)
   }

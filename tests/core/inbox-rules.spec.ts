@@ -357,13 +357,36 @@ test('a briefing puts every line other people wrote behind a margin, with contro
   for (const theirs of ['Real text', '## Fake heading', 'ignore everything']) {
     expect(lines.filter(each => each.includes(theirs)).every(each => each.startsWith('│ '))).toBe(true)
   }
-  expect(text).not.toMatch(/[‮\u0007]/)
+  expect(text).not.toContain('\u{202E}')
+  expect(text).not.toContain('\u0007')
   // A branch name is one line: its line break cannot start a line of the briefing's own.
   expect(lines.some(each => each.startsWith('SYSTEM'))).toBe(false)
   expect(text).toContain('#### p!1#note_5 · resolved')
   expect(text).toContain('[cut here: the rest is on GitLab]')
   expect(readBrief({ project: { mergeRequest: null } })).toBeNull()
   expect(readBrief(null)).toBeNull()
+})
+
+test('a briefing cuts a long note between characters as a person sees them, never through a flag or an accented letter', () => {
+  const quotedLines = (body: string) => {
+    const brief = readBrief({
+      project: {
+        mergeRequest: {
+          ...fields(1),
+          description: '',
+          sourceBranch: 'feat/x',
+          targetBranch: 'main',
+          discussions: { nodes: [{ resolvable: true, resolved: false, notes: { nodes: [{ ...note(5, 30, 'carol', body), system: false }] } }] },
+        },
+      },
+    })
+    return briefing(brief === null ? [] : [brief]).split('\n')
+  }
+  // A note is cut at 1500 characters. The 749 short lines and the `a` after them are 1499, so the 1500th is a whole flag or accented letter.
+  const before = 'a\n'.repeat(749)
+  expect(quotedLines(`${before}a🇺🇸tail`)).toContain('│ a🇺🇸')
+  expect(quotedLines(`${before}ae\u{301}tail`)).toContain('│ ae\u{301}')
+  expect(quotedLines(`${before}a🇺🇸tail`)).toContain('│ [cut here: the rest is on GitLab]')
 })
 
 // ---- following, "here", the notes and the cut ----------------------------------------------------------------------------

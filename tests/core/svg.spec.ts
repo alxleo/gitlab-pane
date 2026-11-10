@@ -17,10 +17,10 @@ test("no string put into an svg template makes markup: the only < > quotes left 
   fc.assert(
     fc.property(textArb, textArb, fc.double(), (inText, inAttribute, number) => {
       const out: string = svg`<t a='${inAttribute}' b="${inAttribute}" n='${number}'>${inText}</t>`
-      expect([...out].filter(char => char === '<')).toHaveLength(2)
-      expect([...out].filter(char => char === '>')).toHaveLength(2)
-      expect([...out].filter(char => char === "'")).toHaveLength(4)
-      expect([...out].filter(char => char === '"')).toHaveLength(2)
+      expect(out.split('<').length - 1).toBe(2)
+      expect(out.split('>').length - 1).toBe(2)
+      expect(out.split("'").length - 1).toBe(4)
+      expect(out.split('"').length - 1).toBe(2)
       expect(out.replace(/&(?:amp|lt|gt|quot|apos);/g, '')).not.toContain('&')
     })
   )

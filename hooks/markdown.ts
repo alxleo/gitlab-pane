@@ -48,12 +48,13 @@ export type Part = { text: MarkdownText } | { summary: string; parts: Part[]; is
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm
 const SPAN = /(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/g
-const HELD = /\u0000(\d+)\u0000/g
+/** The marker of a held piece of code: its number between two NUL characters, which is why the pattern names them. */
+const HELD = /\0(\d+)\0/g
 
 /** Swaps code for markers, so nothing below reads inside it; `restore` puts it back. */
 function holdCode(text: string) {
   const held: string[] = []
-  const hold = (code: string) => `\u0000${held.push(code) - 1}\u0000`
+  const hold = (code: string) => `\0${held.push(code) - 1}\0`
   const masked = text.replace(FENCE, hold).replace(SPAN, hold)
   return { masked, restore: (out: string) => out.replace(HELD, (_, i: string) => held[Number(i)] ?? '') }
 }

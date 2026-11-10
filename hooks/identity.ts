@@ -1,8 +1,19 @@
 // A person's identity on the pane: the hash behind keys and colours, the initials, the first name. Pure, so the Mine tab
 // and the Inbox, which meet the same person through a display name and a username, draw one and the same disc.
 
-/** A string's hash, stable across runs; the key of a hover scope and the pick of a colour both come from it. */
-export const hash = (text: string): number => [...text].reduce((value, char) => (Math.imul(value, 31) + char.charCodeAt(0)) >>> 0, 7)
+import { graphemes } from './graphemes.ts'
+
+/**
+ * A string's hash, stable across runs; the key of a hover scope and the pick of a colour both come from it. It runs over
+ * UTF-16 code units: where one character ends does not matter to a hash.
+ */
+export function hash(text: string): number {
+  let value = 7
+  for (let at = 0; at < text.length; at += 1) {
+    value = (Math.imul(value, 31) + text.charCodeAt(at)) >>> 0
+  }
+  return value
+}
 
 /** Keeps a hover scope or key short whatever the project path or username. */
 export const shortHash = (text: string): string => hash(text).toString(36)
@@ -14,8 +25,8 @@ export const discColour = (username: string): string => FILLS[hash(username) % F
 
 const wordsOf = (text: string, start: RegExp): string[] => text.split(/[\s._-]+/).filter(word => start.test(word))
 
-/** The first `count` characters, whole code points, so a name in Han or Cyrillic is never cut in half. */
-const head = (text: string, count: number): string => [...text].slice(0, count).join('')
+/** The first `count` characters as a person sees them, so a name in Han or Cyrillic, an accented letter or a flag is never cut in half. */
+const head = (text: string, count: number): string => graphemes(text).slice(0, count).join('')
 
 /**
  * Initials from the display name: first and last word's first letter, `Ines Mendel` is IM; one word gives its first
@@ -32,7 +43,7 @@ export function initials(name: string, username = '', longer = false): string {
   if (last === undefined) {
     return head(first.toUpperCase(), longer ? 3 : 2)
   }
-  return `${head(first.toUpperCase(), 1)}${head(last.toUpperCase(), 1)}` + (longer ? head([...last].slice(1).join(''), 1) : '')
+  return `${head(first.toUpperCase(), 1)}${head(last.toUpperCase(), 1)}` + (longer ? head(graphemes(last).slice(1).join(''), 1) : '')
 }
 
 /**

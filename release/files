@@ -23,6 +23,7 @@ hooks/format.ts
 hooks/gitlab-documents.ts
 hooks/gitlab-status.ts
 hooks/gitlab.ts
+hooks/graphemes.ts
 hooks/graphql.ts
 hooks/hosts.ts
 hooks/identity.ts
