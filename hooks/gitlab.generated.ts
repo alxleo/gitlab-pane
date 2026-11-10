@@ -832,6 +832,7 @@ export type MoveStateQuery = {
       diffHeadSha: string | null
       rebaseCommitSha: string | null
       rebaseInProgress: boolean
+      autoMergeEnabled: boolean
       mergeError: string | null
       availableAutoMergeStrategies: Array<string> | null
     } | null

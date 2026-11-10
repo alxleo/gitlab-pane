@@ -124,6 +124,7 @@ const fresh = (over: Partial<Fresh> = {}): Fresh => ({
   head: 'abc123',
   rebased: '',
   isRebasing: false,
+  isAutoMerging: false,
   mergeError: null,
   strategies: [],
   ...over,
@@ -157,6 +158,8 @@ test('after a merge is sent, the pane looks again until GitLab says it merged, o
   expect(nextStep('merge', before, fresh({ state: 'closed' }), 1)).toEqual(stop('not merged: it was closed', false))
   // GitLab locks an MR while it merges it: that is the merge under way, not its end.
   expect(nextStep('merge', before, fresh({ state: 'locked' }), 1)).toEqual({ does: 'wait' })
+  // A merge for once checks pass whose answer was lost: GitLab holding it is as done as it gets.
+  expect(nextStep('merge', before, fresh({ isAutoMerging: true }), 1)).toEqual(stop('merges when checks pass', true))
   // A merge GitLab makes later is as done as the pane can make it; one made now is followed.
   expect(afterMerge('MERGE_WHEN_CHECKS_PASS')).toEqual(stop('merges when checks pass', true))
   expect(afterMerge('ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS')).toEqual(stop('merges when checks pass', true))
@@ -175,6 +178,8 @@ test('after a rebase, the pane waits for GitLab to finish it; a rebase that merg
   const failedBefore = fresh({ status: 'NEED_REBASE', mergeError: 'Rebase failed: conflicts' })
   expect(nextStep('rebase', failedBefore, failedBefore, 1)).toEqual({ does: 'wait' })
   expect(nextStep('rebase', failedBefore, failedBefore, 2)).toEqual(stop('not rebased: Rebase failed: conflicts', false))
+  // A new rebase commit says the rebase worked, whatever error GitLab kept from before; the head catches up a moment later.
+  expect(nextStep('rebase', { ...failedBefore, rebased: 'old' }, { ...failedBefore, rebased: 'new999' }, 2)).toEqual({ does: 'wait' })
   // A head that moved, but not to GitLab's rebase, is someone's push: it is not merged unseen.
   expect(nextStep('rebase-merge', before, { ...rebased, rebased: 'old-rebase', strategies: ['merge_when_checks_pass'] }, 3)).toEqual(
     stop('changed during the rebase: look again', false)
@@ -211,11 +216,13 @@ test('a rebase is held back where the MR waits on something before it: a draft, 
 })
 
 test('a write that failed on the way back may have reached GitLab, and is followed, never sent again; a refusal is the end', () => {
-  expect(mayHaveLanded('network')).toBe(true)
-  expect(mayHaveLanded('timeout')).toBe(true)
-  expect(mayHaveLanded('server')).toBe(true)
-  expect(mayHaveLanded('unauthorized')).toBe(false)
-  expect(mayHaveLanded('bad-answer')).toBe(false)
+  expect(mayHaveLanded('network', 'gitlab.com failed: connection reset')).toBe(true)
+  expect(mayHaveLanded('timeout', 'aborted')).toBe(true)
+  expect(mayHaveLanded('server', 'gitlab.com answered HTTP 502')).toBe(true)
+  expect(mayHaveLanded('unauthorized', 'HTTP 401')).toBe(false)
+  expect(mayHaveLanded('bad-answer', 'not JSON')).toBe(false)
+  // The engine refused to send it: it never left the machine.
+  expect(mayHaveLanded('network', 'gitlab.com refused: blocked by policy')).toBe(false)
   expect(why('GitLab said\nno‮')).toBe('GitLab said no')
 })
 

@@ -12,7 +12,7 @@ import { projectOf, redact } from './hosts'
 import { forgetFound } from './in-flight'
 import { parseRemote } from './inbox-refs'
 import { lines } from './model-text'
-import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, isConfirmed, mayHaveLanded, nextStep, why } from './next-move'
+import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, isConfirmed, liveOf, mayHaveLanded, nextStep, why } from './next-move'
 import type { Fresh, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
 import { tokenFor } from './tokens'
@@ -99,7 +99,8 @@ async function sendRebase($: EngineInterface, card: MrCard): Promise<Refusal | n
     }
     return refusal(`GitLab answered HTTP ${answer.status}${isRecord(said) && typeof said.message === 'string' ? `: ${said.message}` : ''}`, answer.status >= 500)
   } catch (error) {
-    return refusal(redact(messageOf(error), [token]), true)
+    const said = redact(messageOf(error), [token])
+    return refusal(said, mayHaveLanded('network', said))
   }
 }
 
@@ -109,7 +110,7 @@ async function sendMerge($: EngineInterface, card: MrCard, head: string, strateg
     const refused = mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, head, strategy)))
     return refused !== null ? refusal(refused) : null
   } catch (error) {
-    return refusal(messageOf(error), mayHaveLanded(kindOf(error)))
+    return refusal(messageOf(error), mayHaveLanded(kindOf(error), messageOf(error)))
   }
 }
 
@@ -163,11 +164,14 @@ async function look($: EngineInterface, course: Course): Promise<void> {
 }
 
 /** Pins the MR in this session, which then owns it, and hands Claude its conflicts as a prompt that waits for a turn of its own. */
-async function handConflicts($: EngineInterface, card: MrCard, head: string): Promise<void> {
+async function handConflicts($: EngineInterface, card: MrCard, head: string, at: number): Promise<void> {
+  // Two presses at once hand the conflicts over once.
+  const isFirst = await claim($, card.key, { kind: 'conflicts', state: 'handed', head, at }, held => !(held?.state === 'handed' && held.head === head))
+  if (!isFirst) {
+    return
+  }
   await pinMr($, { url: card.url, host: card.host, path: card.path, iid: card.iid }, 'watched')
   await publishPins($, await readPinned($))
-  const at = await $.clock.now()
-  await mark($, card.key, { kind: 'conflicts', state: 'handed', head, at })
   // A prompt a hook or the engine drops resolves with why, and never reaches Claude.
   const dropped = await $.prompt.submit({ text: lines(conflictsTask(card)) }).then(
     sent => sent.drop ?? null,
@@ -179,15 +183,14 @@ async function handConflicts($: EngineInterface, card: MrCard, head: string): Pr
 }
 
 /**
- * Turns this session's live press on `key` into one sent, if it may go ahead (`isConfirmed`), in one write, so two
- * presses at once send one move. Gives whether this call made it.
+ * Records `next` as the press on `key` if `mayGo` allows it against the press held (as it holds now, `liveOf`), in one
+ * write, so two presses at once make one move. Gives whether this call made it.
  */
-async function claim($: EngineInterface, key: string, kind: MoveKind, head: string, at: number): Promise<boolean> {
-  const sent: Pressed = { kind, state: 'sent', head, at }
+async function claim($: EngineInterface, key: string, next: Pressed, mayGo: (held: Pressed | undefined) => boolean): Promise<boolean> {
   let isClaimed = false
   await update($, pressedAtom, all => {
-    isClaimed = isConfirmed(kind, all[key], head) && all[key]?.state !== 'sent'
-    return isClaimed ? { ...all, [key]: sent } : all
+    isClaimed = mayGo(liveOf(all[key], next.at))
+    return isClaimed ? { ...all, [key]: next } : all
   })
   return isClaimed
 }
@@ -200,12 +203,14 @@ async function press($: EngineInterface, key: string, kind: MoveKind, does: 'arm
   const { head } = card.merging
   const at = await $.clock.now()
   if (kind === 'conflicts') {
-    await handConflicts($, card, head)
+    await handConflicts($, card, head, at)
     return
   }
-  if (does === 'arm' || !(await claim($, key, kind, head, at))) {
+  const isSent = (held: Pressed | undefined) => held?.state === 'sent'
+  const mayGo = (held: Pressed | undefined) => does === 'make' && isConfirmed(kind, held, head) && !isSent(held)
+  if (!(await claim($, key, { kind, state: 'sent', head, at }, mayGo))) {
     // A press from a drawing older than its arm arms again; one while the move is sent does nothing.
-    if ((await read($, pressedAtom))[key]?.state !== 'sent') {
+    if (!isSent(liveOf((await read($, pressedAtom))[key], at))) {
       await mark($, key, { kind, state: 'armed', head, at })
       $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
     }

@@ -141,6 +141,8 @@ export type Fresh = {
   /** The commit GitLab's last rebase made (`rebaseCommitSha`), empty when none: a head that is not it came from a push. */
   rebased: string
   isRebasing: boolean
+  /** GitLab will merge it once its checks pass (`autoMergeEnabled`). */
+  isAutoMerging: boolean
   mergeError: string | null
   /** GitLab's `availableAutoMergeStrategies`, as it words them (`merge_when_checks_pass`). */
   strategies: readonly string[]
@@ -169,9 +171,10 @@ export const why = (error: string): string => foreign(error, 120)
 
 /**
  * Whether a write that failed this way may still have reached GitLab: a dropped connection, a timeout or a server error
- * may have come after GitLab took it. Such a write is followed, as one that went through is; it is never sent again.
+ * may have come after GitLab took it. Such a write is followed, as one that went through is; it is never sent again. The
+ * engine's own refusal (`… refused: …`, a policy that never let it leave the machine) did not land.
  */
-export const mayHaveLanded = (kind: FailureKind): boolean => kind === 'network' || kind === 'timeout' || kind === 'server'
+export const mayHaveLanded = (kind: FailureKind, message: string): boolean => (kind === 'network' || kind === 'timeout' || kind === 'server') && !/\brefused:/u.test(message)
 
 /**
  * The first step of a move GitLab makes, from the MR as GitLab says it just before. A move that merges is made only on
@@ -203,6 +206,9 @@ export function nextStep(kind: 'merge' | 'rebase' | 'rebase-merge', before: Fres
     if (now.state === 'merged') {
       return done('merged')
     }
+    if (now.isAutoMerging) {
+      return done('merges when checks pass')
+    }
     if (error !== null) {
       return failed(`not merged: ${why(error)}`)
     }
@@ -216,9 +222,9 @@ export function nextStep(kind: 'merge' | 'rebase' | 'rebase-merge', before: Fres
     return failed(`not rebased: ${why(error)}`)
   }
   const isUnmoved = !now.isRebasing && now.head === before.head
-  // GitLab words a failed rebase the same each time, so the same error, once a look has passed with no rebase running and
-  // the head where it was, is this rebase's.
-  if (isUnmoved && now.mergeError !== null && tries >= 2) {
+  // GitLab words a failed rebase the same each time, so the same error, once a look has passed with no rebase running, the
+  // head where it was and no new rebase commit, is this rebase's.
+  if (isUnmoved && now.rebased === before.rebased && now.mergeError !== null && tries >= 2) {
     return failed(`not rebased: ${why(now.mergeError)}`)
   }
   if (now.isRebasing || isUnmoved) {

@@ -95,6 +95,7 @@ function moveAnswers(fake: () => Mr[], strategies: () => string[], merged: strin
                     diffHeadSha: mr.merging?.diffHeadSha ?? `head-${mr.iid}`,
                     rebaseCommitSha: mr.merging?.rebaseCommitSha ?? null,
                     rebaseInProgress: mr.merging?.rebaseInProgress ?? false,
+                    autoMergeEnabled: mr.merging?.autoMergeEnabled ?? false,
                     mergeError: mr.merging?.mergeError ?? null,
                     availableAutoMergeStrategies: strategies(),
                   },
@@ -620,8 +621,11 @@ test('conflicts go to Claude from a session in the MR’s repo: the MR is pinned
   // GitLab's verdict is the approval still needed; the conflicts are the move beside it.
   expect(await ui.find({ type: 'Text', text: 'needs 1 approval' })).toBeDefined()
   expect((await moveOf(ui, 12))?.label).toBe('⇄ hand conflicts to Claude')
-  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  // Pressed twice before the first has drawn: one task, one subagent on the branch.
+  const key = (await moveOf(ui, 12))?.key ?? ''
+  await Promise.all([ui.press({ key }), ui.press({ key })])
   await clock.settle()
+  expect(woken).toHaveLength(1)
   const [task] = woken
   expect(task).toContain('!12 in g/p has merge conflicts with main')
   expect(task).toContain('fix/thing-12')

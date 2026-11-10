@@ -21,7 +21,7 @@ export const MERGE_STATUS = /* GraphQL */ `
 // What a move needs just before it is made, and after a rebase until it is done: one MR, read fresh.
 export const MOVE_STATE = /* GraphQL */ `
   query MoveState($path: ID!, $iid: String!) {
-    project(fullPath: $path) { mergeRequest(iid: $iid) { state detailedMergeStatus diffHeadSha rebaseCommitSha rebaseInProgress mergeError availableAutoMergeStrategies } }
+    project(fullPath: $path) { mergeRequest(iid: $iid) { state detailedMergeStatus diffHeadSha rebaseCommitSha rebaseInProgress autoMergeEnabled mergeError availableAutoMergeStrategies } }
   }
 `
 

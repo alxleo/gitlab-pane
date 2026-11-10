@@ -364,6 +364,7 @@ export function readMoveState(response: RawResponse<MoveStateQuery>): Fresh | nu
         head: raw.diffHeadSha ?? '',
         rebased: raw.rebaseCommitSha ?? '',
         isRebasing: raw.rebaseInProgress,
+        isAutoMerging: raw.autoMergeEnabled,
         mergeError: raw.mergeError,
         strategies: raw.availableAutoMergeStrategies ?? [],
       }
