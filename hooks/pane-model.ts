@@ -22,6 +22,9 @@ import type { MrCard, Pinned, PollState, Problems, Usual } from '../types'
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
 
+/** A ready MR untouched for this long, with no news in the inbox, folds under Parked until something moves on it. */
+const PARKED_AFTER_MS = 7 * 86_400_000
+
 /** The least a row can draw to; with less room than this, no row is tried. */
 const ROW_FLOOR = 300
 
@@ -62,6 +65,11 @@ export type RowModel = {
   said: { label: string; username: string } | null
   /** Nothing to show past the title and verdict, so the row is one line: its title, its verdict and its age. */
   isQuiet: boolean
+  /**
+   * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
+   * would stop its wakes.
+   */
+  pin: { key: string; label: 'pin' | 'unpin' } | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -79,13 +87,13 @@ export type PaneInput = {
   pinned: readonly Pinned[]
   usual: Readonly<Record<string, Usual>>
   browse: string
-  /** `drafts` and `more` while those folds are open. */
+  /** `drafts`, `more`, `parked` and `others` while those folds are open. */
   expanded: readonly string[]
   repoFilter: string
   /** Which view is drawn: only the MR list builds rows. */
   view: 'mine' | 'inbox' | 'reading'
-  /** MRs with news in the inbox. */
-  news: number
+  /** The keys of the MRs with news in the inbox, Mine's or not. */
+  news: readonly string[]
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
@@ -97,8 +105,12 @@ export type PaneInput = {
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
   repos: { all: { label: string; isActive: boolean }; each: { project: string; label: string; isActive: boolean }[] }
+  /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
+  /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
+  others: { label: string; isOpen: boolean } | null
   mine: { heading: string; isEmpty: boolean; rows: RowModel[]; more: string | null; isMoreOpen: boolean }
+  parked: { label: string; isOpen: boolean; rows: RowModel[] } | null
   drafts: { label: string; isOpen: boolean; rows: RowModel[] } | null
   /** While nothing has been read and a source has failed: one line each, with what to do about it. */
   firstRun: string[]
@@ -162,6 +174,15 @@ function isQuiet(card: MrCard, facts: CardFacts): boolean {
   )
 }
 
+/** What a row's pin press does: pin an MR not in this session, unpin one only watched there, nothing to one it raised. */
+function pinOf(pinned: Pinned | undefined, suffix: string): RowModel['pin'] {
+  if (pinned === undefined) {
+    return { key: `pin-${suffix}`, label: 'pin' }
+  }
+  // A pin kept from before origins were recorded counts as raised, as it wakes.
+  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, label: 'unpin' } : null
+}
+
 /** A row as data; its faces take their pictures where the room allows. */
 function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string | undefined, hasSvg: boolean, now: number): RowModel {
   const suffix = `${card.iid}-${shortHash(card.project)}`
@@ -207,6 +228,10 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     })),
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
     isQuiet: isQuiet(card, facts),
+    pin: pinOf(
+      input.pinned.find(one => pinKey(one) === card.key),
+      suffix
+    ),
     hasPictures: facts.hasPictures,
     fit: { isDrawn: false, hasFaces: false },
   }
@@ -229,15 +254,27 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
   // worked out below for the rows that are drawn, once each.
   const order = byRank(new Map(rows.map(row => [row.key, rank(row)])))
-  const session = shown.filter(row => pinnedKeys.has(row.key)).toSorted(order)
-  const mine = shown.filter(row => !pinnedKeys.has(row.key) && !row.isDraft).toSorted(order)
-  const drafts = shown.filter(row => !pinnedKeys.has(row.key) && row.isDraft).toSorted(order)
-  const showDrafts = input.expanded.includes('drafts')
+  // This session's MRs keep the order they came in, so what the person pinned stays where they put it.
+  const pinOrder = new Map(input.pinned.map((pin, i) => [pinKey(pin), i]))
+  const session = shown.filter(row => pinOrder.has(row.key)).toSorted((a, b) => (pinOrder.get(a.key) ?? 0) - (pinOrder.get(b.key) ?? 0))
+  const news = new Set(input.news)
+  const rest = shown.filter(row => !pinOrder.has(row.key))
+  // News in the inbox brings a parked MR back whether or not GitLab moved its updated time.
+  const isParked = (card: MrCard) => !card.isDraft && now - Date.parse(card.updatedAt) >= PARKED_AFTER_MS && !news.has(card.key)
+  const mine = rest.filter(row => !row.isDraft && !isParked(row)).toSorted(order)
+  const parked = rest.filter(isParked).toSorted(order)
+  const drafts = rest.filter(row => row.isDraft).toSorted(order)
+  // While this session holds MRs the rest fold to one line, but not under a picked repo, which is how to see its MRs.
+  const isFolding = session.length > 0 && rest.length > 0 && input.repoFilter === ''
+  const showOthers = !isFolding || input.expanded.includes('others')
+  const showDrafts = showOthers && input.expanded.includes('drafts')
+  const showParked = showOthers && input.expanded.includes('parked')
   const showMore = input.expanded.includes('more')
-  const mineShown = showMore ? mine : mine.slice(0, MINE_SHOWN)
+  const mineShown = !showOthers ? [] : showMore ? mine : mine.slice(0, MINE_SHOWN)
   const isInbox = input.view === 'inbox'
+  const newOthers = rest.filter(card => news.has(card.key)).length
 
-  const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showDrafts ? drafts : [])] : []
+  const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showParked ? parked : []), ...(showDrafts ? drafts : [])] : []
   const built = wanted.map(card => {
     const facts = cardFacts(card, input.avatars)
     return { card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }
@@ -274,9 +311,9 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
 
   return {
     tabs: {
-      // Every MR the tab holds, as `All` counts them: this session's, the ready ones and the drafts add up to it.
+      // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
       mine: `Mine · ${rows.length}`,
-      inbox: input.news > 0 ? `Inbox · ${input.news} new` : 'Inbox',
+      inbox: input.news.length > 0 ? `Inbox · ${input.news.length} new` : 'Inbox',
       isInbox,
     },
     repos: {
@@ -285,6 +322,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     },
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
+    others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
     mine: {
       // GitLab's word for an MR that is not a draft; the tab above already says Mine.
       heading: `Ready · ${mine.length}`,
@@ -293,6 +331,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       more: mine.length > MINE_SHOWN ? (showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`) : null,
       isMoreOpen: showMore,
     },
+    parked:
+      parked.length > 0 ? { label: `${showParked ? '▾' : '▸'} Parked, untouched for a week · ${parked.length}`, isOpen: showParked, rows: showParked ? rowsOf(parked) : [] } : null,
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
       built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,

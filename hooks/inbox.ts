@@ -210,10 +210,10 @@ export async function sharedInboxAt($: EngineInterface): Promise<number | null> 
   return readSnapshot(await $.store.get(INBOX_STORE))?.at ?? null
 }
 
-/** How many MRs have news, as the inbox counts them: one MR counts once, whichever rules list it. */
-export async function inboxNews($: EngineInterface): Promise<number> {
+/** The MRs with news, as the inbox counts them: each MR once, whichever rules list it. */
+export async function inboxNews($: EngineInterface): Promise<string[]> {
   const { snapshot, seen } = await read($, inboxAtom)
-  return new Set(sectionsOf(snapshot, seen, await contextOf($)).flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key))).size
+  return [...new Set(sectionsOf(snapshot, seen, await contextOf($)).flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key)))]
 }
 
 export async function inboxView($: EngineInterface) {

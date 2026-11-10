@@ -324,6 +324,12 @@ type Scene = { name: string; steps: (ui: Ui) => Promise<void> }
 const SCENES: Scene[] = [
   { name: 'mine', steps: async () => {} },
   {
+    name: 'mine-pinned',
+    steps: async ui => {
+      await press(ui, 'pin-479-')
+    },
+  },
+  {
     name: 'reading',
     steps: async ui => {
       await press(ui, 'open-479-')

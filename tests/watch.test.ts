@@ -449,6 +449,34 @@ test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label cou
   await ui.unmount()
 })
 
+test('pinning a card puts it in this session and folds the rest to one line; unpinning brings the list back', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { store } = engine(on, { mrs: [rawMr(12, SHOWN), rawMr(13, SHOWN), rawMr(14, SHOWN)], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const pinOf = async (iid: number) => (await ui.findAll({ type: 'Button' })).find(keyed(`pin-${iid}-`))
+  expect((await pinOf(13))?.props.label).toBe('pin')
+  await ui.press({ key: (await pinOf(13))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
+  expect((await ui.find({ type: 'Button', key: 'others' }))?.props.label).toBe('▸ 2 others')
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
+  expect((await pinOf(13))?.props.label).toBe('unpin')
+  expect(await pinOf(12)).toBeUndefined()
+  // The leader reads every session's pins from the store, so a pin from a card is published there.
+  expect([...store.keys()].some(key => key.startsWith('pins'))).toBe(true)
+  await ui.press({ key: 'others' })
+  expect((await pinOf(12))?.props.label).toBe('pin')
+  await ui.press({ key: (await pinOf(13))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'This session' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'others' })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 3')
+  await ui.unmount()
+})
+
 test('someone without a picture is their initials on a disc, beside their first name', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const ines = { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }
@@ -1093,6 +1121,9 @@ test('an MR this session raised before its pane opened stays drawn beside the la
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^↻ updated/u }))?.text).toBe('↻ updated 3h ago')
+  // The raised MR is on top; the snapshot's is among the others, folded until opened.
+  expect((await ui.find({ type: 'Button', key: 'others' }))?.props.label).toBe('▸ 1 other')
+  await ui.press({ key: 'others' })
   expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
   expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
   answer()

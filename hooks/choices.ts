@@ -68,8 +68,8 @@ export function closePage($: EngineInterface, key: string): Promise<void> {
 
 const toggled = (list: string[], key: string): string[] => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])
 
-/** Opens or closes the `drafts` or `more` fold of the list. */
-export function toggle($: EngineInterface, key: 'drafts' | 'more'): void {
+/** Opens or closes a fold of the list: the drafts, the parked, the ready past the first few, or all but this session's. */
+export function toggle($: EngineInterface, key: 'drafts' | 'parked' | 'more' | 'others'): void {
   quietly(
     $,
     change($, choices => ({ ...choices, expanded: toggled(choices.expanded, key) }))

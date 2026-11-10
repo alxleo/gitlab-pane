@@ -3,6 +3,7 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 import { face } from './faces'
 import type { Kit } from './kit'
 import { openReading } from './panes'
+import { togglePin } from './shared'
 import type { RowModel } from './pane-model'
 import { strip } from './strip'
 
@@ -43,6 +44,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
+          {row.pin !== null && <Button key={row.pin.key} plain dimColor label={row.pin.label} onPress={() => togglePin($, row.key, row.mr.href)} />}
         </Box>
       )
     case 'line2':

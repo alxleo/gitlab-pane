@@ -1,5 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
+import { pinMr, readHosts, readPinned, unpinKeys } from './data'
+import { quietly } from './failures'
+import { parseMrUrl, pinKey } from './mr-url'
 import { isPublished, PINS_PREFIX, readPinsRecord, readSnapshot, REFRESH_KEY, SNAPSHOT_KEY, unionPins } from './snapshot.ts'
 import type { PinsRecord, Snapshot } from './snapshot.ts'
 
@@ -19,6 +22,28 @@ export async function saveSnapshot($: EngineInterface, snapshot: Snapshot): Prom
 }
 
 const pinsKey = (session: string): string => `${PINS_PREFIX}${session}`
+
+/**
+ * The person's pin from a card: puts the MR in this session, last, or takes it out again. It wakes nothing, as `watch_mr`
+ * does not, and is published for the leader as every pin is.
+ */
+export function togglePin($: EngineInterface, key: string, url: string): void {
+  quietly(
+    $,
+    (async () => {
+      if ((await readPinned($)).some(one => pinKey(one) === key)) {
+        await unpinKeys($, [key])
+      } else {
+        const parsed = parseMrUrl(url, await readHosts($))
+        if (parsed === null) {
+          throw new Error(`Not a merge request URL on the hosts set: ${url}`)
+        }
+        await pinMr($, parsed, 'watched')
+      }
+      await publishPins($, await readPinned($))
+    })()
+  )
+}
 
 /**
  * Says what this session has pinned, when that is not what the store holds or its beat is due. A session with no pins
