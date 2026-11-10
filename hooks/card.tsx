@@ -30,7 +30,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           {/* A quiet row is this line alone: what it waits on, or that it can merge, goes beside its title. */}
           {row.isQuiet && row.verdict !== null && (
             <Box flexShrink={0}>
-              <Text bold={row.verdict.bold} color={row.verdict.tone}>
+              <Text weight={row.verdict.bold ? 'semibold' : undefined} color={row.verdict.tone}>
                 {row.verdict.words}
               </Text>
             </Box>
