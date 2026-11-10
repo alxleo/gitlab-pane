@@ -19,7 +19,7 @@ export type Move = { label: string; check: string | null; press: { kind: MoveKin
 
 /** What each move says while it can be pressed, in DESIGN.md's order. */
 export const MOVE_LABEL: Record<MoveKind, string> = {
-  merge: '⤵ merge',
+  merge: '✓ merge',
   rebase: '↻ rebase',
   'rebase-merge': '↻ rebase and merge',
   conflicts: '⇄ hand conflicts to Claude',
@@ -30,7 +30,7 @@ const CHECK: Record<MoveKind, string | null> = { merge: null, rebase: 'NEED_REBA
 
 /** What a move says while it is under way. */
 const UNDER_WAY: Record<MoveKind, string> = {
-  merge: '⤵ merging…',
+  merge: '✓ merging…',
   rebase: '↻ rebasing…',
   'rebase-merge': '↻ rebasing…',
   conflicts: '⇄ conflicts · with Claude',
@@ -76,7 +76,7 @@ function offered(card: MrCard, isHere: boolean): MoveKind | null {
 export function nextMove(card: MrCard, pressed: Pressed | undefined, isHere: boolean): Move | null {
   const { merging } = card
   if (merging?.isAutoMerging === true) {
-    return said('⤵ merges when checks pass', verdictOf(card)?.check ?? null)
+    return said('✓ merges when checks pass', verdictOf(card)?.check ?? null)
   }
   if (merging?.isRebasing === true) {
     return said(UNDER_WAY.rebase, CHECK.rebase)

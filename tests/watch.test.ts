@@ -576,15 +576,15 @@ test('a mergeable MR’s verdict is its merge: one press arms it, a second merge
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // The quiet row's one line offers the merge in place of saying it can merge.
-  expect(await moveOf(ui, 12)).toMatchObject({ label: '⤵ merge', variant: 'secondary' })
+  expect(await moveOf(ui, 12)).toMatchObject({ label: '✓ merge', variant: 'secondary' })
   expect(await ui.find({ type: 'Text', text: '✓ mergeable' })).toBeUndefined()
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
   await clock.settle()
-  expect(await moveOf(ui, 12)).toMatchObject({ label: '⤵ merge !12? press again', variant: 'primary' })
+  expect(await moveOf(ui, 12)).toMatchObject({ label: '✓ merge !12? press again', variant: 'primary' })
   expect(merged).toEqual([])
   // Left alone, the armed press is taken back.
   await clock.advance(10_000)
-  expect((await moveOf(ui, 12))?.label).toBe('⤵ merge')
+  expect((await moveOf(ui, 12))?.label).toBe('✓ merge')
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
   await clock.settle()
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
@@ -673,7 +673,7 @@ test('an MR behind its target with nothing else failing rebases and then merges 
   expect(merged).toEqual(['12@rebased-12 MERGE_WHEN_CHECKS_PASS'])
   expect(toasts).toContain('!12 merges when checks pass')
   await clock.advance(60_000)
-  expect(await ui.find({ type: 'Text', text: '⤵ merges when checks pass' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '✓ merges when checks pass' })).toBeDefined()
   await ui.unmount()
 })
 

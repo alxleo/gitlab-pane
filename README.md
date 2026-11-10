@@ -22,7 +22,7 @@ flowchart LR
 
 Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
 
-A card's move stands where GitLab's verdict is: `⤵ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
+A card's move stands where GitLab's verdict is: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
 
 ## Install
 

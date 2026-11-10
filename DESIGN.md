@@ -79,12 +79,12 @@ The one press that moves an MR along, where GitLab's checks name it and you may 
 
 | Move | Offered when | A press |
 |---|---|---|
-| `⤵ merge` | GitLab says it can merge, and you may merge | arms it, `⤵ merge !12? press again`, for 10 s; the second press merges the head the verdict was read on, through the merge train where the project has one |
+| `✓ merge` | GitLab says it can merge, and you may merge | arms it, `✓ merge !12? press again`, for 10 s; the second press merges the head the verdict was read on, through the merge train where the project has one |
 | `↻ rebase` | `NEED_REBASE` fails with other checks, and you may push | asks GitLab to rebase it |
 | `↻ rebase and merge` | `NEED_REBASE` is the only check that fails, and you may push and merge | armed as a merge is; rebases it, then sets it to merge once its checks pass |
 | `⇄ hand conflicts to Claude` | `CONFLICT` fails, you may push, and this session works in the MR's repo | pins the MR to this session and asks Claude to resolve them in a subagent and push; comes before a rebase, which conflicts stop |
 
-- A move is a button; armed, it is the primary one. Under way it is dim words with nothing to press: `⤵ merging…`, `↻ rebasing…`, `⤵ merges when checks pass` (GitLab's auto-merge, whoever set it) and `⇄ conflicts · with Claude`.
+- A move is a button; armed, it is the primary one. Under way it is dim words with nothing to press: `✓ merging…`, `↻ rebasing…`, `✓ merges when checks pass` (GitLab's auto-merge, whoever set it) and `⇄ conflicts · with Claude`.
 - What was pressed holds until the MR's head moves, so a push offers the move afresh, and a hand-off to Claude ends when its push lands.
 - A press that did not take says why beside the move, amber, until it is pressed again; a toast says how each move ended.
 - Merging and rebasing write to GitLab, so they need a token with the `api` scope; the pane reads with `read_api`.

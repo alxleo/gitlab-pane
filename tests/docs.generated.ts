@@ -58,5 +58,5 @@ export const DESIGN = {
     ['On my MRs', 'on-my-mrs'],
     ['Following', 'following'],
   ],
-  moves: ['⤵ merge', '↻ rebase', '↻ rebase and merge', '⇄ hand conflicts to Claude'],
+  moves: ['✓ merge', '↻ rebase', '↻ rebase and merge', '⇄ hand conflicts to Claude'],
 } as const

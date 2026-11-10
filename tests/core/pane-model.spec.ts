@@ -116,7 +116,7 @@ test('a row that passed and waits on nothing of yours folds to one line; one tha
   expect(offered?.isQuiet).toBe(true)
   expect(offered?.verdict?.move).toEqual({
     key: `move-2-${shortHash(mayMerge.project)}`,
-    label: '⤵ merge',
+    label: '✓ merge',
     press: { kind: 'merge', does: 'arm' },
     isArmed: false,
     failed: null,

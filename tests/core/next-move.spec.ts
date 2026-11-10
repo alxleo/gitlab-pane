@@ -29,8 +29,8 @@ const pressed = (over: Partial<Pick<Pressed, 'kind' | 'head'>> & { state?: 'arme
 const BREAK = /[\p{Cc}\p{Zl}\p{Zp}]/u
 
 test('an MR GitLab says can merge offers a merge, which a first press arms and a second makes', () => {
-  expect(nextMove(mr(), undefined, false)).toEqual({ label: '⤵ merge', check: null, press: { kind: 'merge', does: 'arm' }, isArmed: false, failed: null })
-  expect(nextMove(mr(), pressed({}), false)).toEqual({ label: '⤵ merge !812? press again', check: null, press: { kind: 'merge', does: 'make' }, isArmed: true, failed: null })
+  expect(nextMove(mr(), undefined, false)).toEqual({ label: '✓ merge', check: null, press: { kind: 'merge', does: 'arm' }, isArmed: false, failed: null })
+  expect(nextMove(mr(), pressed({}), false)).toEqual({ label: '✓ merge !812? press again', check: null, press: { kind: 'merge', does: 'make' }, isArmed: true, failed: null })
   // Waiting on approvals or a running pipeline is not a move: the MR stays as quiet as it was.
   expect(nextMove(mr({ NOT_APPROVED: 'failed' }), undefined, false)).toBe(null)
   expect(nextMove(mr({ CI_MUST_PASS: 'checking' }), undefined, false)).toBe(null)
@@ -81,14 +81,14 @@ test('no move where the person may not make it, or where GitLab’s checks were 
 test('a move under way, GitLab’s or this session’s, is said and not pressed, until the MR’s head moves', () => {
   const said = (card: MrCard, press?: Pressed) => nextMove(card, press, true)
   expect(said(mr({ CI_MUST_PASS: 'checking' }, { isAutoMerging: true }))).toEqual({
-    label: '⤵ merges when checks pass',
+    label: '✓ merges when checks pass',
     check: 'CI_MUST_PASS',
     press: null,
     isArmed: false,
     failed: null,
   })
   expect(said(mr({ NEED_REBASE: 'failed' }, { isRebasing: true }))).toEqual({ label: '↻ rebasing…', check: 'NEED_REBASE', press: null, isArmed: false, failed: null })
-  expect(said(mr(), pressed({ state: 'sent' }))).toEqual({ label: '⤵ merging…', check: null, press: null, isArmed: false, failed: null })
+  expect(said(mr(), pressed({ state: 'sent' }))).toEqual({ label: '✓ merging…', check: null, press: null, isArmed: false, failed: null })
   expect(said(mr({ NEED_REBASE: 'failed' }), pressed({ kind: 'rebase', state: 'sent' }))?.label).toBe('↻ rebasing…')
   expect(said(mr({ CONFLICT: 'failed' }), pressed({ kind: 'conflicts', state: 'handed' }))).toEqual({
     label: '⇄ conflicts · with Claude',
@@ -193,7 +193,7 @@ test('a press sent to GitLab holds only while the pane could still be following 
 
 test('a move whose last press failed is offered again, with GitLab’s reason beside it, until it is pressed or the head moves', () => {
   const failedPress: Pressed = { kind: 'merge', state: 'failed', head: 'abc123', at: 0, say: 'not merged: hooks failed' }
-  expect(nextMove(mr(), failedPress, false)).toMatchObject({ label: '⤵ merge', press: { kind: 'merge', does: 'arm' }, failed: 'not merged: hooks failed' })
+  expect(nextMove(mr(), failedPress, false)).toMatchObject({ label: '✓ merge', press: { kind: 'merge', does: 'arm' }, failed: 'not merged: hooks failed' })
   expect(nextMove(mr({}, { head: 'def456' }), failedPress, false)?.failed).toBe(null)
 })
 
