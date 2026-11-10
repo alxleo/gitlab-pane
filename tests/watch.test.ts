@@ -458,12 +458,18 @@ test('pinning a card puts it in this session and folds the rest to one line; unp
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const pinOf = async (iid: number) => (await ui.findAll({ type: 'Button' })).find(keyed(`pin-${iid}-`))
   expect((await pinOf(13))?.props.label).toBe('pin')
+  // Hollow and dim until pressed; filled and plain once the MR is pinned here.
+  expect((await pinOf(13))?.children).toEqual(['☆'])
+  expect((await pinOf(13))?.props.dimColor).toBe(true)
   await ui.press({ key: (await pinOf(13))?.key ?? '' })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
   expect((await ui.find({ type: 'Button', key: 'others' }))?.props.label).toBe('▸ 2 others')
   expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
   expect((await pinOf(13))?.props.label).toBe('unpin')
+  // The label names the press; what is drawn is the star.
+  expect((await pinOf(13))?.children).toEqual(['★'])
+  expect((await pinOf(13))?.props.dimColor).toBe(false)
   expect(await pinOf(12)).toBeUndefined()
   // The leader reads every session's pins from the store, so a pin from a card is published there.
   expect([...store.keys()].some(key => key.startsWith('pins'))).toBe(true)
@@ -954,7 +960,12 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-  expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  // Refreshing and waking are symbols at the top right, so a long list keeps them in view.
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.children).toEqual(['↻'])
+  expect((await ui.find({ type: 'Button', key: 'wake' }))?.children).toEqual(['🔔'])
+  await ui.press({ key: 'wake' })
+  expect((await ui.find({ type: 'Button', key: 'wake' }))?.props.label).toBe('wake Claude: off')
+  await ui.press({ key: 'wake' })
   // Unfolded, rows past the budget are left out and counted, the most pressing first in.
   await ui.press({ key: 'more' })
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
@@ -1100,13 +1111,14 @@ test('a session that leads draws the last snapshot at once, with ↻ beside its 
   await clock.advance(2_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
-  expect((await ui.find({ type: 'Text', text: /^↻ updated/u }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^updated /u }))?.text).toBe('updated 3h ago')
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.props.dimColor).toBe(true)
 
   answer()
   await clock.settle()
   expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
   expect((await ui.find({ type: 'Text', text: /^updated /u }))?.text).toBe('updated just now')
-  expect(await ui.find({ type: 'Text', text: /^↻ updated/u })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.props.dimColor).toBe(false)
   await ui.unmount()
 })
 
@@ -1129,7 +1141,8 @@ test('an MR this session raised before its pane opened stays drawn beside the la
   await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^↻ updated/u }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^updated /u }))?.text).toBe('updated 3h ago')
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.props.dimColor).toBe(true)
   // The raised MR is on top; the snapshot's is among the others, folded until opened.
   expect((await ui.find({ type: 'Button', key: 'others' }))?.props.label).toBe('▸ 1 other')
   await ui.press({ key: 'others' })

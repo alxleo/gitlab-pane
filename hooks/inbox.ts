@@ -212,12 +212,13 @@ export async function sharedInboxAt($: EngineInterface): Promise<number | null> 
 
 /**
  * The MRs with news, each once whichever rules list it: how many the inbox counts as it is shown (narrowed to this repo
- * while `here` is on), and the keys of all of them, every repo's, which the list parks and folds by.
+ * while `here` is on), and the keys of all of them, every repo's, which the list parks and folds by; and whether this
+ * session is reading the inbox now, which dims the pane's ↻. One read of the inbox's atom serves both.
  */
-export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[] }> {
-  const { snapshot, seen } = await read($, inboxAtom)
+export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[]; isSyncing: boolean }> {
+  const { snapshot, seen, isSyncing } = await read($, inboxAtom)
   const newsIn = (sections: ReturnType<typeof sectionsOf>) => new Set(sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key)))
-  return { count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size, keys: [...newsIn(sectionsOf(snapshot, seen))] }
+  return { count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size, keys: [...newsIn(sectionsOf(snapshot, seen))], isSyncing }
 }
 
 export async function inboxView($: EngineInterface) {

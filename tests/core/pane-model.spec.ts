@@ -29,6 +29,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       news: { count: 0, keys: [] },
       poll: { fetchedAt: NOW, error: null, hosts: {} },
       isReading: false,
+      isSyncing: false,
       isWaking: true,
       failures: {},
       ...over,
@@ -38,17 +39,22 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
     { room, sizeOf: (row, piece) => cost(piece, row) }
   )
 
-test('beside the tabs, the age of the cards, with ↻ while a read is out; the footer speaks only of what went wrong', () => {
+test('beside the tabs, the age of the cards, and ↻ dim while this session reads; the footer speaks only of what went wrong', () => {
   const threeHours = { fetchedAt: NOW - 3 * 3_600_000, error: null, hosts: {} }
   expect(modelOf([], { poll: threeHours }).status).toEqual({ text: 'updated 3h ago', isWarning: false })
-  expect(modelOf([], { poll: threeHours, isReading: true }).status).toEqual({ text: '↻ updated 3h ago', isWarning: false })
-  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} }, isReading: true }).status.text).toBe('↻ reading GitLab…')
-  // A session that follows has no ↻ of the leader's read, but still says one is out while it has nothing to show.
+  expect(modelOf([], { poll: threeHours }).isRefreshing).toBe(false)
+  // ↻ is only ever the press: a read that is out dims it, and the age beside it carries no mark of its own.
+  expect(modelOf([], { poll: threeHours, isReading: true })).toMatchObject({ status: { text: 'updated 3h ago', isWarning: false }, isRefreshing: true })
+  expect(modelOf([], { poll: threeHours, isSyncing: true }).isRefreshing).toBe(true)
+  // A session that follows has no read of its own to dim ↻ for, but still says one is out while it has nothing to show.
   expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} } }).status.text).toBe('reading GitLab…')
   expect(modelOf([], { poll: threeHours }).footer.text).toBe('')
   const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
   expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })
   expect(modelOf([], { poll: failed }).footer).toMatchObject({ text: 'GitLab read failed: connection refused; showing 10m old data', isWarning: true })
+  // Whether a raised MR wakes Claude is a bell, named for the press: struck through once wakes are off.
+  expect(modelOf([]).wake).toEqual({ label: 'wake Claude: on', mark: '🔔' })
+  expect(modelOf([], { isWaking: false }).wake).toEqual({ label: 'wake Claude: off', mark: '🔕' })
 })
 
 test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
@@ -238,6 +244,9 @@ test("this session's MRs keep the order they came in; one it raised has no unpin
   expect(model.session.map(row => row.mr.text)).toEqual(['🔀 !41', '🔀 !43', '🔀 !42'])
   expect(model.session.map(row => row.pin?.label ?? null)).toEqual([null, 'unpin', 'unpin'])
   expect(modelOf(cards).mine.rows.map(row => row.pin?.label)).toEqual(['pin', 'pin', 'pin'])
+  // The press is a star, as anywhere else: filled on an MR pinned here, hollow on one that is not.
+  expect(model.session.map(row => row.pin?.mark ?? null)).toEqual([null, '★', '★'])
+  expect(modelOf(cards).mine.rows.map(row => row.pin?.mark)).toEqual(['☆', '☆', '☆'])
 })
 
 test('the list draws a shared slim card as it draws the whole one', () => {

@@ -33,7 +33,7 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 |---|---|---|
 | Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
 | Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
-| Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and `pin` or `unpin` (none on an MR this session raised, so its wakes stay) | `card.tsx` |
+| Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
 | Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict with other blockers trailing dimly, then the people; a name opens the page on what that person wrote | `row-facts.ts` |
 | Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is neither red nor amber and that quotes no one; its links and faces are on its page | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
@@ -42,6 +42,7 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 
 | Section | Holds | Code |
 |---|---|---|
+| Top row | the tabs and, on Mine, how old the cards are (the inbox says its own age on the row below); at the right, `↻` reads GitLab again, dim while a read is out, and `🔔` says a raised MR wakes Claude, `🔕` once pressed off. An MR read whole has its way back and its age there instead of the tabs | `pane.tsx` |
 | This session | the MRs this session raised, watched or you pinned, in the order they came | `buildPane` |
 | `▸ N others` | while This session holds any, every other MR folds behind one line saying how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
 | Ready | the open MRs, most pressing first, ten until `▸ more` | `MINE_SHOWN` |

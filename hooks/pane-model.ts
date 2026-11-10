@@ -67,9 +67,9 @@ export type RowModel = {
   isQuiet: boolean
   /**
    * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
-   * would stop its wakes.
+   * would stop its wakes. The label names the press; the mark is what is drawn, a star filled on an MR pinned here.
    */
-  pin: { key: string; label: 'pin' | 'unpin'; mr: Pinned } | null
+  pin: { key: string; label: 'pin' | 'unpin'; mark: '☆' | '★'; mr: Pinned } | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -97,6 +97,8 @@ export type PaneInput = {
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
+  /** Whether this session is reading the inbox from GitLab now. */
+  isSyncing: boolean
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
@@ -116,29 +118,33 @@ export type PaneModel = {
   firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
-  /** Beside the tabs, quietly: how old the cards are, and ↻ while a read is out. */
+  /** Beside the tabs, quietly: how old the cards are. */
   status: { text: string; isWarning: boolean }
+  /**
+   * Whether this session is reading GitLab or the inbox now: ↻ is drawn dim meanwhile, as the pane has no spinner. ↻ is only
+   * ever the press, so the age beside it carries no mark of its own.
+   */
+  isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
-  footer: { text: string; isWarning: boolean; wake: string }
+  footer: { text: string; isWarning: boolean }
+  /** Whether a raised MR wakes Claude: the label names the press, the mark is the bell drawn, struck through when off. */
+  wake: { label: 'wake Claude: on' | 'wake Claude: off'; mark: '🔔' | '🔕' }
 }
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
 
-/** The mark beside the age while this session reads GitLab: the pane has no spinner, and a glyph draws on every surface. */
-export const READING_MARK = '↻'
-
-function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['status'] {
+function statusOf(poll: PollState, now: number): PaneModel['status'] {
   const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
-  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's, which only it can mark.
+  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's.
   const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : hasStale ? '' : 'reading GitLab…'
-  return { text: isReading ? `${READING_MARK} ${age}`.trim() : age, isWarning: hasStale }
+  return { text: age, isWarning: hasStale }
 }
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
 const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
   firstDifference((ranks.get(a.key) ?? 3) - (ranks.get(b.key) ?? 3), b.updatedAt.localeCompare(a.updatedAt))
 
-function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['footer'] {
+function footerOf(poll: PollState, now: number): PaneModel['footer'] {
   const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
   // A read that kept no status per host (nothing yet to say of any) speaks of GitLab as one.
   const statuses = Object.entries(Object.keys(poll.hosts).length > 0 ? poll.hosts : { '': { fetchedAt: poll.fetchedAt, error: poll.error } })
@@ -154,7 +160,7 @@ function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['f
   const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
   // How old the cards are is said beside the tabs; down here only what went wrong, or what the read left out.
   const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : keptNote
-  return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
+  return { text, isWarning: stale.length > 0 }
 }
 
 /** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
@@ -179,10 +185,10 @@ function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowMod
   // The pin is made from the card's own host, project and number, so its key is the card's.
   const mr = { url: card.url, host: card.host, path: card.path, iid: card.iid }
   if (pinned === undefined) {
-    return { key: `pin-${suffix}`, label: 'pin', mr }
+    return { key: `pin-${suffix}`, label: 'pin', mark: '☆', mr }
   }
   // A pin kept from before origins were recorded counts as raised, as it wakes.
-  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, label: 'unpin', mr } : null
+  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, label: 'unpin', mark: '★', mr } : null
 }
 
 /** A row as data; its faces take their pictures where the room allows. */
@@ -343,7 +349,9 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
       built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
-    status: statusOf(input.poll, input.isReading, now),
-    footer: footerOf(input.poll, input.isWaking, now),
+    status: statusOf(input.poll, now),
+    isRefreshing: input.isReading || input.isSyncing,
+    footer: footerOf(input.poll, now),
+    wake: input.isWaking ? { label: 'wake Claude: on', mark: '🔔' } : { label: 'wake Claude: off', mark: '🔕' },
   }
 }

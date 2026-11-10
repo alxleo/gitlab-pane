@@ -75,7 +75,7 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
     expect(gitlab.tokens.filter(token => token.endsWith(` ${TOKEN}`)).length).toBe(gitlab.tokens.length)
     // The inbox has a tab of its own, which names how many MRs have news; its body draws only there.
     expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 2 new"')
-    expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'synced just now' })).toBeUndefined()
     await ui.press({ key: 'tab-inbox' })
     expect(await ui.find({ type: 'Text', text: 'synced just now' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: "Nothing else in: Mentions, Build failed, Can't merge" })).toBeDefined()
@@ -132,7 +132,7 @@ test('a review requested of you shows until you approve it, and a push since you
   expect(await titleOf(ui, 2)).toBe('▸ thing 2')
   expect(await ui.find({ type: 'Text', text: /new$/u })).toBeUndefined()
   world.queue = [queued(2, [system(21, 'alice', -5, 'commit', 'added 2 commits')])]
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect(await ui.find({ type: 'Text', text: '1 new' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '↑ Alice pushed' })).toBeDefined()
   await ui.unmount()
@@ -202,17 +202,17 @@ test('the mark outlives the pane, and an MR that has left the inbox loses its ma
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   await ui.press({ key: `inbox-seen-${hashOf('gitlab.com/g/p!1')}` })
   // Read again, the MR is still there and still seen; the same notes do not come back as news.
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect(await titleOf(ui, 1)).toBeUndefined()
   expect(gitlab.marks().length).toBe(1)
   // A full review queue pushes it past the MRs the snapshot keeps; GitLab still lists it, so its mark stays.
   world.queue = Array.from({ length: 50 }, (_, i) => queued(200 + i))
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect(gitlab.marks().length).toBe(1)
   // Once GitLab no longer lists it, the next read drops its mark.
   world.queue = []
   world.opened = []
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect(gitlab.marks().length).toBe(0)
   await ui.unmount()
 })
@@ -255,7 +255,8 @@ test('a session that leads shows the inbox the store keeps while its own slow re
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   expect(await titleOf(ui, 1)).toBe('▸ thing 1')
-  expect((await ui.find({ type: 'Text', text: /^↻ synced/u }))?.text).toBe('↻ synced 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^synced /u }))?.text).toBe('synced 3h ago')
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.props.dimColor).toBe(true)
   expect(kit.marks()).toEqual([])
 
   answer()
@@ -300,7 +301,7 @@ test('the leader prunes the marks of MRs that left the inbox without losing one 
   kit.store.set(seenKeyOf(shared, mine) ?? '', NOW)
   kit.store.set(seenKey('gitlab.com', 'me', 'g/gone', 9), NOW)
   await ui.press({ key: 'tab-inbox' })
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect(kit.marks().map(([key]) => key)).toEqual([seenKeyOf(shared, mine)])
   // Seen, the MR is no longer news, so the rule that listed it has nothing to open.
   expect(await ui.find({ type: 'Button', key: 'inbox-rule-on-my-mrs' })).toBeUndefined()
@@ -372,13 +373,13 @@ test('a failed read says why and keeps the rules it last applied', async ($, on)
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'tab-inbox' })
   world.isDown = true
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect((await ui.find({ type: 'Text', text: /sync failed/u }))?.text).toMatch(/^sync failed: .*connection refused/u)
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   expect(await titleOf(ui, 1)).toBeDefined()
   // Back up, it is fresh again.
   world.isDown = false
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   expect(await ui.find({ type: 'Text', text: /sync failed/u })).toBeUndefined()
   await ui.unmount()
 })
@@ -394,7 +395,7 @@ test('a host without GitLab 17.4 is asked for the older to-do field once it says
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'tab-inbox' })
-  await ui.press({ key: 'inbox-sync' })
+  await ui.press({ key: 'refresh' })
   // Told once that it lacks the field, then asked for the plain document, and from then on only that.
   expect(gitlab.requests.filter(request => request === 'gitlab.com InboxTodos')).toHaveLength(1)
   expect(gitlab.requests.filter(request => request === 'gitlab.com InboxTodosPlain').length).toBeGreaterThan(1)
@@ -524,7 +525,7 @@ test('a full inbox and each rule open in turn stay inside the 100,000 characters
   // Cards past the inbox's share are counted, not drawn: the open rule held more than it could show.
   await ui.press({ key: 'inbox-rule-mentions' })
   expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/u })).toBeDefined()
-  expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'inbox-here' })).toBeDefined()
   await ui.unmount()
 })
 

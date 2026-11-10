@@ -5,11 +5,9 @@ import { isFilled } from './decode'
 import { ago, shortTitle } from './format'
 import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
-import { quietly, reported } from './failures'
+import { reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
 import { ownedSections } from './inbox-rules'
-import { READING_MARK } from './pane-model'
-import { refresh } from './poll'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
 
@@ -53,7 +51,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     problem !== null
       ? `sync failed: ${problem}`
       : inbox.snapshot.at > 0
-        ? `${inbox.isSyncing ? `${READING_MARK} ` : ''}synced ${since(new Date(inbox.snapshot.at).toISOString())}`
+        ? `synced ${since(new Date(inbox.snapshot.at).toISOString())}`
         : inbox.readAt === null || inbox.isSyncing
           ? 'reading GitLab…'
           : 'not synced yet'
@@ -215,7 +213,6 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           {status}
         </Text>
         <Button key="inbox-here" plain label={isHere ? '● here' : '○ here'} onPress={() => toggleHere($)} />
-        <Button key="inbox-sync" plain label={inbox.isSyncing ? 'syncing…' : 'sync'} onPress={() => quietly($, refresh($), 'inbox')} />
       </Box>
       {shown.length > 0 && (
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>

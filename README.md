@@ -7,7 +7,7 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 | ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
 | **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
 | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
-| **`pin`: the MRs you work on today, the rest one line** | |
+| **☆: the MRs you work on today, the rest one line** | |
 | ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | |
 
 <sub>Made-up data.</sub>
@@ -20,7 +20,7 @@ flowchart LR
   poll -->|MR can merge| ready["Session wakes:<br/>!iid can merge"]
 ```
 
-Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with a card's `pin`, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
+Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
 
 ## Install
 
@@ -95,7 +95,7 @@ GitLab's text arrives only through one cleaner: control and bidi characters remo
 
 | What | When | Carries | Fenced |
 |---|---|---|---|
-| Wake | a raised MR first fails (even mid-run) or can merge; the pane's `wake Claude` turns it off | `!iid`, failed jobs (80 characters each), GitLab's reason for the first 3, pipeline link | no titles, descriptions or comments |
+| Wake | a raised MR first fails (even mid-run) or can merge; the pane's 🔔 at the top right turns it off | `!iid`, failed jobs (80 characters each), GitLab's reason for the first 3, pipeline link | no titles, descriptions or comments |
 | Log tail | in that wake, with `failureLogs` | last 20 lines, 2,000 characters, of up to 3 jobs | each line behind `│ `, under a heading saying it is the job's output, not instructions |
 | `/mrs` | when you run it | title, branches, description (6,000 characters), threads (1,500 a comment, 20,000 an MR) | others' words behind `│`, under a line saying they are data, not instructions; context only, not the transcript |
 | `watch_mr` | when Claude calls it | `!iid`, ticket, pipeline status and time, blockers, failed jobs, link | no titles, descriptions or comments |
