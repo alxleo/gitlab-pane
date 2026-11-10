@@ -49,6 +49,9 @@ test('beside the tabs, the age of the cards, with ↻ while a read is out; the f
   const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
   expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })
   expect(modelOf([], { poll: failed }).footer).toMatchObject({ text: 'GitLab read failed: connection refused; showing 10m old data', isWarning: true })
+  // Whether a raised MR wakes Claude is a bell, named for the press: struck through once wakes are off.
+  expect(modelOf([]).wake).toEqual({ label: 'wake Claude: on', mark: '🔔' })
+  expect(modelOf([], { isWaking: false }).wake).toEqual({ label: 'wake Claude: off', mark: '🔕' })
 })
 
 test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {

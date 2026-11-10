@@ -132,10 +132,31 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {model.status.text}
       </Text>
     ) : null
+  // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. The
+  // labels name the presses; the symbols are drawn. The inbox's refresh is the same read, its failure told as the inbox's.
+  const controls = (
+    <Box flexDirection="row" gap={2} flexShrink={0}>
+      <Button key="refresh" plain label="refresh" onPress={() => quietly($, refresh($), isInbox && reading === undefined ? 'inbox' : 'pane')}>
+        ↻
+      </Button>
+      <Button key="wake" plain label={model.wake.label} onPress={() => toggleWake($)}>
+        {model.wake.mark}
+      </Button>
+    </Box>
+  )
+  const topRow = (...left: RenderChildren[]) => (
+    <Box flexDirection="row" columnGap={2} alignItems="center">
+      <Box flexDirection="row" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1}>
+        {left}
+      </Box>
+      {controls}
+    </Box>
+  )
   const body =
     reading !== undefined
       ? [
-          back('back-top'),
+          // An MR read whole has no tabs row: the age goes beside its way back.
+          topRow(back('back-top'), status),
           ...drawReading($, e, reading, {
             folds,
             focus: chosen[reading.key] ?? '',
@@ -145,29 +166,24 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           back('back-bottom'),
         ]
       : [
-          <Box flexDirection="row" columnGap={1} alignItems="center">
-            <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
-            <Button key="tab-inbox" label={model.tabs.inbox} variant={isInbox ? 'primary' : 'secondary'} onPress={() => openTab($, 'inbox')} />
-            {/* The inbox says its own age on the row below its tabs. */}
-            {!isInbox && status}
-          </Box>,
+          topRow(
+            <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />,
+            <Button key="tab-inbox" label={model.tabs.inbox} variant={isInbox ? 'primary' : 'secondary'} onPress={() => openTab($, 'inbox')} />,
+            // The inbox says its own age on the row below its tabs.
+            !isInbox && status
+          ),
           ...(isInbox ? [await drawInbox($, e)] : mineTab),
         ]
 
   return (
     <Box flexDirection="column" gap={1}>
       {body}
-      <Box flexDirection="row" gap={2}>
-        {/* An MR read whole has no tabs row: the age goes beside its refresh. */}
-        {reading !== undefined && status}
-        {model.footer.text !== '' && (
-          <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
-            {model.footer.text}
-          </Text>
-        )}
-        <Button key="refresh" plain label="refresh" onPress={() => quietly($, refresh($))} />
-        <Button key="wake" plain label={model.footer.wake} onPress={() => toggleWake($)} />
-      </Box>
+      {/* The footer is only what went wrong with the last read, or what it left out. */}
+      {model.footer.text !== '' && (
+        <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
+          {model.footer.text}
+        </Text>
+      )}
     </Box>
   )
 }

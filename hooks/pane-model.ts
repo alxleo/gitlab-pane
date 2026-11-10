@@ -119,7 +119,9 @@ export type PaneModel = {
   /** Beside the tabs, quietly: how old the cards are, and ↻ while a read is out. */
   status: { text: string; isWarning: boolean }
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
-  footer: { text: string; isWarning: boolean; wake: string }
+  footer: { text: string; isWarning: boolean }
+  /** Whether a raised MR wakes Claude: the label names the press, the mark is the bell drawn, struck through when off. */
+  wake: { label: 'wake Claude: on' | 'wake Claude: off'; mark: '🔔' | '🔕' }
 }
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
@@ -138,7 +140,7 @@ function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['
 const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
   firstDifference((ranks.get(a.key) ?? 3) - (ranks.get(b.key) ?? 3), b.updatedAt.localeCompare(a.updatedAt))
 
-function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['footer'] {
+function footerOf(poll: PollState, now: number): PaneModel['footer'] {
   const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
   // A read that kept no status per host (nothing yet to say of any) speaks of GitLab as one.
   const statuses = Object.entries(Object.keys(poll.hosts).length > 0 ? poll.hosts : { '': { fetchedAt: poll.fetchedAt, error: poll.error } })
@@ -154,7 +156,7 @@ function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['f
   const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
   // How old the cards are is said beside the tabs; down here only what went wrong, or what the read left out.
   const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : keptNote
-  return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
+  return { text, isWarning: stale.length > 0 }
 }
 
 /** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
@@ -344,6 +346,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     leftOut:
       built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
     status: statusOf(input.poll, input.isReading, now),
-    footer: footerOf(input.poll, input.isWaking, now),
+    footer: footerOf(input.poll, now),
+    wake: input.isWaking ? { label: 'wake Claude: on', mark: '🔔' } : { label: 'wake Claude: off', mark: '🔕' },
   }
 }

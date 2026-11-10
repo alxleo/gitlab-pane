@@ -956,7 +956,12 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-  expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  // Refreshing and waking are symbols at the top right, so a long list keeps them in view.
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.children).toEqual(['↻'])
+  expect((await ui.find({ type: 'Button', key: 'wake' }))?.children).toEqual(['🔔'])
+  await ui.press({ key: 'wake' })
+  expect((await ui.find({ type: 'Button', key: 'wake' }))?.props.label).toBe('wake Claude: off')
+  await ui.press({ key: 'wake' })
   // Unfolded, rows past the budget are left out and counted, the most pressing first in.
   await ui.press({ key: 'more' })
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)

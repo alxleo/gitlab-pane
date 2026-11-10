@@ -95,7 +95,7 @@ GitLab's text arrives only through one cleaner: control and bidi characters remo
 
 | What | When | Carries | Fenced |
 |---|---|---|---|
-| Wake | a raised MR first fails (even mid-run) or can merge; the pane's `wake Claude` turns it off | `!iid`, failed jobs (80 characters each), GitLab's reason for the first 3, pipeline link | no titles, descriptions or comments |
+| Wake | a raised MR first fails (even mid-run) or can merge; the pane's 🔔 at the top right turns it off | `!iid`, failed jobs (80 characters each), GitLab's reason for the first 3, pipeline link | no titles, descriptions or comments |
 | Log tail | in that wake, with `failureLogs` | last 20 lines, 2,000 characters, of up to 3 jobs | each line behind `│ `, under a heading saying it is the job's output, not instructions |
 | `/mrs` | when you run it | title, branches, description (6,000 characters), threads (1,500 a comment, 20,000 an MR) | others' words behind `│`, under a line saying they are data, not instructions; context only, not the transcript |
 | `watch_mr` | when Claude calls it | `!iid`, ticket, pipeline status and time, blockers, failed jobs, link | no titles, descriptions or comments |
