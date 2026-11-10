@@ -97,16 +97,16 @@ It compares elements, not pixels, so a row that only moved down stays faded. The
 
 The rig and the shot answer different questions. `npm run rig -- flow` stands in for the desktop: it asks a headless engine for drawings, presses and scrolls as the desktop would, and prints what came back. It runs anywhere, CI included, so reach for it first, for anything about what the mod draws or how it answers.
 
-`npm run shot` looks at the real desktop app on a Mac. Reach for it when the question is what the app itself does with the drawing: whether a click lands, where a hover card pushes the rows, how a narrow window wraps a card, or a bug the rig cannot reproduce. It reads the pane off the screen with macOS text recognition, clicks and scrolls through Hammerspoon, and writes the pane alone as a PNG:
+`npm run shot` looks at the real desktop app on a Mac. Reach for it when the question is what the app itself does with the drawing: whether a click lands, where a hover card pushes the rows, how a narrow window wraps a card, or a bug the rig cannot reproduce. It reads the pane off the screen with macOS text recognition, clicks and scrolls through Hammerspoon, and writes the pane alone as a PNG. The pictures show real MR titles and names, so write them outside the checkout:
 
 ```bash
-npm run shot -- capture -o pane.png
+npm run shot -- capture -o "$TMPDIR/pane.png"
 ```
 
 ```bash
-npm run shot -- press "read whole" -o after.png
+npm run shot -- press "read whole" -o "$TMPDIR/after.png"
 ```
 
 `--help` lists the rest (`windows`, `tour`, `capture --to bottom`). It needs Hammerspoon with its `hs` command (`require("hs.ipc")` in its config, then `hs.ipc.cliInstall()`), Accessibility for Hammerspoon, and Screen Recording for the terminal that runs it.
 
-The app takes a click or a scroll only while its window is in front, so the shot refuses to click or scroll otherwise, and never takes focus on its own. Run it when the person at the Mac says the pane is showing, never on a timer or in CI. `--raise` brings the window forward only when nobody has typed or moved the pointer for a few seconds, and gives focus back after. Every session's pane sits in the same place, so pass `--session` with the name in the window's header when it matters which session's pane you photograph.
+The app takes a click or a scroll only while its window is in front, so the shot refuses to click, scroll or move the pointer otherwise, and never takes focus on its own; a capture of a window behind others says it was read without the pointer parked, so a hover card may show in it. Run it when the person at the Mac says the pane is showing, never on a timer or in CI. `--raise` brings the window forward only when nobody has typed or moved the pointer for a few seconds, and gives focus back after. Every session's pane sits in the same place, so pass `--session` with the name in the window's header when it matters which session's pane you photograph.

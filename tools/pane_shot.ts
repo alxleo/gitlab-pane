@@ -14,18 +14,19 @@
 //
 // What live checks taught, and where each is kept:
 // - The app ignores a click unless its window is in front: events posted to it in the background never reach the pane. Each
-//   click and scroll goes in one Hammerspoon call with a check that the window is in front, so a person switching away in
-//   between is caught, and it refuses rather than take focus. `--raise` brings the window forward only when no key or
-//   pointer has moved for a while, and gives focus back at the end.
+//   click, scroll and pointer move goes in one Hammerspoon call that first checks the window is in front and where it was
+//   read, so a person switching away or moving the window in between is caught; it refuses rather than take focus.
+//   `--raise` brings the window forward only when no key or pointer has moved for a while, and gives focus back at the end.
 // - A hover card opens in the flow and moves what is below it, so the pointer is parked on the pane's header before every
-//   read. The pointer is touched only while the window is in front, and put back when the command ends.
-// - The window can move or change size between steps, so each read finds the pane again, and a crop is cut from the same
-//   frame its pane was found in.
+//   read, with a mouse-moved event, since moving the pointer alone tells the app nothing. It is put back at the end if it
+//   is still where this left it.
+// - The window can move or change size between steps, so each read finds the pane again, a crop is cut from the same frame
+//   its pane was found in, and a click goes where the latest read put its word.
 // - Text recognition can misread the session's name in the window's header (its ▾ came back as "V", then "v"), so names
-//   are compared near enough, not exactly, and `--session` names the session a capture must come from.
+//   are compared by their letters and digits with that mark dropped, and `--session` names the session a capture must be from.
 //
 // Run it when the person says the pane is in front, never on a timer. Only the pane is written: the whole-window frames it
-// reads, which show other sessions, stay in a temporary folder that is deleted when it exits.
+// reads, which show other sessions, stay in a temporary folder that is deleted when it exits, Ctrl-C included.
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -37,7 +38,7 @@ import { field, isRecord, parseJson, records, text } from '../hooks/decode.ts'
 
 /** The desktop apps that draw a mod's pane, tried in this order when `--app` is not given. */
 const CLAUDE_APPS = ['Claude', 'Claude Work']
-/** One wheel event's distance: 400 pixels moved a session's transcript when tried by hand; 2,000 never moved the pane. */
+/** The most one wheel event moves: 400 pixels moved a session's transcript when tried by hand; 2,000 never moved the pane. */
 const STEP_PIXELS = 400
 /** Far enough to reach either end of any pane drawn so far. */
 const TO_THE_END = 20_000
@@ -49,10 +50,8 @@ const HEADER_BAND = 80
 const SESSION_BAND = 35
 /** Where the pane's edges sit from its title's box, in points. */
 const PANE_INSET = { left: 14, top: 12, edge: 4 }
-/** A pane whose title moved further than this between two reads has moved. */
+/** A pane or window further than this, in points, from where it was read has moved. */
 const MOVE_TOLERANCE = 4
-/** How alike two reads of the session's name must be to name the same session. */
-const SAME_SESSION = 0.9
 /** Seconds with no key or pointer moving before `--raise` takes focus. */
 const IDLE_SECONDS = 5
 const SETTLE_MS = { park: 800, scroll: 600, click: 1500, raise: 400 }
@@ -63,27 +62,30 @@ const USAGE = `pane-shot: photograph the pane in the running Claude desktop app,
   node tools/pane_shot.ts capture -o FILE.png           the pane as it is now
   node tools/pane_shot.ts capture --to top|bottom -o FILE.png
   node tools/pane_shot.ts tour -o FOLDER [--pages N]    scrolled to its top, then a page per file to its end, then back
-  node tools/pane_shot.ts press TEXT... [-o FILE.png]   click each button by what it reads, in order, then capture
+  node tools/pane_shot.ts press TEXT... [-o FILE.png]   click each button by its words, in order, then capture
 
 Options:
   --pane TITLE      the pane's title as its header reads (default GitLab; "GitLab · Mine" matches)
   --app NAME        the app whose window holds the pane (default: Claude or Claude Work, the one in front)
-  --window ID       the window, as \`windows\` lists it, when the app has more than one (default: its largest)
-  --session NAME    refuse unless the window's header reads near NAME: the pane of another session is not this one
+  --window ID       the window, as \`windows\` lists it (default: the app's window in front, else its largest)
+  --session NAME    refuse unless the window's header reads NAME (its letters and digits, any case)
   --raise           bring the window forward if no key or pointer has moved for ${IDLE_SECONDS}s, and give focus back at the end
   -o, --out PATH    the PNG to write, or the folder for tour's pages
   -h, --help        this
 
-Needs Hammerspoon with its \`hs\` command (hs.ipc), and the Screen Recording grant for this terminal. A click or a scroll
-needs the app's window in front; without --raise it refuses rather than take focus. Prints one JSON line on success.`
+Needs Hammerspoon with its \`hs\` command (hs.ipc), and the Screen Recording grant for this terminal. A click, a scroll or a
+pointer move needs the app's window in front; without --raise it refuses rather than take focus, and a capture of a window
+behind others says it was read without parking the pointer. Prints one JSON line on success.`
 
 class ShotError extends Error {}
 class UsageError extends Error {}
 
 export type Rect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
 export type Point = { readonly x: number; readonly y: number }
-/** A line of text read off a window, its box in screen points, origin top-left (or in a frame's pixels, in a `Read`). */
-export type Line = Rect & { readonly text: string }
+/** A word read off a window, its box in screen points, origin top-left (or in a frame's pixels, in a `Read`). */
+export type Word = Rect & { readonly text: string }
+/** A line read off a window, with the box of each of its words. */
+export type Line = Word & { readonly words: readonly Word[] }
 export type Window = { readonly id: number; readonly app: string; readonly bounds: Rect }
 /** The windows on screen and the one in front (0 for none). */
 export type Desk = { readonly windows: readonly Window[]; readonly front: number }
@@ -108,16 +110,17 @@ export type Command =
 
 // ---- what is read off the screen: plain data in, plain data out ---------------------------------------------------------
 
-/** A read's lines moved into screen points: the frame is `scale` pixels to a point and starts at the window's corner. */
+/** A read's lines and words moved into screen points: the frame is `scale` pixels to a point and starts at the window's corner. */
 export function onScreen(read: Read, window: Window): Line[] {
   const scale = read.width / window.bounds.w
-  return read.lines.map(line => ({
-    text: line.text,
-    x: window.bounds.x + line.x / scale,
-    y: window.bounds.y + line.y / scale,
-    w: line.w / scale,
-    h: line.h / scale,
-  }))
+  const place = (box: Word): Word => ({
+    text: box.text,
+    x: window.bounds.x + box.x / scale,
+    y: window.bounds.y + box.y / scale,
+    w: box.w / scale,
+    h: box.h / scale,
+  })
+  return read.lines.map(line => ({ ...place(line), words: line.words.map(place) }))
 }
 
 /** The header reads the title, alone or followed by more: "GitLab · Mine" names the view shown. */
@@ -141,52 +144,61 @@ export function locate(lines: readonly Line[], window: Window, title: string): L
 }
 
 const SEGMENTER = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-/** The characters of `read` as a person counts them, a letter with its accents as one. */
-const characters = (read: string): string[] => Array.from(SEGMENTER.segment(read), part => part.segment)
 
 /** Letters and digits only, lower case: what reading text off the screen gets right. */
 export const plain = (read: string): string =>
-  characters(read.toLowerCase())
+  Array.from(SEGMENTER.segment(read.toLowerCase()), part => part.segment)
     .filter(char => /[\p{L}\p{N}]/u.test(char))
     .join('')
 
-/** How alike two strings are, 0 to 1: twice the characters they share in order over both lengths (difflib's ratio, near enough). */
-export function likeness(a: string, b: string): number {
-  const [xs, ys] = [characters(a), characters(b)]
-  if (xs.length + ys.length === 0) {
-    return 1
-  }
-  let above = Array.from({ length: ys.length + 1 }, () => 0)
-  for (const x of xs) {
-    const row = [0]
-    ys.forEach((y, j) => row.push(x === y ? (above[j] ?? 0) + 1 : Math.max(above[j + 1] ?? 0, row[j] ?? 0)))
-    above = row
-  }
-  return (2 * (above[ys.length] ?? 0)) / (xs.length + ys.length)
-}
+/** A session's name as it can be compared: its letters and digits, without the ▾ after it, which reads as "V" or "v" too. */
+export const sessionName = (read: string): string => plain(read.replace(/\s+[▾▼Vv]\s*$/u, ''))
 
-/** Two reads of the window's header name the same session: a glyph read differently twice is still the same name. */
-export const sameSession = (a: string, b: string): boolean => likeness(a.toLowerCase(), b.toLowerCase()) >= SAME_SESSION
+/** Two reads of the window's header name the same session. A misread letter makes them differ: that refuses, never passes. */
+export const sameSession = (a: string, b: string): boolean => sessionName(a) === sessionName(b)
 
 /** The pane's title sits elsewhere than it did: the window moved or changed size, or another view is showing. */
 export const hasMoved = (was: Rect, now: Rect): boolean => Math.abs(was.x - now.x) > MOVE_TOLERANCE || Math.abs(was.y - now.y) > MOVE_TOLERANCE
 
-/** Where to click for `wanted`: the topmost line in the pane, below its header, that reads it, an exact read before a partial one. */
+/** The words of `read` that have letters or digits, each as `plain` gives it. */
+const tokens = (read: string): string[] =>
+  read
+    .split(/\s+/u)
+    .map(plain)
+    .filter(token => token !== '')
+
+/**
+ * Where to click for `wanted`: the middle of its words, read whole and in order, in the topmost line of the pane below its
+ * header that has them. A line that is nothing but those words comes before a line that has more.
+ */
 export function target(lines: readonly Line[], found: Located, wanted: string): { readonly line: string; readonly at: Point } | null {
-  const want = plain(wanted)
+  const want = tokens(wanted)
   const { pane, titleAt } = found
-  const inside = lines.filter(
-    line =>
-      want !== '' && plain(line.text).includes(want) && line.x >= pane.x && line.x <= pane.x + pane.w && line.y > titleAt.y + titleAt.h + MOVE_TOLERANCE && line.y < pane.y + pane.h
-  )
-  const exact = (line: Line): number => (plain(line.text) === want ? 0 : 1)
-  const best = inside.toSorted((a, b) => (exact(a) !== exact(b) ? exact(a) - exact(b) : a.y - b.y))[0]
-  return best === undefined ? null : { line: best.text, at: { x: best.x + best.w / 2, y: best.y + best.h / 2 } }
+  const inPane = (word: Word): boolean =>
+    word.x >= pane.x && word.x + word.w <= pane.x + pane.w && word.y > titleAt.y + titleAt.h + MOVE_TOLERANCE && word.y + word.h < pane.y + pane.h
+  const runs = lines.flatMap(line => {
+    const words = line.words.filter(word => plain(word.text) !== '')
+    return words.flatMap((_, start) => {
+      const run = words.slice(start, start + want.length)
+      const matches = want.length > 0 && run.length === want.length && run.every((word, at) => plain(word.text) === want[at] && inPane(word))
+      return matches ? [{ line, run, whole: words.length === want.length }] : []
+    })
+  })
+  const top = (run: readonly Word[]): number => Math.min(...run.map(word => word.y))
+  const best = runs.toSorted((a, b) => (a.whole !== b.whole ? (a.whole ? -1 : 1) : top(a.run) - top(b.run)))[0]
+  if (best === undefined) {
+    return null
+  }
+  const left = Math.min(...best.run.map(word => word.x))
+  const right = Math.max(...best.run.map(word => word.x + word.w))
+  const bottom = Math.max(...best.run.map(word => word.y + word.h))
+  return { line: best.line.text, at: { x: (left + right) / 2, y: (top(best.run) + bottom) / 2 } }
 }
 
-/** A scroll of `pixels` (negative is down) as wheel events of one step each. */
+/** A scroll of `pixels` (negative is down) as equal wheel events of at most 400 pixels each: a short page is not overshot. */
 export function strokes(pixels: number): { readonly count: number; readonly step: number } {
-  return { count: Math.max(1, Math.floor(Math.abs(pixels) / STEP_PIXELS)), step: pixels < 0 ? -STEP_PIXELS : STEP_PIXELS }
+  const count = Math.max(1, Math.round(Math.abs(pixels) / STEP_PIXELS))
+  return { count, step: Math.round(pixels / count) }
 }
 
 /** Where the pointer waits while the pane is read: on the header, past the title, where no row's hover card can open. */
@@ -195,8 +207,8 @@ export const parking = (found: Located): Point => ({ x: found.titleAt.x + found.
 const largestFirst = (a: Window, b: Window): number => b.bounds.w * b.bounds.h - a.bounds.w * a.bounds.h
 
 /**
- * The window the pane is looked for in: the one `--window` names, or the largest of the app named, or else of the Claude app
- * in front, or of the only one running.
+ * The window the pane is looked for in: the one `--window` names, or else, of the app named (or the Claude app in front, or
+ * the only one running), the window in front if it is one of its own, or its largest.
  */
 export function chooseWindow(seen: Desk, { app, window: id }: Pick<Where, 'app' | 'window'>): Window {
   if (id !== null) {
@@ -206,17 +218,17 @@ export function chooseWindow(seen: Desk, { app, window: id }: Pick<Where, 'app' 
     }
     return named
   }
-  const frontApp = seen.windows.find(window => window.id === seen.front)?.app ?? ''
+  const front = seen.windows.find(window => window.id === seen.front)
   const running = CLAUDE_APPS.filter(name => seen.windows.some(window => window.app === name))
-  const chosen = app ?? (CLAUDE_APPS.includes(frontApp) ? frontApp : running.length === 1 ? (running[0] ?? null) : null)
+  const chosen = app ?? (front !== undefined && CLAUDE_APPS.includes(front.app) ? front.app : running.length === 1 ? (running[0] ?? null) : null)
   if (chosen === null) {
     throw new ShotError(running.length === 0 ? `no ${CLAUDE_APPS.join(' or ')} window on screen` : `both ${running.join(' and ')} are open: say which with --app`)
   }
-  const largest = seen.windows.filter(window => window.app === chosen).toSorted(largestFirst)[0]
-  if (largest === undefined) {
+  const picked = front?.app === chosen ? front : seen.windows.filter(window => window.app === chosen).toSorted(largestFirst)[0]
+  if (picked === undefined) {
     throw new ShotError(`no ${chosen} window on screen`)
   }
-  return largest
+  return picked
 }
 
 /** A frame's rectangle in its own pixels for a rectangle in screen points, `scale` pixels to a point. */
@@ -237,8 +249,8 @@ export function lua(value: number): string {
 
 // ---- the command line ---------------------------------------------------------------------------------------------------
 
-/** The command the arguments ask for; throws saying what is wrong with them. */
-export function parseCommand(argv: readonly string[]): Command {
+/** The command the arguments ask for, with paths taken from `base` (where `npm run` was called); throws saying what is wrong. */
+export function parseCommand(argv: readonly string[], base: string): Command {
   const { positionals, values } = parseArgs({
     args: [...argv],
     allowPositionals: true,
@@ -247,10 +259,10 @@ export function parseCommand(argv: readonly string[]): Command {
       out: { type: 'string', short: 'o' },
       pane: { type: 'string', default: 'GitLab' },
       app: { type: 'string' },
+      window: { type: 'string' },
       session: { type: 'string' },
       to: { type: 'string', default: 'here' },
       pages: { type: 'string', default: '12' },
-      window: { type: 'string' },
       raise: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -264,8 +276,12 @@ export function parseCommand(argv: readonly string[]): Command {
   if (window !== null && !(Number.isInteger(window) && window > 0)) {
     throw new UsageError(`--window is a window's number from \`windows\`, not ${values.window}`)
   }
-  const where: Where = { pane: values.pane, app, window, session: values.session ?? null, raise: values.raise }
-  const out = values.out === undefined ? null : resolve(values.out)
+  const session = values.session ?? null
+  if (session !== null && sessionName(session) === '') {
+    throw new UsageError(`--session needs a name with letters or digits, not ${JSON.stringify(session)}`)
+  }
+  const where: Where = { pane: values.pane, app, window, session, raise: values.raise }
+  const out = values.out === undefined ? null : resolve(base, values.out)
   const needsOut = (): string => {
     if (out === null) {
       throw new UsageError(`${verb} needs -o`)
@@ -290,7 +306,7 @@ export function parseCommand(argv: readonly string[]): Command {
       return { kind: 'capture', where, out: needsOut(), to }
     }
     case 'press': {
-      const unreadable = rest.find(each => plain(each) === '')
+      const unreadable = rest.find(each => tokens(each).length === 0)
       if (rest.length === 0 || unreadable !== undefined) {
         throw new UsageError(rest.length === 0 ? 'press needs what a button reads' : `nothing to read in ${JSON.stringify(unreadable)}`)
       }
@@ -311,7 +327,10 @@ export function parseCommand(argv: readonly string[]): Command {
 
 // ---- the Mac: screencapture, text recognition, Hammerspoon --------------------------------------------------------------
 
-/** Reads the text off a PNG with macOS's Vision, or crops one: JavaScript for Automation, which reaches Vision from `osascript`. */
+/**
+ * Reads the text off a PNG with macOS's Vision, each line with the box of each of its words, or crops one: JavaScript for
+ * Automation, which reaches Vision from `osascript`. It gets the file's paths and numbers as arguments, never as code.
+ */
 const MAC_SCRIPT = `
 ObjC.import('AppKit'); ObjC.import('CoreGraphics'); ObjC.import('Vision')
 function run(argv) {
@@ -331,19 +350,24 @@ function run(argv) {
   if (!$.VNImageRequestHandler.alloc.initWithCGImageOptions(rep.CGImage, $({})).performRequestsError($([request]), error)) {
     return JSON.stringify({ error: 'text recognition failed: ' + String(error[0]) })
   }
+  const place = (text, box) => ({
+    text: text, x: box.origin.x * width, y: (1 - box.origin.y - box.size.height) * height, w: box.size.width * width, h: box.size.height * height,
+  })
   const results = request.results, lines = []
   for (let i = 0; !results.isNil() && i < results.count; i++) {
-    const result = results.objectAtIndex(i), box = result.boundingBox
-    lines.push({
-      text: result.topCandidates(1).objectAtIndex(0).string.js,
-      x: box.origin.x * width, y: (1 - box.origin.y - box.size.height) * height, w: box.size.width * width, h: box.size.height * height,
-    })
+    const result = results.objectAtIndex(i), candidate = result.topCandidates(1).objectAtIndex(0), read = candidate.string.js, words = []
+    for (const match of read.matchAll(/\\S+/g)) {
+      const word = candidate.boundingBoxForRangeError({ location: match.index, length: match[0].length }, null)
+      if (!word.isNil()) words.push(place(match[0], word.boundingBox))
+    }
+    lines.push(Object.assign(place(read, result.boundingBox), { words: words }))
   }
   return JSON.stringify({ width: width, lines: lines })
 }`
 
 const num = (value: unknown): number => (typeof value === 'number' ? value : Number.NaN)
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const box = (each: Record<string, unknown>): Word => ({ text: text(each['text']), x: num(each['x']), y: num(each['y']), w: num(each['w']), h: num(each['h']) })
 
 /** Runs a program to its end and answers what it printed, or says why it could not. */
 function call(program: string, args: readonly string[], input: string, missing: string): string {
@@ -397,43 +421,57 @@ function desk(): Desk {
   return { windows, front: num(answer['front']) }
 }
 
-/**
- * Runs `body` in Hammerspoon only if `window` is in front, checked in the same call, so a switch in between is caught.
- * Answers whether it ran, and when it did not, the app that is in front instead.
- */
-function inFront(window: Window, body: string): { readonly done: boolean; readonly front: string } {
-  const answer = hammerspoon(`
+const pointTo = (at: Point): string => `{ x = ${lua(at.x)}, y = ${lua(at.y)} }`
+/** Lua that answers, from inside the call it is in, that `window` is no longer in front, naming what is. */
+const unlessInFront = (window: Window): string => `
     local front = hs.window.frontmostWindow()
     if front == nil or front:id() ~= ${lua(window.id)} then
       local app = front and front:application()
       return hs.json.encode({ done = false, front = app and app:name() or 'no window' })
+    end`
+/** Lua that moves the pointer to `at` and tells the app under it, which moving the pointer alone does not. */
+const movePointer = (at: Point): string => `hs.mouse.absolutePosition(${pointTo(at)}); hs.eventtap.event.newMouseEvent(hs.eventtap.event.types.mouseMoved, ${pointTo(at)}):post()`
+
+type Outcome = { readonly done: boolean; readonly front: string; readonly moved: boolean }
+
+/**
+ * Runs `body` in Hammerspoon only if `window` is in front and where it was read, checked in the same call, so a switch or a
+ * drag in between is caught. `body` may refuse part way with `unlessInFront`.
+ */
+function inFront(window: Window, body: string): Outcome {
+  const { x, y, w, h } = window.bounds
+  const answer = hammerspoon(`${unlessInFront(window)}
+    local f, near = front:frame(), function(a, b) return math.abs(a - b) <= ${lua(MOVE_TOLERANCE)} end
+    if not (near(f.x, ${lua(x)}) and near(f.y, ${lua(y)}) and near(f.w, ${lua(w)}) and near(f.h, ${lua(h)})) then
+      return hs.json.encode({ done = false, moved = true })
     end
     ${body}
     return hs.json.encode({ done = true })`)
-  return { done: answer['done'] === true, front: text(answer['front']) }
+  return { done: answer['done'] === true, front: text(answer['front']), moved: answer['moved'] === true }
 }
-
-const pointTo = (at: Point): string => `{ x = ${lua(at.x)}, y = ${lua(at.y)} }`
 
 // ---- a visit: one command's reads and acts, and what it puts back -------------------------------------------------------
 
-/** A read of the pane, with the window and the frame it came from. */
-type Found = Located & { readonly window: Window; readonly frame: string; readonly scale: number; readonly lines: readonly Line[] }
+/** A read of the pane, with the window and the frame it came from, and whether the pointer was parked for it. */
+type Found = Located & { readonly window: Window; readonly frame: string; readonly scale: number; readonly lines: readonly Line[]; readonly parked: boolean }
 /** What a new read must agree with: the session it shows, and where the pane's title sits when that must not have moved. */
 type Expect = { readonly session: string | null; readonly titleAt: Rect | null }
 
 const anything: Expect = { session: null, titleAt: null }
-const unmoved = (found: Found): Expect => ({ session: found.session, titleAt: found.titleAt })
-const sameSessionAs = (found: Found): Expect => ({ session: found.session, titleAt: null })
+const unmoved = (found: Located): Expect => ({ session: found.session, titleAt: found.titleAt })
+const sameSessionAs = (found: Located): Expect => ({ session: found.session, titleAt: null })
 
 class Visit {
   readonly #where: Where
   readonly #scratch = mkdtempSync(join(tmpdir(), 'pane-shot-'))
-  /** Where the person's pointer was before this first moved it, to put it back. */
-  #pointer: Point | null = null
+  /** The window the first read chose: every later read is of the same one. */
+  #window: number | null = null
+  /** Where the person's pointer was before this first moved it, and where this last put it. */
+  #pointer: { readonly was: Point; readonly put: Point } | null = null
   /** The window that was in front before `--raise` took focus, to give focus back to. */
   #raisedFrom: number | null = null
   #frames = 0
+  #closed = false
 
   constructor(where: Where) {
     this.#where = where
@@ -445,16 +483,14 @@ class Visit {
   }
 
   /** Grabs the window and finds the pane in it, refusing a read that disagrees with `expect` or with `--session`. */
-  find(expect: Expect): Found {
-    const window = chooseWindow(desk(), this.#where)
+  find(expect: Expect): Omit<Found, 'parked'> {
+    const window = chooseWindow(desk(), { app: this.#where.app, window: this.#where.window ?? this.#window })
+    this.#window = window.id
     this.#frames += 1
     const frame = this.scratch(`frame-${this.#frames}.png`)
     call('screencapture', ['-x', '-o', '-l', lua(window.id), frame], '', 'screencapture is missing: this runs on a Mac')
     const answer = mac(['read', frame])
-    const read: Read = {
-      width: num(answer['width']),
-      lines: records(answer['lines']).map(each => ({ text: text(each['text']), x: num(each['x']), y: num(each['y']), w: num(each['w']), h: num(each['h']) })),
-    }
+    const read: Read = { width: num(answer['width']), lines: records(answer['lines']).map(each => ({ ...box(each), words: records(each['words']).map(box) })) }
     if (!(read.width > 0)) {
       throw new ShotError(`text recognition gave no width for the frame (${JSON.stringify(answer['width'])})`)
     }
@@ -474,15 +510,15 @@ class Visit {
     return { ...located, window, frame, scale: read.width / window.bounds.w, lines }
   }
 
-  /** Finds the pane with the pointer parked on its header, when the window is in front, so no hover card has moved its rows. */
+  /** Finds the pane with the pointer parked on its header when the window is in front, so no hover card has moved its rows. */
   async look(expect: Expect = anything): Promise<Found> {
     const first = this.find(expect)
-    this.#keepPointer()
-    if (!inFront(first.window, `hs.mouse.absolutePosition(${pointTo(parking(first))})`).done) {
-      return first
+    const spot = parking(first)
+    if (!this.#act(first, 'park the pointer', movePointer(spot), spot, false)) {
+      return { ...first, parked: false }
     }
     await sleep(SETTLE_MS.park)
-    return this.find(unmoved(first))
+    return { ...this.find(unmoved(first)), parked: true }
   }
 
   /** Writes the pane, cut from the frame it was found in, to `out`. */
@@ -496,24 +532,27 @@ class Visit {
   /** Scrolls the pane by `pixels` (negative is down) with the pointer over its middle, if it is where `was` found it. */
   async scroll(was: Found, pixels: number): Promise<void> {
     const found = this.find(unmoved(was))
-    const middle = pointTo({ x: found.pane.x + found.pane.w / 2, y: found.pane.y + found.pane.h / 2 })
+    const middle = { x: found.pane.x + found.pane.w / 2, y: found.pane.y + found.pane.h / 2 }
     const { count, step } = strokes(pixels)
     // Events posted with only a location of their own came back with the pane unmoved; with the pointer over the pane, the
-    // wheel goes where a person's would.
+    // wheel goes where a person's would. Each step checks again that the window is still in front.
     this.#act(
       found,
       'scroll',
-      `hs.mouse.absolutePosition(${middle}); hs.timer.usleep(50000)
+      `hs.mouse.absolutePosition(${pointTo(middle)}); hs.timer.usleep(50000)
       for i = 1, ${lua(count)} do
-        local e = hs.eventtap.event.newScrollEvent({ 0, ${lua(step)} }, {}, 'pixel'); e:location(${middle}); e:post(); hs.timer.usleep(10000)
-      end`
+        ${unlessInFront(found.window)}
+        local e = hs.eventtap.event.newScrollEvent({ 0, ${lua(step)} }, {}, 'pixel'); e:location(${pointTo(middle)}); e:post(); hs.timer.usleep(10000)
+      end`,
+      middle,
+      true
     )
     await sleep(SETTLE_MS.scroll)
   }
 
   /**
-   * Clicks the topmost line in the pane that reads `wanted`, in a window still showing `first`'s session; answers the line
-   * clicked. The pane is read afresh first, so a window that moved since is clicked where it is now.
+   * Clicks the words `wanted` in the pane, in a window still showing `first`'s session; answers the line they were in. The
+   * pane is read afresh first, so a window that moved since is clicked where it is now.
    */
   async press(first: Found, wanted: string): Promise<string> {
     const found = await this.look(sameSessionAs(first))
@@ -521,7 +560,7 @@ class Visit {
     if (hit === null) {
       throw new ShotError(`nothing in the pane reads ${JSON.stringify(wanted)}`)
     }
-    this.#act(found, `press ${JSON.stringify(wanted)}`, `hs.eventtap.leftClick(${pointTo(hit.at)})`)
+    this.#act(found, `press ${JSON.stringify(wanted)}`, `hs.eventtap.leftClick(${pointTo(hit.at)})`, hit.at, true)
     await sleep(SETTLE_MS.click)
     return hit.line
   }
@@ -531,7 +570,8 @@ class Visit {
     if (!this.#where.raise) {
       return
     }
-    const window = chooseWindow(desk(), this.#where)
+    const window = chooseWindow(desk(), { app: this.#where.app, window: this.#where.window ?? this.#window })
+    this.#window = window.id
     const answer = hammerspoon(`
       local front = hs.window.frontmostWindow()
       local was = front and front:id() or 0
@@ -550,18 +590,28 @@ class Visit {
   }
 
   /**
-   * Puts back what the visit moved, while its window is still in front (if the person has moved on, what they did stands):
-   * the pointer, then the focus `--raise` took. The frames are deleted whatever happens.
+   * Puts back what the visit moved, once: the pointer, if it is still where this left it (a person who has moved it since
+   * keeps it where they put it), then the focus `--raise` took, if the window is still in front. The frames go whatever happens.
    */
   close(): void {
+    if (this.#closed) {
+      return
+    }
+    this.#closed = true
     try {
-      const pointer = this.#pointer
-      const raisedFrom = this.#raisedFrom
-      if (pointer !== null || raisedFrom !== null) {
-        const window = chooseWindow(desk(), this.#where)
-        const putBack = pointer === null ? '' : `hs.mouse.absolutePosition(${pointTo(pointer)})`
-        const giveBack = raisedFrom === null ? '' : `local back = hs.window.get(${lua(raisedFrom)}); if back then back:focus() end`
-        inFront(window, `${putBack}\n${giveBack}`)
+      if (this.#pointer !== null) {
+        const { was, put } = this.#pointer
+        hammerspoon(`
+          local p = hs.mouse.absolutePosition()
+          if math.abs(p.x - ${lua(put.x)}) <= 2 and math.abs(p.y - ${lua(put.y)}) <= 2 then ${movePointer(was)} end
+          return hs.json.encode({})`)
+      }
+      if (this.#raisedFrom !== null && this.#window !== null) {
+        hammerspoon(`
+          local front = hs.window.frontmostWindow()
+          local back = hs.window.get(${lua(this.#raisedFrom)})
+          if front ~= nil and front:id() == ${lua(this.#window)} and back ~= nil then back:focus() end
+          return hs.json.encode({})`)
       }
     } catch (error) {
       console.error(`pane-shot: could not put things back: ${messageOf(error)}`)
@@ -570,45 +620,56 @@ class Visit {
     }
   }
 
-  /** Runs `body` with the window in front, or refuses naming what is in front instead. */
-  #act(found: Found, what: string, body: string): void {
-    this.#keepPointer()
-    const result = inFront(found.window, body)
-    if (!result.done) {
+  /**
+   * Runs `body`, which leaves the pointer at `put`, with the window in front and unmoved. Answers whether it ran; when it did
+   * not, a `required` act refuses, naming what is in front instead.
+   */
+  #act({ window }: { readonly window: Window }, what: string, body: string, put: Point, required: boolean): boolean {
+    const was = this.#pointer?.was ?? this.#whereThePointerIs()
+    const result = inFront(window, body)
+    if (result.done) {
+      this.#pointer = { was, put }
+    }
+    if (result.moved) {
+      throw new ShotError(`not going to ${what}: the ${window.app} window moved or changed size since it was read`)
+    }
+    if (!result.done && required) {
       throw new ShotError(
-        `not going to ${what}: ${result.front} is in front, and the ${found.window.app} window ignores clicks and scrolls behind it (bring it forward, or pass --raise)`
+        `not going to ${what}: ${result.front} is in front, and the ${window.app} window ignores clicks and scrolls behind it (bring it forward, or pass --raise)`
       )
     }
+    return result.done
   }
 
-  /** Keeps where the person's pointer is, once, before anything could move it. */
-  #keepPointer(): void {
-    if (this.#pointer === null) {
-      const answer = hammerspoon('local p = hs.mouse.absolutePosition(); return hs.json.encode({ x = p.x, y = p.y })')
-      this.#pointer = { x: num(answer['x']), y: num(answer['y']) }
-    }
+  #whereThePointerIs(): Point {
+    const answer = hammerspoon('local p = hs.mouse.absolutePosition(); return hs.json.encode({ x = p.x, y = p.y })')
+    return { x: num(answer['x']), y: num(answer['y']) }
   }
 }
 
 // ---- the commands -------------------------------------------------------------------------------------------------------
 
-const said = (found: Found) => ({ session: found.session, window: found.window.id, pane: found.pane })
+const said = (found: Found) => ({
+  session: found.session,
+  window: found.window.id,
+  pane: found.pane,
+  ...(found.parked ? {} : { note: 'read without parking the pointer: the window was behind another, so a hover card may show' }),
+})
 
 async function capture(visit: Visit, command: Extract<Command, { kind: 'capture' }>): Promise<Record<string, unknown>> {
-  if (command.to === 'here') {
-    const found = await visit.look()
-    visit.crop(found, command.out)
-    return { path: command.out, ...said(found) }
-  }
   await visit.raise()
   const before = await visit.look()
+  if (command.to === 'here') {
+    visit.crop(before, command.out)
+    return { path: command.out, ...said(before) }
+  }
   const beforePath = visit.scratch('before.png')
   visit.crop(before, beforePath)
   await visit.scroll(before, command.to === 'top' ? TO_THE_END : -TO_THE_END)
   const after = await visit.look(unmoved(before))
   visit.crop(after, command.out)
   const moved = !readFileSync(beforePath).equals(readFileSync(command.out))
-  return { path: command.out, ...said(after), ...(moved ? {} : { note: `the pane did not move: it was at its ${command.to} already, or the scroll missed it` }) }
+  return { path: command.out, ...said(after), ...(moved ? {} : { unmoved: `the pane did not move: it was at its ${command.to} already, or the scroll missed it` }) }
 }
 
 async function press(visit: Visit, command: Extract<Command, { kind: 'press' }>): Promise<Record<string, unknown>> {
@@ -654,7 +715,8 @@ async function tour(visit: Visit, command: Extract<Command, { kind: 'tour' }>): 
 async function main(argv: readonly string[]): Promise<number> {
   let command: Command
   try {
-    command = parseCommand(argv)
+    // `npm run` runs from the repository's root; INIT_CWD is where it was called, which a relative -o means.
+    command = parseCommand(argv, process.env['INIT_CWD'] ?? process.cwd())
   } catch (error) {
     console.error(`pane-shot: ${messageOf(error)}\n\n${USAGE}`)
     return 2
@@ -680,6 +742,13 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0
   }
   const visit = new Visit(command.where)
+  // Node runs no `finally` on Ctrl-C: put things back and delete the frames, which show other sessions, before going.
+  const interrupted = (code: number) => () => {
+    visit.close()
+    process.exit(code)
+  }
+  process.once('SIGINT', interrupted(130))
+  process.once('SIGTERM', interrupted(143))
   try {
     const result = command.kind === 'capture' ? await capture(visit, command) : command.kind === 'press' ? await press(visit, command) : await tour(visit, command)
     console.log(JSON.stringify(result))
