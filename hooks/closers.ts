@@ -173,8 +173,12 @@ function listed<Key>(map: Map<Key, number[]>, key: Key, value: number): void {
 export function replaceFences(text: string, by: (code: string) => string): string {
   const closers = new Map<string, number[]>()
   const ends = new Map<number, number>()
+  // Keyed by the fence's character and its length, not by the fence itself: an opener with no closer asks for each length
+  // down to three, and a key as long as the fence would cost its length to hash each time, a long fence's length squared.
+  const keyOf = (fence: string, length: number) => `${fence.charAt(0)}${length}`
   for (const line of text.matchAll(/^ {0,3}(`{3,}|~{3,})[ \t]*$/gmu)) {
-    listed(closers, line[1] ?? '', line.index)
+    const fence = line[1] ?? ''
+    listed(closers, keyOf(fence, fence.length), line.index)
     ends.set(line.index, line.index + line[0].length)
   }
   const opener = /^ {0,3}(`{3,}|~{3,})/gmu
@@ -188,7 +192,7 @@ export function replaceFences(text: string, by: (code: string) => string): strin
     }
     opener.lastIndex = open.index + 1
     for (let length = run.length; length >= 3; length -= 1) {
-      const close = firstFrom(closers.get(run.slice(0, length)) ?? [], newline + 1)
+      const close = firstFrom(closers.get(keyOf(run, length)) ?? [], newline + 1)
       const end = close !== undefined ? ends.get(close) : undefined
       if (end !== undefined) {
         kept.push(text.slice(from, open.index), by(text.slice(open.index, end)))

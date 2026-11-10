@@ -291,6 +291,8 @@ const HOSTILE: [string, string][] = [
   ['a fence opened over and over and never closed', over('```x\n')],
   ['fences of every length, none closed', runsOf('`', 'x\n').replace(/^`{1,2}x\n/gmu, '')],
   ['backtick runs of every length on one line', runsOf('`', 'x')],
+  ['one fence a megabyte long, of backticks', `${over('`')}\nx\n`],
+  ['one fence a megabyte long, of tildes', `${over('~')}\nx\n`],
   ['spaces inside a line', `x${over(' ')}y`],
   ['tabs inside a line', `x${over('\t')}y`],
   ['form feeds inside a line', `x${over('\f')}y`],
