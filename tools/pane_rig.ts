@@ -8,8 +8,9 @@
 // press, and measures where pressable elements sit after each drawing and scroll. Like the desktop, it hands the engine a
 // new measurement only when the window's offset changes, with a person's scroll or with its own ask after one; every other
 // ask repeats the measurement it last handed over. Row numbers are its own estimate; which keys are present, and the order
-// of the asks, are what it gets right. A step prints what was drawn, the scrolls the engine sent and which element each
-// landed on, the pane's title, and the engine's own log lines about the mod.
+// of the asks, are what it gets right. A step prints what was drawn, what the window showed in turn (`showed list at 23,
+// then list at 0, then page at 0`: a move shows the tree the window holds before the drawing it asks for), the scrolls the
+// engine sent and which element each landed on, the pane's title, and the engine's own log lines about the mod.
 //
 // It checks behaviour, not looks: the README's screenshots show how the terminal draws it. It speaks the engine's internal
 // control protocol of the build it runs against, and stops with the engine's own error when a shape changes. It never sends a
@@ -244,6 +245,8 @@ class Desktop {
   #handed: Handed | null = null
   draws = 0
   readonly scrolls: { readonly offset: number; readonly landed: string }[] = []
+  /** What the window showed, in order: the view and the row it started at, after each drawing and each move. */
+  readonly shown: string[] = []
 
   constructor(engine: Engine, bodyRows: number) {
     this.#engine = engine
@@ -274,6 +277,7 @@ class Desktop {
     this.#tree = record(answer['tree'])
     this.draws += 1
     this.#measure()
+    this.#saw()
     if (this.#handed === null) {
       // The first measurement changes the window's width from its placeholder, which hands it over.
       await this.#handOver()
@@ -298,9 +302,19 @@ class Desktop {
     await this.draw()
   }
 
+  /** Notes what the window shows now, unless it showed just that last. */
+  #saw(): void {
+    const now = `${viewOf(this.#tree)} at ${this.#offset}`
+    if (this.shown.at(-1) !== now) {
+      this.shown.push(now)
+    }
+  }
+
   async #moved(): Promise<void> {
     this.#measure()
     this.#offset = this.#clamped(this.#offset)
+    // The window moves over the tree it holds; the drawing the move asks for comes after.
+    this.#saw()
     if (this.#handed === null || this.#handed.offset !== this.#offset) {
       await this.#handOver()
     }
@@ -396,12 +410,18 @@ async function title(engine: Engine): Promise<string> {
   }
 }
 
-async function describe(desktop: Desktop, engine: Engine, show: number, scrollsBefore: number): Promise<string[]> {
-  const keys = new Set(walk(desktop.tree).map(keyOf))
-  const view = keys.has('back-top') ? 'page' : [...keys].some(key => key.startsWith('inbox')) ? 'inbox' : 'list'
+/** Which view a drawing is: an MR's page, the inbox or the list. */
+function viewOf(tree: Json): string {
+  const keys = new Set(walk(tree).map(keyOf))
+  return keys.has('back-top') ? 'page' : [...keys].some(key => key.startsWith('inbox')) ? 'inbox' : 'list'
+}
+
+async function describe(desktop: Desktop, engine: Engine, show: number, before: { scrolls: number; shown: number }): Promise<string[]> {
   return [
-    `  view ${view} · title ${await title(engine)} · ${desktop.draws} drawings · offset ${desktop.offset} of ${desktop.rows} rows`,
-    ...desktop.scrolls.slice(scrollsBefore).map(scroll => `  scrolled to row ${scroll.offset}: lands on ${scroll.landed}`),
+    `  view ${viewOf(desktop.tree)} · title ${await title(engine)} · ${desktop.draws} drawings · offset ${desktop.offset} of ${desktop.rows} rows`,
+    // From what the window showed as the step began.
+    `  showed ${desktop.shown.slice(Math.max(0, before.shown - 1)).join(', then ')}`,
+    ...desktop.scrolls.slice(before.scrolls).map(scroll => `  scrolled to row ${scroll.offset}: lands on ${scroll.landed}`),
     ...desktop
       .texts()
       .slice(0, show)
@@ -450,9 +470,9 @@ async function flow(options: Options): Promise<number> {
     const readAt = seconds()
     await desktop.settle(options.settleMs)
     console.log(`ready: first cards at ${cardsAt ?? readAt}s, the read done at ${readAt}s`)
-    console.log((await describe(desktop, engine, options.show, 0)).join('\n'))
+    console.log((await describe(desktop, engine, options.show, { scrolls: 0, shown: desktop.shown.length })).join('\n'))
     for (const spec of options.presses) {
-      const before = desktop.scrolls.length
+      const before = { scrolls: desktop.scrolls.length, shown: desktop.shown.length }
       const step = await desktop.press(spec)
       await desktop.settle(options.settleMs)
       console.log(step)
