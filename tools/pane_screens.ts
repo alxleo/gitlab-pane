@@ -653,13 +653,16 @@ function claudeVersion(claude: string): string {
 
 // ---- the photograph -----------------------------------------------------------------------------------------------------
 
+/** What a picture holds: the pane, or the band with its prompt box; a page has one of the two. */
+const FRAME = '#pane, #band'
+
 /** Fonts Chromium took from the machine for any text on the page: every glyph should come from tools/screens/fonts. */
 async function fontsBorrowed(context: BrowserContext, page: Page): Promise<Set<string>> {
   const session = await context.newCDPSession(page)
   await session.send('DOM.enable')
   await session.send('CSS.enable')
   const document = await session.send('DOM.getDocument', { depth: 0 })
-  const found = await session.send('DOM.querySelectorAll', { nodeId: document.root.nodeId, selector: '#pane *' })
+  const found = await session.send('DOM.querySelectorAll', { nodeId: document.root.nodeId, selector: '#pane *, #band *' })
   const borrowed = new Set<string>()
   for (const nodeId of found.nodeIds) {
     const { fonts } = await session.send('CSS.getPlatformFontsForNode', { nodeId })
@@ -693,7 +696,7 @@ async function photograph(pages: ReadonlyMap<string, string>, out: string, scale
           `scene ${name} drew with fonts of this machine, not the bundled ones: ${[...borrowed].toSorted().join(', ')}. Add the missing glyph to tools/screens/fonts (see SOURCES.md), or the shot changes from machine to machine.`
         )
       }
-      await page.locator('#pane').screenshot({ path: join(out, `${name}.png`), animations: 'disabled', omitBackground: false })
+      await page.locator(FRAME).screenshot({ path: join(out, `${name}.png`), animations: 'disabled', omitBackground: false })
       await page.close()
     }
   } finally {
