@@ -7,8 +7,8 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 | ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
 | **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
 | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
-| **☆: the MRs you work on today, the rest one line** | |
-| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | |
+| **☆: the MRs you work on today, the rest one line** | **Pane closed: the inbox's news above the prompt** |
+| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | ![The band above the prompt](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band.png) |
 
 <sub>Made-up data.</sub>
 
@@ -21,6 +21,8 @@ flowchart LR
 ```
 
 Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
+
+While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. The count is as fresh as the last inbox read, which a session drawing the pane makes.
 
 ## Install
 

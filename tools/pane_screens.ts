@@ -60,9 +60,13 @@ type Node = {
   readonly hover: Props | null
 }
 
+/** Where the tree is drawn: the pane, under its title bar, or the band above the prompt, over an empty prompt box. */
+type Site = 'pane' | 'band'
+
 type Scene = {
   readonly name: string
   readonly title: string
+  readonly site: Site
   /** Hover groups lit, as if the pointer rested on them. */
   readonly hover: readonly string[]
   /** Keys of the Boxes the pointer is inside; an element's hover with no group applies while its keyed Box is in this. */
@@ -72,7 +76,7 @@ type Scene = {
 
 // What the engine keeps for a press, a hover group and the plugin that drew a part is accepted and not drawn.
 const NODE_FIELDS = new Set(['type', 'props', 'children', 'hover', 'press', 'group', 'part'])
-const SCENE_FIELDS = new Set(['name', 'title', 'hover', 'hoverKeys', 'tree'])
+const SCENE_FIELDS = new Set(['name', 'title', 'site', 'hover', 'hoverKeys', 'tree'])
 
 const strings = (value: unknown, what: string): string[] => {
   if (value === undefined) {
@@ -115,11 +119,16 @@ function decodeScene(value: unknown): Scene {
   if (extra.length > 0) {
     throw new ScreensError(`a scene has fields this script was not taught: ${extra.join(', ')}`)
   }
-  const { name, title } = value
+  const { name, title, site } = value
   if (typeof name !== 'string' || typeof title !== 'string') {
     throw new ScreensError('a scene has no name or title')
   }
-  return { name, title, hover: strings(value['hover'], 'hover'), hoverKeys: strings(value['hoverKeys'], 'hoverKeys'), tree: decodeNode(value['tree']) }
+  // A version from before the band draws every scene in the pane and names no site.
+  const at = site ?? 'pane'
+  if (at !== 'pane' && at !== 'band') {
+    throw new ScreensError(`scene ${name} is drawn at no site this script knows: ${JSON.stringify(at)}`)
+  }
+  return { name, title, site: at, hover: strings(value['hover'], 'hover'), hoverKeys: strings(value['hoverKeys'], 'hoverKeys'), tree: decodeNode(value['tree']) }
 }
 
 // ---- element tree to HTML -----------------------------------------------------------------------------------------------
@@ -522,7 +531,11 @@ function pageHtml(scene: Scene, width: number | null, marks: ReadonlyMap<Drawn, 
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
 <link rel="stylesheet" href="pane.css">
 ${override}</head>
-<body><div id="pane"><header><span>${title}</span><span class="close">×</span></header><main>${body}</main></div></body></html>
+<body>${
+    scene.site === 'band'
+      ? `<div id="band"><main>${body}</main><div class="prompt"></div></div>`
+      : `<div id="pane"><header><span>${title}</span><span class="close">×</span></header><main>${body}</main></div>`
+  }</body></html>
 `
   return { document, unknown }
 }
