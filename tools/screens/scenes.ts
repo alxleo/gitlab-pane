@@ -318,6 +318,20 @@ const isNode = (value: unknown): value is Node =>
   (value.hover === undefined || (isRecord(value.hover) && (value.hover.scope === undefined || typeof value.hover.scope === 'string'))) &&
   (value.children === undefined || (Array.isArray(value.children) && value.children.every(child => typeof child === 'string' || isNode(child))))
 
+/** The tree with each `Client` replaced by what its surface module drew, as the desktop shows it in the region. */
+async function withClients(ui: Ui, node: Node): Promise<Node> {
+  const key = node.props?.['key']
+  if (node.type === 'Client' && typeof key === 'string') {
+    const drawn = await ui.drawn({ in: key })
+    if (!isNode(drawn)) {
+      throw new Error(`the Client ${key} did not draw a tree of elements`)
+    }
+    return drawn
+  }
+  const children = await Promise.all((node.children ?? []).map(child => (typeof child === 'string' ? child : withClients(ui, child))))
+  return { ...node, children }
+}
+
 /** A scene is the pane after its steps, drawn with no pointer on it: nothing on the pane waits for one. */
 type Scene = { name: string; steps: (ui: Ui) => Promise<void> }
 
@@ -326,7 +340,10 @@ const SCENES: Scene[] = [
   {
     name: 'mine-pinned',
     steps: async ui => {
+      // Two pinned, so the strip that drags them into an order of your own is drawn above their cards.
       await press(ui, 'pin-479-')
+      await press(ui, 'others')
+      await press(ui, 'pin-133-')
     },
   },
   {
@@ -368,7 +385,7 @@ for (const scene of SCENES) {
     if (!isNode(tree)) {
       throw new Error(`scene ${scene.name}: the pane did not draw a tree of elements`)
     }
-    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: [], hoverKeys: [], tree }
+    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: [], hoverKeys: [], tree: await withClients(ui, tree) }
     console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
     await ui.unmount()
   })

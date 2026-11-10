@@ -4,6 +4,8 @@
   "entry": [
     // The engine loads it through hooks/hooks.json ("modules").
     "hooks/register.tsx",
+    // The engine loads it by the path a `Client` names in hooks/pane.tsx (`module`), which is no import.
+    "hooks/pin-strip.tsx",
     // Node runs each tool by its path (package.json scripts, workflows, hooks).
     "tools/*.ts",
     // tools/pane_screens.ts copies it into a scratch mod as a test and runs it under the engine.

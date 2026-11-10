@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import { isEqual } from './equal.ts'
 import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { reordered } from './pin-order.ts'
 
 import type { MrCard, Pinned, PollState, ReadClock, Role, Ticket, Usual } from '../types'
 
@@ -112,6 +113,11 @@ export async function pinMr($: EngineInterface, parsed: Pinned, origin: 'raised'
     const pin: Pinned = { ...parsed, origin: was?.origin === 'raised' ? 'raised' : origin }
     return was !== undefined ? list.map(one => (one === was ? pin : one)) : [...list, pin]
   })
+}
+
+/** Puts the pins named by key in that order, in the places they held; the rest stay where they are. */
+export async function orderPins($: EngineInterface, keys: readonly string[]): Promise<void> {
+  await update($, pinnedAtom, list => reordered(list, keys, pinKey))
 }
 
 /** Takes the pins named by key off the list. */

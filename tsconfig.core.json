@@ -48,6 +48,7 @@
     "hooks/mr-url.ts",
     "hooks/order.ts",
     "hooks/picture.ts",
+    "hooks/pin-order.ts",
     "hooks/problems.ts",
     "hooks/closers.ts",
     "hooks/reconcile.ts",

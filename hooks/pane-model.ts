@@ -10,6 +10,7 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import type { PinStripProps } from './pin-order.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -107,6 +108,8 @@ export type PaneModel = {
   repos: { all: { label: string; isActive: boolean }; each: { project: string; label: string; isActive: boolean }[] }
   /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
+  /** The lines of the strip that reorders this session's MRs, one per MR; none while there are fewer than two to order. */
+  order: PinStripProps | null
   /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
   others: { label: string; isOpen: boolean } | null
   mine: { heading: string; isEmpty: boolean; rows: RowModel[]; more: string | null; isMoreOpen: boolean }
@@ -315,6 +318,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       return row !== undefined ? [row] : []
     })
 
+  const sessionRows = rowsOf(session)
   return {
     tabs: {
       // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
@@ -327,7 +331,11 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       each: repos.map(([project, count]) => ({ project, label: `${repoName(project)} ${count}`, isActive: input.repoFilter === project })),
     },
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
-    session: rowsOf(session),
+    session: sessionRows,
+    order:
+      sessionRows.length > 1
+        ? { lines: session.flatMap(card => sessionRows.filter(row => row.key === card.key).map(row => ({ key: row.key, label: `!${card.iid} ${row.title}` }))) }
+        : null,
     others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
     mine: {
       // GitLab's word for an MR that is not a draft; the tab above already says Mine.

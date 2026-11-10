@@ -47,6 +47,8 @@ hooks/order.ts
 hooks/pane.tsx
 hooks/panes.ts
 hooks/picture.ts
+hooks/pin-order.ts
+hooks/pin-strip.tsx
 hooks/poll.ts
 hooks/problems.ts
 hooks/reading.tsx

@@ -20,7 +20,7 @@ flowchart LR
   poll -->|MR can merge| ready["Session wakes:<br/>!iid can merge"]
 ```
 
-Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with a card's `pin`, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
+Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with a card's `pin`, sit on top too, but only toast. Drag them into your own order by the lines above their cards. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
 
 ## Install
 

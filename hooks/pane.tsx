@@ -11,6 +11,7 @@ import { kitOf } from './kit'
 import { buildPane } from './pane-model'
 import type { Piece, RowModel } from './pane-model'
 import { pageHead } from './page-lines'
+import { PIN_STRIP } from './pin-order'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
@@ -21,7 +22,7 @@ import { view } from './view'
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, now } = await view($)
   const kit = kitOf($, e, now)
-  const { Box, Text, Button } = kit
+  const { Box, Text, Button, Client } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
   const isInbox = tab === 'inbox'
   // The cards are the shared ones; the MR read whole has its description and threads put back (detail.ts reads them).
@@ -118,7 +119,17 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {line}
       </Text>
     )),
-    ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),
+    ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>] : []),
+    // Where the surface follows the pointer, a line per MR to drag them into the person's own order; elsewhere, the order pinned.
+    ...(model.order !== null && Client !== undefined
+      ? [
+          <Text dimColor size="footnote">
+            Drag to reorder
+          </Text>,
+          <Client key={PIN_STRIP} module="./pin-strip.tsx" props={model.order} />,
+        ]
+      : []),
+    ...model.session.map(draw),
     ...(others !== null ? [<Button key="others" plain label={others.label} onPress={() => toggle($, 'others')} />] : []),
     ...rest,
     ...(model.leftOut !== null ? [<Text dimColor>{model.leftOut}</Text>] : []),

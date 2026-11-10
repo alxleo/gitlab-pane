@@ -12,7 +12,9 @@ import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
 import { forgetScrolling, openPane, readScrolling } from './panes'
+import { isStripProps, PIN_STRIP } from './pin-order'
 import { pin, refresh, step } from './poll'
+import { reorderPins } from './shared'
 import { rememberSettings } from './tokens'
 
 // The engine reads a hook's matcher from literals and this file's consts only, so the pane's id lives here too.
@@ -130,6 +132,22 @@ export const register: Register = (on, options) => {
       .catch(() => undefined)
     return ran
   }).catch(($, e, next) => next(e))
+
+  // The strip of this session's MRs, dropped in a new order: the pins take it, and the strip is handed its lines back at once
+  // so it does not show the old order until the pane draws again.
+  on('ui.message', async ($, e, next) => {
+    if (e.element !== PIN_STRIP || !isStripProps(e.data)) {
+      return next(e)
+    }
+    quietly(
+      $,
+      reorderPins(
+        $,
+        e.data.lines.map(line => line.key)
+      )
+    )
+    return { props: e.data }
+  })
 
   // A drawing that throws says why in the pane, where the engine would only report it in the debug log.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

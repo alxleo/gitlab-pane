@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import { pinMr, readPinned, unpinKeys } from './data'
+import { orderPins, pinMr, readPinned, unpinKeys } from './data'
 import { quietly } from './failures'
 import { pinKey } from './mr-url'
 import { isPublished, PINS_PREFIX, readPinsRecord, readSnapshot, REFRESH_KEY, SNAPSHOT_KEY, unionPins } from './snapshot.ts'
@@ -41,6 +41,12 @@ export function togglePin($: EngineInterface, press: 'pin' | 'unpin', mr: Pinned
       await publishPins($, await readPinned($))
     })()
   )
+}
+
+/** The person's drag of this session's pins: they take the order dropped, and the leader hears it as every pin change. */
+export async function reorderPins($: EngineInterface, keys: readonly string[]): Promise<void> {
+  await orderPins($, keys)
+  await publishPins($, await readPinned($))
 }
 
 /**

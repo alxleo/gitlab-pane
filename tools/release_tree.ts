@@ -15,6 +15,7 @@
 //   - a module that loads imports a relative path the tree does not hold, or a package other than 'claude-code'
 //     (the mod cannot load npm packages)
 //   - a module that loads calls `import(…)`: the engine refuses dynamic import
+//   (a `Client`'s `module="./x.tsx"` loads the file it names, as an import does)
 //   - a .ts or .tsx file under hooks/ is shipped and nothing loads it
 //   - plugin.json names a `types` file the tree does not hold
 //   - the README links or shows a relative path (the tree holds no docs/ or CONTRIBUTING.md): links there are absolute
@@ -295,13 +296,26 @@ const READINGS: readonly { readonly name: string; readonly source: string; reado
   },
 ]
 
+/**
+ * The surface modules a file's `Client`s name (`module="./x.tsx"`), which the engine loads as it loads an import. The engine
+ * reads them off the source as literals, so they are read here off the source too: JSX's closing tags look to the import
+ * reader like regular expressions, so its tokens cannot be trusted past one.
+ */
+const clientModules = (source: string): string[] => [...source.matchAll(/\bmodule="(?<spec>\.[^"]+)"/gu)].map(found => found.groups?.['spec'] ?? '')
+
+const CLIENT_READING = { source: 'const a = { module: \'./no\' }\nconst b = <Box><Text>x</Text><Client key="k" module="./strip.tsx" /></Box>\n', specs: ['./strip.tsx'] }
+
 function selfCheck(): string[] {
-  return READINGS.flatMap(reading => {
-    const got = loads(reading.source)
-    return JSON.stringify(got.specs) === JSON.stringify(reading.specs) && got.dynamic === reading.dynamic
-      ? []
-      : [`the import reader is wrong: ${reading.name} (read ${JSON.stringify(got)}, want ${JSON.stringify({ specs: reading.specs, dynamic: reading.dynamic })})`]
-  })
+  const clients = clientModules(CLIENT_READING.source)
+  return [
+    ...READINGS.flatMap(reading => {
+      const got = loads(reading.source)
+      return JSON.stringify(got.specs) === JSON.stringify(reading.specs) && got.dynamic === reading.dynamic
+        ? []
+        : [`the import reader is wrong: ${reading.name} (read ${JSON.stringify(got)}, want ${JSON.stringify({ specs: reading.specs, dynamic: reading.dynamic })})`]
+    }),
+    ...(JSON.stringify(clients) === JSON.stringify(CLIENT_READING.specs) ? [] : [`the Client reader is wrong: read ${JSON.stringify(clients)}`]),
+  ]
 }
 
 // ---- the closure --------------------------------------------------------------------------------------------------------
@@ -343,11 +357,12 @@ function closure(tree: string): { readonly loaded: Set<string>; readonly problem
       continue
     }
     loaded.add(module)
-    const read = loads(readFileSync(module, 'utf8'))
+    const source = readFileSync(module, 'utf8')
+    const read = loads(source)
     if (read.dynamic > 0) {
       problems.push(`${relative(tree, module)} calls import(): the engine refuses dynamic import`)
     }
-    for (const spec of read.specs) {
+    for (const spec of [...read.specs, ...clientModules(source)]) {
       if (spec === ENGINE || spec.startsWith('node:')) {
         continue
       }

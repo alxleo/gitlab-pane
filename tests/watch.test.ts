@@ -486,6 +486,44 @@ test('pinning a card puts it in this session and folds the rest to one line; unp
   await ui.unmount()
 })
 
+test('dragging a pinned MR down the strip puts it where it is dropped, and its card follows', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { store } = engine(on, { mrs: [rawMr(12, SHOWN), rawMr(13, SHOWN), rawMr(14, SHOWN)], isDown: false })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  for (const iid of [12, 13, 14]) {
+    await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: `https://gitlab.com/g/p/-/merge_requests/${iid}` })
+  }
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const lines = async () => (await ui.findAll({ type: 'Text', in: 'pin-order' })).map(line => line.text.split(' ')[1])
+  const cards = async () => (await ui.findAll({ type: 'Button' })).filter(keyed('pin-')).map(button => button.key?.split('-')[1] ?? '')
+  expect(await lines()).toEqual(['!12', '!13', '!14'])
+  // While held, the line follows the pointer, past the strip's end too; dropped, the pins and the cards take that order.
+  await ui.pointer({ type: 'down', x: 2, y: 0, button: 'left', in: 'pin-order' })
+  await ui.pointer({ type: 'move', x: 2, y: 9, button: 'left', in: 'pin-order' })
+  expect(await lines()).toEqual(['!13', '!14', '!12'])
+  await ui.pointer({ type: 'up', x: 2, y: 9, button: 'left', in: 'pin-order' })
+  await clock.settle()
+  expect(await lines()).toEqual(['!13', '!14', '!12'])
+  expect(await cards()).toEqual(['13', '14', '12'])
+  // The leader reads the order from the store, as it reads every pin.
+  const record = [...store.entries()].find(([key]) => key.startsWith('pins:'))?.[1]
+  expect(JSON.stringify(record)).toMatch(/13.*14.*12/su)
+  // A press that ends where it began moves nothing.
+  await ui.pointer({ type: 'down', x: 2, y: 1, button: 'left', in: 'pin-order' })
+  await ui.pointer({ type: 'up', x: 2, y: 1, button: 'left', in: 'pin-order' })
+  await clock.settle()
+  expect(await cards()).toEqual(['13', '14', '12'])
+  await ui.unmount()
+
+  // VS Code draws no region of a mod's own, so its pins keep their order with no strip.
+  const editor = await $.ui.mount({ ...PANE, surface: 'vscode' })
+  expect(await editor.find({ type: 'Text', text: 'Drag to reorder' })).toBeUndefined()
+  await editor.unmount()
+})
+
 test('someone without a picture is their initials on a disc, beside their first name', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const ines = { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }
