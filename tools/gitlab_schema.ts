@@ -66,7 +66,7 @@ const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
 const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
 /** The files graphql-codegen reads documents from: DOCUMENTS's, and those on merging an MR, kept apart. */
-const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-gitlab.ts')]
+const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-gitlab.ts'), join(ROOT, 'hooks', 'page-documents.ts')]
 const ENDPOINT = 'https://gitlab.com/api/graphql'
 /**
  * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has
@@ -532,7 +532,7 @@ async function generate(schemaFile: string): Promise<string> {
           useTypeImports: true,
           // A scalar not named below is `unknown`, so a new one cannot slip in as `any`.
           defaultScalarType: 'unknown',
-          scalars: { ID: 'string', Time: 'string', NoteID: 'string' },
+          scalars: { ID: 'string', Time: 'string', NoteID: 'string', NoteableID: 'string', DiscussionID: 'string' },
         },
       },
     },

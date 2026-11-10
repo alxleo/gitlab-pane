@@ -82,7 +82,7 @@ export type FakeWorld = {
   env?: Record<string, string>
   /** The token glab stored, which `glab config get token --host <host>` prints when its environment holds none; a host not listed prints nothing. */
   glab?: Record<string, string>
-  /** An HTTP status to answer the next request with instead of GitLab's own, once; an edge that fails now and then. */
+  /** An HTTP status to answer a request of `operation` with instead of GitLab's own: an edge that fails now and then. */
   glitch?: (operation: string) => number | undefined
   /** True while the network is down: every request fails as a dropped connection does. */
   isDown?: () => boolean

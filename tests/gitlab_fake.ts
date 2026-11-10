@@ -134,6 +134,12 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, set(answers.PinnedPlain, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'Usual':
       return reply(200, set(answers.Usual, operation)({ path: need(variables, 'path') }))
+    case 'Threads':
+      return reply(200, set(answers.Threads, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
+    case 'ThreadsPlain':
+      return reply(200, set(answers.ThreadsPlain, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
+    case 'Reply':
+      return reply(200, set(answers.Reply, operation)({ mr: need(variables, 'mr'), thread: need(variables, 'thread'), body: need(variables, 'body') }))
     case 'InboxTodos':
       return reply(200, answers.InboxTodos !== undefined ? answers.InboxTodos({}) : NOTHING.InboxTodos)
     case 'InboxTodosPlain':

@@ -5,9 +5,11 @@ import { describe } from '../../hooks/wake.ts'
 import { discMarks, discSource } from '../../hooks/avatar.ts'
 import { ciStatusOf } from '../../hooks/gitlab-status.ts'
 import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../../hooks/gitlab.ts'
+import { slimCard } from '../../hooks/slim.ts'
 import { authoredQuery } from '../../hooks/authored-request.ts'
 import { pinnedQuery, usualQuery } from '../../hooks/gitlab-documents.ts'
 import { mergeStatusQuery } from '../../hooks/merge-gitlab.ts'
+import { threadsQuery, withThreads } from '../../hooks/page-documents.ts'
 import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
 import type { PinnedQuery } from '../../hooks/gitlab.generated.ts'
 import { featuresOf, forgetProbed, learnLack } from '../../hooks/in-flight.ts'
@@ -250,6 +252,7 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   expect(said('UserMergeRequestInteraction', 'reviewState')).toEqual(['hasReviewStates'])
   expect(said('MergeRequest', 'mergeabilityChecks')).toEqual(['hasMergeVerdict'])
   expect(said('Todo', 'targetEntity')).toEqual(['hasTodoEntity'])
+  expect(said('Discussion', 'truncatedDiffLines')).toEqual(['hasDiffLines'])
   // Another type's field of the same name, another field, and the words of the message alone are not it.
   expect(said('Project', 'reviewState')).toEqual([])
   expect(said('Query', '__type')).toEqual([])
@@ -259,9 +262,10 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   ).toEqual([])
   forgetProbed()
   const current = featuresOf('git.corp.com')
-  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true })
+  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true })
   learnLack('git.corp.com', 'hasReviewStates')
-  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false, hasTodoEntity: true })
+  learnLack('git.corp.com', 'hasDiffLines')
+  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false, hasTodoEntity: true, hasDiffLines: false })
   const older = featuresOf('git.corp.com')
   expect(featuresOf('gitlab.com')).toEqual(current)
   forgetProbed()
@@ -279,7 +283,58 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   const pin = { url: 'https://git.corp.com/g/p/-/merge_requests/3', host: SELF_MANAGED, path: 'g/p', iid: 3 }
   expect([pinnedQuery(pin, current).operation, pinnedQuery(pin, older).operation]).toEqual(['Pinned', 'PinnedPlain'])
   expect(pinnedQuery(pin, older).variables).toEqual({ path: 'g/p', iid: '3' })
+  // A page's threads are asked without their diff lines of a host that has none.
+  expect([threadsQuery('g/p', 3, current).operation, threadsQuery('g/p', 3, older).operation]).toEqual(['Threads', 'ThreadsPlain'])
+  expect(threadsQuery('g/p', 3, older).query).not.toContain('truncatedDiffLines')
   // A reviewer with no review state yet to be read is not yet reviewed, and the MR still reads.
   const [card] = readResponse(SELF_MANAGED, { data: { currentUser: { authoredMergeRequests: { nodes: [{ ...rawMr(1), reviewers: { nodes: [user('tim')] } }] } } } })
   expect(card?.reviewers).toEqual([{ username: 'tim', isBot: false, state: 'unreviewed' }])
+})
+
+test("a page's threads gain where a reply goes and the lines they were left on, joined by their first note's address; a shared card keeps neither", () => {
+  const onDiff = thread('Rename this, please.', 'tim')
+  const general = { ...thread('Why?', 'mel'), notes: { nodes: [note('Why?', 'mel', { position: null })] } }
+  const card = toCard(HOST, rawMr(12, { discussions: { nodes: [onDiff, general] } }))
+  const [first, second] = card.openThreads
+  if (first === undefined || second === undefined) {
+    throw new Error('no threads')
+  }
+  const lines = [
+    { oldLine: 7, newLine: 7, type: null, text: ' const a = 1' },
+    { oldLine: null, newLine: 8, type: 'new', text: '+const b = 2' },
+  ]
+  const threads = {
+    data: {
+      project: {
+        mergeRequest: {
+          id: 'gid://gitlab/MergeRequest/912',
+          discussions: {
+            nodes: [
+              { replyId: 'gid://gitlab/Discussion/a1', truncatedDiffLines: lines, notes: { nodes: [{ url: first.url }] } },
+              { replyId: 'gid://gitlab/Discussion/b2', truncatedDiffLines: null, notes: { nodes: [{ url: second.url }] } },
+              // A thread the whole read does not hold (resolved since, or a bot's) answers nothing.
+              { replyId: 'gid://gitlab/Discussion/c3', truncatedDiffLines: lines, notes: { nodes: [{ url: 'https://gitlab.com/elsewhere' }] } },
+              null,
+            ],
+          },
+        },
+      },
+    },
+  }
+  const read = withThreads(card, { response: threads })
+  expect(read.openThreads.map(open => open.answer)).toEqual([
+    { mr: 'gid://gitlab/MergeRequest/912', thread: 'gid://gitlab/Discussion/a1' },
+    { mr: 'gid://gitlab/MergeRequest/912', thread: 'gid://gitlab/Discussion/b2' },
+  ])
+  expect(read.openThreads.map(open => open.excerpt)).toEqual([{ path: 'src/a.ts', hunk: '@@ -7,1 +7,2 @@\n const a = 1\n+const b = 2' }, undefined])
+  // Everything else on the card is as the whole read left it.
+  expect({ ...read, openThreads: card.openThreads }).toEqual(card)
+  // An MR GitLab no longer names leaves the threads as they were; a read that failed, or came back as errors alone, says why.
+  expect(withThreads(card, { response: { data: { project: null } } })).toEqual(card)
+  expect(withThreads(card, { reason: 'gitlab.com answered HTTP 400' })).toEqual({ ...card, repliesOff: 'gitlab.com answered HTTP 400' })
+  expect(withThreads(card, { response: { errors: [{ message: 'Timeout on validation of query' }] } })).toEqual({ ...card, repliesOff: 'Timeout on validation of query' })
+  expect(slimCard(read).openThreads.map(open => [open.answer, open.excerpt])).toEqual([
+    [undefined, undefined],
+    [undefined, undefined],
+  ])
 })

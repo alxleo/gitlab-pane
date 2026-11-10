@@ -49,7 +49,7 @@ export function joined(name: string, work: () => Promise<void>): Promise<void> {
 const lacking = new Map<string, HostFeatures>()
 
 /** What a host has of the fields older GitLab versions lack: all of them until it has said it lacks one. */
-export const featuresOf = (host: string): HostFeatures => lacking.get(host) ?? { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true }
+export const featuresOf = (host: string): HostFeatures => lacking.get(host) ?? { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true }
 
 /** Remembers, until the mod reloads, that `host` lacks `feature`; gives what the host has now. */
 export function learnLack(host: string, feature: keyof HostFeatures): HostFeatures {

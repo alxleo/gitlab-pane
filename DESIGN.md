@@ -38,6 +38,18 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 | Quiet row | one line, the title, GitLab's verdict (or its merge) and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is neither red nor amber and that quotes no one; its links and faces are on its page | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
 
+## An MR's page
+
+A title opens the MR on a page of its own. Its open threads are a person's feedback, so each can be answered there briefly; a review stays on GitLab.
+
+| On the page | Shows | Code |
+|---|---|---|
+| A thread on the diff | the last five lines of the diff it was left on, ending at the commented line, numbered as in the file; then the comment and its replies | `hunkOf`, `hooks/reply-model.ts` |
+| `↩ reply` | dim, under each open thread a person started; it opens one reply box at a time, starting from what was last typed there. None on a phone (it may have no text field): the thread's `💬` opens it on GitLab. Where GitLab did not say where replies go, an amber `↩ Replies are off here` says why, until the next read gets it | `reading.tsx` |
+| Confirming | Enter shows the text with `post as you`, `edit` and `cancel`: nothing is sent before `post as you`, which posts under your name | `isPostable` |
+| Posted | the MR is read again at once, and the reply sits in the thread like any other | `ensureDetail` |
+| Not posted | the text stays, with GitLab's reason in amber and `post again`, there when you come back to the page; a refusal says a `read_api` token is refused so. A dropped connection, a 5xx or a reload while it was out may have posted it: the MR is read again and the reason says to look first | `postedOf`, `reasonOf` |
+
 ## The list
 
 | Section | Holds | Code |

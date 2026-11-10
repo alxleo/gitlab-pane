@@ -408,6 +408,156 @@
       {
         "description": null,
         "enumValues": null,
+        "fields": null,
+        "inputFields": [
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "body",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "clientMutationId",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "discussionId",
+            "type": {
+              "kind": "SCALAR",
+              "name": "DiscussionID",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "internal",
+            "type": {
+              "kind": "SCALAR",
+              "name": "Boolean",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "mergeRequestDiffHeadSha",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "noteableId",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "NoteableID",
+                "ofType": null
+              }
+            }
+          }
+        ],
+        "interfaces": null,
+        "kind": "INPUT_OBJECT",
+        "name": "CreateNoteInput",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "errors",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "note",
+            "type": {
+              "kind": "OBJECT",
+              "name": "Note",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "quickActionsStatus",
+            "type": {
+              "kind": "OBJECT",
+              "name": "QuickActionsStatus",
+              "ofType": null
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "CreateNotePayload",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
         "fields": [
           {
             "args": [
@@ -825,6 +975,65 @@
             "deprecationReason": null,
             "description": null,
             "isDeprecated": false,
+            "name": "newLine",
+            "type": {
+              "kind": "SCALAR",
+              "name": "Int",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "oldLine",
+            "type": {
+              "kind": "SCALAR",
+              "name": "Int",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "text",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "type",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "DiffLine",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
             "name": "filePath",
             "type": {
               "kind": "NON_NULL",
@@ -964,6 +1173,22 @@
             "deprecationReason": null,
             "description": null,
             "isDeprecated": false,
+            "name": "replyId",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "DiscussionID",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
             "name": "resolvable",
             "type": {
               "kind": "NON_NULL",
@@ -988,6 +1213,26 @@
                 "kind": "SCALAR",
                 "name": "Boolean",
                 "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "truncatedDiffLines",
+            "type": {
+              "kind": "LIST",
+              "name": null,
+              "ofType": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "DiffLine",
+                  "ofType": null
+                }
               }
             }
           }
@@ -1023,6 +1268,16 @@
         "interfaces": [],
         "kind": "OBJECT",
         "name": "DiscussionConnection",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "kind": "SCALAR",
+        "name": "DiscussionID",
         "possibleTypes": null
       },
       {
@@ -1268,6 +1523,22 @@
               "kind": "OBJECT",
               "name": "Pipeline",
               "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "id",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "ID",
+                "ofType": null
+              }
             }
           },
           {
@@ -2493,6 +2764,35 @@
                   "name": null,
                   "ofType": {
                     "kind": "INPUT_OBJECT",
+                    "name": "CreateNoteInput",
+                    "ofType": null
+                  }
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "createNote",
+            "type": {
+              "kind": "OBJECT",
+              "name": "CreateNotePayload",
+              "ofType": null
+            }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
+                "deprecationReason": null,
+                "description": null,
+                "isDeprecated": false,
+                "name": "input",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "INPUT_OBJECT",
                     "name": "MergeRequestAcceptInput",
                     "ofType": null
                   }
@@ -2690,6 +2990,16 @@
         "interfaces": null,
         "kind": "SCALAR",
         "name": "NoteID",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "kind": "SCALAR",
+        "name": "NoteableID",
         "possibleTypes": null
       },
       {
@@ -3258,6 +3568,49 @@
         "interfaces": [],
         "kind": "OBJECT",
         "name": "Query",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "commandsOnly",
+            "type": {
+              "kind": "SCALAR",
+              "name": "Boolean",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "errorMessages",
+            "type": {
+              "kind": "LIST",
+              "name": null,
+              "ofType": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "QuickActionsStatus",
         "possibleTypes": null
       },
       {

@@ -38,7 +38,7 @@ export const MERGE = /* GraphQL */ `
 `
 
 /** The documents that change GitLab: mutations, which the schema check never sends to be scored. */
-export const WRITES = ['Merge'] as const satisfies readonly (keyof Operations)[]
+export const WRITES = ['Merge', 'Reply'] as const satisfies readonly (keyof Operations)[]
 
 /** Whether a request changes GitLab, by the document it sends: such a request is sent once and never again on a failure. */
 export function isWrite(request: { operation: keyof Operations }): boolean {

@@ -6,27 +6,29 @@ import { shortHash } from './identity'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
+import { closeReply, confirmReply, editReply, openReply, postReply, typeReply } from './replies'
 
 import type { MarkdownText, Part } from './markdown'
 import type { PageHead } from './page-lines'
-import type { MrCard, Note } from '../types'
+import type { MrCard, Note, ReplyBox } from '../types'
 
 /** Room kept for the link that says the rest is on GitLab. */
 const CUT_NOTE_SIZE = 300
 
 /**
  * How a page is drawn: `folds` are the `<details>` drawn the other way from how GitLab first shows them, `focus` the
- * person whose comments alone it shows (empty for the whole MR), `head` what it says of the ticket and the merge.
+ * person whose comments alone it shows (empty for the whole MR), `head` what it says of the ticket and the merge, `reply`
+ * the reply being written under one of its threads.
  */
-export type PageView = { folds: string[]; focus: string; head: PageHead; now: number }
+export type PageView = { folds: string[]; focus: string; head: PageHead; now: number; reply: ReplyBox }
 
 /**
  * One MR whole, as a page of its own drawn alone: the jobs, threads and bot comments that need acting on take the room first,
  * then the description what is left, cut where it runs out. Opened on one person, it shows what they wrote and leads on to
  * the whole MR.
  */
-export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now }: PageView) {
-  const { Box, Text, Button, Link, Markdown } = $.ui.resolve(e)
+export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now, reply }: PageView) {
+  const { Box, Text, Button, Link, Markdown, Code, Input } = $.ui.resolve(e)
   /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
   const markdown = (text: MarkdownText) => <Markdown text={text} />
 
@@ -129,12 +131,65 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
 
   const pipeline = mr.pipeline
   const jobs = [...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗' })), ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠' }))]
+  /**
+   * Under a thread, the way to answer it: a quiet `↩ reply`, then one box at a time, then the text to confirm, since it
+   * posts as you. A phone may not have been sent a text field, and a thread read without where its replies go has none:
+   * there its 💬 link to GitLab is the way.
+   */
+  const answering = (thread: Note): RenderChildren[] => {
+    if (e.surface === 'mobile' || thread.answer === undefined) {
+      return []
+    }
+    if (reply.thread !== thread.url) {
+      return [<Button key={`reply-open-${shortHash(thread.url)}`} plain dimColor label="↩ reply" onPress={() => openReply($, thread.url)} />]
+    }
+    const cancel = <Button key="reply-cancel" plain dimColor label="cancel" onPress={() => closeReply($)} />
+    switch (reply.stage) {
+      case 'writing':
+        return [
+          <Input
+            key="reply-box"
+            rows={3}
+            autoFocus
+            value={reply.text}
+            placeholder="Your reply, posted on GitLab as you"
+            submitLabel="review"
+            onInput={text => typeReply($, thread.url, text)}
+            onSubmit={text => confirmReply($, thread.url, text)}
+          />,
+          cancel,
+        ]
+      case 'posting':
+        return [<Text dimColor>posting…</Text>]
+      case 'confirming':
+      case 'failed':
+      default:
+        // Drawn as a reply is, under a byline that says it is not one yet.
+        return [
+          <Box flexDirection="column" paddingLeft={2}>
+            <Box flexDirection="row" gap={1}>
+              <Text weight="semibold">you</Text>
+              <Text dimColor>not posted yet</Text>
+            </Box>
+            <Text>{reply.text}</Text>
+          </Box>,
+          ...(reply.stage === 'failed' ? [<Text color="warning">{reply.reason}</Text>] : []),
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+            <Button key="reply-post" variant="primary" label={reply.stage === 'failed' ? 'post again' : 'post as you'} onPress={() => postReply($, mr.key, mr.host, thread)} />
+            <Button key="reply-edit" plain label="edit" onPress={() => editReply($)} />
+            {cancel}
+          </Box>,
+        ]
+    }
+  }
   const threads = mr.openThreads.map(thread => (
     <Box flexDirection="column" gap={1}>
+      {thread.excerpt !== undefined && <Code source={thread.excerpt.hunk} format="diff" path={thread.excerpt.path} wrap="truncate-end" />}
       {said(thread)}
-      {(thread.replies ?? []).map(reply => (
-        <Box paddingLeft={2}>{said(reply)}</Box>
+      {(thread.replies ?? []).map(answer => (
+        <Box paddingLeft={2}>{said(answer)}</Box>
       ))}
+      {answering(thread)}
     </Box>
   ))
   const botNotes = mr.people.filter(each => each.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
@@ -153,7 +208,14 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           </Box>,
         ]
       : []),
-    ...(threads.length > 0 ? [<Text weight="semibold">{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
+    ...(threads.length > 0
+      ? [
+          <Text weight="semibold">{plural(threads.length, 'open thread')}</Text>,
+          // Where replies go could not be read; the next read tries again.
+          ...(mr.repliesOff !== undefined && e.surface !== 'mobile' ? [<Text color="warning" size="footnote">{`↩ Replies are off here: ${mr.repliesOff}`}</Text>] : []),
+          ...threads,
+        ]
+      : []),
     ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(note => said(note))] : []),
   ]
 

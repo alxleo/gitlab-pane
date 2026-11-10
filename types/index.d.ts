@@ -104,7 +104,21 @@ export type Note = {
   isOpen: boolean
   /** The answers under an open thread's opening note, oldest first. */
   replies?: Note[]
+  /**
+   * Where a reply to the thread this note opens is posted: the MR's and the thread's GitLab IDs. Read with its MR's page
+   * alone, so a card the sessions share never has it.
+   */
+  answer?: { mr: string; thread: string }
+  /** The lines of the diff the thread was left on, ending at the commented line, as a unified-diff hunk; read with the page. */
+  excerpt?: { path: string; hunk: string }
 }
+
+/**
+ * The one reply being written on an MR's page: the thread it answers (by its first note's address; empty while there is
+ * none), the text, and how far it got. `writing` shows the box, `confirming` the text and the press that posts it,
+ * `posting` that it is out, `failed` the text again with why.
+ */
+export type ReplyBox = { thread: string; text: string; stage: 'writing' | 'confirming' | 'posting' | 'failed'; reason: string }
 
 /** Someone other than the author, a bot included, who reviewed or commented. */
 export type Person = {
@@ -192,6 +206,8 @@ export type MrCard = {
   openThreads: Note[]
   /** Open threads a shared card leaves out of `openThreads`, which keeps the first few: those no person's icon holds, and the rest. */
   threadsLeft: { loose: number; held: number }
+  /** Why the MR's page, read whole, could not read where replies go; absent when it could, and on every shared card. */
+  repliesOff?: string
 }
 
 /** How long a successful MR pipeline in a project runs, the middle half of the recent ones, in seconds. */
@@ -218,6 +234,8 @@ export type HostFeatures = {
   hasReviewStates: boolean
   /** `Todo.targetEntity` (GitLab 17.4): without it the inbox asks for `target`, which GitLab 17.4 deprecated. */
   hasTodoEntity: boolean
+  /** `Discussion.truncatedDiffLines`: without it an MR's page draws its threads with no lines of the diff. */
+  hasDiffLines: boolean
 }
 
 export type Ticket = { type: string; status: string; summary: string }
@@ -452,6 +470,10 @@ declare module 'claude-code' {
       logs: boolean
       /** This session's presses on merges, rebases and conflicts, by card key. */
       pressed: Record<string, Pressed>
+      /** The reply being written on an MR's page, if any. */
+      reply: ReplyBox
+      /** What was last typed in the reply box of each thread, by its first note's address; no drawing reads it. */
+      typed: Record<string, string>
     }
   }
 }
