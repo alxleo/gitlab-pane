@@ -5,6 +5,10 @@
 //   node tools/pane_screens.ts render --out /tmp/shots     somewhere else, to compare two runs
 //   node tools/pane_screens.ts render --verify             draw twice, fail unless both are byte-identical
 //   node tools/pane_screens.ts render --check              draw, and fail unless docs/screens already holds exactly these PNGs; writes nothing
+//   node tools/pane_screens.ts render --out /tmp/pr --delta-against origin/main
+//                                                          a pull request's pictures: each scene, `<scene>-before.png` as main
+//                                                          draws it, and `<scene>-delta.png`, the change at full strength and
+//                                                          outlined, all else faded (tools/screen_delta.ts says what changed)
 //   node tools/pane_screens.ts setup [--with-deps]         fetch the Chromium it photographs with (once per Playwright version)
 //
 // (`npm run screens -- <command>` is the same.) How it works, so nobody has to remember it:
@@ -22,17 +26,17 @@
 import { spawnSync } from 'node:child_process'
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import MarkdownIt from 'markdown-it'
 import { chromium, type BrowserContext, type Page } from 'playwright'
 
 import { isRecord, isSome, parseJson, text } from '../hooks/decode.ts'
+import { deltaMarks, type Drawn, type Mark } from './screen_delta.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const SCREENS = join(import.meta.dirname, 'screens')
-const SCENES_FILE = join(SCREENS, 'scenes.ts')
 const SHOTS = join(ROOT, 'docs', 'screens')
 // The Claude Code that CI pins (CLAUDE_CODE_VERSION in check.yml and screens.yml): another version may draw the pane differently.
 const EXPECTED_CLAUDE = '2.1.318'
@@ -434,27 +438,39 @@ function unknownProps(node: Node): string[] {
 }
 
 /** The tree as HTML; `unknown` collects what it could not draw, so the run can say so. `key` is the nearest keyed Box around. */
-function draw(node: Node | string, lit: Lit, unknown: Set<string>, key: string | null = null): string {
+/** What a delta picture marks on an element: faded as drawn before, outlined as new or changed, or nothing. */
+const MARK_CLASS: Record<Mark, string> = { same: ' delta-same', changed: ' delta-changed' }
+
+/**
+ * A delta picture's own look, on top of pane.css: faint enough to read past, the change at full strength and outlined.
+ * The fade is a filter, not `opacity`, which pane.css sets on dim text: on the same element one would replace the other,
+ * where a filter adds to it, so dim text fades as far as the rest.
+ */
+const DELTA_STYLE = '<style>.delta-same { filter: opacity(0.3); } .delta-changed { outline: 2px solid #d97706; outline-offset: 2px; border-radius: 3px; }</style>'
+
+function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: ReadonlyMap<Drawn, Mark>, key: string | null = null): string {
   if (isText(node)) {
     return escape(node)
   }
   unknownProps(node).forEach(name => unknown.add(name))
   const nearest = node.type === 'Box' && isText(node.props['key']) ? node.props['key'] : key
   const props = { ...node.props, ...hovered(node, nearest, lit) }
-  const inner = node.children.map(child => draw(child, lit, unknown, nearest)).join('')
+  const inner = node.children.map(child => draw(child, lit, unknown, marks, nearest)).join('')
   const label = escape(text(props['label']))
+  const mark = marks.get(node)
+  const marked = mark !== undefined ? MARK_CLASS[mark] : ''
   switch (node.type) {
     case 'Box': {
       const box = boxStyle(props)
-      return `<div class="${box.classes}"${box.hidden ? ' data-hidden' : ''} style="${escape(box.css)}">${inner}</div>`
+      return `<div class="${box.classes}${marked}"${box.hidden ? ' data-hidden' : ''} style="${escape(box.css)}">${inner}</div>`
     }
     case 'Text': {
       const look = textClasses(props)
-      return `<span class="${look.classes}" style="${escape(look.css)}">${inner}</span>`
+      return `<span class="${look.classes}${marked}" style="${escape(look.css)}">${inner}</span>`
     }
     case 'Link': {
       const href = text(props['href'])
-      return `<a class="link" href="${escape(href)}">${inner === '' ? escape(text(props['label'] ?? props['href'])) : inner}</a>`
+      return `<a class="link${marked}" href="${escape(href)}">${inner === '' ? escape(text(props['label'] ?? props['href'])) : inner}</a>`
     }
     case 'Button': {
       const variant = props['variant']
@@ -464,25 +480,25 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, key: string |
         variant === 'primary' || variant === 'secondary' ? variant : '',
         props['dimColor'] === true ? 'dim' : '',
       ].filter(each => each !== '')
-      return `<button class="${classes.join(' ')}">${inner === '' ? label : inner}</button>`
+      return `<button class="${classes.join(' ')}${marked}">${inner === '' ? label : inner}</button>`
     }
     case 'Svg': {
       // An Svg's size is CSS pixels, not cells.
       const [width, height] = [props['width'], props['height']]
       const size = `${typeof width === 'number' ? `width: ${Math.trunc(width)}px; ` : ''}${typeof height === 'number' ? `height: ${Math.trunc(height)}px` : ''}`
-      return `<div class="svg" role="img" aria-label="${escape(text(props['alt']))}" style="${size}">${text(props['source'])}</div>`
+      return `<div class="svg${marked}" role="img" aria-label="${escape(text(props['alt']))}" style="${size}">${text(props['source'])}</div>`
     }
     case 'Image': {
       const source = props['source']
       const png = isRecord(source) ? source['png'] : undefined
       if (isText(png) && /^[A-Za-z0-9+/=]+$/u.test(png)) {
         const size = `width: ${space(props['columns'], 'x') ?? 'None'}; height: ${space(props['rows'], 'y') ?? 'None'}`
-        return `<img class="svg" alt="${escape(text(props['alt']))}" style="${size}" src="data:image/png;base64,${png}">`
+        return `<img class="svg${marked}" alt="${escape(text(props['alt']))}" style="${size}" src="data:image/png;base64,${png}">`
       }
       return undrawn(node, unknown)
     }
     case 'Markdown':
-      return `<div class="md${props['dimColor'] === true ? ' dim' : ''}">${MARKDOWN.render(text(props['text']))}</div>`
+      return `<div class="md${props['dimColor'] === true ? ' dim' : ''}${marked}">${MARKDOWN.render(text(props['text']))}</div>`
     default:
       return undrawn(node, unknown)
   }
@@ -493,11 +509,14 @@ function undrawn(node: Node, unknown: Set<string>): string {
   return `<div class="unknown">&lt;${escape(node.type)}&gt; is not drawn by this renderer</div>`
 }
 
-/** The scene's page; `width` overrides pane.css's own only when the command line gave one. */
-function pageHtml(scene: Scene, width: number | null): { readonly document: string; readonly unknown: Set<string> } {
+/**
+ * The scene's page; `width` overrides pane.css's own only when the command line gave one. With `marks`, it is the scene's
+ * delta picture: what was drawn before fades, and what is new or changed keeps its look, outlined.
+ */
+function pageHtml(scene: Scene, width: number | null, marks: ReadonlyMap<Drawn, Mark> = new Map()): { readonly document: string; readonly unknown: Set<string> } {
   const unknown = new Set<string>()
-  const body = draw(scene.tree, { scopes: new Set(scene.hover), keys: new Set(scene.hoverKeys) }, unknown)
-  const override = width === null ? '' : `<style>:root { --pane-width: ${width}px; }</style>`
+  const body = draw(scene.tree, { scopes: new Set(scene.hover), keys: new Set(scene.hoverKeys) }, unknown, marks)
+  const override = `${width === null ? '' : `<style>:root { --pane-width: ${width}px; }</style>`}${marks.size > 0 ? DELTA_STYLE : ''}`
   const title = escape(scene.title)
   const document = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${title}</title>
@@ -510,23 +529,49 @@ ${override}</head>
 
 // ---- the scenes, from the engine ----------------------------------------------------------------------------------------
 
-/** A scratch copy of the mod with the scenes as its only test, so `claude plugin test` never sees the real ones. */
-function stageMod(into: string): string {
+/**
+ * A scratch copy of the mod at `root` (this checkout, or another version written out by `writeVersion`) with its scenes
+ * as its only test, so `claude plugin test` never sees the real ones.
+ */
+function stageMod(into: string, root: string): string {
   const mod = join(into, 'mod')
   mkdirSync(join(mod, '.claude-plugin'), { recursive: true })
-  copyFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), join(mod, '.claude-plugin', 'plugin.json'))
-  cpSync(join(ROOT, 'hooks'), join(mod, 'hooks'), { recursive: true })
-  cpSync(join(ROOT, 'types'), join(mod, 'types'), { recursive: true })
+  copyFileSync(join(root, '.claude-plugin', 'plugin.json'), join(mod, '.claude-plugin', 'plugin.json'))
+  cpSync(join(root, 'hooks'), join(mod, 'hooks'), { recursive: true })
+  cpSync(join(root, 'types'), join(mod, 'types'), { recursive: true })
   mkdirSync(join(mod, 'tests'))
   // The helpers the scenes import (fixtures, the fake GitLab); none of the mod's own tests.
-  for (const helper of readdirSync(join(ROOT, 'tests'), { withFileTypes: true })
+  for (const helper of readdirSync(join(root, 'tests'), { withFileTypes: true })
     .filter(entry => entry.isFile() && !entry.name.endsWith('.test.ts'))
     .map(entry => entry.name)) {
-    copyFileSync(join(ROOT, 'tests', helper), join(mod, 'tests', helper))
+    copyFileSync(join(root, 'tests', helper), join(mod, 'tests', helper))
   }
   mkdirSync(join(mod, 'tools', 'screens'), { recursive: true })
-  copyFileSync(SCENES_FILE, join(mod, 'tools', 'screens', 'scenes.test.ts'))
+  copyFileSync(join(root, 'tools', 'screens', 'scenes.ts'), join(mod, 'tools', 'screens', 'scenes.test.ts'))
   return mod
+}
+
+/** The files `stageMod` takes, as git names them. */
+const VERSION_PATHS = ['.claude-plugin/plugin.json', 'hooks', 'types', 'tests', 'tools/screens/scenes.ts']
+
+/** Writes the files `stageMod` takes from the git ref `ref` (a commit, branch or tag of this repository) into `into`. */
+function writeVersion(ref: string, into: string): void {
+  const git = (args: string[]) => spawnSync('git', ['-C', ROOT, ...args], { maxBuffer: 256 * 1024 * 1024 })
+  const listed = git(['ls-tree', '-r', '-z', '--name-only', ref, '--', ...VERSION_PATHS])
+  if (listed.status !== 0) {
+    throw new ScreensError(`cannot read ${ref} from git: ${listed.stderr.toString().trim()}`)
+  }
+  for (const path of listed.stdout
+    .toString()
+    .split('\0')
+    .filter(each => each !== '')) {
+    const shown = git(['show', `${ref}:${path}`])
+    if (shown.status !== 0) {
+      throw new ScreensError(`cannot read ${path} at ${ref}: ${shown.stderr.toString().trim()}`)
+    }
+    mkdirSync(join(into, dirname(path)), { recursive: true })
+    writeFileSync(join(into, path), shown.stdout)
+  }
 }
 
 /** Only what `claude plugin test` needs: no token, base URL or session of the caller's reaches it. */
@@ -547,8 +592,8 @@ function saidWithoutTrees(output: string): string {
 }
 
 /** Runs the scenes under the engine and reads the trees back, or says exactly which scene failed and why. */
-function drawScenes(claude: string, work: string): Scene[] {
-  const mod = stageMod(work)
+function drawScenes(claude: string, work: string, root = ROOT): Scene[] {
+  const mod = stageMod(work, root)
   const home = join(work, 'home')
   mkdirSync(join(home, 'config'), { recursive: true })
   // One stream, so lines come back in the order they were written.
@@ -652,6 +697,25 @@ type Options = {
   readonly claude: string
   readonly keep: string | null
   readonly allowUnknown: boolean
+  /** A git ref to draw the scenes at too: each scene it also has gets `<scene>-before.png` and `<scene>-delta.png`. */
+  readonly deltaAgainst: string | null
+}
+
+/**
+ * The pages to photograph for `scenes`, by picture name: each scene, and with `base` (the same scenes drawn at another
+ * version) the scene as it was there and the delta between them, for a scene `base` also draws.
+ */
+function picturesOf(scenes: readonly Scene[], base: readonly Scene[] | null, width: number | null): Map<string, ReturnType<typeof pageHtml>> {
+  const pictures = new Map<string, ReturnType<typeof pageHtml>>()
+  for (const each of scenes) {
+    pictures.set(each.name, pageHtml(each, width))
+    const before = base?.find(scene => scene.name === each.name)
+    if (before !== undefined) {
+      pictures.set(`${each.name}-before`, pageHtml(before, width))
+      pictures.set(`${each.name}-delta`, pageHtml(each, width, deltaMarks(each.tree, before.tree)))
+    }
+  }
+  return pictures
 }
 
 /** Draws the scenes with the engine and photographs each; only when every check has passed do the PNGs reach `out`. */
@@ -670,27 +734,41 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
       throw new ScreensError(`no such scene: ${missing.join(', ')}; there are ${drawn.map(scene => scene.name).join(', ')}`)
     }
     const scenes = options.scenes.length > 0 ? drawn.filter(scene => options.scenes.includes(scene.name)) : drawn
+    // The other version's scenes are drawn by its own mod and scenes, and photographed by this renderer, so the two look alike.
+    let base: Scene[] | null = null
+    if (options.deltaAgainst !== null) {
+      const baseRoot = join(work, 'base-version')
+      writeVersion(options.deltaAgainst, baseRoot)
+      const baseWork = join(work, 'base-work')
+      mkdirSync(baseWork)
+      base = drawScenes(options.claude, baseWork, baseRoot)
+    }
     const site = join(work, 'site')
     cpSync(join(SCREENS, 'fonts'), join(site, 'fonts'), { recursive: true })
     copyFileSync(join(SCREENS, 'pane.css'), join(site, 'pane.css'))
     const pages = new Map<string, string>()
     const unknownIn = new Map<string, Set<string>>()
-    for (const each of scenes) {
-      const page = pageHtml(each, options.width)
+    for (const [name, page] of picturesOf(scenes, base, options.width)) {
       if (page.unknown.size > 0) {
-        unknownIn.set(each.name, page.unknown)
+        unknownIn.set(name, page.unknown)
       }
-      const path = join(site, `${each.name}.html`)
+      const path = join(site, `${name}.html`)
       writeFileSync(path, page.document, 'utf8')
-      pages.set(each.name, path)
+      pages.set(name, path)
     }
     const shots = join(work, 'shots')
     await photograph(pages, shots, options.scale)
     if (options.keep !== null) {
       mkdirSync(options.keep, { recursive: true })
+      // Each scene's tree, the other version's too, and every page photographed, so a picture can be read back.
       for (const each of scenes) {
         writeFileSync(join(options.keep, `${each.name}.json`), JSON.stringify(each, null, 1), 'utf8')
-        copyFileSync(join(site, `${each.name}.html`), join(options.keep, `${each.name}.html`))
+      }
+      for (const each of base ?? []) {
+        writeFileSync(join(options.keep, `${each.name}-before.json`), JSON.stringify(each, null, 1), 'utf8')
+      }
+      for (const name of pages.keys()) {
+        copyFileSync(join(site, `${name}.html`), join(options.keep, `${name}.html`))
       }
     }
     if (unknownIn.size > 0 && !options.allowUnknown) {
@@ -700,8 +778,12 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
       )
     }
     mkdirSync(out, { recursive: true })
-    for (const each of scenes) {
-      copyFileSync(join(shots, `${each.name}.png`), join(out, `${each.name}.png`))
+    for (const name of pages.keys()) {
+      copyFileSync(join(shots, `${name}.png`), join(out, `${name}.png`))
+    }
+    const unmatched = base === null ? [] : scenes.filter(scene => !pages.has(`${scene.name}-delta`)).map(scene => scene.name)
+    if (unmatched.length > 0) {
+      console.error(`note: ${unmatched.join(', ')} is no scene at ${options.deltaAgainst ?? ''}, so it has no before or delta picture`)
     }
     return scenes
   } finally {
@@ -725,7 +807,7 @@ async function render(values: {
     const target = values.check ? join(scratch, 'now') : out
     const scenes = await produce(options, target)
     const others = existsSync(out) ? readdirSync(out).filter(name => name.endsWith('.png') && !scenes.some(scene => `${scene.name}.png` === name)) : []
-    if (others.length > 0 && options.scenes.length === 0) {
+    if (others.length > 0 && options.scenes.length === 0 && options.deltaAgainst === null) {
       console.error(`note: ${others.join(', ')} in ${out} is no scene (any more); delete it if it is stale`)
     }
     if (values.verify) {
@@ -763,6 +845,7 @@ function setup(withDeps: boolean): number {
 // ---- the command line ---------------------------------------------------------------------------------------------------
 
 const USAGE = `usage: node tools/pane_screens.ts render [--out DIR] [--scene NAME]... [--width PX] [--scale N] [--claude BIN] [--keep DIR] [--verify] [--check [--fresh DIR]] [--allow-unknown]
+       node tools/pane_screens.ts render --out DIR --delta-against REF [--scene NAME]...
        node tools/pane_screens.ts scenes [--claude BIN]
        node tools/pane_screens.ts setup [--with-deps]`
 
@@ -804,6 +887,7 @@ async function main(): Promise<number> {
       check: { type: 'boolean', default: false },
       'allow-unknown': { type: 'boolean', default: false },
       fresh: { type: 'string' },
+      'delta-against': { type: 'string' },
       'with-deps': { type: 'boolean', default: false },
     },
   })
@@ -816,6 +900,11 @@ async function main(): Promise<number> {
       claude: values.claude ?? 'claude',
       keep: values.keep === undefined ? null : resolve(values.keep),
       allowUnknown: values['allow-unknown'],
+      deltaAgainst: values['delta-against'] ?? null,
+    }
+    // Before and delta pictures are for a pull request, never docs/screens, and are no README picture to check or verify.
+    if (options.deltaAgainst !== null && (values.out === undefined || values.check || values.verify)) {
+      throw new ScreensError('--delta-against writes a pull request’s pictures: give it --out DIR, and neither --check nor --verify')
     }
     return render({ out: resolve(values.out ?? SHOTS), options, verify: values.verify, check: values.check, fresh: values.fresh === undefined ? null : resolve(values.fresh) })
   }

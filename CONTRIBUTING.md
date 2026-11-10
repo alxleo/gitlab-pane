@@ -83,4 +83,11 @@ flowchart LR
 
 ## Screenshots
 
-`docs/screens` comes from `npm run screens -- render` (the mod's own drawing under the pinned Claude Code, photographed in Chromium; run `screens -- setup` first, `setup --with-deps` on Linux). Run it after changing the drawing and commit the pictures; `screens.yml` fails on a stale one. The look of the desktop's elements is `tools/screens/pane.css`; what each colour and mark means is [DESIGN.md](DESIGN.md).
+`docs/screens` comes from `npm run screens -- render` (the mod's own drawing under the pinned Claude Code, photographed in Chromium; run `screens -- setup` first, `setup --with-deps` on Linux). Run it after changing the drawing and commit the pictures; `screens.yml` fails on a stale one.
+
+A pull request's pictures come from `npm run screens -- render --out <dir> --delta-against origin/main`. For each scene it writes three pictures:
+- `<scene>.png`, as the branch draws it;
+- `<scene>-before.png`, as main draws it;
+- `<scene>-delta.png`, the branch's picture with what changed at full strength and outlined, and everything else faded.
+
+It compares elements, not pixels, so a row that only moved down stays faded. The look of the desktop's elements is `tools/screens/pane.css`; what each colour and mark means is [DESIGN.md](DESIGN.md).
