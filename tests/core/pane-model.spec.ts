@@ -29,6 +29,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       news: { count: 0, keys: [] },
       poll: { fetchedAt: NOW, error: null, hosts: {} },
       isReading: false,
+      isSyncing: false,
       isWaking: true,
       failures: {},
       ...over,
@@ -38,12 +39,14 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
     { room, sizeOf: (row, piece) => cost(piece, row) }
   )
 
-test('beside the tabs, the age of the cards, with ↻ while a read is out; the footer speaks only of what went wrong', () => {
+test('beside the tabs, the age of the cards, and ↻ dim while this session reads; the footer speaks only of what went wrong', () => {
   const threeHours = { fetchedAt: NOW - 3 * 3_600_000, error: null, hosts: {} }
   expect(modelOf([], { poll: threeHours }).status).toEqual({ text: 'updated 3h ago', isWarning: false })
-  expect(modelOf([], { poll: threeHours, isReading: true }).status).toEqual({ text: '↻ updated 3h ago', isWarning: false })
-  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} }, isReading: true }).status.text).toBe('↻ reading GitLab…')
-  // A session that follows has no ↻ of the leader's read, but still says one is out while it has nothing to show.
+  expect(modelOf([], { poll: threeHours }).isRefreshing).toBe(false)
+  // ↻ is only ever the press: a read that is out dims it, and the age beside it carries no mark of its own.
+  expect(modelOf([], { poll: threeHours, isReading: true })).toMatchObject({ status: { text: 'updated 3h ago', isWarning: false }, isRefreshing: true })
+  expect(modelOf([], { poll: threeHours, isSyncing: true }).isRefreshing).toBe(true)
+  // A session that follows has no read of its own to dim ↻ for, but still says one is out while it has nothing to show.
   expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} } }).status.text).toBe('reading GitLab…')
   expect(modelOf([], { poll: threeHours }).footer.text).toBe('')
   const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }

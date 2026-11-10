@@ -255,7 +255,8 @@ test('a session that leads shows the inbox the store keeps while its own slow re
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   expect(await titleOf(ui, 1)).toBe('▸ thing 1')
-  expect((await ui.find({ type: 'Text', text: /^↻ synced/u }))?.text).toBe('↻ synced 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^synced /u }))?.text).toBe('synced 3h ago')
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.props.dimColor).toBe(true)
   expect(kit.marks()).toEqual([])
 
   answer()
@@ -524,7 +525,7 @@ test('a full inbox and each rule open in turn stay inside the 100,000 characters
   // Cards past the inbox's share are counted, not drawn: the open rule held more than it could show.
   await ui.press({ key: 'inbox-rule-mentions' })
   expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/u })).toBeDefined()
-  expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'inbox-here' })).toBeDefined()
   await ui.unmount()
 })
 

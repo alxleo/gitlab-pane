@@ -97,6 +97,8 @@ export type PaneInput = {
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
+  /** Whether this session is reading the inbox from GitLab now. */
+  isSyncing: boolean
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
@@ -116,8 +118,13 @@ export type PaneModel = {
   firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
-  /** Beside the tabs, quietly: how old the cards are, and ↻ while a read is out. */
+  /** Beside the tabs, quietly: how old the cards are. */
   status: { text: string; isWarning: boolean }
+  /**
+   * Whether this session is reading GitLab or the inbox now: ↻ is drawn dim meanwhile, as the pane has no spinner. ↻ is only
+   * ever the press, so the age beside it carries no mark of its own.
+   */
+  isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
   footer: { text: string; isWarning: boolean }
   /** Whether a raised MR wakes Claude: the label names the press, the mark is the bell drawn, struck through when off. */
@@ -126,14 +133,11 @@ export type PaneModel = {
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
 
-/** The mark beside the age while this session reads GitLab: the pane has no spinner, and a glyph draws on every surface. */
-export const READING_MARK = '↻'
-
-function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['status'] {
+function statusOf(poll: PollState, now: number): PaneModel['status'] {
   const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
-  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's, which only it can mark.
+  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's.
   const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : hasStale ? '' : 'reading GitLab…'
-  return { text: isReading ? `${READING_MARK} ${age}`.trim() : age, isWarning: hasStale }
+  return { text: age, isWarning: hasStale }
 }
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
@@ -345,7 +349,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
       built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
-    status: statusOf(input.poll, input.isReading, now),
+    status: statusOf(input.poll, now),
+    isRefreshing: input.isReading || input.isSyncing,
     footer: footerOf(input.poll, now),
     wake: input.isWaking ? { label: 'wake Claude: on', mark: '🔔' } : { label: 'wake Claude: off', mark: '🔕' },
   }

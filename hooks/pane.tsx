@@ -54,6 +54,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
+  const { isSyncing, ...news } = await inboxNews($)
   const model = buildPane(
     {
       cards,
@@ -64,9 +65,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       expanded,
       repoFilter,
       view: isInbox ? 'inbox' : reading !== undefined ? 'reading' : 'mine',
-      news: await inboxNews($),
+      news,
       poll,
       isReading,
+      isSyncing,
       isWaking,
       failures,
     },
@@ -133,10 +135,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     ) : null
   // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. The
-  // labels name the presses; the symbols are drawn. The inbox's refresh is the same read, its failure told as the inbox's.
+  // labels name the presses; the symbols are drawn. ↻ reads the MRs and the inbox alike, and is dim while either read is out.
   const controls = (
     <Box flexDirection="row" gap={2} flexShrink={0}>
-      <Button key="refresh" plain label="refresh" onPress={() => quietly($, refresh($), isInbox && reading === undefined ? 'inbox' : 'pane')}>
+      <Button key="refresh" plain dimColor={model.isRefreshing} label="refresh" onPress={() => quietly($, refresh($))}>
         ↻
       </Button>
       <Button key="wake" plain label={model.wake.label} onPress={() => toggleWake($)}>
