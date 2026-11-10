@@ -58,6 +58,8 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  // The engine's own band, which the mod passes the band on to when it has nothing to say: empty, as with no survey.
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'Box', props: {}, children: [] }))
   return { ...gitlab, store, panes, surfaces, unreadable, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }
 
