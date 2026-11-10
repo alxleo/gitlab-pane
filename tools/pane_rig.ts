@@ -3,8 +3,8 @@
 //   node tools/pane_rig.ts flow                                       draw the pane once GitLab has answered
 //   node tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press back-top
 //
-// (`npm run rig -- flow …` is the same.) Each run starts a fresh `claude -p` process, so it runs the mod as it is on disk: no
-// /reload-plugins. The rig answers the engine as the desktop does: it asks for a drawing when told to redraw or after a
+// (`npm run rig -- flow …` is the same.) Each run starts a fresh `claude -p` process on this checkout's mod as it is on disk,
+// over any installed copy: no /reload-plugins. The rig answers the engine as the desktop does: it asks for a drawing when told to redraw or after a
 // press, and measures where pressable elements sit after each drawing and scroll. Like the desktop, it hands the engine a
 // new measurement only when the window's offset changes, with a person's scroll or with its own ask after one; every other
 // ask repeats the measurement it last handed over. Row numbers are its own estimate; which keys are present, and the order
@@ -27,6 +27,8 @@ import { isRecord, parseJson, text } from '../hooks/decode.ts'
 
 const PANE_ID = 'gitlab-pane'
 const PLUGIN = 'gitlab-pane'
+/** The checkout this file is in: the mod the rig drives is this one, whichever copy is installed. */
+const ROOT = join(import.meta.dirname, '..')
 /** Characters a row holds, for estimating how many rows text takes. */
 const WIDTH = 90
 
@@ -61,7 +63,21 @@ class Engine {
     this.#debugFile = debugFile
     this.#proc = spawn(
       'claude',
-      ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--debug-file', debugFile],
+      [
+        '-p',
+        '--input-format',
+        'stream-json',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--strict-mcp-config',
+        '--mcp-config',
+        '{"mcpServers":{}}',
+        '--plugin-dir',
+        ROOT,
+        '--debug-file',
+        debugFile,
+      ],
       { stdio: ['pipe', 'pipe', 'ignore'], cwd }
     )
     this.#proc.on('exit', code => {

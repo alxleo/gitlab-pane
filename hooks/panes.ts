@@ -105,6 +105,7 @@ export function leaveReading($: EngineInterface): void {
       }
       // The list's drawing leaves only after this resumes; a scroll ahead of it would stop at the page's last row.
       await $.clock.sleep(50)
+      const landed = nextDraw()
       const refused = await scrollPane($, { to: { key: titleKey(row) }, block: 'start' })
       if (refused.startsWith('no element')) {
         // Scrolling the page told the engine where the page's buttons sit; a move tells it the list's.
@@ -112,6 +113,12 @@ export function leaveReading($: EngineInterface): void {
         const reported = nextDraw()
         await scrollPane($, { to: rowDrawn() > 0 ? 'start' : 'end' })
         await Promise.race([reported, $.clock.sleep(2000)])
+        await scrollPane($, { to: { key: titleKey(row) }, block: 'start' })
+      } else if (refused === '') {
+        // That scroll went to where the title sat before the page opened. The move had the desktop measure the list as it
+        // is now, so a second one corrects for anything above the card that changed height while the page was open.
+        await setGoingBack($, 'correcting for rows that changed above the card')
+        await Promise.race([landed, $.clock.sleep(2000)])
         await scrollPane($, { to: { key: titleKey(row) }, block: 'start' })
       }
       await setGoingBack($, 'done')
