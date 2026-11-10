@@ -210,10 +210,14 @@ export async function sharedInboxAt($: EngineInterface): Promise<number | null> 
   return readSnapshot(await $.store.get(INBOX_STORE))?.at ?? null
 }
 
-/** The MRs with news, as the inbox counts them: each MR once, whichever rules list it. */
-export async function inboxNews($: EngineInterface): Promise<string[]> {
+/**
+ * The MRs with news, each once whichever rules list it: how many the inbox counts as it is shown (narrowed to this repo
+ * while `here` is on), and the keys of all of them, every repo's, which the list parks and folds by.
+ */
+export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[] }> {
   const { snapshot, seen } = await read($, inboxAtom)
-  return [...new Set(sectionsOf(snapshot, seen, await contextOf($)).flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key)))]
+  const newsIn = (sections: ReturnType<typeof sectionsOf>) => new Set(sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key)))
+  return { count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size, keys: [...newsIn(sectionsOf(snapshot, seen))] }
 }
 
 export async function inboxView($: EngineInterface) {

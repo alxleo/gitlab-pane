@@ -69,7 +69,7 @@ export type RowModel = {
    * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
    * would stop its wakes.
    */
-  pin: { key: string; label: 'pin' | 'unpin' } | null
+  pin: { key: string; label: 'pin' | 'unpin'; mr: Pinned } | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -92,8 +92,8 @@ export type PaneInput = {
   repoFilter: string
   /** Which view is drawn: only the MR list builds rows. */
   view: 'mine' | 'inbox' | 'reading'
-  /** The keys of the MRs with news in the inbox, Mine's or not. */
-  news: readonly string[]
+  /** MRs with news: how many the inbox shows, and the keys of all of them, in every repo, Mine's or not. */
+  news: { count: number; keys: readonly string[] }
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
@@ -175,12 +175,14 @@ function isQuiet(card: MrCard, facts: CardFacts): boolean {
 }
 
 /** What a row's pin press does: pin an MR not in this session, unpin one only watched there, nothing to one it raised. */
-function pinOf(pinned: Pinned | undefined, suffix: string): RowModel['pin'] {
+function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowModel['pin'] {
+  // The pin is made from the card's own host, project and number, so its key is the card's.
+  const mr = { url: card.url, host: card.host, path: card.path, iid: card.iid }
   if (pinned === undefined) {
-    return { key: `pin-${suffix}`, label: 'pin' }
+    return { key: `pin-${suffix}`, label: 'pin', mr }
   }
   // A pin kept from before origins were recorded counts as raised, as it wakes.
-  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, label: 'unpin' } : null
+  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, label: 'unpin', mr } : null
 }
 
 /** A row as data; its faces take their pictures where the room allows. */
@@ -229,6 +231,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
     isQuiet: isQuiet(card, facts),
     pin: pinOf(
+      card,
       input.pinned.find(one => pinKey(one) === card.key),
       suffix
     ),
@@ -257,10 +260,13 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   // This session's MRs keep the order they came in, so what the person pinned stays where they put it.
   const pinOrder = new Map(input.pinned.map((pin, i) => [pinKey(pin), i]))
   const session = shown.filter(row => pinOrder.has(row.key)).toSorted((a, b) => (pinOrder.get(a.key) ?? 0) - (pinOrder.get(b.key) ?? 0))
-  const news = new Set(input.news)
+  const news = new Set(input.news.keys)
   const rest = shown.filter(row => !pinOrder.has(row.key))
-  // News in the inbox brings a parked MR back whether or not GitLab moved its updated time.
-  const isParked = (card: MrCard) => !card.isDraft && now - Date.parse(card.updatedAt) >= PARKED_AFTER_MS && !news.has(card.key)
+  // GitLab leaves an MR's updated time alone when its pipeline runs, so the pipeline's own times count as a move too; news
+  // in the inbox brings a parked MR back whatever the times say.
+  const lastMoved = (card: MrCard) =>
+    Math.max(...[card.updatedAt, card.pipeline?.finishedAt ?? null, card.pipeline?.startedAt ?? null].flatMap(at => (at !== null ? [Date.parse(at)] : [])))
+  const isParked = (card: MrCard) => !card.isDraft && now - lastMoved(card) >= PARKED_AFTER_MS && !news.has(card.key)
   const mine = rest.filter(row => !row.isDraft && !isParked(row)).toSorted(order)
   const parked = rest.filter(isParked).toSorted(order)
   const drafts = rest.filter(row => row.isDraft).toSorted(order)
@@ -313,7 +319,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     tabs: {
       // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
       mine: `Mine · ${rows.length}`,
-      inbox: input.news.length > 0 ? `Inbox · ${input.news.length} new` : 'Inbox',
+      inbox: input.news.count > 0 ? `Inbox · ${input.news.count} new` : 'Inbox',
       isInbox,
     },
     repos: {
@@ -326,7 +332,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     mine: {
       // GitLab's word for an MR that is not a draft; the tab above already says Mine.
       heading: `Ready · ${mine.length}`,
-      isEmpty: mine.length === 0,
+      // Parked MRs are open too, so Ready says nothing is open only when none is parked.
+      isEmpty: mine.length === 0 && parked.length === 0,
       rows: rowsOf(mineShown),
       more: mine.length > MINE_SHOWN ? (showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`) : null,
       isMoreOpen: showMore,

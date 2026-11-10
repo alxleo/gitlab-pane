@@ -1,8 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
-import { pinMr, readHosts, readPinned, unpinKeys } from './data'
+import { pinMr, readPinned, unpinKeys } from './data'
 import { quietly } from './failures'
-import { parseMrUrl, pinKey } from './mr-url'
+import { pinKey } from './mr-url'
 import { isPublished, PINS_PREFIX, readPinsRecord, readSnapshot, REFRESH_KEY, SNAPSHOT_KEY, unionPins } from './snapshot.ts'
 import type { PinsRecord, Snapshot } from './snapshot.ts'
 
@@ -24,21 +24,19 @@ export async function saveSnapshot($: EngineInterface, snapshot: Snapshot): Prom
 const pinsKey = (session: string): string => `${PINS_PREFIX}${session}`
 
 /**
- * The person's pin from a card: puts the MR in this session, last, or takes it out again. It wakes nothing, as `watch_mr`
- * does not, and is published for the leader as every pin is.
+ * The person's pin from a card: `pin` puts the MR in this session, last, and `unpin` takes it out again. It does what the
+ * press said, against the pins as they are by then: an unpin leaves a pin this session raised meanwhile, so its wakes stay.
+ * It wakes nothing, as `watch_mr` does not, and is published for the leader as every pin is.
  */
-export function togglePin($: EngineInterface, key: string, url: string): void {
+export function togglePin($: EngineInterface, press: 'pin' | 'unpin', mr: Pinned): void {
   quietly(
     $,
     (async () => {
-      if ((await readPinned($)).some(one => pinKey(one) === key)) {
+      const key = pinKey(mr)
+      if (press === 'pin') {
+        await pinMr($, mr, 'watched')
+      } else if ((await readPinned($)).some(one => pinKey(one) === key && one.origin === 'watched')) {
         await unpinKeys($, [key])
-      } else {
-        const parsed = parseMrUrl(url, await readHosts($))
-        if (parsed === null) {
-          throw new Error(`Not a merge request URL on the hosts set: ${url}`)
-        }
-        await pinMr($, parsed, 'watched')
       }
       await publishPins($, await readPinned($))
     })()

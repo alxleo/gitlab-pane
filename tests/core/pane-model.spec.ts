@@ -26,7 +26,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       expanded: [],
       repoFilter: '',
       view: 'mine',
-      news: [],
+      news: { count: 0, keys: [] },
       poll: { fetchedAt: NOW, error: null, hosts: {} },
       isReading: false,
       isWaking: true,
@@ -193,7 +193,7 @@ test('with this session holding MRs, the rest fold to one line counting them and
   const cards = [held, other, news, failing(24)]
   const pinned = [pinOf(held)]
   // News from outside Mine is not counted among the folded.
-  const folded = modelOf(cards, { pinned, news: [news.key, 'gitlab.example.com/other/repo!9'] })
+  const folded = modelOf(cards, { pinned, news: { count: 2, keys: [news.key, 'gitlab.example.com/other/repo!9'] } })
   expect(folded.session.map(row => row.key)).toEqual([held.key])
   expect(folded.others).toEqual({ label: '▸ 3 others · 1 new', isOpen: false })
   expect(folded.mine.rows).toEqual([])
@@ -207,18 +207,24 @@ test('with this session holding MRs, the rest fold to one line counting them and
   expect(modelOf(cards).others).toBeNull()
 })
 
-test('a ready MR untouched for a week parks until it has news; a draft stays with the drafts', () => {
+test('a ready MR untouched for a week parks until its pipeline runs or it has news; a draft stays with the drafts', () => {
   const old = '2026-10-10T15:00:00Z'
-  const stale = toCard(HOST, rawMr(31, { updatedAt: old }))
-  const spoken = toCard(HOST, rawMr(32, { updatedAt: old }))
+  const untouched = (iid: number, over: Parameters<typeof rawMr>[1] = {}) =>
+    toCard(HOST, rawMr(iid, { updatedAt: old, headPipeline: pipe('FAILED', { startedAt: old, finishedAt: old }), ...over }))
+  const stale = untouched(31)
+  const spoken = untouched(32)
+  // GitLab leaves the updated time alone when a pipeline runs, so a pipeline that just failed counts as a move.
+  const rerun = untouched(35, { headPipeline: pipe('FAILED') })
   const fresh = toCard(HOST, rawMr(33))
-  const draft = toCard(HOST, rawMr(34, { updatedAt: old, draft: true }))
-  const model = modelOf([stale, spoken, fresh, draft], { news: [spoken.key] })
-  // News keeps the old one out of Parked, below the latest.
-  expect(model.mine.rows.map(row => row.key)).toEqual([fresh.key, spoken.key])
+  const draft = untouched(34, { draft: true })
+  const model = modelOf([stale, spoken, rerun, fresh, draft], { news: { count: 1, keys: [spoken.key] } })
+  expect(new Set(model.mine.rows.map(row => row.key))).toEqual(new Set([fresh.key, spoken.key, rerun.key]))
   expect(model.parked).toEqual({ label: '▸ Parked, untouched for a week · 1', isOpen: false, rows: [] })
   expect(model.drafts?.label).toBe('▸ Drafts · 1')
-  expect(modelOf([stale], { expanded: ['parked'] }).parked?.rows.map(row => row.key)).toEqual([stale.key])
+  // With every ready MR parked, Ready does not say nothing is open.
+  const allParked = modelOf([stale], { expanded: ['parked'] })
+  expect(allParked.parked?.rows.map(row => row.key)).toEqual([stale.key])
+  expect(allParked.mine.isEmpty).toBe(false)
 })
 
 test("this session's MRs keep the order they came in; one it raised has no unpin, so its wakes cannot be dropped by a press", () => {

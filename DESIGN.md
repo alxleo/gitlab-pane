@@ -45,7 +45,7 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 | This session | the MRs this session raised, watched or you pinned, in the order they came | `buildPane` |
 | `▸ N others` | while This session holds any, every other MR folds behind one line saying how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
 | Ready | the open MRs, most pressing first, ten until `▸ more` | `MINE_SHOWN` |
-| Parked | a ready MR untouched for a week with no news in the inbox; a comment or a push, or news, brings it back | `PARKED_AFTER_MS` |
+| Parked | a ready MR untouched for a week, its pipeline included, with no news in the inbox; a comment, a push, a pipeline run or news brings it back | `PARKED_AFTER_MS` |
 | Drafts | GitLab's drafts, folded | `buildPane` |
 
 ## Merge checks

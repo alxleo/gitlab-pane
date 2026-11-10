@@ -22,7 +22,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
   // a Link's text and a Button's label, never styled Text inside them. The title opens the MR's page, so it is a plain
   // Button, not a link-blue title that reads as leaving for GitLab (🔀 !iid does that).
   switch (part) {
-    case 'line1':
+    case 'line1': {
+      const { pin } = row
       return (
         <Box flexDirection="row" gap={1} alignItems="center">
           <Box flexGrow={1} flexShrink={1}>
@@ -44,9 +45,10 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
-          {row.pin !== null && <Button key={row.pin.key} plain dimColor label={row.pin.label} onPress={() => togglePin($, row.key, row.mr.href)} />}
+          {pin !== null && <Button key={pin.key} plain dimColor label={pin.label} onPress={() => togglePin($, pin.label, pin.mr)} />}
         </Box>
       )
+    }
     case 'line2':
     case 'faces': {
       const withPictures = part === 'faces'
