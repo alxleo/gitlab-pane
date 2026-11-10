@@ -69,6 +69,10 @@ test("GitLab's own merge checks give the verdict: its first failing check in wor
   expect(said(gitlabSays({ CONFLICT: 'failed' }))).toEqual(['conflict', 'error'])
   expect(said(gitlabSays({ NEED_REBASE: 'failed' }))).toEqual(['need rebase', 'warning'])
   expect(said(gitlabSays({ DISCUSSIONS_NOT_RESOLVED: 'failed' }))).toEqual(['discussions not resolved', 'warning'])
+  // Unresolved threads it has read, it counts, as it counts approvals.
+  const threads = { discussions: { nodes: [thread('Rename this.', 'bob'), thread('And this.', 'alice')] } }
+  const counted = verdictOf({ ...toCard(HOST, rawMr(1, threads)), mergeStatus: gitlabSays({ DISCUSSIONS_NOT_RESOLVED: 'failed' }) })
+  expect(counted?.words).toBe('2 open threads')
   expect(said(gitlabSays({ REQUESTED_CHANGES: 'failed' }))).toEqual(['requested changes', 'error'])
   expect(said(gitlabSays({ MERGE_TIME: 'failed' }))).toEqual(['merge time', 'subtle'])
   expect(said(gitlabSays({ SECURITY_POLICY_VIOLATIONS: 'failed' }))).toEqual(['security policy violations', 'error'])
