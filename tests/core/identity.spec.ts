@@ -57,11 +57,14 @@ test('initials never cut a character the way a person sees it: an accented lette
   expect(initials('\u{938}\u{94D}\u{924}\u{94D}\u{930} \u{915}')).toBe('\u{938}\u{94D}\u{924}\u{94D}\u{930}\u{915}')
 })
 
-test('an initial keeps the first five UTF-16 units of its character, so an accent stays and a hundred thousand marks do not', () => {
+test('an initial keeps a character in five UTF-16 units: an accent stays, a hundred thousand marks do not and a joined emoji is cut to its first code point', () => {
   const marked = (letter: string) => `${letter}${'\u{301}'.repeat(100_000)}`
   // Each initial is one letter with its first four marks; the rest of the marks are not carried into the card.
   expect(initials(`${marked('a')} ${marked('b')}`)).toBe(`A${'\u{301}'.repeat(4)}B${'\u{301}'.repeat(4)}`)
   expect(initials(marked('a'), '', true)).toBe(`A${'\u{301}'.repeat(4)}`)
+  // A person with a skin tone and red hair is seven units, over the five: it is cut to the person, never to the person, the
+  // skin tone and a joiner that waits for the hair.
+  expect(initials('', 'a\u{1F9D1}\u{1F3FD}\u{200D}\u{1F9B0}')).toBe('A\u{1F9D1}')
 })
 
 test('a first name ends at a space, dot or underscore, not a hyphen', () => {
