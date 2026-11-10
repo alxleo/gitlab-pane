@@ -493,11 +493,16 @@ interface Restriction {
   readonly reason: string
 }
 
+/** A restriction as the config writes it, or null when a field is missing, misspelled or of the wrong kind. */
 function restrictionOf(value: unknown): Restriction | null {
-  if (!isRecord(value) || typeof value['module'] !== 'string' || typeof value['reason'] !== 'string' || !Array.isArray(value['allowed'])) {
+  if (!isRecord(value) || Object.keys(value).some(key => !['allowed', 'module', 'reason'].includes(key))) {
     return null
   }
-  return { allowed: value['allowed'].filter(each => typeof each === 'string'), module: value['module'], reason: value['reason'] }
+  const { allowed, module, reason } = value
+  if (typeof module !== 'string' || typeof reason !== 'string' || !Array.isArray(allowed) || allowed.length === 0 || !allowed.every(each => typeof each === 'string')) {
+    return null
+  }
+  return { allowed: allowed.filter(each => typeof each === 'string'), module, reason }
 }
 
 /**
@@ -512,14 +517,14 @@ const onlyImporters = defineRule({
     messages: {
       name: '{{name}} may be imported only by {{allowed}}: {{reason}}',
       namespace: 'A namespace import of {{module}} reaches {{name}}, which only {{allowed}} may use: {{reason}}',
+      malformed: 'The only-importers option for {{name}} needs `allowed` (file endings), `module` and `reason`; until it has them, nothing keeps {{name}} to its importers.',
     },
   },
   create(context) {
     const listed = optionsOf(context)['restricted']
-    const restricted = (isRecord(listed) ? Object.entries(listed) : []).flatMap(([name, value]) => {
-      const rule = restrictionOf(value)
-      return rule !== null ? [{ name, rule }] : []
-    })
+    const entries = (isRecord(listed) ? Object.entries(listed) : []).map(([name, value]) => ({ name, rule: restrictionOf(value) }))
+    const restricted = entries.flatMap(({ name, rule }) => (rule !== null ? [{ name, rule }] : []))
+    const malformed = entries.filter(({ rule }) => rule === null).map(({ name }) => name)
     const file = fileOf(context)
     const refuse = (node: Node, name: string, rule: Restriction, messageId: 'name' | 'namespace'): void => {
       if (!rule.allowed.some(ending => file.endsWith(ending))) {
@@ -528,6 +533,12 @@ const onlyImporters = defineRule({
     }
     const endsModule = (source: string, rule: Restriction): boolean => source === rule.module || source.endsWith(`/${rule.module}`) || source.endsWith(`/${rule.module}.ts`)
     return {
+      // A restriction the config gets wrong is said in every file, so the rule cannot drop out unseen.
+      Program(program) {
+        for (const name of malformed) {
+          context.report({ node: program, messageId: 'malformed', data: { name } })
+        }
+      },
       ImportSpecifier(node) {
         for (const { name, rule } of restricted) {
           if (exportName(node.imported) === name) {
@@ -557,7 +568,8 @@ const onlyImporters = defineRule({
  * What the core may import: core files, each by its `.ts` path (tools/gitlab_schema.ts runs gitlab-documents.ts under plain
  * Node, which needs the extension), the types contract (`../types`), and no part of the engine (`claude-code`). The core is
  * what tsconfig.core.json includes, read when the rule starts; a file outside it is not checked. Every way a module is
- * named counts: `import`, `export … from`, `export * from` and `import()`, whose argument must then be written out.
+ * named counts: `import`, `export … from`, `export * from`, `import x = require()`, a type's `import('…')`, and `import()`,
+ * whose argument must then be written out.
  */
 const coreImports = defineRule({
   meta: {
@@ -607,6 +619,12 @@ const coreImports = defineRule({
           context.report({ node, messageId: 'unnamed' })
         }
       },
+      TSImportEqualsDeclaration(node) {
+        if (node.moduleReference.type === 'TSExternalModuleReference') {
+          check(node, node.moduleReference.expression.value)
+        }
+      },
+      TSImportType: node => check(node, node.source.value),
     }
   },
 })

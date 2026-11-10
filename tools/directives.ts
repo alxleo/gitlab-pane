@@ -7,15 +7,18 @@ import { parseSync } from 'oxc-parser'
 /** The files a directive could steer: JavaScript and TypeScript, modules and scripts. */
 export const SCRIPT = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
-// oxlint's and ESLint's own: `oxlint-disable…`, `eslint-disable…`, `eslint-enable`, `eslint-env`, `/* eslint rule: … */`.
-const LINTER = /^\s*(?:eslint|oxlint)(?:-[a-z-]+)?(?:\s|$)/
-// ESLint's declarations, which it reads from block comments only: `/* global a */`, `/* globals a */`, `/* exported a */`.
-const DECLARATION = /^\s*(?:globals?|exported)(?:\s|$)/
+// oxlint's and ESLint's switches, in any comment: `oxlint-disable`, `-disable-line`, `-disable-next-line`, `-enable`, and
+// ESLint's `eslint-env`. Matched without regard to case, which is wider than either linter reads them.
+const SWITCH = /^\s*(?:eslint|oxlint)-(?:disable(?:-next-line|-line)?|enable|env)(?:\s|$)/i
+// What ESLint reads from block comments only: rule settings (`/* eslint no-console: off */`) and its declarations
+// (`/* global a */`, `/* globals a */`, `/* exported a */`). In a line comment the same first word is prose, and oxlint
+// reads no settings from `/* oxlint … */`, so that is prose too.
+const BLOCK = /^\s*(?:eslint|globals?|exported)(?:\s|$)/i
 
 /** Each linter directive among the comments of a script, as `file:line: what`. Strings and code are not comments. */
 export function directivesIn(name: string, text: string): string[] {
   return parseSync(name, text)
-    .comments.filter(comment => LINTER.test(comment.value) || (comment.type === 'Block' && DECLARATION.test(comment.value)))
+    .comments.filter(comment => SWITCH.test(comment.value) || (comment.type === 'Block' && BLOCK.test(comment.value)))
     .map(comment => {
       const line = text.slice(0, comment.start).split('\n').length
       const word = comment.value.trim().split(/\s/)[0] ?? ''

@@ -28,6 +28,18 @@ describe('linter directives in comments', () => {
     expect(directivesIn('hooks/a.ts', '// global state lives in atoms, never in a module\nexport {}\n')).toEqual([])
   })
 
+  it("a wrapped comment whose line starts with the linter's name is prose, not a directive", () => {
+    const text = ['// The gate is', '// oxlint over every file, and', '// eslint is gone; the eslint-comments plugin went with it.', '/* oxlint runs on TypeScript 7 */', ''].join(
+      '\n'
+    )
+    expect(directivesIn('hooks/a.ts', text)).toEqual([])
+  })
+
+  it('oxlint obeys a directive written without spaces or with a reason after it, and each is refused', () => {
+    const text = ['/*oxlint-disable*/', '//oxlint-disable-next-line', 'export const a = 1 // oxlint-disable-line -- the reason', '/* oxlint-enable */', ''].join('\n')
+    expect(directivesIn('hooks/a.ts', text)).toHaveLength(4)
+  })
+
   it('a directive written in a string is not a comment and passes', () => {
     expect(directivesIn('hooks/a.ts', "export const a = '/* oxlint-disable */'\nexport const b = `// eslint-disable-line`\n")).toEqual([])
   })
