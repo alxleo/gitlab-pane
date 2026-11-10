@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/alxleo/gitlab-pane/compare/v0.3.0...v0.4.0) (2026-11-10)
+
+
+### Features
+
+* a card's title opens its MR's page, and nothing on the list waits for a hover ([#74](https://github.com/alxleo/gitlab-pane/issues/74)) ([bd12369](https://github.com/alxleo/gitlab-pane/commit/bd12369ba822b8a2f2c099feae7c5f23d7f63c9a))
+
+
+### Bug Fixes
+
+* turn on oxlint's correctness rules, and cut display text by graphemes ([#73](https://github.com/alxleo/gitlab-pane/issues/73)) ([1218164](https://github.com/alxleo/gitlab-pane/commit/12181644b5dbe84520f21fbf7c86ba7e64ba8da6))
+
 ## [0.3.0](https://github.com/alxleo/gitlab-pane/compare/v0.2.1...v0.3.0) (2026-11-10)
 
 

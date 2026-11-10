@@ -10,20 +10,21 @@ import { drawInbox } from './inbox-pane'
 import { kitOf } from './kit'
 import { buildPane } from './pane-model'
 import type { Piece, RowModel } from './pane-model'
+import { pageHead } from './page-lines'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
 import { withDetail } from './slim'
 import { view } from './view'
 
-/** The GitLab pane: what each MR waits on at a glance, its detail a pointer away. It draws; the modules beside it hold the state. */
+/** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, now } = await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
   const isInbox = tab === 'inbox'
-  // The cards are the shared ones; an opened card has its description and threads put back (detail.ts reads them).
+  // The cards are the shared ones; the MR read whole has its description and threads put back (detail.ts reads them).
   const cards = rows.map(row => withDetail(row, details[row.key]))
   const reading = cards.find(row => row.key === page)
 
@@ -41,19 +42,15 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     return made
   }
   const sizeOf = (row: RowModel, piece: Piece): number => {
-    // A JSON array of two costs the two and three characters between and around them.
+    // A JSON array of three costs the three and four characters between and around them.
     switch (piece) {
       case 'head':
-        return partOf(row, 'line1').size + partOf(row, 'line2').size + 3
+        return partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4
       case 'line2':
         return partOf(row, 'line2').size
-      case 'cards':
-        return partOf(row, 'under1').size + partOf(row, 'under2').size + 3
       case 'faces':
-        return partOf(row, 'faces').size
-      case 'detail':
       default:
-        return partOf(row, 'detail').size
+        return partOf(row, 'faces').size
     }
   }
 
@@ -62,11 +59,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       cards,
       avatars,
       pinned,
-      tickets,
       usual,
       browse,
       expanded,
-      chosen,
       repoFilter,
       view: isInbox ? 'inbox' : reading !== undefined ? 'reading' : 'mine',
       news: await inboxNews($),
@@ -88,19 +83,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // The colour is the review, in the stage squares' own colours, brighter than the theme's tones; the heavier line
     // is an MR that needs you.
     return (
-      <Box
-        key={row.boxKey}
-        flexDirection="column"
-        borderStyle={row.border.style}
-        borderColor={row.border.colour}
-        hover={row.canOpen ? { borderColor: 'claude' } : undefined}
-        paddingX={1}
-      >
+      <Box key={row.boxKey} flexDirection="column" borderStyle={row.border.style} borderColor={row.border.colour} hover={{ borderColor: 'claude' }} paddingX={1}>
         {partOf(row, 'line1').element}
-        {fit.hasCards && partOf(row, 'under1').element}
         {fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element}
-        {fit.hasCards && partOf(row, 'under2').element}
-        {row.hasDetail && (fit.hasDetail ? partOf(row, 'detail').element : <Text dimColor>Too much is open to draw this too; close another row.</Text>)}
+        {partOf(row, 'said').element}
       </Box>
     )
   }
@@ -138,7 +124,16 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     ) : null
   const body =
     reading !== undefined
-      ? [back('back-top'), ...drawReading($, e, reading, folds, now), back('back-bottom')]
+      ? [
+          back('back-top'),
+          ...drawReading($, e, reading, {
+            folds,
+            focus: chosen[reading.key] ?? '',
+            head: pageHead(reading, { tickets, browse, failures }),
+            now,
+          }),
+          back('back-bottom'),
+        ]
       : [
           <Box flexDirection="row" columnGap={1} alignItems="center">
             <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />

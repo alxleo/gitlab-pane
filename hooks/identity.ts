@@ -4,8 +4,8 @@
 import { leading } from './graphemes.ts'
 
 /**
- * A string's hash, stable across runs; the key of a hover scope and the pick of a colour both come from it. It runs over
- * UTF-16 code units: where one character ends does not matter to a hash.
+ * A string's hash, stable across runs; short keys and the pick of a colour both come from it. It runs over UTF-16 code
+ * units: where one character ends does not matter to a hash.
  */
 export function hash(text: string): number {
   let value = 7
@@ -15,7 +15,7 @@ export function hash(text: string): number {
   return value
 }
 
-/** Keeps a hover scope or key short whatever the project path or username. */
+/** Keeps a key short whatever the project path or username. */
 export const shortHash = (text: string): string => hash(text).toString(36)
 
 /** Fills for initials discs, picked by username so a person keeps one colour wherever they appear. */

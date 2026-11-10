@@ -13,7 +13,7 @@ const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/u
 /** The JQL `acli jira workitem search` takes for these keys; anything that is not a key is left out. */
 export const ticketQuery = (keys: readonly string[]): string => `key in (${keys.filter(key => TICKET_KEY.test(key)).join(', ')})`
 
-/** The fields a ticket's hover card shows, as `acli` names them. */
+/** The fields an MR's page shows of its ticket, as `acli` names them. */
 export const TICKET_FIELDS = 'key,issuetype,status,summary'
 
 /** `acli jira workitem search --json` rows, Jira's own issue shape, by key; throws when the answer is not a list. */

@@ -46,7 +46,7 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
   expect(README.runs).toEqual([
     // The leader's read of your MRs: while a pinned pipeline runs, otherwise, the first back-off and the most; the whole list.
     [pollEvery(0, true), pollEvery(0, false), pollEvery(1, false), BACKOFF_MAX_MS, FULL_EVERY_MS],
-    // an opened card, read whole once
+    // an MR's page, read whole once
     [],
     // a raised MR in a session that draws no pane
     [WAKE_ONLY_EVERY_MS],

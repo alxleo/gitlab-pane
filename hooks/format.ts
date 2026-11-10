@@ -1,5 +1,5 @@
 import { shorten } from './graphemes.ts'
-import { cutMarkdown, flatOf, type MarkdownText } from './markdown.ts'
+import { flatOf } from './markdown.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
 
@@ -7,18 +7,28 @@ import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
-/** The first line worth reading, without its Markdown marks. */
-export function excerpt(body: GitLabMarkdown, room = 160): string {
-  const first =
-    flatOf(body)
-      .split('\n')
-      .find(text => text.replace(/[#*_>\s-]/gu, '').length > 0) ?? ''
-  return shorten(first.replace(/^[#>\s]+|[*_`]/gu, '').trim(), room)
+/** A body's lines of prose: code blocks (a suggestion is one) left out, a link's words kept without its address, pictures dropped. */
+function proseLines(body: GitLabMarkdown): string[] {
+  const kept: string[] = []
+  let isCode = false
+  for (const text of flatOf(body).split('\n')) {
+    if (/^\s*(```|~~~)/u.test(text)) {
+      isCode = !isCode
+    } else if (!isCode) {
+      kept.push(text.replace(/!\[[^\]]*\]\([^)]*\)/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1'))
+    }
+  }
+  return kept
 }
 
-/** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
-export function bodyOf(text: GitLabMarkdown, room = 1_200): MarkdownText {
-  return cutMarkdown(flatOf(text), room)
+/**
+ * The first line worth reading, as plain words cut between characters: without Markdown's marks, and empty for a body of
+ * code or pictures alone.
+ */
+export function excerpt(body: GitLabMarkdown, room = 160): string {
+  const first = proseLines(body).find(text => text.replace(/[#*_>\s-]/gu, '').length > 0) ?? ''
+  // Underscores stay: in a review they are mostly names (`fn_name`), rarely emphasis.
+  return shorten(first.replace(/^[#>\s]+|[*`]/gu, '').trim(), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */
