@@ -1096,7 +1096,7 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
     await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
     expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
-    expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('gitlab.com/g/q')
+    expect((await ui.find({ type: 'Select', key: 'repo' }))?.props).toMatchObject({ label: '📁', value: 'gitlab.com/g/q' })
     // Picking the repo already picked keeps it.
     await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
     expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
@@ -1108,6 +1108,8 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
   // A phone draws a picker only when its app asked for one, which the pane cannot tell, so there the repos are buttons.
   const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
   expect(await phone.find({ type: 'Select' })).toBeUndefined()
+  expect(await phone.find({ type: 'Text', text: '📁' })).toBeDefined()
+  expect((await phone.find({ type: 'Button', key: 'repo-all' }))?.props.label).toBe('All')
   await phone.press({ key: 'repo-gitlab.com/g/q' })
   expect((await phone.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
   expect((await phone.find({ type: 'Button', key: 'repo-gitlab.com/g/q' }))?.props.variant).toBe('primary')

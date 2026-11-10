@@ -187,7 +187,7 @@ test("the Mine tab and the repos count the same MRs, and this session's, the rea
       const tab = countOf(model.tabs.mine)
       // All counts nothing the tab beside it does not; the repos it offers add up to the tab, and with one there is none.
       const [all, ...each] = model.repos?.choices ?? []
-      expect(all?.label ?? 'All repos').toBe('All repos')
+      expect(all?.label ?? 'All').toBe('All')
       expect(each.length !== 1).toBe(true)
       expect(each.reduce((sum, repo) => sum + countOf(repo.label), 0)).toBe(model.repos !== null ? tab : 0)
       expect(new Set(full.filter(card => !hasLeft(card)).map(card => card.project)).size > 1).toBe(model.repos !== null)
@@ -222,19 +222,21 @@ test('with this session holding MRs, the rest fold to one line counting them and
   expect(modelOf(cards).others).toBeNull()
 })
 
-test('the repo filter offers All and each repo with its count, the picked one current; one repo, or a pick whose MRs are gone, filters nothing', () => {
+test('the repo filter is 📁 with All and each repo with its count, the picked one current: one repo, or a pick whose MRs are gone, filters nothing', () => {
   const inRepo = (path: string, iid: number) => toCard(HOST, rawMr(iid, { project: project(path) }))
   const lone = inRepo('g/billing-api', 1)
   const cards = [lone, inRepo('g/storefront', 2), inRepo('g/billing-api', 3), inRepo('g/infra', 4)]
   const billing = projectOf(HOST, 'g/billing-api')
   const all = modelOf(cards).repos
   expect(all?.choices).toEqual([
-    { value: REPO_ALL, label: 'All repos' },
+    { value: REPO_ALL, label: 'All' },
     { value: billing, label: 'billing-api · 2' },
     { value: projectOf(HOST, 'g/storefront'), label: 'storefront · 1' },
     { value: projectOf(HOST, 'g/infra'), label: 'infra · 1' },
   ])
   expect(all?.value).toBe(REPO_ALL)
+  // The repo's own mark, as on a card's repo link, says what is picked between, so All needs no word for it.
+  expect(all?.mark).toBe('📁')
   // A pick is the repo itself, All none; the list narrows to the picked repo.
   expect(pickedRepo(REPO_ALL)).toBe('')
   expect(pickedRepo(billing)).toBe(billing)

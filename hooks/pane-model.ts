@@ -118,8 +118,8 @@ export type PaneInput = {
 
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
-  /** All, then each repo by how many MRs it holds, and the one picked; none with fewer than two repos to pick between. */
-  repos: { value: string; choices: { value: string; label: string }[] } | null
+  /** 📁, then All and each repo by how many MRs it holds, and the one picked; none with fewer than two repos to pick between. */
+  repos: { mark: string; value: string; choices: { value: string; label: string }[] } | null
   /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
   /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
@@ -343,12 +343,14 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
       inbox: input.news.count > 0 ? `Inbox · ${input.news.count} new` : 'Inbox',
       isInbox,
     },
-    // All counts nothing: the Mine tab beside it already says how many.
+    // The repo link's mark says what is picked between, so All needs no word for it, and counts nothing: the Mine tab beside
+    // it already says how many.
     repos:
       repos.length > 1
         ? {
+            mark: LINK.repo,
             value: input.repoFilter === '' ? REPO_ALL : input.repoFilter,
-            choices: [{ value: REPO_ALL, label: 'All repos' }, ...repos.map(([project, count]) => ({ value: project, label: `${repoName(project)} · ${count}` }))],
+            choices: [{ value: REPO_ALL, label: 'All' }, ...repos.map(([project, count]) => ({ value: project, label: `${repoName(project)} · ${count}` }))],
           }
         : null,
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),

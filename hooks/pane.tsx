@@ -115,9 +115,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     repos === null
       ? []
       : Select !== undefined
-        ? [<Select key="repo" options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />]
+        ? [<Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />]
         : [
-            <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+              <Text>{repos.mark}</Text>
               {repos.choices.map(choice => (
                 <Button
                   key={`repo-${choice.value}`}
