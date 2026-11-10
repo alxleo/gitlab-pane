@@ -1,7 +1,7 @@
 // A card as the sessions share it. Every session draws the cards one of them read, so the cards pass through the store
-// (a file all sessions rewrite whole, capped at 4 MiB) and through `$.state`, and a card is kept to what a row, a hover
-// card and a wake say. What only an opened card or a page says (the description, the threads' words, the jobs that
-// neither failed nor wait) is read again for the one card the person opens: `withDetail` puts it back. Pure.
+// (a file all sessions rewrite whole, capped at 4 MiB) and through `$.state`, and a card is kept to what a row and a wake
+// say. What only an MR's page says (the description, the threads' words, the jobs that neither failed nor wait) is read
+// again for the one MR the person opens: `withDetail` puts it back. Pure.
 import { excerpt } from './format.ts'
 import { cleanBody } from './gitlab.ts'
 import { listedJobs } from './job-lines.ts'
@@ -19,7 +19,7 @@ const quoted = (note: Note, card: MrCard): Note => ({
   isOpen: note.isOpen,
 })
 
-/** The most jobs, and open threads, a shared card keeps by name; it counts the rest, and an opened card is read whole. */
+/** The most jobs, and open threads, a shared card keeps by name; it counts the rest, and an MR's page reads it whole. */
 const SHARED_KEPT = 3
 
 /**

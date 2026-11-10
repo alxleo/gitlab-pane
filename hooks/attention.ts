@@ -45,7 +45,7 @@ export function reviewTone(card: MrCard): Tone {
 type BadgeKind = 'failed' | 'check' | 'conflicts' | 'changes' | 'threads' | 'rebase' | 'manual' | 'amber' | 'bots' | 'approvals' | 'ready'
 
 /**
- * One marker on a row's second line: a glyph and a count, its detail on hover; `words` is what a model reads. `check` is
+ * One marker on a row's second line: a glyph and a count, its detail on the MR's page; `words` is what a model reads. `check` is
  * the GitLab merge check (by its identifier) that the marker is, or that it gives the detail of.
  */
 export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string; words: string; check?: string }

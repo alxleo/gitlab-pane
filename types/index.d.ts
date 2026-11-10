@@ -97,7 +97,10 @@ export type Person = {
   state: PersonState
   /** Threads they started that are still unresolved. */
   openThreads: number
-  /** Their notes, those in unresolved threads first, then newest first. A card shared between sessions keeps the first alone, as an excerpt. */
+  /**
+   * Their notes: the unresolved threads they started first, then their other notes in unresolved threads, then the rest,
+   * newest first within each. A card shared between sessions keeps the first alone, as an excerpt.
+   */
   notes: Note[]
   /** How many notes they wrote on the MR, whatever `notes` holds. */
   noteCount: number
@@ -118,7 +121,7 @@ export type MrCard = {
   iid: number
   title: string
   author: string
-  /** Empty on a card shared between sessions, which keeps `lead` and `hasDescription`; the whole text is fetched when the card is opened. */
+  /** Empty on a card shared between sessions, which keeps `lead` and `hasDescription`; the whole text is fetched when the MR's page is opened. */
   description: GitLabMarkdown
   /** The description's first paragraph as one plain line. */
   lead: string
@@ -358,9 +361,9 @@ export type Problems = { [Source in ProblemSource]?: { message: string; kind: Fa
 
 /** What the person chose in the pane: one value, so a drawing reads it once and a choice that touches two things redraws once. */
 export type Choices = {
-  /** Card keys drawn open, `drafts` and `more` when those folds are open. */
+  /** `drafts` and `more` when those folds of the list are open. */
   expanded: string[]
-  /** Per open card key, the one person whose comments it shows. */
+  /** By the card key of the MR read whole, the one person whose comments its page shows; empty for the whole MR. */
   person: Record<string, string>
   /** `<details>` folds drawn the other way from how GitLab first shows them, as `<card key>#<where>`. */
   folds: string[]

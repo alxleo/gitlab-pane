@@ -5,8 +5,8 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 | Mine: your MRs, what needs you first | Inbox: reviews, mentions, failures |
 |---|---|
 | ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
-| **A card opened** | **`read whole ›`** |
-| ![An opened card](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-open.png) | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) |
+| **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
+| ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
 
 <sub>Made-up data.</sub>
 
@@ -72,7 +72,7 @@ Queries only, as you: nothing is written to GitLab or Jira.
 | Runs | How often | For | Writes (plugin store) |
 |---|---|---|---|
 | GraphQL, per host, by the leader | 30 s while a pinned pipeline runs, else 1 min; after reads where every host failed, 2 min doubling to 10 min; the whole list every 5 min, only what changed between | your open MRs and their merge checks; running and pinned ones not among them, one by one | the snapshot every session draws |
-| GraphQL, one MR | once when you open its card, again when it changes | its description and threads, for this pane only | — |
+| GraphQL, one MR | once when you open its page, again when it changes | its description and threads, for this pane only | — |
 | GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
 | GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
 | GraphQL, per host, by the leader | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |

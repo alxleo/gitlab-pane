@@ -69,15 +69,15 @@ async function scrollPane($: EngineInterface, args: Omit<UiScrollArgs, 'in'>): P
 }
 
 /**
- * Opens one MR whole on a page of its own, drawn alone over the tab it was opened from. The list moves to its top
- * first: the desktop tells the engine where its buttons sit only when its window moves, so a page opened after that
- * leaves the engine knowing where the card's title is for the way back.
+ * Opens one MR whole on a page of its own, drawn alone over the tab it was opened from, on one person's comments when
+ * `username` names them. The list moves to its top first: the desktop tells the engine where its buttons sit only when
+ * its window moves, so a page opened after that leaves the engine knowing where the card's title is for the way back.
  */
-export function openReading($: EngineInterface, key: string): void {
+export function openReading($: EngineInterface, key: string, username = ''): void {
   quietly(
     $,
     scrollPane($, { to: 'start' })
-      .then(() => setPage($, key))
+      .then(() => setPage($, key, username))
       .then(() => openPane($))
       .then(() => ensureDetail($, key))
   )
