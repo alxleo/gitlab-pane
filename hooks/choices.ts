@@ -84,11 +84,11 @@ export function toggleFold($: EngineInterface, id: string): void {
   )
 }
 
-/** Narrows the list to one repo; the same repo again, or none, shows them all. */
+/** Narrows the list to one repo, or with none shows them all. Picking the repo already picked keeps it. */
 export function filterRepo($: EngineInterface, project: string): void {
   quietly(
     $,
-    change($, choices => ({ ...choices, repoFilter: choices.repoFilter === project ? '' : project }))
+    change($, choices => ({ ...choices, repoFilter: project }))
   )
 }
 

@@ -28,6 +28,12 @@ const PARKED_AFTER_MS = 7 * 86_400_000
 /** The least a row can draw to; with less room than this, no row is tried. */
 const ROW_FLOOR = 300
 
+/** The value the repo filter's All is picked by; a repo's is its project, `host/path`, which has a `/` and so is never this. */
+export const REPO_ALL = 'all'
+
+/** The repo a pick of the filter narrows the list to: its project, or none for All. */
+export const pickedRepo = (value: string): string => (value === REPO_ALL ? '' : value)
+
 type Link = { href: string; text: string }
 
 export type PersonRow = {
@@ -106,7 +112,8 @@ export type PaneInput = {
 
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
-  repos: { all: { label: string; isActive: boolean }; each: { project: string; label: string; isActive: boolean }[] }
+  /** All, then each repo by how many MRs it holds, and the one picked; none with fewer than two repos to pick between. */
+  repos: { value: string; choices: { value: string; label: string }[] } | null
   /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
   /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
@@ -251,12 +258,15 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
  * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
  * a row, once.
  */
-export function buildPane(input: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
+export function buildPane(given: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
   // GitLab says an MR is no longer open before the authored list drops it.
-  const rows = input.cards.filter(row => !hasLeft(row))
-  const pinnedKeys = new Set(input.pinned.map(pinKey))
+  const rows = given.cards.filter(row => !hasLeft(row))
   const counts = rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())
   const repos = [...counts].toSorted((a, b) => b[1] - a[1])
+  // A pick narrows the list only while there are repos to pick between and its own still has MRs; else the list is whole,
+  // so a pick kept from before never hides MRs behind a filter that is not drawn or does not offer it.
+  const input = { ...given, repoFilter: repos.length > 1 && counts.has(given.repoFilter) ? given.repoFilter : '' }
+  const pinnedKeys = new Set(input.pinned.map(pinKey))
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
   const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
@@ -328,10 +338,14 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       inbox: input.news.count > 0 ? `Inbox · ${input.news.count} new` : 'Inbox',
       isInbox,
     },
-    repos: {
-      all: { label: `All ${rows.length}`, isActive: input.repoFilter === '' },
-      each: repos.map(([project, count]) => ({ project, label: `${repoName(project)} ${count}`, isActive: input.repoFilter === project })),
-    },
+    // All counts nothing: the Mine tab beside it already says how many.
+    repos:
+      repos.length > 1
+        ? {
+            value: input.repoFilter === '' ? REPO_ALL : input.repoFilter,
+            choices: [{ value: REPO_ALL, label: 'All repos' }, ...repos.map(([project, count]) => ({ value: project, label: `${repoName(project)} · ${count}` }))],
+          }
+        : null,
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
@@ -348,7 +362,9 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       parked.length > 0 ? { label: `${showParked ? '▾' : '▸'} Parked, untouched for a week · ${parked.length}`, isOpen: showParked, rows: showParked ? rowsOf(parked) : [] } : null,
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
-      built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
+      built.length - finished.size > 0
+        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 ? '; pick a repo above to see them' : ''}.`
+        : null,
     status: statusOf(input.poll, now),
     isRefreshing: input.isReading || input.isSyncing,
     footer: footerOf(input.poll, now),

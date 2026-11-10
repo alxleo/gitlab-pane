@@ -3,15 +3,15 @@ import fc from 'fast-check'
 
 import { hasLeft } from '../../hooks/attention.ts'
 import { firstRunLines } from '../../hooks/first-run.ts'
-import { cardKey } from '../../hooks/hosts.ts'
+import { cardKey, projectOf } from '../../hooks/hosts.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 import { toCard } from '../../hooks/gitlab.ts'
-import { buildPane, MINE_SHOWN } from '../../hooks/pane-model.ts'
+import { buildPane, MINE_SHOWN, pickedRepo, REPO_ALL } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { slimCard } from '../../hooks/slim.ts'
 import { STAGE_COLOURS } from '../../hooks/status.ts'
 import { readCardArb } from './arbitrary.ts'
-import { HOST, NOW, gitlabSays, pipe, rawMr, thread } from '../fixtures.ts'
+import { HOST, NOW, gitlabSays, pipe, project, rawMr, thread } from '../fixtures.ts'
 import type { MrCard } from '../../types'
 
 /** The pane's model over these cards, every piece of a row costing `cost(piece)` characters. */
@@ -147,7 +147,8 @@ test('the model fills the room by what needs you; rows past the room are counted
       .toReversed()
       .slice(0, 3)
   )
-  expect(folded.leftOut).toBe('5 more MRs left out to stay within what the app draws; pick a repo above to see them.')
+  // All in one repo, there is none to pick to see the rest.
+  expect(folded.leftOut).toBe('5 more MRs left out to stay within what the app draws.')
 })
 
 test('while nothing has been read, one line per failing source says what to do, from the kind of failure and not its words', async () => {
@@ -170,7 +171,7 @@ const drawnRows = (cards: MrCard[]) => {
   return { session: model.session, mine: model.mine.rows, drafts: model.drafts?.rows ?? [], more: model.mine.more, leftOut: model.leftOut }
 }
 
-test("the Mine tab, All and the repos count the same MRs, and this session's, the ready, the parked and the drafts add up to them", () => {
+test("the Mine tab and the repos count the same MRs, and this session's, the ready, the parked and the drafts add up to them", () => {
   const countOf = (label: string | undefined) => Number(/(\d+)$/u.exec(label ?? '')?.[1] ?? NaN)
   fc.assert(
     fc.property(fc.array(readCardArb, { maxLength: 8 }), fc.array(fc.boolean(), { minLength: 8, maxLength: 8 }), (cards, isPinned) => {
@@ -180,8 +181,12 @@ test("the Mine tab, All and the repos count the same MRs, and this session's, th
       const model = modelOf(full, { pinned, expanded: ['drafts', 'parked', 'more', 'others'] }, () => 1)
       expect(model.session.length).toBe(pinned.filter(pin => full.some(card => card.key === pinKey(pin) && !hasLeft(card))).length)
       const tab = countOf(model.tabs.mine)
-      expect(countOf(model.repos.all.label)).toBe(tab)
-      expect(model.repos.each.reduce((sum, repo) => sum + countOf(repo.label), 0)).toBe(tab)
+      // All counts nothing the tab beside it does not; the repos it offers add up to the tab, and with one there is none.
+      const [all, ...each] = model.repos?.choices ?? []
+      expect(all?.label ?? 'All repos').toBe('All repos')
+      expect(each.length !== 1).toBe(true)
+      expect(each.reduce((sum, repo) => sum + countOf(repo.label), 0)).toBe(model.repos !== null ? tab : 0)
+      expect(new Set(full.filter(card => !hasLeft(card)).map(card => card.project)).size > 1).toBe(model.repos !== null)
       expect(model.session.length + countOf(model.mine.heading) + countOf(model.parked?.label ?? '0') + countOf(model.drafts?.label ?? '0')).toBe(tab)
       // Folded, the one line counts all but this session's; with nothing of this session's, nothing folds.
       const folded = modelOf(full, { pinned }, () => 1).others
@@ -196,7 +201,7 @@ const pinOf = (card: MrCard, origin: 'raised' | 'watched' = 'watched') => ({ url
 test('with this session holding MRs, the rest fold to one line counting them and their news; a picked repo shows its MRs', () => {
   const failing = (iid: number) => toCard(HOST, rawMr(iid, { headPipeline: pipe('FAILED') }))
   const [held, other, news] = [failing(21), failing(22), failing(23)]
-  const cards = [held, other, news, failing(24)]
+  const cards = [held, other, news, toCard(HOST, rawMr(24, { headPipeline: pipe('FAILED'), project: project('g/q') }))]
   const pinned = [pinOf(held)]
   // News from outside Mine is not counted among the folded.
   const folded = modelOf(cards, { pinned, news: { count: 2, keys: [news.key, 'gitlab.example.com/other/repo!9'] } })
@@ -209,8 +214,41 @@ test('with this session holding MRs, the rest fold to one line counting them and
   // The line that says rows were left out sends the person to a repo, which shows them unfolded.
   const picked = modelOf(cards, { pinned, repoFilter: held.project })
   expect(picked.others).toBeNull()
-  expect(picked.mine.rows).toHaveLength(3)
+  expect(picked.mine.rows).toHaveLength(2)
   expect(modelOf(cards).others).toBeNull()
+})
+
+test('the repo filter offers All and each repo with its count, the picked one current; one repo, or a pick whose MRs are gone, filters nothing', () => {
+  const inRepo = (path: string, iid: number) => toCard(HOST, rawMr(iid, { project: project(path) }))
+  const lone = inRepo('g/billing-api', 1)
+  const cards = [lone, inRepo('g/storefront', 2), inRepo('g/billing-api', 3), inRepo('g/infra', 4)]
+  const billing = projectOf(HOST, 'g/billing-api')
+  const all = modelOf(cards).repos
+  expect(all?.choices).toEqual([
+    { value: REPO_ALL, label: 'All repos' },
+    { value: billing, label: 'billing-api · 2' },
+    { value: projectOf(HOST, 'g/storefront'), label: 'storefront · 1' },
+    { value: projectOf(HOST, 'g/infra'), label: 'infra · 1' },
+  ])
+  expect(all?.value).toBe(REPO_ALL)
+  // A pick is the repo itself, All none; the list narrows to the picked repo.
+  expect(pickedRepo(REPO_ALL)).toBe('')
+  expect(pickedRepo(billing)).toBe(billing)
+  const picked = modelOf(cards, { repoFilter: billing })
+  expect(picked.repos?.value).toBe(billing)
+  expect(picked.mine.rows.map(row => row.key).toSorted()).toEqual([lone.key, cardKey(HOST, 'g/billing-api', 3)])
+  // A pick whose MRs have all gone shows every MR under All, so the filter never hides the list with nothing to clear it.
+  const gone = modelOf(cards, { repoFilter: projectOf(HOST, 'g/merged-away') })
+  expect(gone.repos?.value).toBe(REPO_ALL)
+  expect(gone.mine.rows).toHaveLength(4)
+  // One repo leaves nothing to pick between: no filter, and a pick kept from when there were more neither narrows nor unfolds.
+  const alone = [lone, inRepo('g/billing-api', 3)]
+  const kept = modelOf(alone, { repoFilter: billing, pinned: [pinOf(lone)] })
+  expect(kept.repos).toBeNull()
+  expect(kept.others?.label).toBe('▸ 1 other')
+  // Rows left out send the person to a repo only when there is one to pick.
+  expect(modelOf(alone, {}, () => 1_000, 0).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
+  expect(modelOf(cards, {}, () => 1_000, 0).leftOut).toBe('4 more MRs left out to stay within what the app draws; pick a repo above to see them.')
 })
 
 test('a ready MR untouched for a week parks until its pipeline runs or it has news; a draft stays with the drafts', () => {

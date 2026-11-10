@@ -974,7 +974,7 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.unmount()
 })
 
-test('thirty MRs in two repos, with a repo filter, draw on terminal, desktop and vscode', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
+test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's buttons", { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const pipelines: PipelineStatusEnum[] = ['SUCCESS', 'FAILED', 'RUNNING', 'MANUAL']
   const fake: Fake = {
@@ -1061,12 +1061,28 @@ test('thirty MRs in two repos, with a repo filter, draw on terminal, desktop and
     // The title is a plain button, not a link: it opens the MR's page, while 🔀 !iid leaves for GitLab.
     expect((await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.props.label).toBe('thing 103')
 
-    await ui.press({ key: 'repo-gitlab.com/g/q' })
+    // The repos are one picker, which takes one row however many there are: a repo narrows the list, All shows it whole.
+    expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
+    await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
     expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
-    await ui.press({ key: 'repo-all' })
+    expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('gitlab.com/g/q')
+    // Picking the repo already picked keeps it.
+    await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
+    expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
+    await ui.select({ key: 'repo', value: 'all' })
+    expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 25')
     await ui.press({ key: 'more' })
     await ui.unmount()
   }
+  // A phone draws a picker only when its app asked for one, which the pane cannot tell, so there the repos are buttons.
+  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect(await phone.find({ type: 'Select' })).toBeUndefined()
+  await phone.press({ key: 'repo-gitlab.com/g/q' })
+  expect((await phone.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
+  expect((await phone.find({ type: 'Button', key: 'repo-gitlab.com/g/q' }))?.props.variant).toBe('primary')
+  await phone.press({ key: 'repo-all' })
+  expect((await phone.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 25')
+  await phone.unmount()
 })
 
 /** The card the leader shares for an MR, as a snapshot another session wrote holds it. */
