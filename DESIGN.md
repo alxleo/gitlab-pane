@@ -43,7 +43,7 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 | Section | Holds | Code |
 |---|---|---|
 | This session | the MRs this session raised, watched or you pinned, in the order they came | `buildPane` |
-| Drag to reorder | with two or more there, a line each, `⠿ !iid title`, dragged into your own order; the line held is in Claude's colour, and the cards follow once it is dropped. The terminal and the desktop draw it; VS Code and mobile keep the order pinned | `pin-strip.tsx` |
+| Drag to reorder | with two or more there, a line each, `↕ !iid title`, dragged into your own order; the line held is in Claude's colour, and the cards follow once it is dropped. The terminal and the desktop draw it; VS Code and mobile keep the order pinned | `pin-strip.tsx` |
 | `▸ N others` | while This session holds any, every other MR folds behind one line saying how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
 | Ready | the open MRs, most pressing first, ten until `▸ more` | `MINE_SHOWN` |
 | Parked | a ready MR untouched for a week, its pipeline included, with no news in the inbox; a comment, a push, a pipeline run or news brings it back | `PARKED_AFTER_MS` |

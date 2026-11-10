@@ -2,7 +2,7 @@ import type { Register } from 'claude-code'
 
 import { readHosts, readPoll, startData } from './data'
 import { field, isFilled, text } from './decode'
-import { forgetProblems, problems, quietly, reported } from './failures'
+import { forgetProblems, markStripFault, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
 import { hostsLine, namedHosts, parseHosts } from './hosts'
@@ -147,6 +147,14 @@ export const register: Register = (on, options) => {
       )
     )
     return { props: e.data }
+  })
+
+  // The strip failed where it is drawn: the engine draws the pane again, and the pane leaves the strip out on that surface.
+  on('ui.fault', async ($, e, next) => {
+    if (e.element === PIN_STRIP) {
+      await markStripFault($, e.surface)
+    }
+    return next(e)
   })
 
   // A drawing that throws says why in the pane, where the engine would only report it in the debug log.

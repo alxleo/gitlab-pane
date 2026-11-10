@@ -301,9 +301,16 @@ const READINGS: readonly { readonly name: string; readonly source: string; reado
  * reads them off the source as literals, so they are read here off the source too: JSX's closing tags look to the import
  * reader like regular expressions, so its tokens cannot be trusted past one.
  */
-const clientModules = (source: string): string[] => [...source.matchAll(/\bmodule="(?<spec>\.[^"]+)"/gu)].map(found => found.groups?.['spec'] ?? '')
+const clientModules = (source: string): string[] =>
+  [...source.matchAll(/(?<![\w-])module=(?:"(?<plain>\.[^"]+)"|\{\s*(?<quote>["'])(?<braced>\.[^"']+)\k<quote>\s*\})/gu)].map(
+    found => found.groups?.['plain'] ?? found.groups?.['braced'] ?? ''
+  )
 
-const CLIENT_READING = { source: 'const a = { module: \'./no\' }\nconst b = <Box><Text>x</Text><Client key="k" module="./strip.tsx" /></Box>\n', specs: ['./strip.tsx'] }
+/** A reading the Client reader must give: a plain and a braced literal load; an object's `module` key and `data-module` do not. */
+const CLIENT_READING = {
+  source: 'const a = { module: \'./no\' }\nconst b = <Box data-module="./no2"><Text>x</Text><Client key="k" module="./strip.tsx" /><Client module={\'./b.tsx\'} /></Box>\n',
+  specs: ['./strip.tsx', './b.tsx'],
+}
 
 function selfCheck(): string[] {
   const clients = clientModules(CLIENT_READING.source)

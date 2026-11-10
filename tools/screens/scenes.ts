@@ -328,7 +328,7 @@ async function withClients(ui: Ui, node: Node): Promise<Node> {
     }
     return drawn
   }
-  const children = await Promise.all((node.children ?? []).map(child => (typeof child === 'string' ? child : withClients(ui, child))))
+  const children = await Promise.all((node.children ?? []).map(child => (typeof child === 'string' ? Promise.resolve(child) : withClients(ui, child))))
   return { ...node, children }
 }
 

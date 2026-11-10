@@ -488,7 +488,8 @@ test('pinning a card puts it in this session and folds the rest to one line; unp
 
 test('dragging a pinned MR down the strip puts it where it is dropped, and its card follows', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const { store } = engine(on, { mrs: [rawMr(12, SHOWN), rawMr(13, SHOWN), rawMr(14, SHOWN)], isDown: false })
+  const fake: Fake = { mrs: [rawMr(12, SHOWN), rawMr(13, SHOWN), rawMr(14, SHOWN)], isDown: false }
+  const { store } = engine(on, fake)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -499,6 +500,7 @@ test('dragging a pinned MR down the strip puts it where it is dropped, and its c
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const lines = async () => (await ui.findAll({ type: 'Text', in: 'pin-order' })).map(line => line.text.split(' ')[1])
   const cards = async () => (await ui.findAll({ type: 'Button' })).filter(keyed('pin-')).map(button => button.key?.split('-')[1] ?? '')
+  const held = async () => (await ui.findAll({ type: 'Text', in: 'pin-order' })).find(line => line.props.weight === 'semibold')?.text.split(' ')[1]
   expect(await lines()).toEqual(['!12', '!13', '!14'])
   // While held, the line follows the pointer, past the strip's end too; dropped, the pins and the cards take that order.
   await ui.pointer({ type: 'down', x: 2, y: 0, button: 'left', in: 'pin-order' })
@@ -511,11 +513,21 @@ test('dragging a pinned MR down the strip puts it where it is dropped, and its c
   // The leader reads the order from the store, as it reads every pin.
   const record = [...store.entries()].find(([key]) => key.startsWith('pins:'))?.[1]
   expect(JSON.stringify(record)).toMatch(/13.*14.*12/su)
-  // A press that ends where it began moves nothing.
-  await ui.pointer({ type: 'down', x: 2, y: 1, button: 'left', in: 'pin-order' })
-  await ui.pointer({ type: 'up', x: 2, y: 1, button: 'left', in: 'pin-order' })
+  // A right-button drag picks nothing up.
+  await ui.pointer({ type: 'down', x: 2, y: 0, button: 'right', in: 'pin-order' })
+  await ui.pointer({ type: 'move', x: 2, y: 2, button: 'right', in: 'pin-order' })
+  await ui.pointer({ type: 'up', x: 2, y: 2, button: 'right', in: 'pin-order' })
   await clock.settle()
   expect(await cards()).toEqual(['13', '14', '12'])
+  // The hold is on the MR, not the place: one above it merging mid-drag leaves the hold on the same MR.
+  await ui.pointer({ type: 'down', x: 2, y: 1, button: 'left', in: 'pin-order' })
+  fake.mrs = [rawMr(12, SHOWN), rawMr(13, { ...SHOWN, state: 'merged' }), rawMr(14, SHOWN)]
+  await clock.advance(240_000)
+  expect(await held()).toBe('!14')
+  // Dropped at the top, where it now is anyway: nothing moves, where a hold by place would have moved !12.
+  await ui.pointer({ type: 'up', x: 2, y: 0, button: 'left', in: 'pin-order' })
+  await clock.settle()
+  expect(await cards()).toEqual(['14', '12'])
   await ui.unmount()
 
   // VS Code draws no region of a mod's own, so its pins keep their order with no strip.
@@ -967,6 +979,32 @@ const fiftyBusy = (): Fake => {
   }
 }
 
+test('fifty pinned MRs with titles as long as GitLab allows keep the strip and the cards inside what a drawing holds', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake = fiftyBusy()
+  fake.mrs = fake.mrs.map(mr => ({
+    ...mr,
+    title: `fix: ${'Long title words '.repeat(14)}${mr.iid}`,
+    webUrl: `https://gitlab.com/${mr.project.fullPath}/-/merge_requests/${mr.iid}`,
+  }))
+  engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  for (const mr of fake.mrs) {
+    await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: mr.webUrl })
+  }
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  // A line for each card drawn and none for those left out, each title cut short: the card below says the rest.
+  const lines = await ui.findAll({ type: 'Text', in: 'pin-order' })
+  const cards = (await ui.findAll({ type: 'Button' })).filter(keyed('pin-'))
+  expect(lines.length).toBe(cards.length)
+  expect(lines.every(line => line.text.length < 80)).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /more MRs? left out/u })).toBeDefined()
+  await ui.unmount()
+})
+
 test('fifty MRs with full pipelines and long threads stay inside the 100,000 characters a drawing holds', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const { store } = engine(on, fiftyBusy())
@@ -987,8 +1025,9 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
-  // (Fifteen since the inbox's own atoms, the problems the leader reported and whether a read is out are read by the same drawing.)
-  expect(reads).toBeLessThanOrEqual(15)
+  // (Sixteen since the inbox's own atoms, the problems the leader reported, whether a read is out and where the pins' strip
+  // failed are read by the same drawing.)
+  expect(reads).toBeLessThanOrEqual(16)
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)

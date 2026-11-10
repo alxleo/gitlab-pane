@@ -20,7 +20,8 @@ import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, now } = await view($)
+  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, stripFaults, now } =
+    await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button, Client } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
@@ -120,8 +121,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     )),
     ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>] : []),
-    // Where the surface follows the pointer, a line per MR to drag them into the person's own order; elsewhere, the order pinned.
-    ...(model.order !== null && Client !== undefined
+    // Where the surface follows the pointer, a line per MR to drag them into the person's own order; elsewhere, and where the
+    // strip failed, the order pinned.
+    ...(model.order !== null && Client !== undefined && !stripFaults.includes(e.surface)
       ? [
           <Text dimColor size="footnote">
             Drag to reorder

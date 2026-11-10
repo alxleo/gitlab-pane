@@ -10,7 +10,9 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { STRIP_LINE_SIZE, STRIP_TITLE } from './pin-order.ts'
 import type { PinStripProps } from './pin-order.ts'
+import { shorten } from './graphemes.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -289,8 +291,10 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     return { card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }
   })
 
-  // Each piece is measured at most once, and a row not tried is never drawn.
-  let room = budget.room
+  // Each piece is measured at most once, and a row not tried is never drawn. The strip that orders this session's MRs is
+  // set aside first, at the most each of its lines can cost, so the cards never crowd it past what the app draws.
+  const hasStrip = input.view === 'mine' && session.length > 1
+  let room = budget.room - (hasStrip ? session.reduce((sum, card) => sum + card.key.length + STRIP_LINE_SIZE, 0) : 0)
   const fits = (size: number, instead = 0): boolean => {
     const need = size - instead
     if (need > room) {
@@ -319,6 +323,11 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     })
 
   const sessionRows = rowsOf(session)
+  // A line for each of this session's MRs that is drawn: one left out to stay within the room has no card to follow it.
+  const ordered = session.flatMap(card => {
+    const row = finished.get(card.key)
+    return row !== undefined ? [{ key: row.key, label: `!${card.iid} ${shorten(row.title, STRIP_TITLE)}` }] : []
+  })
   return {
     tabs: {
       // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
@@ -332,10 +341,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     },
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: sessionRows,
-    order:
-      sessionRows.length > 1
-        ? { lines: session.flatMap(card => sessionRows.filter(row => row.key === card.key).map(row => ({ key: row.key, label: `!${card.iid} ${row.title}` }))) }
-        : null,
+    order: hasStrip && ordered.length > 1 ? { lines: ordered } : null,
     others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
     mine: {
       // GitLab's word for an MR that is not a draft; the tab above already says Mine.

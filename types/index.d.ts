@@ -395,6 +395,8 @@ declare module 'claude-code' {
       inboxCards: string[]
       /** This session's MRs, drawn first and the only ones that wake it. */
       pinned: Pinned[]
+      /** The surfaces where the strip that drags the pins failed, which then draw the pins without it until the mod loads again. */
+      stripFaults: string[]
       /** The GitLab hosts the settings name, home first. */
       hosts: string[]
       rows: MrCard[]

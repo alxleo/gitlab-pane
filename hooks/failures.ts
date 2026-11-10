@@ -10,6 +10,20 @@ import type { Problems, ProblemSource } from '../types'
 const problemsAtom = atom({ plugin: 'gitlab-pane', key: 'problems' } as const, {})
 // What the session that reads GitLab failed with, as it told this one in its snapshot; this session's own are above.
 const reportedAtom = atom({ plugin: 'gitlab-pane', key: 'reported' } as const, {})
+// The surfaces where the strip that drags the pins failed: the engine draws the pane again, and the strip is left out there.
+const stripFaultsAtom = atom({ plugin: 'gitlab-pane', key: 'stripFaults' } as const, [])
+
+/** The strip failed on `surface` (its module did not load, or its code threw): the pane draws the pins there without it. */
+export async function markStripFault($: EngineInterface, surface: string): Promise<void> {
+  if (!(await read($, stripFaultsAtom)).includes(surface)) {
+    await update($, stripFaultsAtom, list => [...list, surface])
+  }
+}
+
+/** Where the strip failed; reading it here makes the pane redraw without the strip once it has. */
+export function drawnStripFaults($: EngineInterface): Promise<string[]> {
+  return read($, stripFaultsAtom)
+}
 
 /**
  * Keeps `error` as the source's last, replacing an older one. An optional tool that is not installed is kept too, as
@@ -54,6 +68,8 @@ export async function setReportedProblems($: EngineInterface, shared: Parameters
 /** A mod loading starts with no failures, as it starts with nothing else the pane says about itself. */
 export async function forgetProblems($: EngineInterface): Promise<void> {
   await update($, problemsAtom, () => ({}))
+  // A new load may carry a strip that works, so each surface tries it again.
+  await update($, stripFaultsAtom, () => [])
 }
 
 /** A `.catch` handler that records for `source`. */

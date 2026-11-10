@@ -11,8 +11,17 @@ export type PinLine = { key: string; label: string }
 /** What the strip is handed, and what it sends back once a drag ends: its lines, top to bottom. */
 export type PinStripProps = { lines: PinLine[] }
 
-/** A drag under way: the line picked up, and the place it would drop into. */
-export type Drag = { from: number; over: number }
+/**
+ * A drag under way: the pin picked up, by key, and the place it would drop into. By key, not by place, so a line that goes
+ * from above it mid-drag (an MR that merged) never hands the hold to its neighbour.
+ */
+export type Drag = { key: string; over: number }
+
+/** How long a line's title may be: the strip names the MR, its card says the rest. */
+export const STRIP_TITLE = 60
+
+/** What a line of the strip costs the drawing at most, beside its key: its title, its reference and the element around them. */
+export const STRIP_LINE_SIZE = STRIP_TITLE + 60
 
 /** The line under a row of the strip: above the first is the first, below the last is the last. */
 export const lineAt = (y: number, count: number): number => Math.max(0, Math.min(Math.floor(y), count - 1))

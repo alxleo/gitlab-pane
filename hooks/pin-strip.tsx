@@ -14,26 +14,39 @@ const PinStrip: ClientModule<PinStripProps, { drag: Drag | null }> = (props, sur
   surface.onPointer(event => {
     const drag = surface.state?.drag ?? null
     const over = lineAt(event.y, lines.length)
-    if (event.type === 'down' && event.button === 'left') {
-      surface.setState({ drag: { from: over, over } })
-    } else if (event.type === 'move' && drag !== null && over !== drag.over) {
+    if (event.type === 'down') {
+      // Only the left button picks a line up; any other press, or one on an empty strip, holds nothing.
+      const line = event.button === 'left' ? lines[over] : undefined
+      surface.setState({ drag: line !== undefined ? { key: line.key, over } : null })
+      return
+    }
+    if (drag === null) {
+      return
+    }
+    const from = lines.findIndex(line => line.key === drag.key)
+    // The pin held went (it merged, or was unpinned), or the button came up where the strip did not see it: the drag ends.
+    if (from < 0 || (event.type === 'move' && event.button === undefined)) {
+      surface.setState({ drag: null })
+    } else if (event.type === 'move' && over !== drag.over) {
       surface.setState({ drag: { ...drag, over } })
-    } else if (event.type === 'up' && drag !== null) {
-      if (drag.from !== over) {
-        surface.post({ lines: moved(lines, drag.from, over) })
+    } else if (event.type === 'up') {
+      if (from !== over) {
+        surface.post({ lines: moved(lines, from, over) })
       }
       surface.setState({ drag: null })
     }
   })
   const drag = surface.state?.drag ?? null
-  const shown = drag !== null ? moved(lines, drag.from, drag.over) : lines
+  const from = drag !== null ? lines.findIndex(line => line.key === drag.key) : -1
+  const held = drag !== null && from >= 0 ? Math.min(drag.over, lines.length - 1) : -1
+  const shown = held >= 0 ? moved(lines, from, held) : lines
   return (
     <Box flexDirection="column">
       {shown.map((line, i) => {
-        const isHeld = drag !== null && i === drag.over
+        const isHeld = i === held
         return (
           <Text key={line.key} wrap="truncate-end" color={isHeld ? 'claude' : undefined} dimColor={!isHeld} weight={isHeld ? 'semibold' : undefined}>
-            {`⠿ ${line.label}`}
+            {`↕ ${line.label}`}
           </Text>
         )
       })}
