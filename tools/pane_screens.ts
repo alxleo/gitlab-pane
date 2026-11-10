@@ -441,8 +441,12 @@ function unknownProps(node: Node): string[] {
 /** What a delta picture marks on an element: faded as drawn before, outlined as new or changed, or nothing. */
 const MARK_CLASS: Record<Mark, string> = { same: ' delta-same', changed: ' delta-changed' }
 
-/** A delta picture's own look, on top of pane.css: faint enough to read past, the change at full strength and outlined. */
-const DELTA_STYLE = '<style>.delta-same { opacity: 0.3; } .delta-changed { outline: 2px solid #d97706; outline-offset: 2px; border-radius: 3px; }</style>'
+/**
+ * A delta picture's own look, on top of pane.css: faint enough to read past, the change at full strength and outlined.
+ * The fade is a filter, not `opacity`, which pane.css sets on dim text: on the same element one would replace the other,
+ * where a filter adds to it, so dim text fades as far as the rest.
+ */
+const DELTA_STYLE = '<style>.delta-same { filter: opacity(0.3); } .delta-changed { outline: 2px solid #d97706; outline-offset: 2px; border-radius: 3px; }</style>'
 
 function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: ReadonlyMap<Drawn, Mark>, key: string | null = null): string {
   if (isText(node)) {
@@ -756,9 +760,15 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
     await photograph(pages, shots, options.scale)
     if (options.keep !== null) {
       mkdirSync(options.keep, { recursive: true })
+      // Each scene's tree, the other version's too, and every page photographed, so a picture can be read back.
       for (const each of scenes) {
         writeFileSync(join(options.keep, `${each.name}.json`), JSON.stringify(each, null, 1), 'utf8')
-        copyFileSync(join(site, `${each.name}.html`), join(options.keep, `${each.name}.html`))
+      }
+      for (const each of base ?? []) {
+        writeFileSync(join(options.keep, `${each.name}-before.json`), JSON.stringify(each, null, 1), 'utf8')
+      }
+      for (const name of pages.keys()) {
+        copyFileSync(join(site, `${name}.html`), join(options.keep, `${name}.html`))
       }
     }
     if (undrawn.size > 0 && !options.allowUnknown) {
