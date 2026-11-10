@@ -64,7 +64,13 @@ async function send($: EngineInterface, card: MrCard, step: Extract<Step, { does
     if (step.does === 'merge') {
       return mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, step.head, step.strategy)))
     }
-    return rebaseRefusal(await askRest($, card.host, rebasePath(card.path, card.iid), { method: 'PUT', headers: { Accept: 'application/json' }, scope: 'api' }))
+    return rebaseRefusal(
+      await askRest($, card.host, rebasePath(card.path, card.iid), {
+        method: 'PUT',
+        headers: { Accept: 'application/json' },
+        needs: 'the api scope, and you push access to the branch',
+      })
+    )
   } catch (error) {
     return refusalOf(error)
   }

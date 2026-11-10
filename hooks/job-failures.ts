@@ -47,7 +47,7 @@ async function tailFor($: EngineInterface, card: MrCard, id: number): Promise<Jo
     const answer = await askRest($, card.host, `projects/${encodeURIComponent(card.path)}/jobs/${id}/trace`, {
       method: 'GET',
       headers: { Accept: 'text/plain', Range: `bytes=-${TAIL_BYTES}` },
-      scope: 'read_api',
+      needs: 'the read_api scope',
     })
     return (answer.status === 200 || answer.status === 206) && !mayBeCut(answer.text) ? tailOf(answer.text) : []
   } catch {

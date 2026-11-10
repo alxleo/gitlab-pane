@@ -106,14 +106,9 @@ export async function ask<Data>($: EngineInterface, host: string, request: Reque
 /**
  * Sends one request to a host's REST API, `https://<host>/api/v4/<path>`, with the host's token, once. Gives GitLab's
  * status and text, whatever the status, but for a rejected token (401, forgotten so it is asked for again) and a refused
- * one (403, said to need `scope`). Whatever else fails says why, with no token in the words.
+ * one (403, said to need what `needs` names). Whatever else fails says why, with no token in the words.
  */
-export async function askRest(
-  $: EngineInterface,
-  host: string,
-  path: string,
-  init: { method: 'GET' | 'PUT'; headers: Record<string, string>; scope: 'read_api' | 'api' }
-): Promise<Answer> {
+export async function askRest($: EngineInterface, host: string, path: string, init: { method: 'GET' | 'PUT'; headers: Record<string, string>; needs: string }): Promise<Answer> {
   const found = await tokenFor($, host)
   if (!found.ok) {
     throw failureOf(found)
@@ -130,7 +125,7 @@ export async function askRest(
     throw new Failure('unauthorized', `${host} rejected the token from ${source} (HTTP 401)`)
   }
   if (answer.status === 403) {
-    throw new Failure('unauthorized', `${host} refused the token from ${source} (HTTP 403): it needs the ${init.scope} scope, and you the access`)
+    throw new Failure('unauthorized', `${host} refused the token from ${source} (HTTP 403): it needs ${init.needs}`)
   }
   return answer
 }

@@ -73,6 +73,8 @@ export type FakeHost = {
   traces?: Record<string, string>
   /** Hears a rebase the REST API was asked for, which it accepts (HTTP 202). */
   onRebase?: (path: string, iid: string) => void
+  /** Refuses every rebase with HTTP 403, as GitLab does a token or a person that may not push to the branch. */
+  refusesRebase?: boolean
 }
 
 export type FakeWorld = {
@@ -117,6 +119,9 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
     if (rebase !== null) {
       requests.push(`${rebase.host} rebase ${rebase.path}!${rebase.iid}`)
       const isAccepted = rebase.token !== undefined && rebase.token === hosts[rebase.host]?.accepts
+      if (isAccepted && hosts[rebase.host]?.refusesRebase === true) {
+        return { value: { status: 403, ok: false, headers: {}, text: JSON.stringify({ message: '403 Forbidden' }) } }
+      }
       if (isAccepted) {
         hosts[rebase.host]?.onRebase?.(rebase.path, rebase.iid)
       }

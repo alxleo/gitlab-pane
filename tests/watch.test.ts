@@ -177,6 +177,7 @@ function engine(
     held?: () => Promise<void>
     remote?: string
     onRebase?: (path: string, iid: string) => void
+    refusesRebase?: boolean
     /** An HTTP status to answer a request of this operation with, instead of GitLab's answer. */
     glitch?: (operation: string) => number | undefined
     /** Why the session drops every prompt submitted to it, as a hook or a stop does. */
@@ -211,6 +212,7 @@ function engine(
         accepts: TOKEN,
         traces: fake.traces ?? {},
         ...(world.onRebase !== undefined ? { onRebase: world.onRebase } : {}),
+        ...(world.refusesRebase !== undefined ? { refusesRebase: world.refusesRebase } : {}),
       },
       ...others,
     },
@@ -738,6 +740,20 @@ test('a rebase GitLab could not make says why beside the move, which can be pres
   expect(toasts).toContain('!12 not rebased: Rebase failed: resolve the conflicts locally')
   expect((await moveOf(ui, 12))?.label).toBe('↻ rebase')
   expect(await ui.find({ type: 'Text', text: 'not rebased: Rebase failed: resolve the conflicts locally' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a rebase GitLab refuses the token for says it needs the api scope and push access to the branch', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [ready(12, { mergeabilityChecks: checks({ NEED_REBASE: 'FAILED', NOT_APPROVED: 'FAILED' }) })], isDown: false }
+  const { toasts } = engine(on, fake, {}, {}, { refusesRebase: true })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(toasts.find(toast => toast.startsWith('!12 not rebased'))).toMatch(/HTTP 403\): it needs the api scope, and you push access to the branch$/u)
+  expect((await moveOf(ui, 12))?.label).toBe('↻ rebase')
   await ui.unmount()
 })
 
