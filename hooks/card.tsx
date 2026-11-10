@@ -45,7 +45,12 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
-          {pin !== null && <Button key={pin.key} plain dimColor label={pin.label} onPress={() => togglePin($, pin.label, pin.mr)} />}
+          {/* The star at the top right, as anywhere else: the label names the press, the star is drawn, dim while hollow. */}
+          {pin !== null && (
+            <Button key={pin.key} plain dimColor={pin.mark === '☆'} label={pin.label} onPress={() => togglePin($, pin.label, pin.mr)}>
+              {pin.mark}
+            </Button>
+          )}
         </Box>
       )
     }
