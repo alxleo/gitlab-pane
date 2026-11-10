@@ -197,6 +197,8 @@ test('a description written to break reading leaves every card in the read, the 
   const hostile = `${'<details>'.repeat(6_000)}${'</details>'.repeat(6_000)}`
   const cards = readResponse(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1, { description: hostile }), rawMr(2)] } } } })
   expect(cards.map(card => card.iid)).toEqual([1, 2])
+  // Read, not skipped: the folds past sixteen deep are words, so the description leads with its outer fold, closed.
+  expect(cards[0]?.lead).toBe('▸ Details')
   expect(cards[1]?.lead).toBe('Does thing 2.')
 })
 

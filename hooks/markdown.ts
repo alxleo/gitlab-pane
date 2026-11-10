@@ -223,18 +223,10 @@ function split(masked: string, restore: (out: string) => string, depth: number):
   return parts
 }
 
-/**
- * GitLab Markdown as parts: Markdown to draw, and a fold for each `<details>`. None for a body this reading fails on: the
- * words are someone else's and may be written to break it, and one that does then costs nothing but itself, not the
- * read of every MR beside it. Whatever is thrown is caught, since what hostile text can make fail is not one kind of error.
- */
+/** GitLab Markdown as parts: Markdown to draw, and a fold for each `<details>`. */
 export function partsOf(source: GitLabMarkdown): Part[] {
-  try {
-    const { masked, restore } = holdCode(source)
-    return split(masked, restore, 0)
-  } catch {
-    return []
-  }
+  const { masked, restore } = holdCode(source)
+  return split(masked, restore, 0)
 }
 
 /** The same as one Markdown string, each fold its summary alone, as GitLab first shows a closed one. */
