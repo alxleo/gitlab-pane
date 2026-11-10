@@ -9,7 +9,7 @@ import type { SvgSource } from './svg.ts'
 
 import type { CiStatus, Stage } from '../types'
 
-export const STATUS_WORD: Record<CiStatus, string> = {
+const STATUS_WORD: Record<CiStatus, string> = {
   success: 'passed',
   failed: 'failed',
   running: 'running',

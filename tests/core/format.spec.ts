@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { bodyOf, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
+import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
 import { cleanBody, toCard } from '../../hooks/gitlab.ts'
 import { HOST, NOW, pipe, rawMr } from '../fixtures.ts'
 import type { Job, Stage } from '../../types'
@@ -39,9 +39,9 @@ test('an MR reads by its first paragraph, not its headings', async () => {
   expect(lead(cleanBody(`${'x'.repeat(236)}🇺🇸tail`, HOST, 'g/p'))).toBe(`${'x'.repeat(236)}…`)
 })
 
-test('a body is cut to its room between characters, dropping a flag that does not fit whole', () => {
-  expect(bodyOf(cleanBody(`${'x'.repeat(96)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(96)}…`)
-  expect(bodyOf(cleanBody(`${'x'.repeat(95)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(95)}🇺🇸…`)
+test('an excerpt is cut to its room between characters, dropping a flag that does not fit whole', () => {
+  expect(excerpt(cleanBody(`${'x'.repeat(96)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(96)}…`)
+  expect(excerpt(cleanBody(`${'x'.repeat(95)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(95)}🇺🇸…`)
 })
 
 test('titles keep the ticket apart and lose their type lead', async () => {

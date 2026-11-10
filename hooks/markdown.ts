@@ -4,7 +4,7 @@
  * Markdown or goes, as GitLab's sanitiser would drop it. Code is left exactly as written, tags and all.
  */
 
-import { cut, shorten } from './graphemes.ts'
+import { cut } from './graphemes.ts'
 
 import type { GitLabMarkdown } from '../types'
 
@@ -23,12 +23,6 @@ const brand = <Stamp extends MarkdownText | GitLabMarkdown = MarkdownText>(text:
 
 /** No Markdown. */
 export const EMPTY_MARKDOWN = brand('')
-
-/** The start of `markdown` that fits `room` characters, cut between characters and ended with `…`. */
-export function cutMarkdown(markdown: MarkdownText, room: number): MarkdownText {
-  const short = shorten(markdown, room)
-  return short === markdown ? markdown : brand(short)
-}
 
 /**
  * The longest start of `markdown` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does.

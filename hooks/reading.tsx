@@ -5,20 +5,28 @@ import { ago, plural } from './format'
 import { shortHash } from './identity'
 import { verdictOf } from './attention'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
-import { toggleFold } from './choices'
+import { showWhole, toggleFold } from './choices'
+import { personPage } from './page-lines'
 
 import type { MarkdownText, Part } from './markdown'
+import type { PageHead } from './page-lines'
 import type { MrCard, Note } from '../types'
 
 /** Room kept for the link that says the rest is on GitLab. */
 const CUT_NOTE_SIZE = 300
 
 /**
- * One MR whole, as a page of its own drawn alone: the jobs, threads and bot comments that need acting on take the room first,
- * then the description what is left, cut where it runs out. `folds` are the `<details>` drawn the other way from how
- * GitLab first shows them.
+ * How a page is drawn: `folds` are the `<details>` drawn the other way from how GitLab first shows them, `focus` the
+ * person whose comments alone it shows (empty for the whole MR), `head` what it says of the ticket and the merge.
  */
-export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, folds: string[], now: number) {
+export type PageView = { folds: string[]; focus: string; head: PageHead; now: number }
+
+/**
+ * One MR whole, as a page of its own drawn alone: the jobs, threads and bot comments that need acting on take the room first,
+ * then the description what is left, cut where it runs out. Opened on one person, it shows what they wrote and leads on to
+ * the whole MR.
+ */
+export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now }: PageView) {
   const { Box, Text, Button, Link, Markdown } = $.ui.resolve(e)
   /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
   const markdown = (text: MarkdownText) => <Markdown text={text} />
@@ -43,10 +51,11 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     ]
   }
 
-  const byline = (note: Note) => (
+  /** A note's byline: who wrote it, or, on a page opened on its writer, whether it is in an open thread. */
+  const byline = (note: Note, who: string) => (
     <Box flexDirection="row" gap={1}>
       <Box flexShrink={0}>
-        <Text bold>{note.author}</Text>
+        <Text bold>{who}</Text>
       </Box>
       <Box flexGrow={1} flexShrink={1}>
         <Text dimColor wrap="truncate-end">
@@ -56,9 +65,9 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       <Link href={note.url}>{LINK.comment}</Link>
     </Box>
   )
-  const said = (note: Note) => (
+  const said = (note: Note, who = note.author) => (
     <Box flexDirection="column">
-      {byline(note)}
+      {byline(note, who)}
       {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
     </Box>
   )
@@ -80,7 +89,43 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
         {`${mr.branch.source} → ${mr.branch.target}${mr.diff !== null ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
       </Text>
     </Box>,
+    ...(about.ticket !== null ? [<Link href={about.ticket.href}>{about.ticket.text}</Link>] : []),
+    ...about.standing.map(line =>
+      line.href !== null ? (
+        <Link href={line.href}>{line.text}</Link>
+      ) : (
+        <Text bold color={line.tone}>
+          {line.text}
+        </Text>
+      )
+    ),
   ]
+
+  let room = DRAWING_BUDGET - CHROME_SIZE - CUT_NOTE_SIZE - measure(head)
+  /** The blocks that fit what is left of the room, in order: the first that does not ends the run. */
+  const fitting = (blocks: RenderChildren[]) =>
+    blocks.filter(block => {
+      const size = measure(block)
+      if (size > room) {
+        room = 0
+        return false
+      }
+      room -= size
+      return true
+    })
+
+  // Opened on one person: what they wrote, and the way on to the whole MR.
+  const person = focus !== '' ? personPage(mr, focus) : null
+  if (person !== null) {
+    const notes = fitting(person.notes.map(({ note, label }) => said(note, label)))
+    return [
+      ...head,
+      <Text bold>{person.heading}</Text>,
+      ...notes,
+      ...(notes.length < person.notes.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of their comments are on GitLab`}</Link>] : []),
+      <Button key="page-whole" plain label={`the whole of !${mr.iid} ›`} onPress={() => showWhole($)} />,
+    ]
+  }
 
   const pipeline = mr.pipeline
   const jobs = [...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗' })), ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠' }))]
@@ -109,19 +154,10 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
         ]
       : []),
     ...(threads.length > 0 ? [<Text bold>{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
-    ...(botNotes.length > 0 ? [<Text bold>{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(said)] : []),
+    ...(botNotes.length > 0 ? [<Text bold>{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(note => said(note))] : []),
   ]
 
-  let room = DRAWING_BUDGET - CHROME_SIZE - CUT_NOTE_SIZE - measure(head)
-  const kept = blocks.filter(block => {
-    const size = measure(block)
-    if (size > room) {
-      room = 0
-      return false
-    }
-    room -= size
-    return true
-  })
+  const kept = fitting(blocks)
 
   const described: RenderChildren[] = []
   let isCut = false

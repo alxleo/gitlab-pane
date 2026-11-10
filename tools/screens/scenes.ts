@@ -272,7 +272,7 @@ function engine(on: On, mrs: Mr[]) {
           Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
           MergeStatus: () => mergeStatuses(mrs),
           Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
-          // An opened card reads its MR whole, description and threads, as the pane does on demand.
+          // An MR's page reads it whole, description and threads, as the pane does on demand.
           Pinned: ({ path, iid }) => ({
             data: { project: { mergeRequest: mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } },
           }),
@@ -318,53 +318,21 @@ const isNode = (value: unknown): value is Node =>
   (value.hover === undefined || (isRecord(value.hover) && (value.hover.scope === undefined || typeof value.hover.scope === 'string'))) &&
   (value.children === undefined || (Array.isArray(value.children) && value.children.every(child => typeof child === 'string' || isNode(child))))
 
-/** The elements from the root down to the Button keyed `keyPrefix…`, that Button last; empty when there is none. */
-const pathTo = (node: Node | string, keyPrefix: string): Node[] => {
-  if (typeof node === 'string') {
-    return []
-  }
-  if (node.type === 'Button' && String(node.props?.key).startsWith(keyPrefix)) {
-    return [node]
-  }
-  for (const child of node.children ?? []) {
-    const below = pathTo(child, keyPrefix)
-    if (below.length > 0) {
-      return [node, ...below]
-    }
-  }
-  return []
-}
-
-/**
- * What a pointer resting on the Button keyed `keyPrefix…` is on: the hover group of the innermost Box around it, which
- * the pane lights, and the key of every keyed Box it is inside, whose own hover (a card's border) applies while it is.
- */
-const pointerOn = (tree: Node, keyPrefix: string): { scopes: string[]; keys: string[] } => {
-  const boxes = pathTo(tree, keyPrefix).filter(node => node.type === 'Box')
-  const scope = [...boxes].reverse().find(node => isFilled(node.hover?.scope))?.hover?.scope
-  return {
-    scopes: isFilled(scope) ? [scope] : [],
-    keys: boxes.flatMap(node => (typeof node.props?.key === 'string' ? [node.props.key] : [])),
-  }
-}
-
-/** `hover` names a Button by the start of its key: the scene is drawn as if the pointer rested on it. */
-type Scene = { name: string; steps: (ui: Ui) => Promise<void>; hover?: string }
+/** A scene is the pane after its steps, drawn with no pointer on it: nothing on the pane waits for one. */
+type Scene = { name: string; steps: (ui: Ui) => Promise<void> }
 
 const SCENES: Scene[] = [
   { name: 'mine', steps: async () => {} },
-  { name: 'mine-hover', steps: async () => {}, hover: 'person-bob.baker-482-' },
-  {
-    name: 'mine-open',
-    steps: async ui => {
-      await press(ui, 'open-482-')
-    },
-  },
   {
     name: 'reading',
     steps: async ui => {
       await press(ui, 'open-479-')
-      await press(ui, 'read-479-')
+    },
+  },
+  {
+    name: 'reading-person',
+    steps: async ui => {
+      await press(ui, 'person-bob.baker-482-')
     },
   },
   {
@@ -394,11 +362,7 @@ for (const scene of SCENES) {
     if (!isNode(tree)) {
       throw new Error(`scene ${scene.name}: the pane did not draw a tree of elements`)
     }
-    const pointer = scene.hover !== undefined ? pointerOn(tree, scene.hover) : { scopes: [], keys: [] }
-    if (scene.hover !== undefined && pointer.scopes.length === 0) {
-      throw new Error(`scene ${scene.name}: nothing drawn is keyed ${scene.hover}`)
-    }
-    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: pointer.scopes, hoverKeys: pointer.keys, tree }
+    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: [], hoverKeys: [], tree }
     console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
     await ui.unmount()
   })
