@@ -177,6 +177,11 @@ export function leadInbox($: EngineInterface, hosts: readonly string[]): Promise
   return joined('inbox-sync', async () => {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
     try {
+      // A session that has shown no inbox yet shows the store's while it reads: drawing it marks and prunes nothing.
+      const stored = (await read($, inboxAtom)).snapshot.at === 0 ? readSnapshot(await $.store.get(INBOX_STORE)) : null
+      if (stored !== null) {
+        await applyInbox($, stored)
+      }
       const snapshot = await readInbox($, hosts)
       const shared = readSnapshot(await $.store.get(INBOX_STORE))
       // The store is rewritten whole for any write, so a read that found what is there already writes nothing.

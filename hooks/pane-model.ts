@@ -94,6 +94,8 @@ export type PaneInput = {
   /** MRs with news in the inbox. */
   news: number
   poll: PollState
+  /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
+  isReading: boolean
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
@@ -109,10 +111,22 @@ export type PaneModel = {
   firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
+  /** Beside the tabs, quietly: how old the cards are, and ↻ while a read is out. */
+  status: { text: string; isWarning: boolean }
+  /** What is wrong with the last read, or what it left out; empty when nothing is. */
   footer: { text: string; isWarning: boolean; wake: string }
 }
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
+
+/** The mark beside the age while this session reads GitLab: the pane has no spinner, and a glyph draws on every surface. */
+export const READING_MARK = '↻'
+
+function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['status'] {
+  const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : isReading ? 'reading GitLab…' : ''
+  const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
+  return { text: isReading ? `${READING_MARK} ${age}` : age, isWarning: hasStale }
+}
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
 const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
@@ -125,15 +139,15 @@ function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['f
   const stale = statuses.filter(([, status]) => status.error !== null)
   const fresh = statuses.filter(([, status]) => status.error === null && status.fetchedAt !== null)
   const named = (host: string, text: string) => (statuses.length > 1 ? `${host}: ${text}` : text)
-  const fetched = age(poll.fetchedAt)
-  const keptNote = (poll.kept ?? 0) > 0 ? `; ${plural(poll.kept ?? 0, 'MR')} kept from the last read` : ''
+  const keptNote = (poll.kept ?? 0) > 0 ? `${plural(poll.kept ?? 0, 'MR')} kept from the last read` : ''
   const failed = stale.map(([host, status]) => {
     const old = age(status.fetchedAt)
     return `${named(host, status.error ?? '')}${old !== null ? `; showing ${old} old data` : ''}`
   })
   // With several hosts a stale one is told with the age of its own data, and the fresh ones beside it.
   const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
-  const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : fetched !== null ? `${updatedLine(fetched)}${keptNote}` : 'reading GitLab…'
+  // How old the cards are is said beside the tabs; down here only what went wrong, or what the read left out.
+  const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : keptNote
   return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
 }
 
@@ -304,6 +318,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     },
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut: built.length - drawn.size > 0 ? `${plural(built.length - drawn.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
+    status: statusOf(input.poll, input.isReading, now),
     footer: footerOf(input.poll, input.isWaking, now),
   }
 }

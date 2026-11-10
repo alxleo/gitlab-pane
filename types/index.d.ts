@@ -406,6 +406,8 @@ declare module 'claude-code' {
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
       poll: PollState
+      /** Whether this session is reading GitLab now, for the ↻ beside the age of the cards. */
+      reading: boolean
       reads: ReadClock
       /** The role the last tick of the lease gave this session. */
       role: Role

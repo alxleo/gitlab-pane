@@ -13,6 +13,7 @@ import {
   readRows,
   setAnnounced,
   setPoll,
+  setReading,
   setRole,
   setRows,
   unpinKeys,
@@ -35,7 +36,7 @@ import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
 import { followInbox, leadInbox, sharedInboxAt } from './inbox'
-import { INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
+import { FOOTER_MS, INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS } from './snapshot'
 import { failuresFrom, toShared } from './snapshot'
 import type { Cursor, ReadResult, Snapshot } from './snapshot'
 import type { FailureReader } from './reconcile'
@@ -110,6 +111,17 @@ async function adopt($: EngineInterface, snapshot: Snapshot, isLeader = false): 
   await setReportedProblems($, isLeader ? {} : snapshot.problems, snapshot.fetchedAt ?? snapshot.attemptedAt)
   await changeReads($, reads => ({ ...reads, adopted: snapshot.version }))
   quietly($, readJira($, open, now), 'jira')
+}
+
+/**
+ * Draws the store's snapshot while this session's first read is out, so the pane starts from the last cards, not from none.
+ * Only drawn: data that old makes no toast, wake or unpin, and the read's own snapshot is adopted whole when it lands.
+ */
+async function preview($: EngineInterface, snapshot: Snapshot): Promise<void> {
+  await loadShared($)
+  await setPoll($, pollOf(snapshot))
+  const open = snapshot.rows.filter(row => row.isOpen)
+  await setRows($, open)
 }
 
 /** Puts a snapshot in the store for the other sessions. A store that cannot take it does not stop this session drawing it. */
@@ -262,7 +274,18 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   const isInboxDue = isAsked || reads.inboxAt === null || now - reads.inboxAt >= INBOX_EVERY_MS
   if (isDue) {
     await changeReads($, state => ({ ...state, refreshed: asked }))
-    await lead($, snapshot, pins, isAsked, isInboxDue)
+    const isFirst = reads.adopted === ''
+    if (snapshot !== null && isFirst) {
+      await preview($, snapshot)
+    }
+    // ↻ only for a read someone waits on (the first, one asked for, one over stale cards): each write redraws the whole pane.
+    const isWaited = isFirst || isAsked || snapshot === null || now - (snapshot.fetchedAt ?? 0) >= 2 * FOOTER_MS
+    await setReading($, isWaited)
+    try {
+      await lead($, snapshot, pins, isAsked, isInboxDue)
+    } finally {
+      await setReading($, false)
+    }
     return
   }
   if (snapshot.version !== reads.adopted) {

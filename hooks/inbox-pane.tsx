@@ -8,6 +8,7 @@ import { firstName, initials, shortHash } from './identity'
 import { quietly, reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
 import { ownedSections } from './inbox-rules'
+import { READING_MARK } from './pane-model'
 import { refresh } from './poll'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -52,7 +53,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     problem !== null
       ? `sync failed: ${problem}`
       : inbox.snapshot.at > 0
-        ? `synced ${since(new Date(inbox.snapshot.at).toISOString())}`
+        ? `${inbox.isSyncing ? `${READING_MARK} ` : ''}synced ${since(new Date(inbox.snapshot.at).toISOString())}`
         : inbox.readAt === null || inbox.isSyncing
           ? 'reading GitLab…'
           : 'not synced yet'

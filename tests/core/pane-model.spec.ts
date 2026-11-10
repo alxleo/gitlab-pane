@@ -27,6 +27,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       view: 'mine',
       news: 0,
       poll: { fetchedAt: NOW, error: null, hosts: {} },
+      isReading: false,
       isWaking: true,
       failures: {},
       ...over,
@@ -35,6 +36,18 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
     { hasSvg: true },
     { room, sizeOf: (row, piece) => cost(piece, row) }
   )
+
+test('beside the tabs, the age of the cards, with ↻ while a read is out; the footer speaks only of what went wrong', () => {
+  const threeHours = { fetchedAt: NOW - 3 * 3_600_000, error: null, hosts: {} }
+  expect(modelOf([], { poll: threeHours }).status).toEqual({ text: 'updated 3h ago', isWarning: false })
+  expect(modelOf([], { poll: threeHours, isReading: true }).status).toEqual({ text: '↻ updated 3h ago', isWarning: false })
+  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} }, isReading: true }).status.text).toBe('↻ reading GitLab…')
+  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} } }).status.text).toBe('')
+  expect(modelOf([], { poll: threeHours }).footer.text).toBe('')
+  const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
+  expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })
+  expect(modelOf([], { poll: failed }).footer).toMatchObject({ text: 'GitLab read failed: connection refused; showing 10m old data', isWarning: true })
+})
 
 test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
