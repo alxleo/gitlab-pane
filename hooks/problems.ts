@@ -18,7 +18,7 @@ export const withProblem = (all: Problems, source: ProblemSource, error: unknown
 export const isAbsentOptional = (source: string, kind: FailureKind): boolean => source === 'jira' && kind === 'not-installed'
 
 /** The sources only the session that reads GitLab works for: what it tells the others, who read nothing and so could say nothing. */
-const LEADER_SOURCES: readonly ProblemSource[] = ['gitlab', 'usual', 'avatars']
+const LEADER_SOURCES: readonly ProblemSource[] = ['gitlab', 'moves', 'usual', 'avatars']
 
 /** What the leader has last failed with, without the times, to put in the snapshot. */
 export const leaderProblems = (all: Problems): Record<string, { message: string; kind: FailureKind }> =>

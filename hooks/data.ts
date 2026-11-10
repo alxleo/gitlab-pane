@@ -161,11 +161,16 @@ export async function markUnreachable($: EngineInterface, urls: readonly string[
 
 /** Adds what Jira said about tickets, and when it was asked. */
 export async function mergeTickets($: EngineInterface, found: Record<string, Ticket>, at: number): Promise<void> {
+  await knowTickets($, found)
+  await changeReads($, reads => ({ ...reads, ticketsAt: at }))
+}
+
+/** Adds what Jira said of some tickets, leaving when the whole list is next read as it was. */
+export async function knowTickets($: EngineInterface, found: Record<string, Ticket>): Promise<void> {
   const known = await read($, ticketsAtom)
   if (!isEqual(known, { ...known, ...found })) {
     await update($, ticketsAtom, previous => ({ ...previous, ...found }))
   }
-  await changeReads($, reads => ({ ...reads, ticketsAt: at }))
 }
 
 /** Adds the pipeline run times read for projects, by `host/group/project`. */
