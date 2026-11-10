@@ -46,7 +46,7 @@ A title opens the MR on a page of its own. Its open threads are a person's feedb
 |---|---|---|
 | A thread on the diff | the last five lines of the diff it was left on, ending at the commented line, numbered as in the file; then the comment and its replies | `hunkOf`, `hooks/reply-model.ts` |
 | `↩ reply` | dim, under each open thread a person started; it opens one reply box at a time, starting from what was last typed there. None on a phone (it may have no text field): the thread's `💬` opens it on GitLab. Where GitLab did not say where replies go, an amber `↩ Replies are off here` says why, until the next read gets it | `reading.tsx` |
-| Confirming | Enter shows the text with `post as you`, `edit` and `cancel`: nothing is sent before `post as you`, which posts under your name | `replies.ts` |
+| Confirming | Enter shows the text with `post as you`, `edit` and `cancel`: nothing is sent before `post as you`, which posts under your name | `decidePost` |
 | Posted | the MR is read again at once, and the reply sits in the thread like any other | `ensureDetail` |
 | Not posted | the text stays, with GitLab's reason in amber and `post again`, there when you come back to the page; a refusal says a `read_api` token is refused so. A dropped connection, a 5xx or a reload while it was out may have posted it: the MR is read again and the reason says to look first | `postedOf`, `sayOf` |
 
@@ -98,7 +98,7 @@ The one press that moves an MR along, where GitLab's checks name it and you may 
 
 - A move is a button; armed, it is the primary one. Under way it is dim words with nothing to press: `✓ merging…`, `↻ rebasing…`, `✓ merges when checks pass` (GitLab's auto-merge, whoever set it, while what holds the MR is others or time; a check to fix keeps its words and its move) and `⇄ conflicts · with Claude`.
 - A merge or rebase is sent once. One whose answer is lost may still have reached GitLab, so the pane follows it as one that went through, and GitLab's own state says how it ended.
-- Merges, rebases and replies keep one record of what was confirmed, sent and how it ended (`hooks/write-model.ts`), so each says the same when an answer is lost, and none is sent twice.
+- Merges, rebases and replies keep one record of what was confirmed, sent and how it ended (`hooks/writes.ts`; `hooks/write-model.ts` says what each entry means), so each says the same when an answer is lost, and none is sent twice. One sent by a session closed or reloaded mid-way is offered again with `no answer came back` in amber, since it may have gone through.
 - What was pressed holds until the MR's head moves, so a push offers the move afresh, and a hand-off to Claude ends when its push lands.
 - A press that did not take says why beside the move, amber, until it is pressed again; a toast says how each move ended.
 - Merging and rebasing write to GitLab, so they need a token with the `api` scope; the pane reads with `read_api`.
