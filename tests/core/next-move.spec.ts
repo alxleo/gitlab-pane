@@ -244,6 +244,9 @@ test('a press records what it does against the press held: a merge goes only on 
   // While a move is sent, a press does nothing; one a closed session left long ago no longer holds.
   expect(decidePress(merge, held({ state: 'sent' }), 'abc123', at)).toBe(null)
   expect(decidePress(merge, held({ state: 'sent' }), 'abc123', 1_000_000)?.state).toBe('armed')
+  // Nor does a press of another move from an older drawing, the conflicts' hand-off included.
+  expect(decidePress({ kind: 'conflicts', does: 'make' }, held({ state: 'sent' }), 'abc123', at)).toBe(null)
+  expect(decidePress({ kind: 'rebase', does: 'make' }, held({ state: 'sent' }), 'abc123', at)).toBe(null)
   // Conflicts are handed over once per head.
   const conflicts = { kind: 'conflicts', does: 'make' } as const
   expect(decidePress(conflicts, undefined, 'abc123', at)).toEqual({ kind: 'conflicts', state: 'handed', on: 'abc123', at })

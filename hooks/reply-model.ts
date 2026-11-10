@@ -50,14 +50,36 @@ export function hunkOf(lines: readonly DiffLine[]): string | null {
   return [head, ...kept.map(rowOf)].join('\n')
 }
 
-/** No reply box open. */
-export const CLOSED: ReplyBox = { thread: '', text: '' }
+/**
+ * The longest reply the pane takes, in characters. A reply waiting to be confirmed is drawn whole, and its size counts
+ * against the page's room, so a longer one would push its own buttons, and the threads after it, off the page.
+ */
+export const REPLY_MOST = 5_000
 
-/** The box under `thread`, holding what was last typed there. */
-export const openedBox = (thread: string, typed: Readonly<Record<string, string>>): ReplyBox => ({ thread, text: typed[thread] ?? '' })
+/** No reply box open. */
+export const CLOSED: ReplyBox = { thread: '', text: '', say: '' }
+
+/** The box under `thread`, holding what was last typed there, cut to what the pane takes. */
+export const openedBox = (thread: string, typed: Readonly<Record<string, string>>): ReplyBox => ({ thread, text: shorten(typed[thread] ?? '', REPLY_MOST), say: '' })
+
+/** Why the pane will not take `text` as a reply, or null when it will. */
+export const tooLong = (text: string): string | null =>
+  text.length > REPLY_MOST ? `${text.length.toLocaleString('en')} characters: the pane takes ${REPLY_MOST.toLocaleString('en')}; post a longer reply on GitLab` : null
 
 /** The ledger's id of the reply under a thread, by its first note's address. */
 export const replyId = (thread: string): string => `reply:${thread}`
+
+/**
+ * What Enter in the box records against the reply held under its thread (as it holds at `at`): the text armed, waiting
+ * for `post`; nothing while a reply is out, or for text with nothing in it or longer than the pane takes.
+ */
+export function decideArm(held: Write | undefined, text: string, at: number): Write | null {
+  const isOut = liveOf(held, at)?.state === 'sent'
+  return isOut || text.trim() === '' || tooLong(text) !== null ? null : { kind: 'reply', state: 'armed', on: text, at }
+}
+
+/** Whether `edit` or `cancel` may take the reply held back: any time but while it is out. */
+export const mayTakeBack = (held: Write | undefined, at: number): boolean => liveOf(held, at)?.state !== 'sent'
 
 /**
  * What a press on `post` records against the reply held under its thread (as it holds at `at`): the reply sent, exactly

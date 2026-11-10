@@ -5,9 +5,9 @@ import { ensureDetail } from './detail'
 import { quietly } from './failures'
 import { replyMutation } from './page-documents'
 import { ask } from './graphql'
-import { CLOSED, decidePost, openedBox, postedOf, replyId, sayOf } from './reply-model'
+import { CLOSED, decideArm, decidePost, mayTakeBack, openedBox, postedOf, replyId, sayOf, tooLong } from './reply-model'
 import { refusalOf } from './write-model'
-import { claimWrite, heldWrite, setWrite } from './writes'
+import { claimWrite, forgetWrite, setWrite } from './writes'
 
 import type { Note, ReplyBox } from '../types'
 
@@ -46,10 +46,14 @@ export function confirmReply($: EngineInterface, thread: string, text: string): 
 }
 
 async function armReply($: EngineInterface, thread: string, text: string): Promise<void> {
+  const at = await $.clock.now()
   await update($, typedAtom, typed => ({ ...typed, [thread]: text }))
-  if (text.trim() !== '') {
-    await setWrite($, replyId(thread), { kind: 'reply', state: 'armed', on: text, at: await $.clock.now() })
+  const say = tooLong(text)
+  if (say !== null) {
+    await update($, replyAtom, box => (box.thread === thread ? { ...box, say } : box))
+    return
   }
+  await claimWrite($, replyId(thread), held => decideArm(held, text, at))
 }
 
 /** Back from confirming, or from a failure, to the box with the text in it. */
@@ -63,12 +67,12 @@ export function closeReply($: EngineInterface, thread: string): void {
 }
 
 async function takeBack($: EngineInterface, thread: string, isEditing: boolean): Promise<void> {
-  const held = await heldWrite($, replyId(thread))
-  if (held?.state === 'sent') {
+  const at = await $.clock.now()
+  const { isGone, held } = await forgetWrite($, replyId(thread), now => mayTakeBack(now, at))
+  if (!isGone) {
     return
   }
-  await setWrite($, replyId(thread), null)
-  await update($, replyAtom, () => (isEditing ? { thread, text: held?.on ?? '' } : CLOSED))
+  await update($, replyAtom, () => (isEditing ? { thread, text: held?.on ?? '', say: '' } : CLOSED))
 }
 
 /** Leaving the page: the box goes, what was typed staying; a reply confirmed, out or failed keeps its entry, to say how it ended. */

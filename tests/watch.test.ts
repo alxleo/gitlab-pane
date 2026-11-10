@@ -12,6 +12,8 @@ import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
 import { toCard } from '../hooks/gitlab'
+import { REPLY_MOST } from '../hooks/reply-model'
+import { LOST, SENT_HOLDS_MS } from '../hooks/write-model'
 import { slimCard } from '../hooks/slim'
 import { nextSnapshot, readSnapshot } from '../hooks/snapshot'
 import type { ReadResult } from '../hooks/snapshot'
@@ -232,7 +234,7 @@ function engine(
   world: {
     glab?: Record<string, string>
     session?: string
-    held?: () => Promise<void>
+    held?: (operation: string) => Promise<void>
     remote?: string
     onRebase?: (path: string, iid: string) => void
     refusesRebase?: boolean
@@ -1056,6 +1058,95 @@ test('a reply whose answer GitLab’s edge lost is sent once, says it may have p
   await open()
   expect(await ui.find({ type: 'Text', text: maybe })).toBeDefined()
   expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post again')
+  await ui.unmount()
+})
+
+test('a reply out stays out until its answer comes: no move elsewhere drops it, nothing takes it back, and a lost answer says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const fake: Fake = { mrs: [ready(12), rawMr(13, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer')] } })], isDown: false }
+  const { gitlab } = engine(on, fake, {}, {}, { held: operation => (operation === 'Reply' ? answered : Promise.resolve()) })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const open = async () => ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.key ?? '' })
+  const button = async (prefix: string) => (await ui.findAll({ type: 'Button' })).find(keyed(prefix))
+  await open()
+  await ui.press({ key: (await button('reply-open-'))?.key ?? '' })
+  await ui.input({ key: 'reply-box', text: 'Renamed.' })
+  // A merge of another MR, meanwhile, keeps its own record and leaves the reply's alone.
+  await ui.press({ key: 'back-bottom' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(gitlab.requests).toContain('gitlab.com Merge')
+  await open()
+  expect((await button('reply-post-'))?.props.label).toBe('post as you')
+
+  // Out, and GitLab slow to answer: nothing to post, edit or cancel until it answers.
+  await ui.press({ key: (await button('reply-post-'))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'posting…' })).toBeDefined()
+  expect((await ui.findAll({ type: 'Button' })).some(keyed('reply-'))).toBe(false)
+  expect(await ui.find({ type: 'Input' })).toBeUndefined()
+
+  // No answer by the longest any write is followed: the reply says its answer was lost, and nothing was sent again.
+  await clock.advance(SENT_HOLDS_MS + 1_000)
+  await ui.press({ key: 'back-bottom' })
+  await open()
+  expect((await ui.find({ type: 'Text', text: LOST }))?.props.color).toBe('warning')
+  expect((await button('reply-post-'))?.props.label).toBe('post again')
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Reply')).toHaveLength(1)
+  answer()
+  await clock.settle()
+  await ui.unmount()
+})
+
+test('a merge whose answer never comes is offered again past the longest follow, saying its answer was lost, and is not sent again', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const { gitlab } = engine(on, { mrs: [ready(12)], isDown: false }, {}, {}, { held: operation => (operation === 'Merge' ? answered : Promise.resolve()) })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: '✓ merging…' })).toBeDefined()
+  await clock.advance(SENT_HOLDS_MS + 60_000)
+  expect((await moveOf(ui, 12))?.label).toBe('✓ merge')
+  expect((await ui.find({ type: 'Text', text: new RegExp(LOST, 'u') }))?.props.color).toBe('warning')
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Merge')).toHaveLength(1)
+  answer()
+  await clock.settle()
+  await ui.unmount()
+})
+
+test('a reply longer than the pane takes is not armed: the box says why, and every thread keeps its reply', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer'), thread('And the test, please.', 'reviewer')] } })], isDown: false }
+  engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-open-'))?.key ?? '' })
+  await ui.input({ key: 'reply-box', text: 'x'.repeat(90_000) })
+  expect((await ui.find({ type: 'Text', text: `90,000 characters: the pane takes ${REPLY_MOST.toLocaleString('en')}; post a longer reply on GitLab` }))?.props.color).toBe(
+    'warning'
+  )
+  const buttons = await ui.findAll({ type: 'Button' })
+  expect(buttons.some(keyed('reply-post-'))).toBe(false)
+  expect(buttons.some(keyed('reply-cancel-'))).toBe(true)
+  expect(buttons.filter(keyed('reply-open-'))).toHaveLength(1)
   await ui.unmount()
 })
 

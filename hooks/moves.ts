@@ -13,7 +13,7 @@ import type { Fresh, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
 import { refusalOf, why } from './write-model'
 import type { Refusal } from './write-model'
-import { claimWrite, disarmWrite, drawnWrites, setWrite } from './writes'
+import { claimWrite, drawnWrites, forgetWrite, setWrite } from './writes'
 
 import type { MoveKind, MrCard, Pressed } from '../types'
 
@@ -138,7 +138,13 @@ async function press($: EngineInterface, key: string, move: { kind: MoveKind; do
     return
   }
   if (pressed.state === 'armed') {
-    $.clock.after(ARMED_MS, () => quietly($, disarmWrite($, moveId(key), at)))
+    // Taken back once its time is up, unless it was pressed again meanwhile.
+    $.clock.after(ARMED_MS, () =>
+      quietly(
+        $,
+        forgetWrite($, moveId(key), held => held?.state === 'armed' && held.at === at)
+      )
+    )
     return
   }
   if (pressed.state === 'handed') {

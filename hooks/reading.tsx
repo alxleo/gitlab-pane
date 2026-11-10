@@ -8,7 +8,6 @@ import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
 import { closeReply, confirmReply, editReply, openReply, postReply, typeReply } from './replies'
 import { replyId } from './reply-model'
-import { liveOf } from './write-model'
 
 import type { MarkdownText, Part } from './markdown'
 import type { PageHead } from './page-lines'
@@ -145,7 +144,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     const tag = shortHash(thread.url)
     const cancel = <Button key={`reply-cancel-${tag}`} plain dimColor label="cancel" onPress={() => closeReply($, thread.url)} />
     // How far a reply under this thread got is its entry in the ledger of writes; without one, the box or the press that opens it.
-    const write = liveOf(writes[replyId(thread.url)], now)
+    const write = writes[replyId(thread.url)]
     if (write?.state === 'sent') {
       return [<Text dimColor>posting…</Text>]
     }
@@ -186,6 +185,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
         onInput={text => typeReply($, thread.url, text)}
         onSubmit={text => confirmReply($, thread.url, text)}
       />,
+      ...(reply.say !== '' ? [<Text color="warning">{reply.say}</Text>] : []),
       cancel,
     ]
   }

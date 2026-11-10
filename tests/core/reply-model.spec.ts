@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { CLOSED, decidePost, EXCERPT_LINES, LINE_MOST, hunkOf, openedBox, postedOf, replyId, sayOf } from '../../hooks/reply-model.ts'
+import { CLOSED, decideArm, decidePost, EXCERPT_LINES, LINE_MOST, hunkOf, mayTakeBack, openedBox, postedOf, REPLY_MOST, replyId, sayOf, tooLong } from '../../hooks/reply-model.ts'
 import type { DiffLine } from '../../hooks/reply-model.ts'
 import { refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
@@ -113,10 +113,31 @@ test('a reply GitLab kept is posted; one it refused, would not keep, or ran as q
 
 test('a reply box opens on what was last typed for its thread; each thread’s reply has its own entry in the ledger', () => {
   const thread = 'https://gitlab.com/g/p/-/merge_requests/12#note_1'
-  expect(openedBox(thread, { [thread]: 'half a thought' })).toEqual({ thread, text: 'half a thought' })
+  expect(openedBox(thread, { [thread]: 'half a thought' })).toEqual({ thread, text: 'half a thought', say: '' })
   expect(openedBox('other', { [thread]: 'half a thought' }).text).toBe('')
-  expect(CLOSED).toEqual({ thread: '', text: '' })
+  // What was typed past what the pane takes opens cut, so the box is never too big to draw.
+  expect(openedBox(thread, { [thread]: 'x'.repeat(90_000) }).text).toHaveLength(REPLY_MOST)
+  expect(CLOSED).toEqual({ thread: '', text: '', say: '' })
   expect(replyId(thread)).toBe(`reply:${thread}`)
+})
+
+test('Enter arms the text, never over a reply that is out, nor text that is blank or longer than the pane takes; edit and cancel wait for an answer', () => {
+  const at = 1_000
+  const sent: Write = { kind: 'reply', state: 'sent', on: 'Renamed it.', at: 0 }
+  expect(decideArm(undefined, 'Renamed it.', at)).toEqual({ kind: 'reply', state: 'armed', on: 'Renamed it.', at })
+  expect(decideArm({ ...sent, state: 'armed' }, 'Renamed it, and more.', at)?.on).toBe('Renamed it, and more.')
+  expect(decideArm(sent, 'Renamed it.', at)).toBeNull()
+  expect(decideArm(undefined, ' \n ', at)).toBeNull()
+  expect(decideArm(undefined, 'x'.repeat(REPLY_MOST), at)?.state).toBe('armed')
+  expect(decideArm(undefined, 'x'.repeat(REPLY_MOST + 1), at)).toBeNull()
+  expect(tooLong('x'.repeat(REPLY_MOST + 1))).toBe('5,001 characters: the pane takes 5,000; post a longer reply on GitLab')
+  expect(tooLong('x')).toBeNull()
+  // A reply out is neither replaced nor taken back until it is answered, or its answer is lost.
+  expect(mayTakeBack(sent, at)).toBe(false)
+  expect(decideArm(sent, 'Renamed it.', SENT_HOLDS_MS + 1)?.state).toBe('armed')
+  expect(mayTakeBack(sent, SENT_HOLDS_MS + 1)).toBe(true)
+  expect(mayTakeBack({ ...sent, state: 'armed' }, at)).toBe(true)
+  expect(mayTakeBack(undefined, at)).toBe(true)
 })
 
 test('post sends exactly the text it was drawn with, once, and only while that text waits confirmed or failed', () => {

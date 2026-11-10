@@ -121,9 +121,10 @@ export type Note = {
 
 /**
  * The one reply box open on an MR's page: the thread it answers (by its first note's address; empty while none is open)
- * and the text it opened with. How far the reply got is its entry in the ledger of writes (`Write`).
+ * and the text it opened with; `say` is why Enter took nothing, or empty. How far the reply got is its entry in the ledger
+ * of writes (`Write`).
  */
-export type ReplyBox = { thread: string; text: string }
+export type ReplyBox = { thread: string; text: string; say: string }
 
 /** Someone other than the author, a bot included, who reviewed or commented. */
 export type Person = {

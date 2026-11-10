@@ -11,7 +11,6 @@ import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { nextMove } from './next-move.ts'
-import { liveOf } from './write-model.ts'
 import type { Move } from './next-move.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
@@ -112,7 +111,7 @@ export type PaneInput = {
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
-  /** This session's presses on moves, by card key. */
+  /** This session's presses on moves, by card key, each as it holds now (`liveOf`). */
   pressed: Readonly<Record<string, Pressed>>
   /** The project (`host/group/project`) this session works in, where Claude can take an MR's conflicts; null when none. */
   here: string | null
@@ -211,7 +210,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   const pipeline = card.pipeline
   const ticketLink = facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null
   const [blocker] = facts.row
-  const move = nextMove(card, liveOf(input.pressed[card.key], now), input.here === card.project)
+  const move = nextMove(card, input.pressed[card.key], input.here === card.project)
   // A move needs GitLab's checks, so a row with a move has a verdict to say it in or beside.
   const isVerdict = move !== null && move.check === facts.verdict?.check
   // A move said beside the verdict speaks for its own check, which then trails no more.

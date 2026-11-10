@@ -86,8 +86,8 @@ export type FakeWorld = {
   glitch?: (operation: string) => number | undefined
   /** True while the network is down: every request fails as a dropped connection does. */
   isDown?: () => boolean
-  /** What each GraphQL answer waits on before it is given: a GitLab that is slow to answer. */
-  held?: () => Promise<void>
+  /** What each GraphQL answer, by its operation, waits on before it is given: a GitLab that is slow to answer. */
+  held?: (operation: string) => Promise<void>
 }
 
 /**
@@ -132,7 +132,7 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
     const request = sent(e.url, e.init)
     requests.push(`${request.host} ${request.operation}`)
     tokens.push(`${request.host} ${request.token ?? ''}`)
-    await world.held?.()
+    await world.held?.(request.operation)
     if (world.isDown?.() === true) {
       return { deny: `$.http.fetch(${e.url}) failed: connection refused` }
     }

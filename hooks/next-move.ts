@@ -57,11 +57,12 @@ export function pressOf(write: Write | undefined): Pressed | undefined {
 export function decidePress(press: { kind: MoveKind; does: 'arm' | 'make' }, held: Pressed | undefined, head: string, at: number): Pressed | null {
   const live = liveOf(held, at)
   const isSame = live !== undefined && live.kind === press.kind && live.on === head
-  if (press.kind === 'conflicts') {
-    return isSame && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', on: head, at }
-  }
+  // While a move is out, no press of any kind replaces it.
   if (live?.state === 'sent') {
     return null
+  }
+  if (press.kind === 'conflicts') {
+    return isSame && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', on: head, at }
   }
   const isConfirmed = !MOVES[press.kind].isMerging || (isSame && live.state === 'armed')
   return { kind: press.kind, state: press.does === 'make' && isConfirmed ? 'sent' : 'armed', on: head, at }
