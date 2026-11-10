@@ -947,7 +947,7 @@ test('thirty MRs in two repos, with a repo filter, draw on terminal, desktop and
     // Mine shows its ten most pressing; the rest fold behind a button.
     expect((await ui.find({ type: 'Button', key: 'more' }))?.props.label).toBe('▸ 15 more')
     // Each person is their GitLab avatar where the surface draws pictures and room is left after the cards, else a dot.
-    const isTim = (node: unknown) => isDrawn(node) && /^person-tim-103-\w+$/.test(String(node.props?.['key'] ?? ''))
+    const isTim = (node: unknown) => isDrawn(node) && typeof node.props?.['key'] === 'string' && /^person-tim-103-\w+$/.test(node.props['key'])
     const tim = boxesOf(await ui.drawn()).find(box => (box.children ?? []).some(isTim))
     const timFace = elementsOf(tim)[1]
     expect(surface === 'terminal' ? timFace?.type === 'Text' : String(timFace?.props?.source).includes(`href='data:image/png;base64,iVBORw0KGgo`)).toBe(true)
