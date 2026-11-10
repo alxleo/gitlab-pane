@@ -7,7 +7,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 ## No debt
 
 - Dead code is an error (`npm run knip`): delete it. A path knip cannot see goes in `knip.jsonc` with its reason, never ignored per export.
-- Whoever adds a rule fixes every violation in the same change. No allowlists, ratchets or "to be split" lists. No disable comments: `eslint-disable`, `@ts-ignore`, `@ts-expect-error` and `@ts-nocheck` are errors. A wrong rule changes in `eslint.config.cjs`, with its reason beside it.
+- Whoever adds a rule fixes every violation in the same change. No allowlists, ratchets or "to be split" lists. No disable comments: `oxlint-disable`, `eslint-disable`, `@ts-ignore`, `@ts-expect-error` and `@ts-nocheck` are errors. A wrong rule changes in `oxlint.config.ts`, with its reason beside it.
 - Do not hide a violation in another form (a cast in a helper, state in a const object). If the rule is in the way, the code is.
 - Change an existing test before adding one: a changed behaviour edits the test that names it. A bug fix starts with a test that fails for it. Fix the code, not the test; never weaken an assertion to go green.
 
@@ -15,7 +15,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 | Rule | Detail |
 | --- | --- |
-| The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (the linter and `tools/check_core.ts` read it). `claude-code` is not importable there. A new file joins by being listed. |
+| The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed. |
 | Imports | A core file imports core files by their `.ts` path, and `../types`. Other files import without extensions. `tools/*.ts` import `gitlab-documents.ts` and `decode.ts` under plain Node. |
 | New logic | On plain data goes in the core, with a test on plain data. Engine-facing files stay thin: `pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `register.tsx`. |
 | `fromGitLab` (`markdown.ts`) | Turns text into GitLab's Markdown to draw; only `gitlab.ts` imports it (`local/only-importers`). Anything else gets such text from `cleanBody`. |
@@ -54,8 +54,8 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 - Node only: every tool, check and hook is TypeScript run by Node (`node tools/<name>.ts` or an `npm run` script). No bash, no Python. A new tool is a `tools/*.ts` file under the same lint. The only shell is a workflow's `run:` lines.
 - One `package.json` and one `package-lock.json`; the published tree leaves both out. Git hooks are written by `simple-git-hooks` from `package.json`; no script lives in the repository.
 - gitleaks, actionlint and zizmor are not Node tools: CI runs them; `npm run scan` runs those installed.
-- Formatting is Biome's (`biome.jsonc`, formatter only): never hand-format, run `npm run format`. ESLint sets no formatting rule; keep it that way, so the two cannot disagree. A tool that generates a file formats its output through `tools/format.ts`.
-- On editing a core file, `.claude/settings.json` runs the core's `tsc`, `eslint` and `biome format`: read what it says.
+- Formatting is Biome's (`biome.jsonc`, formatter only): never hand-format, run `npm run format`. oxlint sets no formatting rule; keep it that way, so the two cannot disagree. A tool that generates a file formats its output through `tools/format.ts`.
+- On editing a core file, `.claude/settings.json` runs the core's `tsc`, `oxlint` and `biome format`: read what it says.
 
 ## Before you commit
 
@@ -65,6 +65,6 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 ## Tests
 
-- Pure logic: `tests/core/<module>.spec.ts` (Vitest and fast-check, plain Node), named after the core module it tests. `tests/*.test.ts` (`claude plugin test`) is only for wiring, drawing, wakes end to end, the budgets and the scenes. Shared data: `tests/fixtures.ts`.
+- Pure logic: `tests/core/<module>.spec.ts` (Vitest and fast-check, plain Node), named after the core module it tests. `tests/*.test.ts` (`claude plugin test`) is only for wiring, drawing, wakes end to end, the budgets and the scenes. Shared data: `tests/fixtures.ts`. A dev tool's own tests sit beside it as `tools/<tool>.spec.ts` (Vitest, checked by `tools/tsconfig.json`); the local lint rules are tested there with oxlint's `RuleTester`.
 - A test name is a sentence saying what happens: `a pipeline that failed twice shows its latest failure`.
 - `tests/core/reconcile.spec.ts` is the model of a pure test; `tests/watch.test.ts` is the engine smoke test. Property tests use a fixed seed (`tests/core/setup.ts`); fast-check prints the seed and path of a counterexample.

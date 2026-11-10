@@ -1,0 +1,5 @@
+{
+  // The scenes are checked as part of the root project, which includes tools/screens. This file only stops the nearest
+  // tsconfig.json up the tree (tools/tsconfig.json, the dev tools') from claiming them in editors and the linter.
+  "extends": "../../tsconfig.json"
+}

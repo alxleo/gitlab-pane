@@ -1,6 +1,6 @@
 {
-  // Biome formats; ESLint lints. Only the formatter is on: the linter and the import organiser are off, so no rule here can
-  // disagree with eslint.config.cjs, which sets no formatting rule of its own.
+  // Biome formats; oxlint lints. Only the formatter is on: the linter and the import organiser are off, so no rule here can
+  // disagree with oxlint.config.ts, which sets no formatting rule of its own.
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "root": true,
   // What git ignores (node_modules, the engine's declarations, worktrees) is not formatted.
