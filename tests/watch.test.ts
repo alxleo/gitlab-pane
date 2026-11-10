@@ -44,6 +44,9 @@ const boxesOf = (node: unknown): Drawn[] => elementsOf(node).filter(element => e
 /** Whether an element's `key` starts with `prefix`. */
 const keyed = (prefix: string) => (element: FoundElement) => element.key?.startsWith(prefix) === true
 
+/** The title a card of MR `iid` draws, among the buttons drawn: every title is a button, which opens the MR's page. */
+const titleOf = (buttons: FoundElement[], iid: number) => buttons.find(keyed(`open-${iid}-`))?.props.label
+
 /** The time on the test's clock as GitLab writes it: an MR that changed since is stamped with it. */
 const stamp = (clock: { now: () => number }): string => new Date(clock.now()).toISOString()
 
@@ -456,11 +459,14 @@ test('someone without a picture is their initials on a disc, beside their first 
   expect(String(disc?.props?.source)).toContain('>IM</text>')
   const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
   expect(labels).toContain('Ines')
-  // A name written like a handle still gives a first name, and its hover card says it once.
+  // A name written like a handle still gives a first name, and the page opened on them says it once.
   expect(labels).toContain('Mel')
-  expect(await ui.find({ type: 'Text', text: '@ines.mendel' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Mel.Northcote' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '@mel.northcote' })).toBeUndefined()
+  const opensOn = async (username: string) => ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed(`person-${username}-12-`))?.key ?? '' })
+  await opensOn('ines.mendel')
+  expect(await ui.find({ type: 'Text', text: 'Ines Mendel @ines.mendel · approved · 0 comments' })).toBeDefined()
+  await ui.press({ key: 'back-top' })
+  await opensOn('mel.northcote')
+  expect(await ui.find({ type: 'Text', text: 'Mel.Northcote · not reviewed yet · 0 comments' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -499,7 +505,7 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   await terminal.unmount()
 })
 
-test('read whole › opens one MR as a page of its own, a way back at both ends, the pane titled for where you are', async ($, on) => {
+test('a card’s title opens its MR as a page of its own, a way back at both ends, the pane titled for where you are', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const description = [
     `## What\n\n${'This change does a careful thing. '.repeat(40)}`,
@@ -532,10 +538,8 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
   expect(titles.at(-1)).toBe('GitLab · Mine')
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const open = (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? ''
+  // The title leads straight to the whole MR, on a page of its own in this pane; a card never opens in the list.
   await ui.press({ key: open })
-
-  // The open card's short detail leads to the whole of it, on a page of its own in this pane.
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
   expect(new Set(opened)).toEqual(new Set(['gitlab-pane']))
   expect(titles.at(-1)).toBe('GitLab · !12')
   expect(await ui.find({ type: 'Button', key: 'tab-mine' })).toBeUndefined()
@@ -562,8 +566,8 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
   await ui.press({ key: 'back-bottom' })
   expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
   expect(titles.at(-1)).toBe('GitLab · Mine')
-  // The card it was read from is still open where it was.
-  expect((await ui.findAll({ type: 'Button' })).find(button => button.key === open)?.props.label).toBe('▾ thing 12')
+  // The card it was read from is back, as it was.
+  expect((await ui.findAll({ type: 'Button' })).find(button => button.key === open)?.props.label).toBe('thing 12')
   await ui.press({ key: 'tab-inbox' })
   expect(titles.at(-1)).toBe('GitLab · Inbox')
   await ui.unmount()
@@ -577,7 +581,6 @@ test('an MR too long for its page shows what fits of the description, then links
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
 
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
@@ -717,7 +720,7 @@ test('a failed read keeps the last cards and says how old they are', async ($, o
   await clock.advance(180_000)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
   expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toBe('GitLab read failed: gitlab.com failed: connection refused; showing 3m old data')
   await ui.unmount()
 })
@@ -756,20 +759,19 @@ test('with nothing read yet, a failing GitLab is told in a line of its own; and 
   await ui.unmount()
 })
 
-test('an MR a partly failed read leaves out keeps its last card, still open, and the footer says so', async ($, on) => {
+test('an MR a partly failed read leaves out keeps its last card, and the footer says so', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12), rawMr(13)], isDown: false }
   engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.key ?? '' })
 
   // MR 13 changed, and GitLab timed that part of the answer out: it comes back null.
   fake.mrs = [rawMr(12), rawMr(13, { title: 'fix: newer 13', updatedAt: stamp(clock) })]
   fake.lost = ['13']
   await clock.advance(180_000)
-  expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.props.label).toBe('▾ thing 13')
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.props.label).toBe('thing 13')
   // The footer says what the read left out; the age beside the tabs is that of the last change, or of the last five minutes:
   // a quiet poll redraws nothing.
   expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toBe('1 MR kept from the last read')
@@ -793,7 +795,6 @@ test('an MR that merges while read whole leaves its page, and the title follows'
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('read-12-'))?.key ?? '' })
   expect(titles.at(-1)).toBe('GitLab · !12')
 
   fake.mrs = [rawMr(12, { state: 'merged', updatedAt: stamp(clock) }), rawMr(13)]
@@ -841,7 +842,7 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
   expect(await ui.find({ type: 'Text', text: /GitLab read failed/ })).toBeUndefined()
   await ui.unmount()
 })
@@ -873,30 +874,6 @@ const fiftyBusy = (): Fake => {
     isDown: false,
   }
 }
-
-test('cards you opened keep their detail when the unfolded list fills the drawing', async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  engine(on, fiftyBusy())
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await clock.settle()
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The lowest rows drawn, opened one at a time, since an open row's detail can push the last row out. Five, as a few
-  // cards open at once is how you read them.
-  for (let i = 0; i < 5; i++) {
-    const closed = (await ui.findAll({ type: 'Button' })).filter(button => keyed('open-')(button) && String(button.props.label).startsWith('▸'))
-    await ui.press({ key: closed.at(-1)?.key ?? '' })
-  }
-  await ui.press({ key: 'more' })
-
-  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-  expect(await ui.find({ type: 'Text', text: /^Too much is open/ })).toBeUndefined()
-  expect((await ui.findAll({ type: 'Button' })).filter(keyed('less-')).length).toBe(5)
-  // Each thread is cut short in the card; its 💬 link opens it whole.
-  const longest = Math.max(...(await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text).length))
-  expect(longest).toBeLessThanOrEqual(500)
-  expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
-  await ui.unmount()
-})
 
 test('fifty MRs with full pipelines and long threads stay inside the 100,000 characters a drawing holds', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
@@ -932,7 +909,7 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.unmount()
 })
 
-test('thirty MRs in two repos, with hover cards and a repo filter, draw on terminal, desktop and vscode', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
+test('thirty MRs in two repos, with a repo filter, draw on terminal, desktop and vscode', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const pipelines: PipelineStatusEnum[] = ['SUCCESS', 'FAILED', 'RUNNING', 'MANUAL']
   const fake: Fake = {
@@ -970,16 +947,17 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     // Mine shows its ten most pressing; the rest fold behind a button.
     expect((await ui.find({ type: 'Button', key: 'more' }))?.props.label).toBe('▸ 15 more')
     // Each person is their GitLab avatar where the surface draws pictures and room is left after the cards, else a dot.
-    const tim = boxesOf(await ui.drawn()).find(box => /^p\w+-103-/.test(box.hover?.scope ?? '') && box.hover?.display === undefined)
+    const isTim = (node: unknown) => isDrawn(node) && /^person-tim-103-\w+$/.test(String(node.props?.['key'] ?? ''))
+    const tim = boxesOf(await ui.drawn()).find(box => (box.children ?? []).some(isTim))
     const timFace = elementsOf(tim)[1]
     expect(surface === 'terminal' ? timFace?.type === 'Text' : String(timFace?.props?.source).includes(`href='data:image/png;base64,iVBORw0KGgo`)).toBe(true)
-    // Hover cards sit in the tree, hidden until the pointer is on their trigger.
-    expect(await ui.find({ type: 'Text', text: 'ABC-1 · Task · In Progress: Make the thing work' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'fix/thing-103 → main · +10 −2 · 1 file' })).toBeDefined()
-    // One icon per person; tim's card says what he asked and his latest words.
-    expect(await ui.find({ type: 'Text', text: 'requested changes · 1 open thread' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'Please look at line 3' })).toBeDefined()
-    // Unfolded, all thirty stay inside what the app draws; the least pressing rows give up their cards first.
+    // Nothing on the list waits for the pointer: no box shows or hides on a hover, so none pushes the cards below it.
+    expect(boxesOf(await ui.drawn()).filter(box => box.hover?.display !== undefined)).toEqual([])
+    // A person's open thread is the card's one line of words, their first name leading; a bot's is not.
+    const labels = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
+    expect(labels).toContain('💬 Tim: Please look at line 3')
+    expect(labels.some(label => label.includes('What the bot wrote'))).toBe(false)
+    // Unfolded, all thirty stay inside what the app draws.
     await ui.press({ key: 'more' })
     expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
     // Each stage lists its jobs; a running pipeline reads against how long one usually takes.
@@ -998,45 +976,25 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     const controls = elementsOf(await ui.drawn()).filter(element => element.type === 'Link' || element.type === 'Button')
     expect(controls.length).toBeGreaterThan(0)
     expect(controls.filter(element => (element.children ?? []).some(child => typeof child !== 'string'))).toEqual([])
-    // Each card opens in the flow under its line, lit by the hover group its trigger shares. The desktop joins a Box to
-    // its group only when its hover also sets a style, so there no trigger names its scope alone.
-    const boxes = boxesOf(await ui.drawn())
-    const alone = boxes.filter(box => box.hover?.scope !== undefined && Object.keys(box.hover).length === 1)
-    expect(surface === 'terminal' ? alone.length > 0 : alone.length === 0).toBe(true)
-    const card = boxes.find(box => box.hover?.display === 'flex' && /^p\w+-103-/.test(box.hover.scope ?? ''))
-    const scope = card?.hover?.scope ?? ''
-    expect(scope.length).toBeGreaterThan(0)
-    expect(card?.props?.display).toBe('none')
-    expect(card?.props?.position).toBeUndefined()
-    expect(boxes.filter(box => box.hover?.scope === scope).map(box => Object.keys(box.hover ?? {}).sort())).toEqual([
-      surface === 'terminal' ? ['scope'] : ['backgroundColor', 'scope'],
-      ['display', 'scope'],
-    ])
-
-    // Initials open the row on that person's comments alone; pressed again, they close it. Keys are short, as each
-    // costs the drawing its length on every row.
+    // A name opens the MR's page on that person's comments alone, which leads on to the whole MR. Keys are short, as
+    // each costs the drawing its length on every row.
     const keys = (await ui.findAll({ type: 'Button' })).map(button => button.key ?? '')
     const timKey = keys.find(key => /^person-tim-103-\w+$/.test(key)) ?? ''
     await ui.press({ key: timKey })
-    expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeDefined()
-    await ui.press({ key: timKey })
-    expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeUndefined()
-    // The title is a plain button with a disclosure arrow, not a link: it opens the card onto what its lines do not
-    // show, and closes it again.
-    const title = (await ui.findAll({ type: 'Button' })).find(button => /^open-103-\w+$/.test(button.key ?? ''))
-    expect(title?.props.label).toBe('▸ thing 103')
-    const opens = { key: title?.key ?? '' }
-    await ui.press(opens)
-    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeDefined()
-    expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
-    expect((await ui.find({ type: 'Button', key: opens.key }))?.props.label).toBe('▾ thing 103')
-    await ui.press(opens)
-    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
-    // ▴ less at the card's foot closes it as well.
-    await ui.press(opens)
-    const less = (await ui.findAll({ type: 'Button' })).find(button => /^less-103-\w+$/.test(button.key ?? ''))
-    await ui.press({ key: less?.key ?? '' })
-    expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeUndefined()
+    await ui.press({ key: 'page-whole' })
+    expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
+    // What the MR is, its ticket and what stands before a merge head its page.
+    expect(await ui.find({ type: 'Link', text: '🎫 ABC-1 · Task · In Progress: Make the thing work' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'fix/thing-103 → main · +10 −2 · 1 file' })).toBeDefined()
+    await ui.press({ key: 'back-top' })
+    // Back on the list, the title opens the whole MR: the narrowing left with the page.
+    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.key ?? '' })
+    expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
+    await ui.press({ key: 'back-top' })
+    // The title is a plain button, not a link: it opens the MR's page, while 🔀 !iid leaves for GitLab.
+    expect((await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.props.label).toBe('thing 103')
 
     await ui.press({ key: 'repo-gitlab.com/g/q' })
     expect((await ui.find({ type: 'Text', text: /^Ready · / }))?.text).toBe('Ready · 5')
@@ -1069,7 +1027,7 @@ test('with another session leading, a session asks GitLab for nothing and draws 
   }
   expect(gitlab.requests).toEqual([])
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
   // The lease stays the leader's: a follower never writes it.
   expect(store.get('lease')).toEqual({ owner: 'other', renewedAt: clock.now() - 10_000 })
   await ui.unmount()
@@ -1087,12 +1045,12 @@ test('a session that leads draws the last snapshot at once, with ↻ beside its 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.advance(2_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
   expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
 
   answer()
   await clock.settle()
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
   expect((await ui.find({ type: 'Text', text: /^updated / }))?.text).toBe('updated just now')
   expect(await ui.find({ type: 'Text', text: /^↻ updated/ })).toBeUndefined()
   await ui.unmount()
@@ -1118,11 +1076,11 @@ test('an MR this session raised before its pane opened stays drawn beside the la
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
   answer()
   await clock.settle()
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
   await ui.unmount()
 })
 
@@ -1146,7 +1104,7 @@ test("a leader that closes its pane hands over: the session that draws takes the
   expect(operations(gitlab.requests).filter(name => name !== 'Usual')).toEqual(['Authored', 'MergeStatus'])
   expect(readSnapshot(store.get('snapshot'))?.rows.map(row => row.iid)).toEqual([12, 13])
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')
   await ui.unmount()
 })
 

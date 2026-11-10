@@ -1,4 +1,4 @@
-import { cutMarkdown, flatOf, type MarkdownText } from './markdown.ts'
+import { flatOf } from './markdown.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
 
@@ -6,19 +6,26 @@ import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
-/** The first line worth reading, without its Markdown marks. */
-export function excerpt(body: GitLabMarkdown, room = 160): string {
-  const line =
-    flatOf(body)
-      .split('\n')
-      .find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
-  const plain = line.replace(/^[#>\s]+|[*_`]/g, '').trim()
-  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+/** A body's lines of prose: code blocks (a suggestion is one) left out, a link's words kept without its address, pictures dropped. */
+function proseLines(body: GitLabMarkdown): string[] {
+  const kept: string[] = []
+  let isCode = false
+  for (const text of flatOf(body).split('\n')) {
+    if (/^\s*(```|~~~)/.test(text)) {
+      isCode = !isCode
+    } else if (!isCode) {
+      kept.push(text.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'))
+    }
+  }
+  return kept
 }
 
-/** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
-export function bodyOf(text: GitLabMarkdown, room = 1_200): MarkdownText {
-  return cutMarkdown(flatOf(text), room)
+/** The first line worth reading, as plain words: without Markdown's marks, and empty for a body of code or pictures alone. */
+export function excerpt(body: GitLabMarkdown, room = 160): string {
+  const line = proseLines(body).find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
+  // Underscores stay: in a review they are mostly names (`fn_name`), rarely emphasis.
+  const plain = line.replace(/^[#>\s]+|[*`]/g, '').trim()
+  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
 }
 
 /** The first paragraph under the headings, as one plain line. */

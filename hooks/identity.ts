@@ -1,7 +1,7 @@
 // A person's identity on the pane: the hash behind keys and colours, the initials, the first name. Pure, so the Mine tab
 // and the Inbox, which meet the same person through a display name and a username, draw one and the same disc.
 
-/** A string's hash, stable across runs; the key of a hover scope and the pick of a colour both come from it. */
+/** A string's hash, stable across runs; short keys and the pick of a colour both come from it. */
 export const hash = (text: string): number => [...text].reduce((value, char) => (Math.imul(value, 31) + char.charCodeAt(0)) >>> 0, 7)
 
 /** Keeps a hover scope or key short whatever the project path or username. */

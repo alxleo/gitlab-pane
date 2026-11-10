@@ -6,7 +6,7 @@ export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', 
 /**
  * The desktop app draws nothing for a tree past 100,000 characters serialized (a 381,164-character one left the pane
  * blank). The engine adds up to about 6,000 of press handles and hover stamps to what this measures, so the app gets
- * about 91,000 at most: rows, then open detail, then hover cards, then avatars, in order of what needs you.
+ * about 91,000 at most: rows in order of what needs you, then avatars; an MR's page, drawn alone, fits its own.
  */
 export const DRAWING_BUDGET = 85_000
 

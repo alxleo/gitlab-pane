@@ -1,7 +1,7 @@
 // pane-rig: drive the GitLab pane through a real, headless Claude Code engine, standing in for the desktop app.
 //
 //   node tools/pane_rig.ts flow                                       draw the pane once GitLab has answered
-//   node tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press read-42 --press back-top
+//   node tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press back-top
 //
 // (`npm run rig -- flow …` is the same.) Each run starts a fresh `claude -p` process, so it runs the mod as it is on disk: no
 // /reload-plugins. The rig answers the engine as the desktop does: it asks for a drawing when told to redraw or after a

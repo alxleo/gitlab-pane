@@ -22,9 +22,6 @@ const brand = <Stamp extends MarkdownText | GitLabMarkdown = MarkdownText>(text:
 /** No Markdown. */
 export const EMPTY_MARKDOWN = brand('')
 
-/** The start of `markdown` that fits `room` characters, ended with `…`. */
-export const cutMarkdown = (markdown: MarkdownText, room: number): MarkdownText => (markdown.length > room ? brand(`${markdown.slice(0, room - 1)}…`) : markdown)
-
 /**
  * The longest start of `markdown` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does.
  * `sizeOf` measures a candidate's drawing.

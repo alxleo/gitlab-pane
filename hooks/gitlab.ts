@@ -119,7 +119,7 @@ const toNote = (raw: RawNote, host: string, path: string, isOpen: boolean, mrUrl
 
 const UNNAMED = '(unnamed)'
 
-/** Letters of a description a row's hover card quotes. */
+/** Letters of a description a card keeps as its lead; sessions of an earlier version still read the field. */
 const LEAD_ROOM = 160
 
 /** A job without a path of its own links to its pipeline. */
@@ -180,12 +180,16 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
       person.isApprover = true
     }
   })
+  // The open threads each person started, which lead their notes: a card quotes the first of them.
+  const started = new Set<Note>()
   threads.forEach(thread =>
     thread.notes.forEach((one, i) => {
       const person = meet(one.author)
-      person?.notes.push(toNote(one, host, path, thread.isOpen, mrUrl))
+      const made = toNote(one, host, path, thread.isOpen, mrUrl)
+      person?.notes.push(made)
       if (person !== undefined && i === 0 && thread.isOpen) {
         person.openThreads += 1
+        started.add(made)
       }
     })
   )
@@ -200,7 +204,7 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
             : person.notes.length > 0
               ? 'commented'
               : 'unreviewed'
-    const notes = [...person.notes].sort((a, b) => firstDifference(Number(b.isOpen) - Number(a.isOpen), b.at.localeCompare(a.at)))
+    const notes = [...person.notes].sort((a, b) => firstDifference(Number(started.has(b)) - Number(started.has(a)), Number(b.isOpen) - Number(a.isOpen), b.at.localeCompare(a.at)))
     return {
       username,
       name: person.name,

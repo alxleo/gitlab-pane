@@ -41,7 +41,6 @@ hooks/kit.tsx
 hooks/markdown.ts
 hooks/model-text.ts
 hooks/mr-url.ts
-hooks/notes.tsx
 hooks/order.ts
 hooks/pane.tsx
 hooks/panes.ts
@@ -63,9 +62,9 @@ hooks/face-model.ts
 hooks/job-failures.ts
 hooks/job-lines.ts
 hooks/job-tail.ts
+hooks/page-lines.ts
 hooks/pane-model.ts
 hooks/row-facts.ts
-hooks/row-lines.ts
 hooks/strip-model.ts
 hooks/first-run.ts
 hooks/detail.ts
