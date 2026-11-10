@@ -737,11 +737,11 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
     // The other version's scenes are drawn by its own mod and scenes, and photographed by this renderer, so the two look alike.
     let base: Scene[] | null = null
     if (options.deltaAgainst !== null) {
-      const version = join(work, 'base-version')
-      writeVersion(options.deltaAgainst, version)
+      const baseRoot = join(work, 'base-version')
+      writeVersion(options.deltaAgainst, baseRoot)
       const baseWork = join(work, 'base-work')
       mkdirSync(baseWork)
-      base = drawScenes(options.claude, baseWork, version)
+      base = drawScenes(options.claude, baseWork, baseRoot)
     }
     const site = join(work, 'site')
     cpSync(join(SCREENS, 'fonts'), join(site, 'fonts'), { recursive: true })
