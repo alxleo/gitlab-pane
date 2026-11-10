@@ -3,7 +3,6 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure } from './drawing'
 import { ago, plural } from './format'
 import { shortHash } from './identity'
-import { verdictOf } from './attention'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
@@ -72,7 +71,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     </Box>
   )
 
-  const verdict = verdictOf(mr)
+  const { verdict } = about
   const head = [
     <Text size="heading" weight="semibold">
       {mr.title}
@@ -81,7 +80,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
       <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
       {verdict !== null && (
-        <Text weight={verdict.tone === 'success' ? 'semibold' : undefined} color={verdict.tone}>
+        <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
           {verdict.words}
         </Text>
       )}
@@ -94,7 +93,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       line.href !== null ? (
         <Link href={line.href}>{line.text}</Link>
       ) : (
-        <Text weight="semibold" color={line.tone}>
+        // What waits on others is said quietly, as the verdict says it; what is yours to act on stands out in its tone.
+        <Text weight={line.tone !== undefined ? 'semibold' : undefined} dimColor={line.tone === undefined} color={line.tone}>
           {line.text}
         </Text>
       )
