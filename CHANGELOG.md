@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/alxleo/gitlab-pane/compare/v0.4.0...v0.4.1) (2026-11-10)
+
+
+### Features
+
+* a quiet MR is one line, its title, what it waits on and its age ([#78](https://github.com/alxleo/gitlab-pane/issues/78)) ([973368a](https://github.com/alxleo/gitlab-pane/commit/973368a5b346c6dc1c7f788a18b66ea8b809a85b))
+* **screens:** a pull request's delta pictures, the change outlined and the rest faded ([#79](https://github.com/alxleo/gitlab-pane/issues/79)) ([962d3b1](https://github.com/alxleo/gitlab-pane/commit/962d3b1ccce6c9aba8078663904f8c841bb47292))
+* the verdict counts the open threads, and an MR's page explains its verdict ([#77](https://github.com/alxleo/gitlab-pane/issues/77)) ([e650721](https://github.com/alxleo/gitlab-pane/commit/e65072107aa3c7edebe79885f3ca16a97d706978))
+
 ## [0.4.0](https://github.com/alxleo/gitlab-pane/compare/v0.3.0...v0.4.0) (2026-11-10)
 
 
