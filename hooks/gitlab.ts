@@ -11,8 +11,7 @@ import type {
   UsualQuery,
 } from './gitlab.generated.ts'
 import type { RawResponse } from './gitlab-documents.ts'
-import { isFilled, isSome } from './decode.ts'
-import { Failure } from './failure.ts'
+import { dataOf, isFilled, isSome } from './decode.ts'
 import { checkStatusOf, ciStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { lead, ranOf } from './format.ts'
@@ -20,7 +19,7 @@ import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
 import { firstDifference } from './order.ts'
 
-import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
+import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, Merging, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
 
 /**
  * Which features a host lacks, from the answer it gave: GitLab validates a whole document and says, for each field its
@@ -42,8 +41,11 @@ export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeat
   })
 }
 
+/** GitLab's merge checks of an MR, and what it says of merging it, from the same answer. */
+export type GitLabVerdict = { checks: MergeStatus; merging: Merging }
+
 /** Each MR's merge checks by card key; an MR missing from the answer, or sent with no checks, has none. */
-export function readMergeStatus(host: string, response: RawResponse<MergeStatusQuery>): Map<string, MergeStatus> {
+export function readMergeStatus(host: string, response: RawResponse<MergeStatusQuery>): Map<string, GitLabVerdict> {
   const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
   return new Map(
     nodes.flatMap(node => {
@@ -51,7 +53,14 @@ export function readMergeStatus(host: string, response: RawResponse<MergeStatusQ
         return []
       }
       const checks = node.mergeabilityChecks.map(check => ({ id: check.identifier, status: checkStatusOf(check.status) }))
-      return checks.length > 0 ? [[cardKey(host, node.project.fullPath, node.iid), checks] as const] : []
+      const merging: Merging = {
+        head: node.diffHeadSha ?? '',
+        isRebasing: node.rebaseInProgress,
+        isAutoMerging: node.autoMergeEnabled,
+        canMerge: node.userPermissions.canMerge,
+        canPush: node.userPermissions.pushToSourceBranch,
+      }
+      return checks.length > 0 ? [[cardKey(host, node.project.fullPath, node.iid), { checks, merging }] as const] : []
     })
   )
 }
@@ -283,6 +292,7 @@ export function toCard(host: string, raw: RawMr): MrCard {
     approvalsRequired: raw.approvalsRequired ?? 0,
     // Filled from `mergeStatusQuery`, which reads it truer than this MR's own fields do.
     mergeStatus: null,
+    merging: null,
     approvers: present(raw.approvedBy?.nodes)
       .filter(user => !user.bot)
       .map(user => user.username),
@@ -320,15 +330,6 @@ export function toCard(host: string, raw: RawMr): MrCard {
 /** How many of the authored MRs GitLab sent back null: parts of a heavy query it timed out. */
 export const lostIn = (response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
-
-const dataOf = <Data>(response: RawResponse<Data>): Data => {
-  const { data } = response
-  if (!isSome(data)) {
-    const reason = (response.errors ?? []).map(error => error.message).join('; ')
-    throw reason === '' ? new Failure('bad-answer', 'GitLab sent no data') : new Failure('server', reason)
-  }
-  return data
-}
 
 /** The authored MRs as cards. A read with no data at all throws; a partial one keeps what came back. */
 export const readResponse = (host: string, response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): MrCard[] =>

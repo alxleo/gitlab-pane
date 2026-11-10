@@ -1,7 +1,7 @@
 import { parseJson } from '../hooks/decode.ts'
 import type { On, RenderSurface } from 'claude-code'
 
-import { sent, serve, traced } from './gitlab_fake'
+import { rebased, sent, serve, traced } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 
 /** What `$.process.run` resolves with. */
@@ -80,6 +80,10 @@ export type FakeHost = {
   accepts?: string
   /** The log of each job the REST API serves, by `<project path>#<job number>`; any other job is not found. */
   traces?: Record<string, string>
+  /** Hears a rebase the REST API was asked for, which it accepts (HTTP 202). */
+  onRebase?: (path: string, iid: string) => void
+  /** Refuses every rebase with HTTP 403, as GitLab does a token or a person that may not push to the branch. */
+  refusesRebase?: boolean
 }
 
 export type FakeWorld = {
@@ -88,7 +92,7 @@ export type FakeWorld = {
   /** The token glab stored, which `glab config get token --host <host>` prints when its environment holds none; a host not listed prints nothing. */
   glab?: Record<string, string>
   /** An HTTP status to answer the next request with instead of GitLab's own, once; an edge that fails now and then. */
-  glitch?: () => number | undefined
+  glitch?: (operation: string) => number | undefined
   /** True while the network is down: every request fails as a dropped connection does. */
   isDown?: () => boolean
   /** What each GraphQL answer waits on before it is given: a GitLab that is slow to answer. */
@@ -120,6 +124,20 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
         },
       }
     }
+    const rebase = rebased(e.url, e.init)
+    if (rebase !== null) {
+      requests.push(`${rebase.host} rebase ${rebase.path}!${rebase.iid}`)
+      const isAccepted = rebase.token !== undefined && rebase.token === hosts[rebase.host]?.accepts
+      if (isAccepted && hosts[rebase.host]?.refusesRebase === true) {
+        return { value: { status: 403, ok: false, headers: {}, text: JSON.stringify({ message: '403 Forbidden' }) } }
+      }
+      if (isAccepted) {
+        hosts[rebase.host]?.onRebase?.(rebase.path, rebase.iid)
+      }
+      return {
+        value: { status: isAccepted ? 202 : 401, ok: isAccepted, headers: {}, text: JSON.stringify(isAccepted ? { rebase_in_progress: true } : { message: '401 Unauthorized' }) },
+      }
+    }
     const request = sent(e.url, e.init)
     requests.push(`${request.host} ${request.operation}`)
     tokens.push(`${request.host} ${request.token ?? ''}`)
@@ -127,7 +145,7 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
     if (world.isDown?.() === true) {
       return { deny: `$.http.fetch(${e.url}) failed: connection refused` }
     }
-    const glitch = world.glitch?.()
+    const glitch = world.glitch?.(request.operation)
     if (glitch !== undefined) {
       return { value: { status: glitch, ok: false, headers: {}, text: '<html>Gateway</html>' } }
     }

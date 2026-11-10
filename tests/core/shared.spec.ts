@@ -6,6 +6,7 @@ import { parseJson } from '../../hooks/decode.ts'
 import { failedCount, threadCount } from '../../hooks/format.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
 import { toCard } from '../../hooks/gitlab.ts'
+import type { GitLabVerdict } from '../../hooks/gitlab.ts'
 import { cursorAfter, FULL_EVERY_MS, mergeReads, movingRows, OVERLAP_MS, scopeFor } from '../../hooks/incremental.ts'
 import { slimCard, withDetail } from '../../hooks/slim.ts'
 import {
@@ -27,7 +28,7 @@ import type { ReadResult } from '../../hooks/snapshot.ts'
 import { pinnedQuery } from '../../hooks/gitlab-documents.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 
-import type { MergeStatus, MrCard, Pinned } from '../../types'
+import type { Merging, MrCard, Pinned } from '../../types'
 
 const pin = (iid: number, origin?: 'raised' | 'watched'): Pinned => ({
   url: `https://gitlab.com/g/p/-/merge_requests/${iid}`,
@@ -152,30 +153,32 @@ test('between whole reads a host is asked only for what changed since, and a who
   expect(cursorAfter({ kind: 'since', after: cursor.after }, NOW + 60_000, cursor)).toEqual({ after: new Date(NOW + 60_000 - OVERLAP_MS).toISOString(), fullAt: NOW })
 })
 
-test('a delta replaces the cards that changed, drops the merged unless pinned, keeps verdicts, and a whole read forgets what it lacks', () => {
+test('a delta replaces the cards that changed, drops the merged unless pinned, keeps verdicts with what GitLab says of merging, and a whole read forgets what it lacks', () => {
   const card = (iid: number, over: Partial<MrCard> = {}): MrCard => ({ ...toCard(HOST, rawMr(iid)), ...over })
   const passing = [{ id: 'CI_MUST_PASS', status: 'success' as const }]
   const conflict = [{ id: 'CONFLICT', status: 'failed' as const }]
-  const base = [card(1, { mergeStatus: passing }), card(2, { mergeStatus: passing }), card(3, { mergeStatus: passing }), card(4, { isOpen: false })]
+  const merging = (head: string): Merging => ({ head, isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true })
+  const known = { mergeStatus: passing, merging: merging('old') }
+  const base = [card(1, known), card(2, known), card(3, known), card(4, { isOpen: false })]
   const delta = mergeReads({
     scope: 'since',
     base,
     fetched: [card(2, { title: 'newer' }), card(3, { isOpen: false }), card(5)],
     singles: [],
     pinned: new Set(['gitlab.com/g/p!3']),
-    verdicts: new Map([['gitlab.com/g/p!5', conflict]]),
+    verdicts: new Map([['gitlab.com/g/p!5', { checks: conflict, merging: merging('new') }]]),
   })
-  const byIid = Object.fromEntries(delta.map(row => [row.iid, [row.title, row.isOpen, row.mergeStatus]]))
+  const byIid = Object.fromEntries(delta.map(row => [row.iid, [row.title, row.isOpen, row.mergeStatus, row.merging?.head ?? null]]))
   // 4 closed and nobody pins it any more; 3 closed but pinned stays, so each session can unpin it, with no verdict; 1 and 2 keep theirs.
   expect(byIid).toEqual({
-    1: ['fix: [ABC-1] thing 1', true, passing],
-    2: ['newer', true, passing],
-    3: ['fix: [ABC-1] thing 3', false, null],
-    5: ['fix: [ABC-1] thing 5', true, conflict],
+    1: ['fix: [ABC-1] thing 1', true, passing, 'old'],
+    2: ['newer', true, passing, 'old'],
+    3: ['fix: [ABC-1] thing 3', false, null, null],
+    5: ['fix: [ABC-1] thing 5', true, conflict, 'new'],
   })
   const whole = mergeReads({ scope: 'open', base, fetched: [card(2)], singles: [], pinned: new Set(), verdicts: null })
   expect(whole.map(row => row.iid)).toEqual([2])
-  expect(whole[0]?.mergeStatus).toBeNull()
+  expect(whole[0]).toMatchObject({ mergeStatus: null, merging: null })
   expect(movingRows([toCard(HOST, rawMr(1, { headPipeline: pipe('RUNNING') })), toCard(HOST, rawMr(2))]).map(row => row.iid)).toEqual([1])
 })
 
@@ -198,9 +201,17 @@ const worldCard = (iid: number, mr: { version: number; isOpen: boolean; updatedA
 })
 
 /** GitLab's verdicts, which it gives for open MRs only. */
-const verdictsOf = (world: World): Map<string, MergeStatus> =>
+const verdictsOf = (world: World): Map<string, GitLabVerdict> =>
   new Map(
-    [...world].filter(([, mr]) => mr.isOpen).map(([iid, mr]) => [`gitlab.com/g/p!${iid}`, [{ id: 'CI_MUST_PASS', status: (iid + mr.version) % 2 === 0 ? 'success' : 'failed' }]])
+    [...world]
+      .filter(([, mr]) => mr.isOpen)
+      .map(([iid, mr]) => [
+        `gitlab.com/g/p!${iid}`,
+        {
+          checks: [{ id: 'CI_MUST_PASS', status: (iid + mr.version) % 2 === 0 ? 'success' : 'failed' }],
+          merging: { head: `v${mr.version}`, isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true },
+        },
+      ])
   )
 
 const rowsOf = (rows: readonly MrCard[]) => rows.toSorted((a, b) => a.key.localeCompare(b.key))

@@ -1,5 +1,6 @@
 import { isRecord, parseJson, stringRecord } from '../hooks/decode.ts'
 import type { Operations, RawResponse } from '../hooks/gitlab-documents.ts'
+import type { MergeStrategyEnum } from '../hooks/gitlab.generated.ts'
 
 /** GitLab's answer to each operation the pane sends, typed by the document's generated types. A test sets the ones it needs. */
 export type Answers = {
@@ -63,7 +64,7 @@ export function sent(url: string, init: { method?: string; headers?: Record<stri
   if (!isRecord(body) || typeof body.query !== 'string' || typeof body.operationName !== 'string') {
     throw new Error('the pane sent a body without a query and an operationName')
   }
-  if (new RegExp(`^\\s*query\\s+${body.operationName}\\b`, 'mu').exec(body.query) === null) {
+  if (new RegExp(`^\\s*(?:query|mutation)\\s+${body.operationName}\\b`, 'mu').exec(body.query) === null) {
     throw new Error(`the operationName ${body.operationName} is not the operation of the document sent`)
   }
   const header = Object.entries(init.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
@@ -84,6 +85,29 @@ export function traced(url: string, init: { method?: string; headers?: Record<st
   }
   const header = Object.entries(init?.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
   return { host: match[1], path: decodeURIComponent(match[2]), job: match[3], token: header?.replace(/^Bearer /u, '') }
+}
+
+/** GitLab's merge strategies by the name a request gives. */
+const STRATEGIES: Readonly<Record<string, MergeStrategyEnum>> = {
+  MERGE_TRAIN: 'MERGE_TRAIN',
+  ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS: 'ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS',
+  MERGE_WHEN_CHECKS_PASS: 'MERGE_WHEN_CHECKS_PASS',
+}
+
+/** A rebase asked for on the REST API: the host, and the project path and MR number it names. */
+export type Rebased = { host: string; path: string; iid: string; token: string | undefined }
+
+/** The request `$.http.fetch(url, init)` is given, read as a PUT of an MR's rebase, or none when it is something else. */
+export function rebased(url: string, init: { method?: string; headers?: Record<string, string> } | undefined): Rebased | null {
+  const match = /^https:\/\/([^/]+)\/api\/v4\/projects\/([^/]+)\/merge_requests\/(\d+)\/rebase$/u.exec(url)
+  if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+    return null
+  }
+  if (init?.method !== 'PUT') {
+    throw new Error(`the pane asked for a rebase with ${init?.method ?? 'GET'}`)
+  }
+  const header = Object.entries(init.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
+  return { host: match[1], path: decodeURIComponent(match[2]), iid: match[3], token: header?.replace(/^Bearer /u, '') }
 }
 
 /**
@@ -134,6 +158,15 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       )
     case 'InboxBrief':
       return reply(200, set(answers.InboxBrief, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
+    case 'MoveState':
+      return reply(200, set(answers.MoveState, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
+    case 'Merge': {
+      const strategy = STRATEGIES[variables.strategy ?? '']
+      return reply(
+        200,
+        set(answers.Merge, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid'), sha: need(variables, 'sha'), ...(strategy !== undefined ? { strategy } : {}) })
+      )
+    }
     default:
       throw new Error(`the pane sent an operation the fake does not know: ${operation}`)
   }

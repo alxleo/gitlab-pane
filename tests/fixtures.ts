@@ -103,6 +103,16 @@ export type Mr = MrFieldsFragment & {
   /** The reviewers with their review state, as a current GitLab sends them. */
   reviewers: { nodes: Array<ReviewerFieldsFragment | null> | null } | null
   mergeabilityChecks?: MergeabilityCheck[]
+  /** What the MergeStatus query says of merging it, beside its checks; by default its head is `head-<iid>` and the user may merge it. */
+  merging?: Partial<{
+    diffHeadSha: string | null
+    rebaseInProgress: boolean
+    autoMergeEnabled: boolean
+    userPermissions: { canMerge: boolean; pushToSourceBranch: boolean }
+    /** What a fresh read of one MR (`MoveState`) says beside: the last rebase's commit and the last merge error. */
+    rebaseCommitSha: string | null
+    mergeError: string | null
+  }>
 }
 
 export const rawMr = (iid: number, over: Partial<Mr> = {}): Mr => ({
@@ -155,7 +165,15 @@ export const mergeStatuses = (mrs: readonly Mr[]) => ({
   data: {
     currentUser: {
       authoredMergeRequests: {
-        nodes: mrs.map(mr => ({ iid: mr.iid, project: { fullPath: mr.project.fullPath }, mergeabilityChecks: mr.mergeabilityChecks ?? [] })),
+        nodes: mrs.map(mr => ({
+          iid: mr.iid,
+          project: { fullPath: mr.project.fullPath },
+          mergeabilityChecks: mr.mergeabilityChecks ?? [],
+          diffHeadSha: mr.merging?.diffHeadSha ?? `head-${mr.iid}`,
+          rebaseInProgress: mr.merging?.rebaseInProgress ?? false,
+          autoMergeEnabled: mr.merging?.autoMergeEnabled ?? false,
+          userPermissions: mr.merging?.userPermissions ?? { canMerge: true, pushToSourceBranch: true },
+        })),
       },
     },
   },
