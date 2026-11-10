@@ -13,6 +13,9 @@ import type { Role } from '../types'
 // store. A renewal every 4 s rewrote a 260 KB store fifteen times a minute for nothing: a leader that goes without a
 // release (its process killed, the machine asleep) is the only case a long expiry slows, and a pane no one is looking at
 // can wait 45 s to change hands. A pane closed on purpose releases the lease at once, and the next tick takes it.
+//
+// The same rules elect the inbox's reader under a second record while no pane is drawn anywhere (inbox-turn.ts), so then
+// too the store is rewritten every RENEW_MS, for as long as any session has a window: the price of a band that keeps up.
 
 /** How often a renewing leader writes its record. */
 export const RENEW_MS = 15_000
@@ -27,7 +30,8 @@ export type LeaseRecord = { owner: string; renewedAt: number }
 /**
  * What a session does with GitLab now. A `leader` reads it and writes the snapshot; a `follower` reads the snapshot; a
  * `wake-only` session has no pane drawn anywhere and polls only the MRs it raised, so their wakes still fire; an `idle`
- * session polls nothing. (Declared with the other contract types, which `types/index.d.ts` holds.)
+ * session polls no MR. Either of the last two may also read the inbox for the band, if elected (inbox-turn.ts).
+ * (Declared with the other contract types, which `types/index.d.ts` holds.)
  */
 export type { Role }
 

@@ -235,7 +235,7 @@ export type ReadClock = {
   inboxSeen: number | null
 }
 
-/** What a session does with GitLab: `leader` reads for all, `follower` draws what the leader read, `wake-only` reads only its raised MRs, `idle` nothing. */
+/** What a session does with GitLab: `leader` reads for all, `follower` draws what the leader read, `wake-only` reads only its raised MRs, `idle` no MR; with no pane drawn anywhere, one of the last two may read the inbox for the band. */
 export type Role = 'leader' | 'follower' | 'wake-only' | 'idle'
 
 /** One event a rule counted on an MR, as the pane draws it. */

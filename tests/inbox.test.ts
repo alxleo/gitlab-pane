@@ -37,7 +37,7 @@ const TOKEN = 'tok-1'
 /** The host with `world` behind it, and `mine` as your open MRs on Mine; every call is in `requests`. The token comes from the environment. */
 function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>, mine: Mr[] = []) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
-  const { store, panes, surfaces } = fakeSession(on)
+  const { store, panes, surfaces, unreadable } = fakeSession(on)
   const gitlab = fakeGitLab(
     on,
     {
@@ -58,7 +58,7 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { ...gitlab, store, panes, surfaces, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
+  return { ...gitlab, store, panes, surfaces, unreadable, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }
 
 /** The inbox's first read waits this long after the session starts. */
@@ -275,29 +275,42 @@ test('with no pane drawn anywhere, a session with a window still reads the inbox
   world.queue = [queued(2)]
   await clock.advance(60_000)
   expect((await band.find({ type: 'Button', key: 'inbox-band' }))?.props.label).toBe('Inbox · 2 new')
+  // A minute more is one read more: the pace holds with no pane open.
+  await clock.advance(60_000)
   const since = gitlab.requests.slice(before)
   expect(since).toEqual(expect.arrayContaining(['gitlab.com InboxTodos', 'gitlab.com InboxQueue', 'gitlab.com InboxAuthored']))
   expect(since.every(request => request.startsWith('gitlab.com Inbox'))).toBe(true)
+  expect(since.filter(request => request === 'gitlab.com InboxQueue')).toHaveLength(2)
   await band.unmount()
 })
 
-test('with no pane drawn, a session reads no inbox while another session reads it, nor when it has no window to draw a band in', async ($, on) => {
+test('with no pane drawn, a session reads no inbox while another reads it, nor while the store cannot say who does, nor with no window for a band', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const gitlab = engine(on, busyWorld())
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   gitlab.panes.clear()
   // Another session holds the inbox's own lease, renewing it: this one shows that session's read and asks GitLab nothing.
+  // Its read has one MR with news where this session's own, made while its pane was open, had two.
   const renew = () => gitlab.store.set('inbox-lease', { owner: 'session-b', renewedAt: clock.now() })
   renew()
   await clock.advance(FIRST_SYNC_MS)
   const before = gitlab.requests.length
+  gitlab.store.set('inbox-snapshot', sharedInbox(clock.now()))
   for (let minute = 0; minute < 3; minute += 1) {
     renew()
     await clock.advance(30_000)
   }
   expect(gitlab.requests.slice(before)).toEqual([])
-  // Once that lease lapses, a session without a window still reads nothing: it has no band to say it in.
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ type: 'Button', key: 'inbox-band' }))?.props.label).toBe('Inbox · 1 new')
+  await band.unmount()
+  // That lease lapses, but the store cannot be read to say so: every session with a window would elect itself, so none reads.
+  gitlab.unreadable.add('inbox-lease')
+  await clock.advance(120_000)
+  expect(gitlab.requests.slice(before)).toEqual([])
+  gitlab.unreadable.clear()
+  // A session without a window reads nothing either: it has no band to say it in.
   gitlab.surfaces.length = 0
   await clock.advance(120_000)
   expect(gitlab.requests.slice(before)).toEqual([])

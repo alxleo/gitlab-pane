@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 import { changeReads, readHosts, readReads } from './data'
 import { followInbox, leadInbox, sharedInboxAt } from './inbox'
 import { INBOX_LEASE_KEY, leaseTick } from './lease-store'
-import { INBOX_EVERY_MS } from './snapshot'
+import { INBOX_EVERY_MS, isInboxDue } from './snapshot'
 
 // Who reads the inbox. While a pane is drawn somewhere, the leader of the first lease reads it with everything else and
 // the other sessions show its read. While none is, nobody leads that lease, yet the band above the prompt still wants the
@@ -30,13 +30,19 @@ export async function followInboxTick($: EngineInterface): Promise<void> {
   }
 }
 
-/** The inbox's turn in a session that no pane's leader serves: it reads the inbox for all, or shows the read of the one that does. */
+/**
+ * The inbox's turn in a session that no pane's leader serves: it reads the inbox for all, or shows the read of the one that
+ * does. A store it cannot read or write elects no one, or every session with a window would read: it then reads nothing.
+ */
 export async function inboxAlone($: EngineInterface): Promise<void> {
   const hasWindow = (await $.session.surfaces()).length > 0
-  const { role } = await leaseTick($, { isDrawing: hasWindow, raisedPins: 0 }, INBOX_LEASE_KEY)
+  const { role, problem } = await leaseTick($, { isDrawing: hasWindow, raisedPins: 0 }, INBOX_LEASE_KEY)
+  if (problem !== null) {
+    return
+  }
   if (role === 'leader') {
     const [reads, hosts, now] = await Promise.all([readReads($), readHosts($), $.clock.now()])
-    await inboxPass($, hosts, reads.inboxAt === null || now - reads.inboxAt >= INBOX_EVERY_MS, now)
+    await inboxPass($, hosts, isInboxDue(reads.inboxAt, now, false), now)
   } else if (role === 'follower') {
     await followInboxTick($)
   }

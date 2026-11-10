@@ -25,7 +25,14 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
     writes.bytes += JSON.stringify(Object.fromEntries(store)).length
   }
   const json = (value: unknown): unknown => (value === undefined ? undefined : parseJson(JSON.stringify(value)))
-  on('store.get', (_, e) => ({ value: json(store.get(e.key)) }))
+  // Keys a test makes unreadable, as a store file another process holds locked or left half written.
+  const unreadable = new Set<string>()
+  on('store.get', (_, e) => {
+    if (unreadable.has(e.key)) {
+      throw new Error(`the store could not be read for ${e.key}`)
+    }
+    return { value: json(store.get(e.key)) }
+  })
   on('store.set', (_, e) => {
     const next = new Map(store).set(e.key, json(e.value))
     if (JSON.stringify(Object.fromEntries(next)).length > STORE_BYTES) {
@@ -61,7 +68,7 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: [...panes].map(id => ({ id, title: 'GitLab', isShown: true, isFocused: false, isPlaced: true })) }))
-  return { opened, titles, panes, surfaces, store, writes }
+  return { opened, titles, panes, surfaces, store, unreadable, writes }
 }
 
 /** The most the engine's store holds, in characters of JSON. */

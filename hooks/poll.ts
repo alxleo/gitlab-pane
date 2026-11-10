@@ -36,7 +36,7 @@ import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
 import { followInboxTick, inboxAlone, inboxPass } from './inbox-turn'
-import { FOOTER_MS, INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS, waitingRows } from './snapshot'
+import { FOOTER_MS, isInboxDue, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS, waitingRows } from './snapshot'
 import { failuresFrom, toShared } from './snapshot'
 import type { Cursor, ReadResult, Snapshot } from './snapshot'
 import type { FailureReader } from './reconcile'
@@ -149,7 +149,7 @@ async function reasonsFor($: EngineInterface, rows: readonly MrCard[], pins: rea
 }
 
 /** What the leader read: one snapshot from every host's answer, for it and for the sessions that follow. */
-async function lead($: EngineInterface, previous: Snapshot | null, pins: readonly Pinned[], isFresh: boolean, isInboxDue: boolean): Promise<void> {
+async function lead($: EngineInterface, previous: Snapshot | null, pins: readonly Pinned[], isFresh: boolean, isInboxRead: boolean): Promise<void> {
   const [hosts, me, startedAt] = await Promise.all([readHosts($), $.session.id(), $.clock.now()])
   // Marked before the read, so a read that goes wrong is tried again at the pace, not at the next tick.
   await changeReads($, state => ({ ...state, attemptedAt: startedAt }))
@@ -167,7 +167,7 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
       now: startedAt,
     })
   )
-  const [reads] = await Promise.all([readGitLab($, inputs), inboxPass($, hosts, isInboxDue, startedAt)])
+  const [reads] = await Promise.all([readGitLab($, inputs), inboxPass($, hosts, isInboxRead, startedAt)])
   // With several hosts, each failure says whose it is.
   const labelled = (host: string, one: Failure) => new Failure(one.kind, hosts.length > 1 ? `${host}: ${one.message}` : one.message)
   const failures = reads.flatMap(read => ('failure' in read ? [labelled(read.host, read.failure)] : []))
@@ -260,7 +260,7 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   // A pin the last read did not ask for, and that no card of it holds: an MR just raised, or someone else's just watched.
   const isNewPin = snapshot !== null && pins.some(one => !snapshot.pinned.includes(pinKey(one)) && !snapshot.rows.some(row => row.key === pinKey(one)))
   const isDue = snapshot === null || isAsked || isNewPin || now - last >= pollEvery(reads.failures, isMoving(snapshot.rows, pins))
-  const isInboxDue = isAsked || reads.inboxAt === null || now - reads.inboxAt >= INBOX_EVERY_MS
+  const isInboxRead = isInboxDue(reads.inboxAt, now, isAsked)
   if (isDue) {
     await changeReads($, state => ({ ...state, refreshed: asked }))
     const isFirst = reads.adopted === ''
@@ -270,7 +270,7 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
       await preview($, snapshot)
     }
     try {
-      await lead($, snapshot, pins, isAsked, isInboxDue)
+      await lead($, snapshot, pins, isAsked, isInboxRead)
     } finally {
       await setReading($, false)
     }
@@ -279,7 +279,7 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   if (snapshot.version !== reads.adopted) {
     await adopt($, snapshot, true)
   }
-  await inboxPass($, await readHosts($), isInboxDue, now)
+  await inboxPass($, await readHosts($), isInboxRead, now)
 }
 
 /** A follower's turn: draws the snapshot when it has a version it has not drawn, and the leader's inbox (`followInboxTick`). */

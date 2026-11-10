@@ -22,7 +22,7 @@ flowchart LR
 
 Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
 
-While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. While no session draws the pane, one session with a window still reads the inbox, and nothing else, each minute, so the band keeps up.
+While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. While no session draws the pane, one session with a window still reads the inbox each minute, and no MR list, so the band keeps up.
 
 ## Install
 
