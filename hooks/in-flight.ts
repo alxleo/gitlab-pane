@@ -74,7 +74,7 @@ export function remembered(name: string, find: () => Promise<string | null>): Pr
 
 /** Forgets everything remembered but the tokens given in settings, so the next read asks again. */
 export function forgetFound(): void {
-  for (const name of [...tokens.keys()]) {
+  for (const name of tokens.keys()) {
     if (!name.startsWith('setting:')) {
       tokens.delete(name)
     }
@@ -91,7 +91,10 @@ export function drawn(row: number): void {
 }
 
 /** Resolves at the next drawing of the pane. */
-export const nextDraw = (): Promise<void> => new Promise(resolve => waitingForDraw.push(resolve))
+export const nextDraw = (): Promise<void> =>
+  new Promise(resolve => {
+    waitingForDraw.push(resolve)
+  })
 
 /** Where the window sat at the last drawing. */
 export const rowDrawn = (): number => drawnAtRow

@@ -53,10 +53,10 @@ async function timed($: EngineInterface, work: () => Promise<unknown>): Promise<
 async function othersSeen($: EngineInterface, me: string, before: readonly Seen[], now: number): Promise<Seen[]> {
   const keys = (await $.store.keys()).filter(key => key.startsWith(OWN_PREFIX) && key !== `${OWN_PREFIX}${me}`)
   const beats = await Promise.all(keys.map(key => $.store.get(key)))
-  return beats.filter(isBeat).map(beat => {
-    const was = before.find(one => one.pid === beat.pid)
-    const skipped = was === undefined ? 0 : was.skipped + Math.max(0, beat.n - was.n - 1)
-    return { pid: beat.pid, n: beat.n, age: now - beat.at, skipped }
+  return beats.filter(isBeat).map(heard => {
+    const was = before.find(one => one.pid === heard.pid)
+    const skipped = was === undefined ? 0 : was.skipped + Math.max(0, heard.n - was.n - 1)
+    return { pid: heard.pid, n: heard.n, age: now - heard.at, skipped }
   })
 }
 

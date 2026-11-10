@@ -149,7 +149,7 @@ function mutation(identifier: Identifier): string | undefined {
       return 'delete'
     }
   }
-  if (parent.type === 'CallExpression' && parent.arguments[0] === identifier && /^Object\.(assign|defineProperty)$/.test(textOf(parent.callee))) {
+  if (parent.type === 'CallExpression' && parent.arguments[0] === identifier && /^Object\.(assign|defineProperty)$/u.test(textOf(parent.callee))) {
     return 'Object.assign'
   }
   return undefined
@@ -341,14 +341,14 @@ function testsShape(body: Node, name: string, context: Context): boolean {
     const isTest =
       (node.type === 'UnaryExpression' && node.operator === 'typeof') ||
       (node.type === 'BinaryExpression' && (node.operator === 'in' || node.operator === 'instanceof')) ||
-      (node.type === 'CallExpression' && (/^(Array\.isArray|Object\.hasOwn)$/.test(textOf(node.callee)) || isGuardCall(node, context)))
+      (node.type === 'CallExpression' && (/^(Array\.isArray|Object\.hasOwn)$/u.test(textOf(node.callee)) || isGuardCall(node, context)))
     found = isTest && mentions(node, name, keys)
     return !found
   })
   return found
 }
 
-const typeText = (node: Node, source: SourceCode): string => source.getText(node).replace(/\s+/g, '')
+const typeText = (node: Node, source: SourceCode): string => source.getText(node).replace(/\s+/gu, '')
 
 /** The parts of a return type that are alternatives: `A | B` is two, anything else is one. */
 const alternatives = (node: ESTree.TSType): ESTree.TSType[] => (node.type === 'TSUnionType' ? node.types : [node])
@@ -599,7 +599,7 @@ const coreImports = defineRule({
         .split(sep)
         .join('/')
       const isCoreFile = specifier.endsWith('.ts') && include.includes(target)
-      const isContract = !/\.[a-z]+$/.test(specifier) && include.includes(`${target}/index.d.ts`)
+      const isContract = !/\.[a-z]+$/u.test(specifier) && include.includes(`${target}/index.d.ts`)
       if (!isCoreFile && !isContract) {
         context.report({ node, messageId: 'outside' })
       }

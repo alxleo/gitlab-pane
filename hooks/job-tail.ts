@@ -14,10 +14,10 @@ const ESC = String.fromCharCode(27)
 const BEL = String.fromCharCode(7)
 
 /** Terminal escapes: a sequence that starts `ESC [`, an operating-system command up to its end, and the two-character ones. */
-const ESCAPES = new RegExp(`${ESC}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)|[@-Z\\\\-_])`, 'g')
+const ESCAPES = new RegExp(`${ESC}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)|[@-Z\\\\-_])`, 'gu')
 
 /** The markers GitLab's runner puts around a collapsible section of a log, which a reader of the raw text sees as noise. */
-const SECTIONS = /section_(?:start|end):\d+:[^\r\n]*/g
+const SECTIONS = /section_(?:start|end):\d+:[^\r\n]*/gu
 
 /** What a line shows once the terminal has drawn it: a carriage return starts the line over, as a progress bar does. */
 const drawn = (text: string): string =>
@@ -70,6 +70,6 @@ export const TAIL_JOBS = 3
 
 /** The number GitLab gives a job, which ends the path of its link (`/g/p/-/jobs/4711`) and names its log on the REST API. */
 export function jobIdOf(link: string): number | null {
-  const found = /\/-\/jobs\/(\d+)\/?(?:[?#].*)?$/.exec(link)
+  const found = /\/-\/jobs\/(\d+)\/?(?:[?#].*)?$/u.exec(link)
   return found?.[1] !== undefined ? Number(found[1]) : null
 }

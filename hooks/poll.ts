@@ -55,7 +55,7 @@ function wake($: EngineInterface, news: readonly ModelLine[]) {
 }
 
 /** An MR this session raised wakes it; one it only watches does not. A pin kept from before this was recorded wakes, as every pin then did. */
-const isRaised = (pin: Pinned): boolean => pin.origin !== 'watched'
+const isRaised = (one: Pinned): boolean => one.origin !== 'watched'
 
 /**
  * What a session does with cards it was given: toasts and wakes for its own pins' news, the open cards for the pane, the
@@ -107,7 +107,7 @@ async function adopt($: EngineInterface, snapshot: Snapshot, isLeader = false): 
   // The reasons its failed jobs failed were fetched once, by the leader, and come with the snapshot: this session fetches none.
   const open = await applyCards($, [...snapshot.rows, ...waiting], now, async card => failuresFrom(snapshot.failures[String(card.pipeline?.id ?? 0)]))
   await setReportedProblems($, isLeader ? {} : snapshot.problems, snapshot.fetchedAt ?? snapshot.attemptedAt)
-  await changeReads($, reads => ({ ...reads, adopted: snapshot.version }))
+  await changeReads($, state => ({ ...state, adopted: snapshot.version }))
   quietly($, readJira($, open, now), 'jira')
 }
 
@@ -168,7 +168,7 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
     (host): HostAsk => ({
       host,
       base: base.filter(row => row.host === host),
-      pinned: pins.filter(pin => pin.host === host),
+      pinned: pins.filter(one => one.host === host),
       extras,
       cursor: previous?.cursors[host],
       isFresh,
@@ -266,7 +266,7 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   const last = Math.max(snapshot?.attemptedAt ?? 0, reads.attemptedAt ?? 0)
   const isAsked = asked > reads.refreshed
   // A pin the last read did not ask for, and that no card of it holds: an MR just raised, or someone else's just watched.
-  const isNewPin = snapshot !== null && pins.some(pin => !snapshot.pinned.includes(pinKey(pin)) && !snapshot.rows.some(row => row.key === pinKey(pin)))
+  const isNewPin = snapshot !== null && pins.some(one => !snapshot.pinned.includes(pinKey(one)) && !snapshot.rows.some(row => row.key === pinKey(one)))
   const isDue = snapshot === null || isAsked || isNewPin || now - last >= pollEvery(reads.failures, isMoving(snapshot.rows, pins))
   const isInboxDue = isAsked || reads.inboxAt === null || now - reads.inboxAt >= INBOX_EVERY_MS
   if (isDue) {

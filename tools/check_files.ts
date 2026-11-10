@@ -17,18 +17,18 @@ import { parseJson } from '../hooks/decode.ts'
 import { directivesIn, SCRIPT } from './directives.ts'
 
 const ROOT = join(import.meta.dirname, '..')
-const EXEMPT = /^(CHANGELOG\.md|tools\/screens\/fonts\/.*)$/
-const BINARY = /\.(png|woff2?|jpg|jpeg|gif|ico)$/
+const EXEMPT = /^(CHANGELOG\.md|tools\/screens\/fonts\/.*)$/u
+const BINARY = /\.(png|woff2?|jpg|jpeg|gif|ico)$/u
 const LARGE = 500 * 1024
-const MARKER = /^(<{7}|>{7})( |$)/m
+const MARKER = /^(<{7}|>{7})( |$)/mu
 // Written in two parts so that this file does not hold a key's header itself.
-const PRIVATE_KEY = new RegExp(`-----BEGIN (?:[A-Z]+ )?PRIVATE ${'KEY'}(?: BLOCK)?-----`)
+const PRIVATE_KEY = new RegExp(`-----BEGIN (?:[A-Z]+ )?PRIVATE ${'KEY'}(?: BLOCK)?-----`, 'u')
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 function files(): string[] {
   const listed = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' })
-  return [...new Set(listed.split('\0').filter(name => name !== ''))].filter(name => existsSync(join(ROOT, name)) && !EXEMPT.test(name)).sort()
+  return [...new Set(listed.split('\0').filter(name => name !== ''))].filter(name => existsSync(join(ROOT, name)) && !EXEMPT.test(name)).toSorted()
 }
 
 function problemsIn(name: string): string[] {
@@ -48,7 +48,7 @@ function problemsIn(name: string): string[] {
   const found: string[] = []
   if (name.endsWith('.json')) {
     try {
-      parseJson(/(?:^|\/)tsconfig[^/]*\.json$/.test(name) ? text.replace(/^\s*\/\/.*$/gm, '') : text)
+      parseJson(/(?:^|\/)tsconfig[^/]*\.json$/u.test(name) ? text.replace(/^\s*\/\/.*$/gmu, '') : text)
     } catch (error) {
       found.push(`${name}: does not parse as JSON: ${messageOf(error)}`)
     }
@@ -74,7 +74,7 @@ function problemsIn(name: string): string[] {
     found.push(`${name}: ends with more than one newline`)
   }
   text.split('\n').forEach((line, index) => {
-    if (/[ \t\r]$/.test(line)) {
+    if (/[ \t\r]$/u.test(line)) {
       found.push(`${name}:${index + 1}: trailing whitespace`)
     }
   })

@@ -69,11 +69,11 @@ const MARK = '│'
 function quoted(text: string, room: number): ModelLine[] {
   const body = cut(text, room, room)
   const isCut = body.length < text.length
-  return [...body.split(/\r?\n/).map(each => line`${MARK} ${foreign(each, LINE_ROOM)}`), ...(isCut ? [line`${MARK} [cut here: the rest is on GitLab]`] : [])]
+  return [...body.split(/\r?\n/u).map(each => line`${MARK} ${foreign(each, LINE_ROOM)}`), ...(isCut ? [line`${MARK} [cut here: the rest is on GitLab]`] : [])]
 }
 
 /** The id a note's link ends in: `gid://gitlab/Note/123` is `123`. */
-const numberOf = (id: string): string => /(\d+)$/.exec(id)?.[1] ?? id
+const numberOf = (id: string): string => /(\d+)$/u.exec(id)?.[1] ?? id
 
 /** `p!1`, the way threads name themselves: the repo's own name, no group. */
 const refOf = (brief: Brief): string => `${brief.path.split('/').at(-1) ?? brief.path}!${brief.iid}`
