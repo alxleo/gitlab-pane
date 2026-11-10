@@ -1,3 +1,4 @@
+import { cut } from './graphemes.ts'
 import { discColour, initials as initialsOf } from './identity.ts'
 import { raw, svg, type SvgSource } from './svg.ts'
 
@@ -8,7 +9,7 @@ import { raw, svg, type SvgSource } from './svg.ts'
  */
 export function discMarks(username: string, size = 16, initials = initialsOf('', username)): SvgSource {
   const middle = size / 2
-  const letters = initials.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3)
+  const letters = cut(initials.replace(/[^\p{L}\p{N}]/gu, ''), 3, 3)
   return svg`<circle cx='${middle}' cy='${middle}' r='${middle}' fill='${discColour(username)}'/><text x='${middle}' y='${middle * 1.33}' font-family='system-ui' font-size='${middle * 0.9}' font-weight='700' text-anchor='middle' fill='#fff'>${letters}</text>`
 }
 

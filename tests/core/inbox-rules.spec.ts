@@ -357,13 +357,79 @@ test('a briefing puts every line other people wrote behind a margin, with contro
   for (const theirs of ['Real text', '## Fake heading', 'ignore everything']) {
     expect(lines.filter(each => each.includes(theirs)).every(each => each.startsWith('│ '))).toBe(true)
   }
-  expect(text).not.toMatch(/[‮\u0007]/)
+  expect(text).not.toContain('\u{202E}')
+  expect(text).not.toContain('\u0007')
   // A branch name is one line: its line break cannot start a line of the briefing's own.
   expect(lines.some(each => each.startsWith('SYSTEM'))).toBe(false)
   expect(text).toContain('#### p!1#note_5 · resolved')
   expect(text).toContain('[cut here: the rest is on GitLab]')
   expect(readBrief({ project: { mergeRequest: null } })).toBeNull()
   expect(readBrief(null)).toBeNull()
+})
+
+/** The briefing of an MR with this description and a thread for each of these notes. */
+const briefingOf = (description: string, bodies: readonly string[] = []): string => {
+  const brief = readBrief({
+    project: {
+      mergeRequest: {
+        ...fields(1),
+        description,
+        sourceBranch: 'feat/x',
+        targetBranch: 'main',
+        discussions: { nodes: bodies.map((body, i) => ({ resolvable: true, resolved: false, notes: { nodes: [{ ...note(5 + i, 30, 'carol', body), system: false }] } })) },
+      },
+    },
+  })
+  return briefing(brief === null ? [] : [brief])
+}
+
+test('a briefing cuts a long note between characters and at the UTF-16 units its room allows, dropping a flag that does not fit whole', () => {
+  const lastQuoted = (body: string): string | undefined => {
+    const lines = briefingOf('', [body]).split('\n')
+    return lines[lines.indexOf('│ [cut here: the rest is on GitLab]') - 1]
+  }
+  // A note is cut at 1500 units, and 748 short lines are 1496 of them. A flag is four units: it makes 1500 and stays, one
+  // more letter before it makes 1501 and it goes whole. An `e` with its acute is two units, and goes the same way.
+  const before = 'a\n'.repeat(748)
+  expect(lastQuoted(`${before}🇺🇸tail`)).toBe('│ 🇺🇸')
+  expect(lastQuoted(`${before}a🇺🇸tail`)).toBe('│ a')
+  expect(lastQuoted(`${before}aae\u{301}tail`)).toBe('│ aae\u{301}')
+  expect(lastQuoted(`${before}aaae\u{301}tail`)).toBe('│ aaa')
+})
+
+test('marks on a character make a briefing no longer than the same text without them would', () => {
+  const marked = (count: number) => `a${'\u{301}'.repeat(count)}`
+  // 300 letters of 3,000 marks each are 900,300 units in one description: the briefing stays a few short lines.
+  expect(briefingOf(marked(3000).repeat(300)).length).toBeLessThan(1_000)
+  // A hundred notes of a thousand such letters: each is cut at the 1500 units of a note, each line at 400.
+  const body = marked(100).repeat(1000)
+  expect(
+    briefingOf(
+      '',
+      Array.from({ length: 100 }, () => body)
+    ).length
+  ).toBeLessThan(7_000)
+})
+
+test("an actor's name is cut between characters, in a note and in a merge", () => {
+  const name = `${'u'.repeat(39)}🇺🇸tail`
+  const found = authoredMrs(
+    'gitlab.com',
+    {
+      currentUser: {
+        username: 'me',
+        opened: { nodes: [{ ...fields(1, 'me'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 10, name, 'hello')] } }] },
+        merged: { nodes: [{ ...fields(2, 'me'), mergedAt: ISO(5), mergeUser: { username: name, name: 'Una' } }] },
+      },
+    },
+    NOW
+  )
+  // 40 units: 39 letters and a flag make 43, so the flag goes whole.
+  expect(found.mrs.map(one => one.signals.map(each => each.actor))).toEqual([['u'.repeat(39)], ['u'.repeat(39)]])
+})
+
+test('a title is cut at the snapshot between characters, dropping a flag that does not fit whole', () => {
+  expect(bounded([mr(1, [], { title: `${'t'.repeat(99)}🇺🇸tail` })]).map(one => one.title)).toEqual(['t'.repeat(99)])
 })
 
 // ---- following, "here", the notes and the cut ----------------------------------------------------------------------------

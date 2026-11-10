@@ -1,3 +1,4 @@
+import { shorten } from './graphemes.ts'
 import { cutMarkdown, flatOf, type MarkdownText } from './markdown.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
@@ -12,8 +13,7 @@ export function excerpt(body: GitLabMarkdown, room = 160): string {
     flatOf(body)
       .split('\n')
       .find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
-  const plain = line.replace(/^[#>\s]+|[*_`]/g, '').trim()
-  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+  return shorten(line.replace(/^[#>\s]+|[*_`]/g, '').trim(), room)
 }
 
 /** GitLab Markdown as one drawable Markdown string (folds closed, see markdown.ts), cut at `room`. */
@@ -34,7 +34,7 @@ export function lead(body: GitLabMarkdown, room = 240): string {
     .replace(/^[>\-*\s]+/gm, '')
     .replace(/[*_`]/g, '')
     .replace(/\s*\n\s*/g, ' ')
-  return plain.length > room ? `${plain.slice(0, room - 1)}…` : plain
+  return shorten(plain, room)
 }
 
 export const duration = (seconds: number): ModelLine => {

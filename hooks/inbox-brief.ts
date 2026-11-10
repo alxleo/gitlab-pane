@@ -1,5 +1,6 @@
 // The briefing `/mrs` hands the model: MRs with their descriptions and threads. Everything other people wrote enters it line
 // by line through `foreign`, behind a margin no line of theirs can forge, and it goes only to the conversation's context.
+import { cut } from './graphemes.ts'
 import { foreign, line, lines, NAME_ROOM, URL_ROOM } from './model-text.ts'
 import type { ModelLine } from './model-text.ts'
 
@@ -64,11 +65,11 @@ export function readBrief(data: InboxBriefQuery | null): Brief | null {
 /** The margin every line of someone else's words carries, so none can pass for the briefing's own. */
 const MARK = '│'
 
-/** Text written by someone else as lines behind the margin, cut at `room` characters. */
+/** Text written by someone else as lines behind the margin, cut between characters at `room` of them and `room` UTF-16 units. */
 function quoted(text: string, room: number): ModelLine[] {
-  const cut = [...text].length > room
-  const body = cut ? [...text].slice(0, room).join('') : text
-  return [...body.split(/\r?\n/).map(each => line`${MARK} ${foreign(each, LINE_ROOM)}`), ...(cut ? [line`${MARK} [cut here: the rest is on GitLab]`] : [])]
+  const body = cut(text, room, room)
+  const isCut = body.length < text.length
+  return [...body.split(/\r?\n/).map(each => line`${MARK} ${foreign(each, LINE_ROOM)}`), ...(isCut ? [line`${MARK} [cut here: the rest is on GitLab]`] : [])]
 }
 
 /** The id a note's link ends in: `gid://gitlab/Note/123` is `123`. */
