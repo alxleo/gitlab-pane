@@ -161,8 +161,8 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
 
 test('a bot is called by its name, cut between characters when it is long', () => {
   const author = { ...user('ci-bot', true), name: `${'B'.repeat(10)}🇺🇸tail` }
-  const thread = { resolvable: true, resolved: false, notes: { nodes: [note('Reporting.', 'ci-bot', { author })] } }
-  const card = toCard(HOST, rawMr(1, { discussions: { nodes: [thread] } }))
+  const discussion = { resolvable: true, resolved: false, notes: { nodes: [note('Reporting.', 'ci-bot', { author })] } }
+  const card = toCard(HOST, rawMr(1, { discussions: { nodes: [discussion] } }))
   // Room 14 is 13 UTF-16 units and the ellipsis: 10 letters and a flag (four units) make 14, so the flag goes whole.
   expect(cardFacts(card, {}).people.map(person => person.call)).toEqual([`${'B'.repeat(10)}…`])
 })
@@ -181,7 +181,7 @@ test('a status GitLab adds later reads as unknown, drawn as such, and a known on
     throw new Error('the pinned MR was not read')
   }
   expect(card.pipeline?.status).toBe('unknown')
-  expect(card.pipeline?.stages.map(stage => [stage.status, stage.jobs.map(one => one.status)])).toEqual([
+  expect(card.pipeline?.stages.map(each => [each.status, each.jobs.map(one => one.status)])).toEqual([
     ['unknown', ['unknown']],
     ['unknown', ['unknown']],
   ])
@@ -232,7 +232,7 @@ test('a partial GraphQL answer keeps what came back, and what the schema lets be
       ran: { done: [[Date.parse('2026-10-23T14:50:00Z'), Date.parse('2026-10-23T15:00:00Z')]], running: [] },
     },
   ])
-  expect(card.openThreads.map(thread => thread.url)).toEqual([mr])
+  expect(card.openThreads.map(open => open.url)).toEqual([mr])
 })
 
 test("a host that answers a field as undefined is remembered to lack it, read from the error's extensions, and gets the documents without it", async () => {

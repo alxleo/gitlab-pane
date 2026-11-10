@@ -45,7 +45,7 @@ export function listedJobs(stages: readonly Stage[]): Job[] {
   return stages
     .flatMap(stage => stage.jobs)
     .filter(job => ['failed', 'running'].includes(job.status) || (job.status === 'manual' && !job.allowFailure))
-    .sort((a, b) => JOB_RANK[jobKind(a)] - JOB_RANK[jobKind(b)])
+    .toSorted((a, b) => JOB_RANK[jobKind(a)] - JOB_RANK[jobKind(b)])
 }
 
 /** The jobs worth opening across the pipeline, each linked; `more` are left out, `unlisted` of them by a shared card that kept the first few alone. */

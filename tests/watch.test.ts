@@ -318,7 +318,7 @@ test(
     const other = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: `https://${SELF_MANAGED}/g/p/-/merge_requests/12` })
     expect(String(other.result)).toBe(`!12 (ABC-1) ● running 20m so far · needs 1 approval · https://${SELF_MANAGED}/g/p/-/pipelines/99`)
     const unread = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: 'https://git.empty.example/g/p/-/merge_requests/3' })
-    expect(String(unread.result)).toMatch(/^Pinned !3; GitLab could not be read \(no GitLab token for git\.empty\.example: set GITLAB_TOKEN/)
+    expect(String(unread.result)).toMatch(/^Pinned !3; GitLab could not be read \(no GitLab token for git\.empty\.example: set GITLAB_TOKEN/u)
     const stranger = await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: 'https://elsewhere.example/g/p/-/merge_requests/12' })
     expect(JSON.stringify(stranger)).toContain(`Not a merge request URL on ${HOSTS.join(', ')}`)
 
@@ -346,8 +346,8 @@ test(
     // The same project path and number on two hosts are two cards.
     expect((await ui.findAll({ type: 'Button' })).filter(keyed('open-12-'))).toHaveLength(2)
     // The footer names the stale host and, beside it, the hosts that are fresh.
-    expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toMatch(
-      /^GitLab read failed: git\.empty\.example: no GitLab token for git\.empty\.example: set GITLAB_TOKEN.* · gitlab\.com updated (just now|\d+m ago), git\.corp\.com updated (just now|\d+m ago)$/
+    expect((await ui.find({ type: 'Text', text: /GitLab read failed/u }))?.text).toMatch(
+      /^GitLab read failed: git\.empty\.example: no GitLab token for git\.empty\.example: set GITLAB_TOKEN.* · gitlab\.com updated (just now|\d+m ago), git\.corp\.com updated (just now|\d+m ago)$/u
     )
     const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
     expect(answer.text).toContain('gitlab: git.empty.example: no GitLab token for git.empty.example')
@@ -398,7 +398,7 @@ test('with no Jira site set, ticket keys show as plain text and Jira is never re
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: 'ABC-1' })).toBeDefined()
-  expect(await ui.find({ type: 'Link', text: /ABC-1/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Link', text: /ABC-1/u })).toBeUndefined()
   expect(jiraReads).toEqual([])
   await ui.unmount()
 })
@@ -433,13 +433,13 @@ test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label cou
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Button', key: 'tab-mine' }))?.props.variant).toBe('primary')
   expect((await ui.find({ type: 'Button', key: 'tab-inbox' }))?.props.label).toBe('Inbox')
-  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
   await ui.press({ key: 'tab-inbox' })
   expect((await ui.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
-  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
   expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
   await ui.press({ key: 'tab-mine' })
-  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
   await ui.unmount()
 })
 
@@ -554,13 +554,13 @@ test('read whole › opens one MR as a page of its own, a way back at both ends,
   expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('The timings, in full.')
   expect(text).toContain('The end of the thread.')
   expect(text).toContain('Kept it; the comment above says why.')
-  const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/.test(name))
+  const jobs = (await ui.findAll({ type: 'Link' })).map(link => link.text).filter(name => /suite-\d/u.test(name))
   expect(jobs.length).toBe(9)
   // The page is drawn alone: no MR list under it.
-  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
 
   await ui.press({ key: 'back-bottom' })
-  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
   expect(titles.at(-1)).toBe('GitLab · Mine')
   // The card it was read from is still open where it was.
   expect((await ui.findAll({ type: 'Button' })).find(button => button.key === open)?.props.label).toBe('▾ thing 12')
@@ -621,7 +621,7 @@ test('a stage strip draws its passed stages as one run, counted in its title; ot
   const strip = String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === '9 stages')?.props?.source)
   expect(strip).toContain('<title>7 stages passed</title>')
   expect(strip).toContain('<title>cleanup · skipped')
-  expect(strip).toMatch(/<title>e2e · running[^<]*<\/title>/)
+  expect(strip).toMatch(/<title>e2e · running[^<]*<\/title>/u)
   expect(strip).not.toContain('install · passed')
   // A square per stage, each with its own tooltip, came to 840.
   expect(strip.length).toBeLessThan(640)
@@ -660,11 +660,11 @@ test("a bot is a face like a person's: its own picture or a robot, ringed for it
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const drawn = JSON.stringify(await ui.drawn())
-  expect(drawn).not.toMatch(/bots hold the merge|asked for changes|🤖/i)
-  const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && /^(GitLabDuo|cursor)/.test(String(element.props?.alt)))
+  expect(drawn).not.toMatch(/bots hold the merge|asked for changes|🤖/iu)
+  const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && /^(GitLabDuo|cursor)/u.test(String(element.props?.alt)))
   expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor'])
   // Without a picture of its own, a bot is a robot rather than a disc of initials.
-  expect(String(faces[1]?.props?.source)).not.toMatch(/<text|<image/)
+  expect(String(faces[1]?.props?.source)).not.toMatch(/<text|<image/u)
   const names = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
   expect(names).toContain('GitLabDuo')
   expect(names).toContain('cursor 1')
@@ -687,7 +687,7 @@ test('a pinned MR that merged is read on its own, then unpinned', async ($, on) 
 
   expect(reads.at(-1)).toBe('Pinned g/p!12')
   await clock.advance(180_000)
-  expect(reads.at(-1)).not.toMatch(/^Pinned/)
+  expect(reads.at(-1)).not.toMatch(/^Pinned/u)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: 'This session' })).toBeUndefined()
   await ui.unmount()
@@ -717,8 +717,8 @@ test('a failed read keeps the last cards and says how old they are', async ($, o
   await clock.advance(180_000)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
-  expect((await ui.find({ type: 'Text', text: /GitLab read failed/ }))?.text).toBe('GitLab read failed: gitlab.com failed: connection refused; showing 3m old data')
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/u }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /GitLab read failed/u }))?.text).toBe('GitLab read failed: gitlab.com failed: connection refused; showing 3m old data')
   await ui.unmount()
 })
 
@@ -734,12 +734,12 @@ test('with nothing read yet, a failing GitLab is told in a line of its own; and 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^GitLab: / }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press refresh')
+  expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press refresh')
 
   fake.isDown = false
   fake.mrs = [rawMr(12)]
   await ui.press({ key: 'refresh' })
-  expect(await ui.find({ type: 'Text', text: /^GitLab: / })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^GitLab: /u })).toBeUndefined()
   // Reading the same answer again changes none of what the pane draws from, so nothing is written to redraw it but the ↻ a
   // person who pressed refresh sees while the read is out. (The reads' own clock is state too, but the drawing does not read it.)
   written.length = 0
@@ -772,12 +772,12 @@ test('an MR a partly failed read leaves out keeps its last card, still open, and
   expect((await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.props.label).toBe('▾ thing 13')
   // The footer says what the read left out; the age beside the tabs is that of the last change, or of the last five minutes:
   // a quiet poll redraws nothing.
-  expect((await ui.find({ type: 'Text', text: /kept from the last read/ }))?.text).toBe('1 MR kept from the last read')
-  expect((await ui.find({ type: 'Text', text: /^updated / }))?.text).toMatch(/^updated (just now|\dm ago)$/)
+  expect((await ui.find({ type: 'Text', text: /kept from the last read/u }))?.text).toBe('1 MR kept from the last read')
+  expect((await ui.find({ type: 'Text', text: /^updated /u }))?.text).toMatch(/^updated (just now|\dm ago)$/u)
 
   fake.lost = []
   await clock.advance(180_000)
-  expect(await ui.find({ type: 'Text', text: /kept from the last read/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /kept from the last read/u })).toBeUndefined()
   // Once it merges, the changes since say so, and its card goes.
   fake.mrs = [rawMr(12), rawMr(13, { state: 'merged', updatedAt: stamp(clock) })]
   await clock.advance(180_000)
@@ -798,7 +798,7 @@ test('an MR that merges while read whole leaves its page, and the title follows'
 
   fake.mrs = [rawMr(12, { state: 'merged', updatedAt: stamp(clock) }), rawMr(13)]
   await clock.advance(180_000)
-  expect(await ui.find({ type: 'Text', text: /^Ready · / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
   expect(titles.at(-1)).toBe('GitLab · Mine')
   // Back, the MR does not bring its page with it.
   fake.mrs = [rawMr(12, { updatedAt: stamp(clock) }), rawMr(13)]
@@ -841,8 +841,8 @@ test('one transient GitLab error is retried, not shown', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
-  expect(await ui.find({ type: 'Text', text: /GitLab read failed/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/u }))?.text).toBe('thing 13')
+  expect(await ui.find({ type: 'Text', text: /GitLab read failed/u })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -856,7 +856,7 @@ const fiftyBusy = (): Fake => {
           stage(
             long(`stage${s}`),
             status,
-            Array.from({ length: 20 }, (_, j) => job(long(`job${s}-${j}`), status))
+            Array.from({ length: 20 }, (_job, j) => job(long(`job${s}-${j}`), status))
           )
         ),
       },
@@ -867,7 +867,7 @@ const fiftyBusy = (): Fake => {
         project: project(`acme-corp/platform/some-group/another-group/${i % 3 === 0 ? 'repo-one' : 'repo-two'}`),
         headPipeline: busy(i % 2 === 0 ? 'RUNNING' : 'FAILED'),
         reviewers: { nodes: [reviewer('first.reviewer', 'REQUESTED_CHANGES'), reviewer('second.reviewer', 'APPROVED')] },
-        discussions: { nodes: Array.from({ length: 6 }, (_, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 === 1 ? 'first.reviewer' : 'second.reviewer')) },
+        discussions: { nodes: Array.from({ length: 6 }, (_discussion, t) => thread(`${'A long comment. '.repeat(40)}${t}`, t % 2 === 1 ? 'first.reviewer' : 'second.reviewer')) },
       })
     ),
     isDown: false,
@@ -889,12 +889,12 @@ test('cards you opened keep their detail when the unfolded list fills the drawin
   await ui.press({ key: 'more' })
 
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-  expect(await ui.find({ type: 'Text', text: /^Too much is open/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Too much is open/u })).toBeUndefined()
   expect((await ui.findAll({ type: 'Button' })).filter(keyed('less-')).length).toBe(5)
   // Each thread is cut short in the card; its 💬 link opens it whole.
   const longest = Math.max(...(await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text).length))
   expect(longest).toBeLessThanOrEqual(500)
-  expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
+  expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
   await ui.unmount()
 })
 
@@ -928,7 +928,7 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.press({ key: 'more' })
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
-  expect((await ui.find({ type: 'Text', text: /more MRs? left out/ }))?.text).toMatch(/^\d+ more MRs? left out/)
+  expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
   await ui.unmount()
 })
 
@@ -958,7 +958,7 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   // Each picture is fetched once, small, whoever it appears on; a bot's own picture too.
-  expect(avatars.sort()).toEqual([
+  expect(avatars.toSorted()).toEqual([
     'https://gitlab.com/uploads/-/system/user/avatar/1/project_1_bot_ab.png?width=20',
     'https://gitlab.com/uploads/-/system/user/avatar/1/reviewer.png?width=20',
     'https://gitlab.com/uploads/-/system/user/avatar/1/tim.png?width=20',
@@ -966,11 +966,11 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
 
   for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^Ready · / }))?.text).toBe('Ready · 25')
+    expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 25')
     // Mine shows its ten most pressing; the rest fold behind a button.
     expect((await ui.find({ type: 'Button', key: 'more' }))?.props.label).toBe('▸ 15 more')
     // Each person is their GitLab avatar where the surface draws pictures and room is left after the cards, else a dot.
-    const tim = boxesOf(await ui.drawn()).find(box => /^p\w+-103-/.test(box.hover?.scope ?? '') && box.hover?.display === undefined)
+    const tim = boxesOf(await ui.drawn()).find(box => /^p\w+-103-/u.test(box.hover?.scope ?? '') && box.hover?.display === undefined)
     const timFace = elementsOf(tim)[1]
     expect(surface === 'terminal' ? timFace?.type === 'Text' : String(timFace?.props?.source).includes(`href='data:image/png;base64,iVBORw0KGgo`)).toBe(true)
     // Hover cards sit in the tree, hidden until the pointer is on their trigger.
@@ -1003,12 +1003,12 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     const boxes = boxesOf(await ui.drawn())
     const alone = boxes.filter(box => box.hover?.scope !== undefined && Object.keys(box.hover).length === 1)
     expect(surface === 'terminal' ? alone.length > 0 : alone.length === 0).toBe(true)
-    const card = boxes.find(box => box.hover?.display === 'flex' && /^p\w+-103-/.test(box.hover.scope ?? ''))
+    const card = boxes.find(box => box.hover?.display === 'flex' && /^p\w+-103-/u.test(box.hover.scope ?? ''))
     const scope = card?.hover?.scope ?? ''
     expect(scope.length).toBeGreaterThan(0)
     expect(card?.props?.display).toBe('none')
     expect(card?.props?.position).toBeUndefined()
-    expect(boxes.filter(box => box.hover?.scope === scope).map(box => Object.keys(box.hover ?? {}).sort())).toEqual([
+    expect(boxes.filter(box => box.hover?.scope === scope).map(box => Object.keys(box.hover ?? {}).toSorted())).toEqual([
       surface === 'terminal' ? ['scope'] : ['backgroundColor', 'scope'],
       ['display', 'scope'],
     ])
@@ -1016,30 +1016,30 @@ test('thirty MRs in two repos, with hover cards and a repo filter, draw on termi
     // Initials open the row on that person's comments alone; pressed again, they close it. Keys are short, as each
     // costs the drawing its length on every row.
     const keys = (await ui.findAll({ type: 'Button' })).map(button => button.key ?? '')
-    const timKey = keys.find(key => /^person-tim-103-\w+$/.test(key)) ?? ''
+    const timKey = keys.find(key => /^person-tim-103-\w+$/u.test(key)) ?? ''
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeDefined()
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 comment' })).toBeUndefined()
     // The title is a plain button with a disclosure arrow, not a link: it opens the card onto what its lines do not
     // show, and closes it again.
-    const title = (await ui.findAll({ type: 'Button' })).find(button => /^open-103-\w+$/.test(button.key ?? ''))
+    const title = (await ui.findAll({ type: 'Button' })).find(button => /^open-103-\w+$/u.test(button.key ?? ''))
     expect(title?.props.label).toBe('▸ thing 103')
     const opens = { key: title?.key ?? '' }
     await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeDefined()
-    expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Link', text: /^🚦 pipeline \d+$/u })).toBeUndefined()
     expect((await ui.find({ type: 'Button', key: opens.key }))?.props.label).toBe('▾ thing 103')
     await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
     // ▴ less at the card's foot closes it as well.
     await ui.press(opens)
-    const less = (await ui.findAll({ type: 'Button' })).find(button => /^less-103-\w+$/.test(button.key ?? ''))
+    const less = (await ui.findAll({ type: 'Button' })).find(button => /^less-103-\w+$/u.test(button.key ?? ''))
     await ui.press({ key: less?.key ?? '' })
     expect(await ui.find({ type: 'Text', text: 'Click a name to read only their comments.' })).toBeUndefined()
 
     await ui.press({ key: 'repo-gitlab.com/g/q' })
-    expect((await ui.find({ type: 'Text', text: /^Ready · / }))?.text).toBe('Ready · 5')
+    expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
     await ui.press({ key: 'repo-all' })
     await ui.press({ key: 'more' })
     await ui.unmount()
@@ -1069,7 +1069,7 @@ test('with another session leading, a session asks GitLab for nothing and draws 
   }
   expect(gitlab.requests).toEqual([])
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/u }))?.text).toBe('thing 12')
   // The lease stays the leader's: a follower never writes it.
   expect(store.get('lease')).toEqual({ owner: 'other', renewedAt: clock.now() - 10_000 })
   await ui.unmount()
@@ -1087,14 +1087,14 @@ test('a session that leads draws the last snapshot at once, with ↻ beside its 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.advance(2_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
-  expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/u }))?.text).toBe('thing 12')
+  expect((await ui.find({ type: 'Text', text: /^↻ updated/u }))?.text).toBe('↻ updated 3h ago')
 
   answer()
   await clock.settle()
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
-  expect((await ui.find({ type: 'Text', text: /^updated / }))?.text).toBe('updated just now')
-  expect(await ui.find({ type: 'Text', text: /^↻ updated/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/u }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /^updated /u }))?.text).toBe('updated just now')
+  expect(await ui.find({ type: 'Text', text: /^↻ updated/u })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -1117,12 +1117,12 @@ test('an MR this session raised before its pane opened stays drawn beside the la
   await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^↻ updated/ }))?.text).toBe('↻ updated 3h ago')
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect((await ui.find({ type: 'Text', text: /^↻ updated/u }))?.text).toBe('↻ updated 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/u }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/u }))?.text).toBe('thing 12')
   answer()
   await clock.settle()
-  expect((await ui.find({ type: 'Text', text: /^thing 12$/ }))?.text).toBe('thing 12')
+  expect((await ui.find({ type: 'Text', text: /^thing 12$/u }))?.text).toBe('thing 12')
   await ui.unmount()
 })
 
@@ -1146,7 +1146,7 @@ test("a leader that closes its pane hands over: the session that draws takes the
   expect(operations(gitlab.requests).filter(name => name !== 'Usual')).toEqual(['Authored', 'MergeStatus'])
   expect(readSnapshot(store.get('snapshot'))?.rows.map(row => row.iid)).toEqual([12, 13])
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^thing 13$/ }))?.text).toBe('thing 13')
+  expect((await ui.find({ type: 'Text', text: /^thing 13$/u }))?.text).toBe('thing 13')
   await ui.unmount()
 })
 
@@ -1254,7 +1254,7 @@ test("a session that reads nothing says what the leader's reads failed with, as 
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // Nothing has been read, so the pane says what to do about it, as it does in the session that tried.
-  expect((await ui.find({ type: 'Text', text: /^GitLab: / }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press refresh')
+  expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press refresh')
   const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
   expect(answer.text).toContain('gitlab: gitlab.com failed: connection refused (')
   expect(answer.text).toContain(', reported by the session that reads GitLab)')

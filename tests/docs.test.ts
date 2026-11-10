@@ -19,7 +19,7 @@ import type { CiStatus, PersonState } from '../types'
 // code here, where the engine-facing modules load. A test that fails names a table that says something the code does not.
 
 /** Values in a fixed order, so two lists compare as sets. */
-const sorted = (values: readonly string[]): string[] => [...values].sort()
+const sorted = (values: readonly string[]): string[] => values.toSorted()
 
 test('the README names the slash commands and the tool the plugin registers, and no others', async ($, on) => {
   mock.clock(on, { now: 0 })

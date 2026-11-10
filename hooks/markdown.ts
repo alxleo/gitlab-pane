@@ -51,10 +51,10 @@ export function cutToFit(markdown: MarkdownText, room: number, sizeOf: (text: Ma
 /** Markdown to draw, or a fold: its summary, what it holds, and whether GitLab shows it open. */
 export type Part = { text: MarkdownText } | { summary: string; parts: Part[]; isOpen: boolean }
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm
-const SPAN = /(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/g
+const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gmu
+const SPAN = /(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/gu
 /** The marker of a held piece of code: its number between two NUL characters, which is why the pattern names them. */
-const HELD = /\0(\d+)\0/g
+const HELD = /\0(\d+)\0/gu
 
 /** Swaps code for markers, so nothing below reads inside it; `restore` puts it back. */
 function holdCode(text: string) {
@@ -64,44 +64,44 @@ function holdCode(text: string) {
   return { masked, restore: (out: string) => out.replace(HELD, (_, i: string) => held[Number(i)] ?? '') }
 }
 
-const ALERT = /^(\s*>\s*)\[!(note|tip|important|warning|caution)\]\s*$/gim
+const ALERT = /^(\s*>\s*)\[!(note|tip|important|warning|caution)\]\s*$/gimu
 
 /** HTML outside code as Markdown: the marks it means kept, the rest dropped. */
 function markdownOf(text: string): string {
   return text
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<picture\b[\s\S]*?<\/picture>/gi, '')
-    .replace(/<img\b[^>]*>/gi, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/<!--[\s\S]*?-->/gu, '')
+    .replace(/<picture\b[\s\S]*?<\/picture>/giu, '')
+    .replace(/<img\b[^>]*>/giu, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/gu, '')
     .split('\n')
-    .map(line => line.replace(/<br\s*\/?>/gi, line.trimStart().startsWith('|') ? ' ' : '  \n'))
+    .map(line => line.replace(/<br\s*\/?>/giu, line.trimStart().startsWith('|') ? ' ' : '  \n'))
     .join('\n')
-    .replace(/<(b|strong)>([\s\S]*?)<\/\1>/gi, '**$2**')
-    .replace(/<(i|em)>([\s\S]*?)<\/\1>/gi, '*$2*')
-    .replace(/<(s|del|strike)>([\s\S]*?)<\/\1>/gi, '~~$2~~')
-    .replace(/<(code|kbd)>([\s\S]*?)<\/\1>/gi, '`$2`')
-    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, words: string) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
-    .replace(/<hr\s*\/?>/gi, '\n\n---\n\n')
-    .replace(/<\/?p\b[^>]*>/gi, '\n\n')
-    .replace(/<li\b[^>]*>/gi, '\n- ')
-    .replace(/<\/?[a-z][a-z0-9-]*\b[^>]*>/gi, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/^(\s*[-*+]) \[[xX]\] /gm, '$1 ✓ ')
-    .replace(/^(\s*[-*+]) \[ \] /gm, '$1 ☐ ')
+    .replace(/<(b|strong)>([\s\S]*?)<\/\1>/giu, '**$2**')
+    .replace(/<(i|em)>([\s\S]*?)<\/\1>/giu, '*$2*')
+    .replace(/<(s|del|strike)>([\s\S]*?)<\/\1>/giu, '~~$2~~')
+    .replace(/<(code|kbd)>([\s\S]*?)<\/\1>/giu, '`$2`')
+    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/giu, (_, href: string, words: string) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
+    .replace(/<hr\s*\/?>/giu, '\n\n---\n\n')
+    .replace(/<\/?p\b[^>]*>/giu, '\n\n')
+    .replace(/<li\b[^>]*>/giu, '\n- ')
+    .replace(/<\/?[a-z][a-z0-9-]*\b[^>]*>/giu, '')
+    .replace(/&nbsp;/gu, ' ')
+    .replace(/^(\s*[-*+]) \[[xX]\] /gmu, '$1 ✓ ')
+    .replace(/^(\s*[-*+]) \[ \] /gmu, '$1 ☐ ')
     .replace(ALERT, (_, quote: string, kind: string) => `${quote}**${kind.charAt(0).toUpperCase()}${kind.slice(1).toLowerCase()}**`)
-    .replace(/^[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^[ \t]+$/gmu, '')
+    .replace(/\n{3,}/gu, '\n\n')
 }
 
 /** A summary as a plain label: no marks, one line. */
 const labelOf = (text: string): string =>
   text
-    .replace(/<[^>]+>/g, '')
-    .replace(/[*_`]/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/<[^>]+>/gu, '')
+    .replace(/[*_`]/gu, '')
+    .replace(/\s+/gu, ' ')
     .trim()
 
-const OPEN_TAG = /<details\b([^>]*)>/i
+const OPEN_TAG = /<details\b([^>]*)>/iu
 
 /** Splits masked text at its outermost `<details>`, each fold read again for those inside it. */
 function split(masked: string, restore: (out: string) => string): Part[] {
@@ -116,7 +116,7 @@ function split(masked: string, restore: (out: string) => string): Part[] {
   for (let open = OPEN_TAG.exec(rest); open !== null; open = OPEN_TAG.exec(rest)) {
     text(rest.slice(0, open.index))
     const start = open.index + open[0].length
-    const anyTag = /<(\/?)details\b[^>]*>/gi
+    const anyTag = /<(\/?)details\b[^>]*>/giu
     anyTag.lastIndex = start
     let depth = 1
     let end = rest.length
@@ -130,12 +130,12 @@ function split(masked: string, restore: (out: string) => string): Part[] {
       }
     }
     const inner = rest.slice(start, end)
-    const summary = /^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/i.exec(inner)
+    const summary = /^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>/iu.exec(inner)
     const label = labelOf(restore(summary?.[1] ?? ''))
     parts.push({
       summary: label === '' ? 'Details' : label,
       parts: split(summary !== null ? inner.slice(summary[0].length) : inner, restore),
-      isOpen: /\bopen\b/i.test(open[1] ?? ''),
+      isOpen: /\bopen\b/iu.test(open[1] ?? ''),
     })
     rest = rest.slice(after)
   }

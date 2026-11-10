@@ -209,7 +209,7 @@ const verdictsOf = (world: World): Map<string, MergeStatus> =>
     [...world].filter(([, mr]) => mr.isOpen).map(([iid, mr]) => [`gitlab.com/g/p!${iid}`, [{ id: 'CI_MUST_PASS', status: (iid + mr.version) % 2 === 0 ? 'success' : 'failed' }]])
   )
 
-const rowsOf = (rows: readonly MrCard[]) => [...rows].sort((a, b) => a.key.localeCompare(b.key))
+const rowsOf = (rows: readonly MrCard[]) => rows.toSorted((a, b) => a.key.localeCompare(b.key))
 
 /** The rows a read leaves: a whole one, or a delta over the rows `base` of the read before. The pinned MRs the authored list lacks are read one by one. */
 const readWorld = (world: World, pinned: ReadonlySet<number>, scope: 'open' | 'since', base: readonly MrCard[], after: string): MrCard[] => {

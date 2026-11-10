@@ -113,6 +113,7 @@ export function blockerLines(card: MrCard, facts: CardFacts, badge: Badge, now: 
       return [head('Ready to merge')]
     case 'bots':
     case 'changes':
+    default:
       // A person's or bot's icon speaks for these, so the row never has them as markers.
       return []
   }

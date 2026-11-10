@@ -46,7 +46,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   const byline = (note: Note) => (
     <Box flexDirection="row" gap={1}>
       <Box flexShrink={0}>
-        <Text bold>{note.author}</Text>
+        <Text weight="semibold">{note.author}</Text>
       </Box>
       <Box flexGrow={1} flexShrink={1}>
         <Text dimColor wrap="truncate-end">
@@ -72,7 +72,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
       <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
       {verdict !== null && (
-        <Text bold={verdict.tone === 'success'} color={verdict.tone}>
+        <Text weight={verdict.tone === 'success' ? 'semibold' : undefined} color={verdict.tone}>
           {verdict.words}
         </Text>
       )}
@@ -97,7 +97,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     ...(jobs.length > 0
       ? [
           <Box flexDirection="column">
-            <Text bold color="error">
+            <Text weight="semibold" color="error">
               {plural(jobs.length, 'failed job')}
             </Text>
             <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
@@ -108,8 +108,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           </Box>,
         ]
       : []),
-    ...(threads.length > 0 ? [<Text bold>{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
-    ...(botNotes.length > 0 ? [<Text bold>{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(said)] : []),
+    ...(threads.length > 0 ? [<Text weight="semibold">{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
+    ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(said)] : []),
   ]
 
   let room = DRAWING_BUDGET - CHROME_SIZE - CUT_NOTE_SIZE - measure(head)

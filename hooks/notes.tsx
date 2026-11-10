@@ -10,7 +10,7 @@ export function byline(kit: Kit, key: string, who: string, where: string, url: s
   return (
     <Box key={key} flexDirection="row" gap={1}>
       <Box flexShrink={0}>
-        <Text bold>{who}</Text>
+        <Text weight="semibold">{who}</Text>
       </Box>
       <Box flexGrow={1} flexShrink={1}>
         <Text dimColor wrap="truncate-end">
@@ -29,7 +29,7 @@ export function drawLines(kit: Kit, lines: readonly Line[]): RenderChildren[] {
     switch (line.kind) {
       case 'text':
         return (
-          <Text bold={line.bold ? true : undefined} dimColor={line.dim ? true : undefined} color={line.tone}>
+          <Text weight={line.bold ? 'semibold' : undefined} dimColor={line.dim ? true : undefined} color={line.tone}>
             {line.text}
           </Text>
         )
@@ -57,11 +57,12 @@ export function drawLines(kit: Kit, lines: readonly Line[]): RenderChildren[] {
       case 'person':
         return (
           <Box flexDirection="row" gap={1}>
-            <Text bold>{line.name}</Text>
+            <Text weight="semibold">{line.name}</Text>
             {line.tag !== null && <Text dimColor>{line.tag}</Text>}
           </Box>
         )
       case 'hint':
+      default:
         return (
           <Box marginTop={line.gap ? 1 : 0}>
             <Text dimColor>{line.text}</Text>

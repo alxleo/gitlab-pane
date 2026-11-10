@@ -341,7 +341,7 @@ const pathTo = (node: Node | string, keyPrefix: string): Node[] => {
  */
 const pointerOn = (tree: Node, keyPrefix: string): { scopes: string[]; keys: string[] } => {
   const boxes = pathTo(tree, keyPrefix).filter(node => node.type === 'Box')
-  const scope = [...boxes].reverse().find(node => isFilled(node.hover?.scope))?.hover?.scope
+  const scope = boxes.toReversed().find(node => isFilled(node.hover?.scope))?.hover?.scope
   return {
     scopes: isFilled(scope) ? [scope] : [],
     keys: boxes.flatMap(node => (typeof node.props?.key === 'string' ? [node.props.key] : [])),

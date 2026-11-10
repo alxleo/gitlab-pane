@@ -84,7 +84,7 @@ test('each <details> is a fold under its summary, nested ones inside, open ones 
 /** A document as written: prose, code (which keeps its tags), and folds with a summary, open or closed, nesting. */
 type Doc = ({ kind: 'prose'; words: string[] } | { kind: 'code'; code: string } | { kind: 'fold'; summary: string[]; isOpen: boolean; inside: Doc })[]
 
-const wordArb = fc.stringMatching(/^[A-Za-z0-9]{1,8}$/)
+const wordArb = fc.stringMatching(/^[A-Za-z0-9]{1,8}$/u)
 const docArb: fc.Arbitrary<Doc> = fc.letrec<{ doc: Doc; part: Doc[number] }>(tie => ({
   doc: fc.array(tie('part'), { maxLength: 4 }),
   part: fc.oneof(
@@ -111,7 +111,7 @@ const sourceOf = (doc: Doc): string =>
 /** Every word, in reading order: a fold's summary, then what is inside it. */
 const wordsOf = (doc: Doc): string[] => doc.flatMap(part => (part.kind === 'prose' ? part.words : part.kind === 'code' ? [part.code] : [...part.summary, ...wordsOf(part.inside)]))
 
-const partWords = (parts: Part[]): string[] => parts.flatMap(part => ('text' in part ? [part.text.replace(/`/g, '')] : [part.summary, ...partWords(part.parts)]))
+const partWords = (parts: Part[]): string[] => parts.flatMap(part => ('text' in part ? [part.text.replace(/`/gu, '')] : [part.summary, ...partWords(part.parts)]))
 
 test('parsing the folds of a document loses no text, and keeps each fold, its summary and whether it is open', () => {
   fc.assert(
@@ -120,7 +120,7 @@ test('parsing the folds of a document loses no text, and keeps each fold, its su
       const joined = (list: string[]) =>
         list
           .join(' ')
-          .split(/\s+/)
+          .split(/\s+/u)
           .filter(word => word !== '')
           .join(' ')
       expect(joined(partWords(parts))).toBe(joined(wordsOf(doc)))

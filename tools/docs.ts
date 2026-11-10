@@ -29,7 +29,7 @@ const PLUGIN = join(ROOT, '.claude-plugin', 'plugin.json')
 const GENERATED = join(ROOT, 'tests', 'docs.generated.ts')
 
 const UNITS: Record<string, number> = { s: 1_000, min: 60_000, h: 3_600_000 }
-const DURATION = /(\d+)\s*(s|min|h)\b/g
+const DURATION = /(\d+)\s*(s|min|h)\b/gu
 
 type Table = { readonly header: readonly string[]; readonly rows: readonly (readonly string[])[] }
 
@@ -62,7 +62,7 @@ function tablesOf(markdown: string): Table[] {
     if (line.startsWith('```')) {
       isFenced = !isFenced
     }
-    if (isFenced || !line.startsWith('|') || !/^\|(?:\s*:?-+:?\s*\|)+$/.test(lines[at + 1] ?? '')) {
+    if (isFenced || !line.startsWith('|') || !/^\|(?:\s*:?-+:?\s*\|)+$/u.test(lines[at + 1] ?? '')) {
       continue
     }
     const rows: string[][] = []
@@ -91,7 +91,7 @@ function tableOf(file: string, header: readonly string[]): Table {
 }
 
 /** The text in backticks in a cell. */
-const ticked = (cell: string | undefined): string[] => [...(cell ?? '').matchAll(/`([^`]+)`/g)].flatMap(found => (found[1] !== undefined ? [found[1]] : []))
+const ticked = (cell: string | undefined): string[] => [...(cell ?? '').matchAll(/`([^`]+)`/gu)].flatMap(found => (found[1] !== undefined ? [found[1]] : []))
 
 /** The one value in backticks a cell must start with. */
 function firstTicked(where: string, cell: string | undefined): string {
@@ -117,9 +117,9 @@ function readDocs() {
   return {
     readme: {
       /** Slash commands, by name without the slash. */
-      commands: [...new Set(named.flatMap(name => /^\/([\w-]+)/.exec(name)?.[1] ?? []))],
+      commands: [...new Set(named.flatMap(name => /^\/([\w-]+)/u.exec(name)?.[1] ?? []))],
       /** Tools, by the name the model calls them by. */
-      tools: [...new Set(named.filter(name => !name.startsWith('/')).flatMap(name => /^([\w-]+)/.exec(name)?.[1] ?? []))],
+      tools: [...new Set(named.filter(name => !name.startsWith('/')).flatMap(name => /^([\w-]+)/u.exec(name)?.[1] ?? []))],
       /** Each row of "What it runs": the intervals its "How often" names, in milliseconds. */
       runs: runs.rows.map(row => durationsOf(row[1])),
     },
@@ -171,7 +171,7 @@ function checkSettings(): void {
 function checkScripts(): void {
   const manifest = parseJson(readFileSync(PACKAGE, 'utf8'))
   const scripts = isRecord(manifest) && isRecord(manifest['scripts']) ? Object.keys(manifest['scripts']) : []
-  const named = tableOf(CONTRIBUTING, ['Script', 'Checks']).rows.flatMap(row => ticked(row[0]).flatMap(command => /^npm (?:run )?([\w:-]+)/.exec(command)?.[1] ?? []))
+  const named = tableOf(CONTRIBUTING, ['Script', 'Checks']).rows.flatMap(row => ticked(row[0]).flatMap(command => /^npm (?:run )?([\w:-]+)/u.exec(command)?.[1] ?? []))
   const missing = scripts.filter(script => !named.includes(script))
   const unknown = [...new Set(named.filter(name => !scripts.includes(name)))]
   if (missing.length > 0) {
@@ -224,7 +224,7 @@ function main(args: readonly string[]): number {
   if (command === 'check' && args.length === 1) {
     checkSettings()
     checkScripts()
-    let current = ''
+    let current: string
     try {
       current = readFileSync(GENERATED, 'utf8')
     } catch {

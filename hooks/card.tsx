@@ -68,7 +68,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           {row.pipeline !== null ? <Link href={row.pipeline.href}>{row.pipeline.text}</Link> : <Text dimColor>no pipeline</Text>}
           {row.verdict !== null ? (
             <Box flexDirection="row" gap={1} flexShrink={0} hover={joins(kit, blocks)}>
-              <Text bold={row.verdict.bold} color={row.verdict.tone}>
+              <Text weight={row.verdict.bold ? 'semibold' : undefined} color={row.verdict.tone}>
                 {row.verdict.words}
               </Text>
               {row.verdict.trailing !== null && <Text dimColor>{row.verdict.trailing}</Text>}
@@ -96,7 +96,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
         ...((row.blocks ?? []).length > 0 ? [reveal(kit, blocks, drawLines(kit, row.blocks ?? []))] : []),
         ...row.people.map(person => reveal(kit, person.scope, drawLines(kit, person.card))),
       ]
-    case 'detail': {
+    case 'detail':
+    default: {
       const { detail } = row
       if (detail === null) {
         return null
@@ -104,7 +105,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
       if (detail.kind === 'person') {
         return (
           <Box flexDirection="column" gap={1} paddingLeft={2} paddingTop={1}>
-            <Text bold>{detail.title}</Text>
+            <Text weight="semibold">{detail.title}</Text>
             {detail.notes.map(note => (
               <Box key={`pn-${note.url}`} flexDirection="column">
                 {byline(kit, 'who', note.who, note.where, note.url)}

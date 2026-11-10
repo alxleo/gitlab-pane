@@ -23,7 +23,7 @@ const FILLS = ['#5B8DEF', '#E5734A', '#3FA27B', '#B062D8', '#C9971C', '#E0567A',
 
 export const discColour = (username: string): string => FILLS[hash(username) % FILLS.length] ?? '#7A8899'
 
-const wordsOf = (text: string, start: RegExp): string[] => text.split(/[\s._-]+/).filter(word => start.test(word))
+const wordsOf = (text: string, start: RegExp): string[] => text.split(/[\s._-]+/u).filter(word => start.test(word))
 
 /**
  * The most UTF-16 units one initial keeps. A character a person writes in a name is a few: a letter with two or three marks
@@ -59,5 +59,5 @@ export function initials(name: string, username = '', longer = false): string {
  * handles ("Mel.Northcote"), so a dot or underscore ends a first name too; a hyphen does not, as in "Jean-Luc".
  */
 export function firstName(name: string, username = ''): string {
-  return name.split(/[\s._]+/).find(Boolean) ?? username.split(/[\s._]+/).find(Boolean) ?? ''
+  return name.split(/[\s._]+/u).find(Boolean) ?? username.split(/[\s._]+/u).find(Boolean) ?? ''
 }

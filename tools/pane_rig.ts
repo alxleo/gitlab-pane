@@ -129,9 +129,9 @@ class Engine {
     if (!existsSync(this.#debugFile)) {
       return []
     }
-    const lines = readFileSync(this.#debugFile, 'utf8').split('\n')
-    const fresh = lines.slice(this.#debugSeen)
-    this.#debugSeen = lines.length
+    const written = readFileSync(this.#debugFile, 'utf8').split('\n')
+    const fresh = written.slice(this.#debugSeen)
+    this.#debugSeen = written.length
     const trouble = ['refused', 'fail', 'skipped', 'denied', 'threw', 'error', 'warn']
     return fresh.filter(line => line.includes('ui.scroll ') || (line.includes('gitlab-pane') && trouble.some(word => line.toLowerCase().includes(word))))
   }
@@ -165,8 +165,8 @@ function walk(node: unknown): Json[] {
 }
 
 /** Python's `str.splitlines` for the texts of a Markdown element: no empty last line. */
-function lines(text: string): string[] {
-  const parts = text.split(/\r\n|\r|\n/)
+function lines(words: string): string[] {
+  const parts = words.split(/\r\n|\r|\n/u)
   return parts[parts.length - 1] === '' ? parts.slice(0, -1) : parts
 }
 
@@ -366,7 +366,7 @@ class Desktop {
   texts(): string[] {
     return walk(this.#tree)
       .map(textOf)
-      .filter(text => text.trim() !== '')
+      .filter(each => each.trim() !== '')
   }
 }
 
@@ -389,7 +389,7 @@ async function describe(desktop: Desktop, engine: Engine, show: number, scrollsB
     ...desktop
       .texts()
       .slice(0, show)
-      .map(text => `  · ${text.slice(0, 110)}`),
+      .map(each => `  · ${each.slice(0, 110)}`),
     ...engine.newLogLines().map(line => `  log ${line.slice(0, 220)}`),
   ]
 }
@@ -419,11 +419,11 @@ async function flow(options: Options): Promise<number> {
       await desktop.press('tab-mine')
     }
     const seconds = () => ((Date.now() - startedAt) / 1000).toFixed(1)
-    const hasCards = () => desktop.texts().some(text => /^Mine · [1-9]/.test(text.trim()))
+    const hasCards = () => desktop.texts().some(each => /^Mine · [1-9]/u.test(each.trim()))
     let cardsAt = hasCards() ? seconds() : null
     const end = startedAt + options.waitSeconds * 1000
     // Read once the pane says how old its cards are, with no ↻ beside the age, or says the read failed.
-    const isRead = () => desktop.texts().some(text => /^updated |^GitLab read failed/.test(text.trim()))
+    const isRead = () => desktop.texts().some(each => /^updated |^GitLab read failed/u.test(each.trim()))
     while (!isRead()) {
       if (Date.now() > end) {
         throw new RigError('GitLab never answered')
@@ -457,8 +457,8 @@ async function flow(options: Options): Promise<number> {
 }
 
 /** A positive whole number option, or the way it should have been written. */
-function count(text: string | undefined, name: string, fallback: number, least: number): number {
-  const value = text === undefined ? fallback : Number(text)
+function count(given: string | undefined, name: string, fallback: number, least: number): number {
+  const value = given === undefined ? fallback : Number(given)
   if (!Number.isFinite(value) || value < least) {
     throw new RigError(`bad option: --${name} must be a number of at least ${least}`)
   }
