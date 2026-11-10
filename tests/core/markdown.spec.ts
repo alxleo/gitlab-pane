@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
+import { lead } from '../../hooks/format.ts'
 import { cleanBody } from '../../hooks/gitlab.ts'
-import { cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
+import { MAX_ROUNDS, cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
 import type { Part } from '../../hooks/markdown.ts'
 import { HOST } from '../fixtures.ts'
 
@@ -214,4 +215,75 @@ test('a summary holds nothing between < and >, whatever pieces it is made of', (
       expect(summaryOf(text)).not.toMatch(MARKUP)
     })
   )
+})
+
+// ---- what a strip cuts is what it always cut ---------------------------------------------------------------------------
+
+test('a comment or a tag that holds a < is cut out whole, not left behind', () => {
+  // A candidate that stopped at the next `<` would leave each of these in the text.
+  expect(drawn('x <!-- 1 < 2 --> y')).toBe('x  y')
+  expect(drawn('x <!--<--> y')).toBe('x  y')
+  expect(drawn('x <!-- a <!--> y')).toBe('x  y')
+  expect(drawn('x <script<> y')).toBe('x  y')
+  expect(drawn('x <b title="a<b"> y')).toBe('x  y')
+})
+
+test('an <a> whose attribute holds a < keeps its words but not its link', () => {
+  expect(drawn('x <a href="https://x.test/a" title="a<b">words</a> y')).toBe('x words y')
+})
+
+// ---- a strip takes time in proportion to the text, however hostile it is ------------------------------------------------
+
+/** What `toCard` runs for every MR on every poll: the description cleaned, then its lead drawn. Milliseconds. */
+function msToLead(body: string): number {
+  const start = performance.now()
+  lead(cleanBody(body, HOST, 'g/p'), 240)
+  return performance.now() - start
+}
+
+/** `open` as many times as `size` characters allow, then `close` as many times: markup nested as deep as it can be. */
+const nestedTo = (open: string, close: string, size: number): string => {
+  const depth = Math.floor(size / (open.length + close.length))
+  return `${open.repeat(depth)}${close.repeat(depth)}`
+}
+
+/** Written to make a strip slow: each is quadratic in the text for a strip that repeats whole passes, or looks ahead from every `<`. */
+const HOSTILE: [string, string][] = [
+  ['tags nested in tags', nestedTo('<', 'b>', 200_000)],
+  // A level of comment is eight characters here, so it takes this many to be as slow as the tags.
+  ['comments nested in comments', `${'<!-'.repeat(75_000)}<!-- a -->${'- -->'.repeat(75_000)}`],
+  ['a tag opened over and over and never closed', '<a'.repeat(100_000)],
+  ['a tag name of hyphens, never closed', `<${'a-'.repeat(100_000)}`],
+  ['a comment opened over and over and never closed', '<!--'.repeat(50_000)],
+  ['a comment closed once, then opened over and over', `<!-- a -->${'<!--'.repeat(50_000)}`],
+  ['a summary of < and nothing else', `<details><summary>${'<'.repeat(200_000)}</summary>x</details>`],
+  ...['p', 'li', 'img', 'details'].map((name): [string, string] => [`<${name} opened over and over and never closed`, `<${name}`.repeat(Math.floor(200_000 / (name.length + 1)))]),
+]
+
+test.each(HOSTILE)('a body of %s is drawn in under a second', (_, body) => {
+  expect(msToLead(body)).toBeLessThan(1000)
+})
+
+// ---- a strip that is still cutting when it reaches its last round leaves no markup ------------------------------------
+
+/** Markup nested one level deeper than `MAX_ROUNDS` rounds can cut apart, with words around it that hold a `<` of their own. */
+const pastTheCapArb = fc
+  .record({
+    kind: fc.constantFrom('tags', 'comments'),
+    depth: fc.integer({ min: MAX_ROUNDS + 1, max: MAX_ROUNDS + 30 }),
+    before: fc.constantFrom('', 'a < b ', '1 <3 2 '),
+    after: fc.constantFrom('', ' c > d', ' 4 <- 5'),
+  })
+  .map(({ kind, depth, before, after }) => `${before}${kind === 'tags' ? nestedTo('<', 'b>', 3 * depth) : `${'<!-'.repeat(depth)}<!-- a -->${'- -->'.repeat(depth)}`}${after}`)
+
+test('markup nested past the last round leaves no < in what is drawn', () => {
+  fc.assert(
+    fc.property(pastTheCapArb, text => {
+      expect(drawn(text)).not.toContain('<')
+    })
+  )
+})
+
+test('markup within the rounds is cut to the last piece, and a < of its own is kept', () => {
+  expect(drawn('a < b <<<b>b>b> c')).toBe('a < b  c')
 })

@@ -59,34 +59,72 @@ function holdCode(text: string) {
 }
 
 const ALERT = /^(\s*>\s*)\[!(note|tip|important|warning|caution)\]\s*$/gimu
-const COMMENT = /<!--[\s\S]*?-->/gu
 const TAG = /<\/?[a-z][a-z0-9-]*\b[^>]*>/giu
 /** Anything between `<` and `>`, which a summary's label has no use for. */
 const MARKUP = /<[^>]+>/gu
+const BRACKET = /[<>]/gu
 
 /**
- * `text` with every match of `patterns` cut out, and cut out again until a whole round finds none: one pass over markup
- * nested in markup (`<<b>b>`, `<!-<!-- a -->- b -->`) joins what is left of the outer into a new piece of it. Each cut
- * only shortens the text, so the rounds end. The `replace` stays inside the loop, on the text it last made, which is how
- * CodeQL's `js/incomplete-multi-character-sanitization` knows the strip is repeated; a step handed in from outside is not.
+ * `text` without its comments: each `<!--` and what follows it through the first `-->` after it. Written as a scan, not a
+ * pattern: a `<!--` with no `-->` after it fails only after reading to the end, and a pattern tries every `<!--` in turn.
+ * The first one that fails ends the scan, since no later one has a `-->` either.
  */
-function removeAll(text: string, ...patterns: RegExp[]): string {
-  let rest = text
-  let before: string
-  do {
-    before = rest
-    for (const pattern of patterns) {
-      rest = rest.replace(pattern, '')
+function withoutComments(text: string): string {
+  let kept = ''
+  let from = 0
+  for (let open = text.indexOf('<!--'); open !== -1; open = text.indexOf('<!--', from)) {
+    const close = text.indexOf('-->', open + 4)
+    if (close === -1) {
+      break
     }
-  } while (rest !== before)
-  return rest
+    kept += text.slice(from, open)
+    from = close + 3
+  }
+  return `${kept}${text.slice(from)}`
 }
 
-/** HTML outside code as Markdown: the marks it means kept, the rest dropped. */
+/** The most rounds `removeAll` makes. Ordinary HTML needs two: one that cuts and one that finds nothing more. */
+export const MAX_ROUNDS = 8
+
+/**
+ * `text` with what each of `steps` cuts out, and cut out again until a whole round finds none: one pass over markup nested
+ * in markup (`<<b>b>`, `<!-<!-- a -->- b -->`) joins what is left of the outer into a new piece of it. A step is a pattern,
+ * whose matches go, or a function that returns the text with its own cut. Each cut only shortens the text, so the rounds
+ * end, and `MAX_ROUNDS` ends them sooner: markup nested deeper than that is written to make a strip slow, one level a
+ * round, and no HTML is. If the last round still cut something, every `<` and `>` goes, which leaves no tag and no comment.
+ * A pattern's `replace` stays inside the loop, on the text it last made, which is how CodeQL's
+ * `js/incomplete-multi-character-sanitization` knows the strip is repeated; a `replace` handed in from outside is not. The
+ * function step makes no `replace` call, so there is nothing for CodeQL to ask of it; the properties in
+ * `tests/core/markdown.spec.ts` are what hold its cut to account.
+ */
+function removeAll(text: string, ...steps: (RegExp | ((text: string) => string))[]): string {
+  // Every cut ends in `>`, so what follows the last `>` is never part of one, in any round. It is set aside: a pattern would
+  // try each `<` in it and read to the end of the text for each, the cost of a pass over the text squared.
+  const end = text.lastIndexOf('>') + 1
+  const after = text.slice(end)
+  let rest = text.slice(0, end)
+  let before: string
+  let rounds = 0
+  do {
+    before = rest
+    for (const step of steps) {
+      rest = typeof step === 'function' ? step(rest) : rest.replace(step, '')
+    }
+    rounds += 1
+  } while (rest !== before && rounds < MAX_ROUNDS)
+  return rest === before ? `${rest}${after}` : `${rest}${after}`.replace(BRACKET, '')
+}
+
+/**
+ * HTML outside code as Markdown: the marks it means kept, the rest dropped. The tags turned into marks here, and the
+ * `<details>` that `split` reads, end their attributes at the next `<`, not at the next `>`: a tag opened and never closed
+ * is read up to that `<`, not to the end of the text once for every `<` in it. `TAG` below reads on to the `>` whatever it
+ * crosses, so a tag with a `<` in its attributes is still cut out, but as plain text and not as a link, a bullet or a fold.
+ */
 function markdownOf(text: string): string {
-  const marks = removeAll(text, COMMENT)
+  const marks = removeAll(text, withoutComments)
     .replace(/<picture\b[\s\S]*?<\/picture>/giu, '')
-    .replace(/<img\b[^>]*>/giu, '')
+    .replace(/<img\b[^<>]*>/giu, '')
     .replace(/!\[[^\]]*\]\([^)]*\)/gu, '')
     .split('\n')
     .map(line => line.replace(/<br\s*\/?>/giu, line.trimStart().startsWith('|') ? ' ' : '  \n'))
@@ -95,12 +133,12 @@ function markdownOf(text: string): string {
     .replace(/<(i|em)>([\s\S]*?)<\/\1>/giu, '*$2*')
     .replace(/<(s|del|strike)>([\s\S]*?)<\/\1>/giu, '~~$2~~')
     .replace(/<(code|kbd)>([\s\S]*?)<\/\1>/giu, '`$2`')
-    .replace(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/giu, (_, href: string, words: string) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
+    .replace(/<a\b[^<>]*\bhref="([^"]+)"[^<>]*>([\s\S]*?)<\/a>/giu, (_, href: string, words: string) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
     .replace(/<hr\s*\/?>/giu, '\n\n---\n\n')
-    .replace(/<\/?p\b[^>]*>/giu, '\n\n')
-    .replace(/<li\b[^>]*>/giu, '\n- ')
+    .replace(/<\/?p\b[^<>]*>/giu, '\n\n')
+    .replace(/<li\b[^<>]*>/giu, '\n- ')
   // Cutting a tag out can join the halves of a comment, and a comment the halves of a tag, so both go until neither is left.
-  return removeAll(marks, COMMENT, TAG)
+  return removeAll(marks, withoutComments, TAG)
     .replace(/&nbsp;/gu, ' ')
     .replace(/^(\s*[-*+]) \[[xX]\] /gmu, '$1 ✓ ')
     .replace(/^(\s*[-*+]) \[ \] /gmu, '$1 ☐ ')
@@ -112,7 +150,7 @@ function markdownOf(text: string): string {
 /** A summary as a plain label: no marks, one line. */
 const labelOf = (text: string): string => removeAll(text, MARKUP).replace(/[*_`]/gu, '').replace(/\s+/gu, ' ').trim()
 
-const OPEN_TAG = /<details\b([^>]*)>/iu
+const OPEN_TAG = /<details\b([^<>]*)>/iu
 
 /** Splits masked text at its outermost `<details>`, each fold read again for those inside it. */
 function split(masked: string, restore: (out: string) => string): Part[] {
@@ -127,7 +165,7 @@ function split(masked: string, restore: (out: string) => string): Part[] {
   for (let open = OPEN_TAG.exec(rest); open !== null; open = OPEN_TAG.exec(rest)) {
     text(rest.slice(0, open.index))
     const start = open.index + open[0].length
-    const anyTag = /<(\/?)details\b[^>]*>/giu
+    const anyTag = /<(\/?)details\b[^<>]*>/giu
     anyTag.lastIndex = start
     let depth = 1
     let end = rest.length
