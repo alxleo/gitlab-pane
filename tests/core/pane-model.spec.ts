@@ -26,7 +26,7 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       expanded: [],
       repoFilter: '',
       view: 'mine',
-      news: 0,
+      news: { count: 0, keys: [] },
       poll: { fetchedAt: NOW, error: null, hosts: {} },
       isReading: false,
       isWaking: true,
@@ -164,21 +164,80 @@ const drawnRows = (cards: MrCard[]) => {
   return { session: model.session, mine: model.mine.rows, drafts: model.drafts?.rows ?? [], more: model.mine.more, leftOut: model.leftOut }
 }
 
-test("the Mine tab, All and the repos count the same MRs, and this session's, the ready ones and the drafts add up to them", () => {
+test("the Mine tab, All and the repos count the same MRs, and this session's, the ready, the parked and the drafts add up to them", () => {
   const countOf = (label: string | undefined) => Number(/(\d+)$/u.exec(label ?? '')?.[1] ?? NaN)
   fc.assert(
     fc.property(fc.array(readCardArb, { maxLength: 8 }), fc.array(fc.boolean(), { minLength: 8, maxLength: 8 }), (cards, isPinned) => {
       // One card to a key, and a pin's key that of its card, as the list holds them.
       const full = cards.map((one, i) => ({ ...one, iid: one.iid + 100 * i, key: cardKey(one.host, one.path, one.iid + 100 * i) }))
       const pinned = full.filter((_, i) => isPinned[i] === true).map(card => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin: 'watched' as const }))
-      const model = modelOf(full, { pinned, expanded: ['drafts', 'more'] }, () => 1)
+      const model = modelOf(full, { pinned, expanded: ['drafts', 'parked', 'more', 'others'] }, () => 1)
       expect(model.session.length).toBe(pinned.filter(pin => full.some(card => card.key === pinKey(pin) && !hasLeft(card))).length)
       const tab = countOf(model.tabs.mine)
       expect(countOf(model.repos.all.label)).toBe(tab)
       expect(model.repos.each.reduce((sum, repo) => sum + countOf(repo.label), 0)).toBe(tab)
-      expect(model.session.length + countOf(model.mine.heading) + countOf(model.drafts?.label ?? '0')).toBe(tab)
+      expect(model.session.length + countOf(model.mine.heading) + countOf(model.parked?.label ?? '0') + countOf(model.drafts?.label ?? '0')).toBe(tab)
+      // Folded, the one line counts all but this session's; with nothing of this session's, nothing folds.
+      const folded = modelOf(full, { pinned }, () => 1).others
+      expect(folded === null).toBe(model.session.length === 0 || model.session.length === tab)
+      expect(model.session.length + Number(/(\d+) others?/u.exec(folded?.label ?? `${tab - model.session.length} others`)?.[1])).toBe(tab)
     })
   )
+})
+
+const pinOf = (card: MrCard, origin: 'raised' | 'watched' = 'watched') => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin })
+
+test('with this session holding MRs, the rest fold to one line counting them and their news; a picked repo shows its MRs', () => {
+  const failing = (iid: number) => toCard(HOST, rawMr(iid, { headPipeline: pipe('FAILED') }))
+  const [held, other, news] = [failing(21), failing(22), failing(23)]
+  const cards = [held, other, news, failing(24)]
+  const pinned = [pinOf(held)]
+  // News from outside Mine is not counted among the folded.
+  const folded = modelOf(cards, { pinned, news: { count: 2, keys: [news.key, 'gitlab.example.com/other/repo!9'] } })
+  expect(folded.session.map(row => row.key)).toEqual([held.key])
+  expect(folded.others).toEqual({ label: '▸ 3 others · 1 new', isOpen: false })
+  expect(folded.mine.rows).toEqual([])
+  const opened = modelOf(cards, { pinned, expanded: ['others'] })
+  expect(opened.others?.label).toBe('▾ 3 others')
+  expect(opened.mine.rows.map(row => row.key)).toContain(other.key)
+  // The line that says rows were left out sends the person to a repo, which shows them unfolded.
+  const picked = modelOf(cards, { pinned, repoFilter: held.project })
+  expect(picked.others).toBeNull()
+  expect(picked.mine.rows).toHaveLength(3)
+  expect(modelOf(cards).others).toBeNull()
+})
+
+test('a ready MR untouched for a week parks until its pipeline runs or it has news; a draft stays with the drafts', () => {
+  const old = '2026-10-10T15:00:00Z'
+  const untouched = (iid: number, over: Parameters<typeof rawMr>[1] = {}) =>
+    toCard(HOST, rawMr(iid, { updatedAt: old, headPipeline: pipe('FAILED', { startedAt: old, finishedAt: old }), ...over }))
+  const stale = untouched(31)
+  const spoken = untouched(32)
+  // GitLab leaves the updated time alone when a pipeline runs, so a pipeline that just failed counts as a move.
+  const rerun = untouched(35, { headPipeline: pipe('FAILED') })
+  const fresh = toCard(HOST, rawMr(33))
+  const draft = untouched(34, { draft: true })
+  const model = modelOf([stale, spoken, rerun, fresh, draft], { news: { count: 1, keys: [spoken.key] } })
+  expect(new Set(model.mine.rows.map(row => row.key))).toEqual(new Set([fresh.key, spoken.key, rerun.key]))
+  expect(model.parked).toEqual({ label: '▸ Parked, untouched for a week · 1', isOpen: false, rows: [] })
+  expect(model.drafts?.label).toBe('▸ Drafts · 1')
+  // With every ready MR parked, Ready does not say nothing is open.
+  const allParked = modelOf([stale], { expanded: ['parked'] })
+  expect(allParked.parked?.rows.map(row => row.key)).toEqual([stale.key])
+  expect(allParked.mine.isEmpty).toBe(false)
+})
+
+test("this session's MRs keep the order they came in; one it raised has no unpin, so its wakes cannot be dropped by a press", () => {
+  const first = toCard(HOST, rawMr(41))
+  const second = toCard(HOST, rawMr(42))
+  const third = toCard(HOST, rawMr(43, { headPipeline: pipe('FAILED') }))
+  const cards = [first, second, third]
+  const pinned = [pinOf(first, 'raised'), pinOf(third), pinOf(second)]
+  const model = modelOf(cards, { pinned })
+  // The failing one would rank first; the person's order stands instead.
+  expect(model.session.map(row => row.mr.text)).toEqual(['🔀 !41', '🔀 !43', '🔀 !42'])
+  expect(model.session.map(row => row.pin?.label ?? null)).toEqual([null, 'unpin', 'unpin'])
+  expect(modelOf(cards).mine.rows.map(row => row.pin?.label)).toEqual(['pin', 'pin', 'pin'])
 })
 
 test('the list draws a shared slim card as it draws the whole one', () => {

@@ -102,11 +102,15 @@ export async function startData($: EngineInterface, jiraSite: unknown, hosts: re
   await update($, readingAtom, () => false)
 }
 
-/** Pins an MR; watching one this session raised keeps it raised, so it still wakes. */
+/**
+ * Pins an MR, last; one pinned already keeps its place, the order the person sees. Watching one this session raised keeps
+ * it raised, so it still wakes.
+ */
 export async function pinMr($: EngineInterface, parsed: Pinned, origin: 'raised' | 'watched'): Promise<void> {
   await update($, pinnedAtom, list => {
     const was = list.find(one => pinKey(one) === pinKey(parsed))
-    return [...list.filter(one => one !== was), { ...parsed, origin: was?.origin === 'raised' ? 'raised' : origin }]
+    const pin: Pinned = { ...parsed, origin: was?.origin === 'raised' ? 'raised' : origin }
+    return was !== undefined ? list.map(one => (one === was ? pin : one)) : [...list, pin]
   })
 }
 

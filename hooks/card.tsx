@@ -3,6 +3,7 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 import { face } from './faces'
 import type { Kit } from './kit'
 import { openReading } from './panes'
+import { togglePin } from './shared'
 import type { RowModel } from './pane-model'
 import { strip } from './strip'
 
@@ -21,7 +22,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
   // a Link's text and a Button's label, never styled Text inside them. The title opens the MR's page, so it is a plain
   // Button, not a link-blue title that reads as leaving for GitLab (🔀 !iid does that).
   switch (part) {
-    case 'line1':
+    case 'line1': {
+      const { pin } = row
       return (
         <Box flexDirection="row" gap={1} alignItems="center">
           <Box flexGrow={1} flexShrink={1}>
@@ -43,8 +45,10 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
+          {pin !== null && <Button key={pin.key} plain dimColor label={pin.label} onPress={() => togglePin($, pin.label, pin.mr)} />}
         </Box>
       )
+    }
     case 'line2':
     case 'faces': {
       const withPictures = part === 'faces'

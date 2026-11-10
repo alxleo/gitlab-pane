@@ -91,7 +91,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
-  const { mine, drafts } = model
+  const { mine, parked, drafts, others } = model
+  const fold = (key: 'parked' | 'drafts', list: { label: string; rows: RowModel[] } | null) =>
+    list !== null ? [<Button key={key} plain label={list.label} onPress={() => toggle($, key)} />, ...list.rows.map(draw)] : []
+  // With this session's MRs on top, the rest is one line until it is opened.
+  const rest =
+    others === null || others.isOpen
+      ? [
+          <Text weight="semibold">{mine.heading}</Text>,
+          ...(mine.isEmpty ? [<Text dimColor>Nothing open here.</Text>] : []),
+          ...mine.rows.map(draw),
+          ...(mine.more !== null ? [<Button key="more" plain label={mine.more} onPress={() => toggle($, 'more')} />] : []),
+          ...fold('parked', parked),
+          ...fold('drafts', drafts),
+        ]
+      : []
   const mineTab = [
     <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
       <Button key="repo-all" label={model.repos.all.label} variant={model.repos.all.isActive ? 'primary' : 'secondary'} onPress={() => filterRepo($, repoFilter)} />
@@ -105,12 +119,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     )),
     ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),
-    <Text weight="semibold">{mine.heading}</Text>,
-    ...(mine.isEmpty ? [<Text dimColor>Nothing open here.</Text>] : []),
-    ...mine.rows.map(draw),
-    ...(mine.more !== null ? [<Button key="more" plain label={mine.more} onPress={() => toggle($, 'more')} />] : []),
-    ...(drafts !== null ? [<Button key="drafts" plain label={drafts.label} onPress={() => toggle($, 'drafts')} />] : []),
-    ...(drafts !== null ? drafts.rows.map(draw) : []),
+    ...(others !== null ? [<Button key="others" plain label={others.label} onPress={() => toggle($, 'others')} />] : []),
+    ...rest,
     ...(model.leftOut !== null ? [<Text dimColor>{model.leftOut}</Text>] : []),
   ]
 
