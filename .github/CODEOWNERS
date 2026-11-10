@@ -7,5 +7,5 @@
 /release/                 @alxleo
 /package.json             @alxleo
 /package-lock.json        @alxleo
-/eslint.config.cjs        @alxleo
+/oxlint.config.ts         @alxleo
 /tsconfig*.json          @alxleo

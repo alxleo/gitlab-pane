@@ -1,5 +1,5 @@
 // Run by .claude/settings.json after an agent edits a file. When the file is in the core (tsconfig.core.json's "include"),
-// runs the core's tsc and eslint and Biome's format check, and hands what they say back to the agent: exit 2 with the findings on
+// runs the core's tsc and oxlint and Biome's format check, and hands what they say back to the agent: exit 2 with the findings on
 // stderr, which Claude Code shows the model. Silent, exit 0, for any other file or a clean one.
 //
 // It runs the binaries in this repository's own node_modules, at the versions package.json pins (`npm ci` installs them),
@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
+import { coreFiles } from './core.ts'
 
 const ROOT = process.env['CLAUDE_PROJECT_DIR'] ?? join(import.meta.dirname, '..')
 
@@ -28,20 +29,12 @@ function editedFile(): string | null {
   return typeof path === 'string' ? relative(ROOT, path).split(sep).join('/') : null
 }
 
-/** The files tsconfig.core.json lists, which carries `//` comments that JSON does not allow. */
-function core(): string[] {
-  const text = readFileSync(join(ROOT, 'tsconfig.core.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '')
-  const parsed = parseJson(text)
-  const include = isRecord(parsed) && Array.isArray(parsed['include']) ? parsed['include'] : []
-  return include.filter((each): each is string => typeof each === 'string' && !each.endsWith('.d.ts'))
-}
-
-/** What package.json pins for a tool, as a version number (an `npm:name@` alias prefix is taken off). */
+/** What package.json pins for a tool: an exact version. */
 function pinned(name: string): string | null {
   const manifest = readJson(join(ROOT, 'package.json'))
   const dependencies = isRecord(manifest) ? manifest['devDependencies'] : undefined
   const spec = isRecord(dependencies) ? dependencies[name] : undefined
-  return typeof spec === 'string' ? spec.replace(/^npm:[^@]+@/, '') : null
+  return typeof spec === 'string' ? spec : null
 }
 
 /** The version of a tool installed in node_modules, or null when it is not. */
@@ -53,12 +46,12 @@ function installed(name: string): string | null {
 
 function main(): number {
   const file = editedFile()
-  if (file === null || !core().includes(file)) {
+  if (file === null || !coreFiles().includes(file)) {
     return 0
   }
   const tools = [
-    { name: 'typescript-7', script: join(ROOT, 'node_modules', 'typescript-7', 'bin', 'tsc'), args: ['-p', 'tsconfig.core.json'] },
-    { name: 'eslint', script: join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js'), args: ['--max-warnings', '0', file] },
+    { name: 'typescript', script: join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), args: ['-p', 'tsconfig.core.json'] },
+    { name: 'oxlint', script: join(ROOT, 'node_modules', 'oxlint', 'bin', 'oxlint'), args: [file] },
     { name: '@biomejs/biome', script: join(ROOT, 'node_modules', '@biomejs', 'biome', 'bin', 'biome'), args: ['format', file] },
   ]
   const wrong = tools
@@ -79,7 +72,7 @@ function main(): number {
   })
   const said = out.filter(each => each !== '').join('\n')
   if (said !== '') {
-    console.error(`The core checks (tsc -p tsconfig.core.json, eslint, biome format) found problems after your edit of ${file}; formatting is fixed by npm run format:\n${said}`)
+    console.error(`The core checks (tsc -p tsconfig.core.json, oxlint, biome format) found problems after your edit of ${file}; formatting is fixed by npm run format:\n${said}`)
     return 2
   }
   return 0

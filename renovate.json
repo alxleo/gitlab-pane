@@ -17,9 +17,9 @@
       "groupName": "tooling"
     },
     {
-      "description": "typescript-eslint cannot load TypeScript past 6.0, so `typescript` (the linter's) stays on 6.x while `typescript-7` is the compiler that CI and the hooks run.",
-      "matchPackageNames": ["typescript"],
-      "allowedVersions": "<6.1"
+      "description": "The linter and the compiler in one pull request, majors included: oxlint-tsgolint's version names the TypeScript it is built on (7.0.2005 is 7.0), oxlint requires a tsgolint at least as new, @oxlint/plugins types the local rules for that oxlint, and oxc-parser reads the same tree for tools/lint_rules.ts and tools/directives.ts. Raised apart, `typescript` and the type-aware lint would check against two TypeScripts.",
+      "matchPackageNames": ["typescript", "oxlint", "oxlint-tsgolint", "@oxlint/plugins", "oxc-parser"],
+      "groupName": "lint and compiler"
     }
   ],
   "customManagers": [
