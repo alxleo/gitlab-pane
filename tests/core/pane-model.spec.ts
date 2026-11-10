@@ -176,7 +176,11 @@ test("the Mine tab and the repos count the same MRs, and this session's, the rea
   fc.assert(
     fc.property(fc.array(readCardArb, { maxLength: 8 }), fc.array(fc.boolean(), { minLength: 8, maxLength: 8 }), (cards, isPinned) => {
       // One card to a key, and a pin's key that of its card, as the list holds them.
-      const full = cards.map((one, i) => ({ ...one, iid: one.iid + 100 * i, key: cardKey(one.host, one.path, one.iid + 100 * i) }))
+      // A third of them in a second repo, so the repos are offered.
+      const full = cards.map((one, i) => {
+        const path = i % 3 === 0 ? 'g/q' : one.path
+        return { ...one, path, project: projectOf(one.host, path), repo: { ...one.repo, name: path }, iid: one.iid + 100 * i, key: cardKey(one.host, path, one.iid + 100 * i) }
+      })
       const pinned = full.filter((_, i) => isPinned[i] === true).map(card => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin: 'watched' as const }))
       const model = modelOf(full, { pinned, expanded: ['drafts', 'parked', 'more', 'others'] }, () => 1)
       expect(model.session.length).toBe(pinned.filter(pin => full.some(card => card.key === pinKey(pin) && !hasLeft(card))).length)
@@ -246,7 +250,8 @@ test('the repo filter offers All and each repo with its count, the picked one cu
   const kept = modelOf(alone, { repoFilter: billing, pinned: [pinOf(lone)] })
   expect(kept.repos).toBeNull()
   expect(kept.others?.label).toBe('▸ 1 other')
-  // Rows left out send the person to a repo only when there is one to pick.
+  // Rows left out send the person to a repo only when there is one to pick, and none is picked already.
+  expect(modelOf(cards, { repoFilter: billing }, () => 1_000, 0).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
   expect(modelOf(alone, {}, () => 1_000, 0).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
   expect(modelOf(cards, {}, () => 1_000, 0).leftOut).toBe('4 more MRs left out to stay within what the app draws; pick a repo above to see them.')
 })

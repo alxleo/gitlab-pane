@@ -1,5 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
+import { hasLeft } from './attention'
 import { forgetGone, readWake } from './choices'
 import {
   changeReads,
@@ -69,7 +70,7 @@ async function applyCards($: EngineInterface, cards: readonly MrCard[], now: num
   const isShown = (key: string) => open.some(row => row.key === key)
   await setRows($, open)
   // An MR read whole that has merged leaves its page, so the title and the list come back with it.
-  if (await forgetGone($, isShown)) {
+  if (await forgetGone($, isShown, new Set(open.filter(row => !hasLeft(row)).map(row => row.project)))) {
     quietly($, openPane($))
   }
   await setAnnounced($, reconciled.announced)

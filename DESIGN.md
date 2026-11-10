@@ -43,7 +43,7 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 | Section | Holds | Code |
 |---|---|---|
 | Top row | the tabs and, on Mine, how old the cards are (the inbox says its own age on the row below); at the right, `↻` reads GitLab again, dim while a read is out, and `🔔` says a raised MR wakes Claude, `🔕` once pressed off. An MR read whole has its way back and its age there instead of the tabs | `pane.tsx` |
-| Repo filter | on Mine, one picker of `All repos` and each repo with how many MRs it holds, a single row however many repos there are; a phone, which may not draw a picker, has a button for each instead. None while every MR is in one repo, and a pick whose repo has no MRs left shows them all | `buildPane` |
+| Repo filter | on Mine, one picker of `All repos` and each repo with how many MRs it holds, a single row however many repos there are; a phone, which may not draw a picker, has a button for each instead. None while every MR is in one repo. A pick whose repo has no MRs left, or that leaves one repo, shows them all and is forgotten at the next read, so the repo coming back does not narrow the list by itself | `keptRepo` |
 | This session | the MRs this session raised, watched or you pinned, in the order they came | `buildPane` |
 | `▸ N others` | while This session holds any, every other MR folds behind one line saying how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
 | Ready | the open MRs, most pressing first, ten until `▸ more` | `MINE_SHOWN` |

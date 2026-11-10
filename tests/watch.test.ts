@@ -381,6 +381,32 @@ test('a raised MR wakes when GitLab newly says it can merge, never for a passed 
   expect(woken).toHaveLength(1)
 })
 
+test('a repo picked until its MRs all closed is forgotten, so the repo coming back does not narrow the list by itself', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const inRepo = (iid: number, path: string, over: Parameters<typeof rawMr>[1] = {}) => rawMr(iid, { project: project(path), ...over })
+  const kept = [inRepo(1, 'g/p'), inRepo(2, 'g/p')]
+  const fake: Fake = { mrs: [...kept, inRepo(3, 'g/q')], isDown: false }
+  // Reads after the first ask GitLab for what changed since, so each change is stamped now.
+  const changed = (iid: number, path: string, state: 'opened' | 'merged' = 'opened') => inRepo(iid, path, { state, updatedAt: stamp(clock) })
+  engine(on, fake)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const ready = async () => (await ui.find({ type: 'Text', text: /^Ready · /u }))?.text
+  await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
+  expect(await ready()).toBe('Ready · 1')
+  fake.mrs = [...kept, changed(3, 'g/q', 'merged'), changed(4, 'g/r')]
+  await clock.advance(180_000)
+  expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('all')
+  expect(await ready()).toBe('Ready · 3')
+  fake.mrs = [...kept, inRepo(4, 'g/r'), changed(5, 'g/q')]
+  await clock.advance(180_000)
+  expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('all')
+  expect(await ready()).toBe('Ready · 4')
+  await ui.unmount()
+})
+
 test('an avatar kept by an earlier session is drawn without fetching it again', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'APPROVED')] } })], isDown: false }

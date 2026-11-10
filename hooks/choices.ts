@@ -3,6 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { isEqual } from './equal'
 import { quietly } from './failures'
+import { keptRepo } from './pane-model'
 
 import type { Choices } from '../types'
 
@@ -100,18 +101,20 @@ export function toggleWake($: EngineInterface): void {
 }
 
 /**
- * After a read: an MR merged or closed since its page was opened takes its folds and page with it. Gives whether the MR
- * read whole is gone, which has left its page.
+ * After a read: an MR merged or closed since its page was opened takes its folds and page with it, and a repo picked whose
+ * MRs are all gone (or the last repo besides it) takes the pick, so its coming back does not narrow the list by itself.
+ * `projects` are the repos the open MRs are in. Gives whether the MR read whole is gone, which has left its page.
  */
-export async function forgetGone($: EngineInterface, isShown: (key: string) => boolean): Promise<boolean> {
+export async function forgetGone($: EngineInterface, isShown: (key: string) => boolean, projects: ReadonlySet<string>): Promise<boolean> {
   const before = await read($, choicesAtom)
   const folds = before.folds.filter(id => isShown(id.split('#')[0] ?? ''))
   const isGone = before.reading !== '' && !isShown(before.reading)
   const person = isGone ? {} : before.person
-  const next = { ...before, person, folds, reading: isGone ? '' : before.reading }
+  const repoFilter = keptRepo(before.repoFilter, projects)
+  const next = { ...before, person, folds, repoFilter, reading: isGone ? '' : before.reading }
   // A read that finds nothing gone writes nothing, so it redraws nothing.
   if (!isEqual(next, before)) {
-    await change($, choices => ({ ...choices, person, folds, reading: isGone ? '' : choices.reading }))
+    await change($, choices => ({ ...choices, person, folds, repoFilter: keptRepo(choices.repoFilter, projects), reading: isGone ? '' : choices.reading }))
   }
   return isGone
 }

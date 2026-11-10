@@ -34,6 +34,12 @@ export const REPO_ALL = 'all'
 /** The repo a pick of the filter narrows the list to: its project, or none for All. */
 export const pickedRepo = (value: string): string => (value === REPO_ALL ? '' : value)
 
+/**
+ * The repo picked, while it still narrows the list: there are repos to pick between, among the `projects` the open MRs are
+ * in, and its own is one of them. Else none, so a pick never hides MRs behind a filter that is not drawn or does not offer it.
+ */
+export const keptRepo = (pick: string, projects: ReadonlySet<string>): string => (projects.size > 1 && projects.has(pick) ? pick : '')
+
 type Link = { href: string; text: string }
 
 export type PersonRow = {
@@ -263,9 +269,8 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   const rows = given.cards.filter(row => !hasLeft(row))
   const counts = rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())
   const repos = [...counts].toSorted((a, b) => b[1] - a[1])
-  // A pick narrows the list only while there are repos to pick between and its own still has MRs; else the list is whole,
-  // so a pick kept from before never hides MRs behind a filter that is not drawn or does not offer it.
-  const input = { ...given, repoFilter: repos.length > 1 && counts.has(given.repoFilter) ? given.repoFilter : '' }
+  // The next read forgets a pick that no longer narrows (`forgetGone`); until then the list is whole.
+  const input = { ...given, repoFilter: keptRepo(given.repoFilter, new Set(counts.keys())) }
   const pinnedKeys = new Set(input.pinned.map(pinKey))
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
   const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
@@ -363,7 +368,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
       built.length - finished.size > 0
-        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 ? '; pick a repo above to see them' : ''}.`
+        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 && input.repoFilter === '' ? '; pick a repo above to see them' : ''}.`
         : null,
     status: statusOf(input.poll, now),
     isRefreshing: input.isReading || input.isSyncing,
