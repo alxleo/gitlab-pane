@@ -17,12 +17,25 @@ test('a ticket Jira cannot be read for says so on its page, instead of waiting f
   expect(pageHead(card, { ...JIRA, browse: '' }).ticket).toBeNull()
 })
 
-test("a page says what stands before a merge that GitLab's verdict leaves unsaid, and nothing it says itself", () => {
+test("a page explains GitLab's verdict, saying it once: who can approve when it needs an approval", () => {
+  const waiting = { ...toCard(HOST, rawMr(9)), approvers: ['Farhad', 'Max'], mergeStatus: gitlabSays({ NOT_APPROVED: 'failed' }) }
+  // "needs 1 approval" gives way to the line that says it with who can give it.
+  expect(pageHead(waiting, JIRA).verdict).toBeNull()
+  expect(pageHead(waiting, JIRA).standing).toEqual([{ text: '👤 needs 1 approval: Farhad, Max', tone: undefined, href: null }])
   const conflicted = { ...toCard(HOST, rawMr(8, { conflicts: true })), mergeStatus: gitlabSays({ CONFLICT: 'failed' }) }
-  // The verdict says the conflict, so the page's head does not say it again; only the approval it also waits on.
-  expect(pageHead(conflicted, JIRA).standing.map(line => line.text)).toEqual(['👤 Approvals 0/1'])
-  const waiting = toCard(HOST, rawMr(9))
-  expect(pageHead(waiting, JIRA).standing).toEqual([{ text: '👤 Approvals 0/1', tone: undefined, href: null }])
+  expect(pageHead(conflicted, JIRA).verdict).toBeNull()
+  expect(pageHead(conflicted, JIRA).standing.map(line => line.text)).toEqual(['✗ conflict', '👤 needs 1 approval'])
+  // A verdict the page has no line for stays in its head.
+  const mergeable = { ...toCard(HOST, rawMr(10, { approvalsLeft: 0 })), mergeStatus: gitlabSays() }
+  expect(pageHead(mergeable, JIRA).verdict).toEqual({ words: '✓ mergeable', tone: 'success', bold: true })
+  // Unresolved threads are said by the page's own list of them, not by a line in its head.
+  const threaded = { ...toCard(HOST, rawMr(11, { discussions: { nodes: [thread('Rename this.', 'bob')] } })), mergeStatus: gitlabSays({ DISCUSSIONS_NOT_RESOLVED: 'failed' }) }
+  expect(
+    pageHead(threaded, JIRA)
+      .standing.map(line => line.text)
+      .some(text => text.includes('thread'))
+  ).toBe(false)
+  expect(pageHead(threaded, JIRA).verdict?.words).toBe('1 open thread')
 })
 
 test('a manual job the pipeline waits on links to its page, where a person starts it', () => {

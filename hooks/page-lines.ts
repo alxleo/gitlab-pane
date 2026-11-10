@@ -21,7 +21,9 @@ export type PageContext = {
 export type PageHead = {
   /** The ticket and what Jira says of it, as one link; null while the title names none or no Jira site is set. */
   ticket: { text: string; href: string } | null
-  /** What stands before a merge that the page's own sections (failed jobs, threads) and GitLab's verdict leave unsaid; a manual job to start links to it. */
+  /** GitLab's verdict, unless a line of `standing` explains it, which then says it in its place. */
+  verdict: { words: string; tone: Tone; bold: boolean } | null
+  /** What stands before a merge that the page's own sections (failed jobs, threads) leave unsaid; a manual job to start links to it. */
   standing: { text: string; tone: Tone | undefined; href: string | null }[]
 }
 
@@ -35,13 +37,15 @@ function standingOf(card: MrCard, badge: Badge): string | null {
     case 'manual':
       return `Waiting on ${card.pipeline?.blockedOn.join(', ') ?? 'a manual job'}`
     case 'check':
-      return badge.words
+      // The page's open threads, listed below, say this check.
+      return badge.check === 'DISCUSSIONS_NOT_RESOLVED' ? null : badge.words
     case 'conflicts':
       return `Conflicts with ${card.branch.target}`
     case 'rebase':
       return `Needs a rebase onto ${card.branch.target}`
     case 'approvals':
-      return `Approvals ${badge.count}${card.approvers.length > 0 ? `: ${card.approvers.join(', ')}` : ''}`
+      // "needs 1 approval" or "approved", with who can approve.
+      return `${badge.words}${card.approvers.length > 0 ? `: ${card.approvers.join(', ')}` : ''}`
     case 'threads':
     case 'failed':
     case 'amber':
@@ -58,21 +62,28 @@ export function pageHead(card: MrCard, ctx: PageContext): PageHead {
   const jira = facts.ticket !== null ? ctx.tickets[facts.ticket] : undefined
   // Jira's tool is not installed here, so a ticket will not be filled in.
   const isJiraUnavailable = ctx.failures.jira?.kind === 'not-installed'
-  // GitLab's verdict, drawn in the page's head, already says the marker it is about.
-  const markers = facts.verdict !== null ? facts.trailing : facts.row
   const said =
     facts.ticket === null
       ? ''
       : jira !== undefined
         ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}`
         : `${facts.ticket}: ${isJiraUnavailable ? 'Jira is not available here' : 'not read from Jira yet'}`
+  // Every marker the page has words for, the one GitLab's verdict is about too: the page says who can approve, which the
+  // verdict's "needs 1 approval" does not.
+  const explained = facts.row.flatMap(badge => {
+    const words = standingOf(card, badge)
+    return words !== null ? [{ badge, words }] : []
+  })
+  const { verdict } = facts
+  const isExplained = verdict !== null && explained.some(({ badge }) => badge.check !== undefined && badge.check === verdict.check)
   return {
     ticket: href !== null ? { text: `${LINK.jira} ${said}`, href } : null,
-    standing: markers.flatMap(badge => {
-      const words = standingOf(card, badge)
-      const tone = badge.tone === 'subtle' ? undefined : badge.tone
-      return words !== null ? [{ text: `${badge.glyph} ${words}`, tone, href: badge.kind === 'manual' ? manualJob(card) : null }] : []
-    }),
+    verdict: verdict !== null && !isExplained ? { words: verdict.words, tone: verdict.tone, bold: verdict.tone === 'success' } : null,
+    standing: explained.map(({ badge, words }) => ({
+      text: `${badge.glyph} ${words}`,
+      tone: badge.tone === 'subtle' ? undefined : badge.tone,
+      href: badge.kind === 'manual' ? manualJob(card) : null,
+    })),
   }
 }
 
