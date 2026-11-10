@@ -8,6 +8,7 @@ import { VERB } from '../hooks/inbox-pane'
 import { RULES } from '../hooks/inbox-rules'
 import { FULL_EVERY_MS } from '../hooks/incremental'
 import { EXPIRY_MS, RENEW_MS, TICK_MS } from '../hooks/lease'
+import { FOLLOW_MS, FOLLOW_TRIES, MOVE_LABEL } from '../hooks/next-move'
 import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
 import { BACKOFF_MAX_MS, INBOX_EVERY_MS, WAKE_ONLY_EVERY_MS, pollEvery } from '../hooks/snapshot'
 import { STAGE_COLOURS, statusMark } from '../hooks/status'
@@ -63,6 +64,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [],
     // the lease: each session's turn, the leader's renewal, and how long an unrenewed lease holds
     [TICK_MS, RENEW_MS, EXPIRY_MS],
+    // a merge or rebase you pressed, and the MR looked at until GitLab is done, for so long at most
+    [FOLLOW_MS, FOLLOW_MS * FOLLOW_TRIES],
   ])
 })
 
@@ -92,4 +95,8 @@ test("DESIGN's badges, link marks and inbox events are the code's, in its order"
   expect(DESIGN.links).toEqual(Object.values(LINK))
   expect(DESIGN.inboxEvents).toEqual(Object.values(VERB).map(verb => [verb.glyph, verb.word]))
   expect(DESIGN.inboxTabs).toEqual(RULES.map(rule => [rule.title, rule.name]))
+})
+
+test("DESIGN's moves are the ones a card offers, in its order", () => {
+  expect(DESIGN.moves).toEqual(Object.values(MOVE_LABEL))
 })

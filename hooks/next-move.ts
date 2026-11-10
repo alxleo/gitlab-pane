@@ -17,7 +17,8 @@ export const ARMED_MS = 10_000
  */
 export type Move = { label: string; check: string | null; press: { kind: MoveKind; does: 'arm' | 'make' } | null; isArmed: boolean; failed: string | null }
 
-const LABEL: Record<MoveKind, string> = {
+/** What each move says while it can be pressed, in DESIGN.md's order. */
+export const MOVE_LABEL: Record<MoveKind, string> = {
   merge: '⤵ merge',
   rebase: '↻ rebase',
   'rebase-merge': '↻ rebase and merge',
@@ -86,7 +87,7 @@ export function nextMove(card: MrCard, pressed: Pressed | undefined, isHere: boo
   }
   const isArmed = press?.state === 'armed' && press.kind === kind
   return {
-    label: isArmed ? `${LABEL[kind]} !${card.iid}? press again` : LABEL[kind],
+    label: isArmed ? `${MOVE_LABEL[kind]} !${card.iid}? press again` : MOVE_LABEL[kind],
     check: CHECK[kind],
     press: { kind, does: ARMS.has(kind) && !isArmed ? 'arm' : 'make' },
     isArmed,

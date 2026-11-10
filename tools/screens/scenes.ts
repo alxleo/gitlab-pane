@@ -151,6 +151,28 @@ const mine = (): Mr[] => [
       nodes: [withThread('Half-cents should round to even here, per the finance spec. Is `Math.round` what we want?', ALICE, 'acme-corp/storefront', 479, 'src/cart/total.ts', 88)],
     },
   }),
+  // In the repo the session works in, so its conflicts can go to Claude here.
+  rawMr(485, {
+    title: 'feat: [SHOP-217] Keep the coupon when the cart reloads',
+    webUrl: url('acme-corp/storefront', 485),
+    project: STOREFRONT,
+    sourceBranch: 'feat/sticky-coupon',
+    description: '## What\n\nThe coupon is kept in the cart, not the page, so a reload keeps it.',
+    updatedAt: minutesAgo(95),
+    conflicts: true,
+    approvalsLeft: 1,
+    approvalsRequired: 1,
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED', CONFLICT: 'FAILED' }),
+    diffStatsSummary: { additions: 44, deletions: 17, fileCount: 4 },
+    reviewers: { nodes: [who(CAROL, 'UNREVIEWED')] },
+    headPipeline: pipe('SUCCESS', {
+      id: 'gid://gitlab/Ci::Pipeline/9485',
+      path: '/acme-corp/storefront/-/pipelines/9485',
+      startedAt: minutesAgo(110),
+      finishedAt: minutesAgo(102),
+      duration: 470,
+    }),
+  }),
   rawMr(133, {
     title: 'refactor: [BILL-88] Extract the invoice renderer',
     webUrl: url('acme-corp/billing-api', 133),
@@ -181,7 +203,9 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(190),
     approvalsLeft: 1,
     approvalsRequired: 1,
-    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
+    // Behind its target in a repo that merges only by fast-forward: a rebase, beside the approval it still waits on.
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED', NEED_REBASE: 'FAILED' }),
+    shouldBeRebased: true,
     diffStatsSummary: { additions: 96, deletions: 12, fileCount: 5 },
     reviewers: { nodes: [who(CAROL, 'REVIEW_STARTED'), who(DAVE, 'UNREVIEWED')] },
     headPipeline: pipe('SUCCESS', {
