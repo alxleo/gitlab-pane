@@ -113,9 +113,10 @@ export default defineConfig({
         'unicorn/no-array-sort': 'error',
         'unicorn/no-array-reverse': 'error',
         // A promise given where a condition, a spread or a `void` callback (`forEach`) is expected goes unawaited or always
-        // passes. A JSX attribute is let through: the engine types a Button's `onPress` as returning `void`, but its `ui.press`
-        // chain awaits what the handler returns, and its own example returns a promise. A handler there returns its promise
-        // with `.catch(reported(...))` on it, which sends a failure to /gitlab.
+        // passes. A JSX attribute is let through: the engine types a Button's `onPress` as returning `void`, yet its own example
+        // returns a promise, and the test kit's `ui.press` awaits what the handler returns, so a test sees the press's work end.
+        // A handler here returns its promise with `.catch(reported(...))` on it, which sends a failure to /gitlab. The rule has
+        // no option for one prop, so this lets every attribute through; all of them are `onPress` today.
         'typescript/no-misused-promises': ['error', { checksVoidReturn: { attributes: false } }],
         // A `void` call used as a value (`return voidCall()`, `const x = voidCall()`, `f(voidCall())`) hands on something that
         // is not there, and reads as though it were. An arrow's shorthand body is let through: `onPress={() => toggle()}` is

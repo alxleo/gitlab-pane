@@ -59,11 +59,32 @@ function holdCode(text: string) {
 }
 
 const ALERT = /^(\s*>\s*)\[!(note|tip|important|warning|caution)\]\s*$/gimu
+const COMMENT = /<!--[\s\S]*?-->/gu
+const TAG = /<\/?[a-z][a-z0-9-]*\b[^>]*>/giu
+/** Anything between `<` and `>`, which a summary's label has no use for. */
+const MARKUP = /<[^>]+>/gu
+
+/**
+ * `text` with every match of `patterns` cut out, and cut out again until a whole round finds none: one pass over markup
+ * nested in markup (`<<b>b>`, `<!-<!-- a -->- b -->`) joins what is left of the outer into a new piece of it. Each cut
+ * only shortens the text, so the rounds end. The `replace` stays inside the loop, on the text it last made, which is how
+ * CodeQL's `js/incomplete-multi-character-sanitization` knows the strip is repeated; a step handed in from outside is not.
+ */
+function removeAll(text: string, ...patterns: RegExp[]): string {
+  let rest = text
+  let before: string
+  do {
+    before = rest
+    for (const pattern of patterns) {
+      rest = rest.replace(pattern, '')
+    }
+  } while (rest !== before)
+  return rest
+}
 
 /** HTML outside code as Markdown: the marks it means kept, the rest dropped. */
 function markdownOf(text: string): string {
-  return text
-    .replace(/<!--[\s\S]*?-->/gu, '')
+  const marks = removeAll(text, COMMENT)
     .replace(/<picture\b[\s\S]*?<\/picture>/giu, '')
     .replace(/<img\b[^>]*>/giu, '')
     .replace(/!\[[^\]]*\]\([^)]*\)/gu, '')
@@ -78,7 +99,8 @@ function markdownOf(text: string): string {
     .replace(/<hr\s*\/?>/giu, '\n\n---\n\n')
     .replace(/<\/?p\b[^>]*>/giu, '\n\n')
     .replace(/<li\b[^>]*>/giu, '\n- ')
-    .replace(/<\/?[a-z][a-z0-9-]*\b[^>]*>/giu, '')
+  // Cutting a tag out can join the halves of a comment, and a comment the halves of a tag, so both go until neither is left.
+  return removeAll(marks, COMMENT, TAG)
     .replace(/&nbsp;/gu, ' ')
     .replace(/^(\s*[-*+]) \[[xX]\] /gmu, '$1 ✓ ')
     .replace(/^(\s*[-*+]) \[ \] /gmu, '$1 ☐ ')
@@ -88,12 +110,7 @@ function markdownOf(text: string): string {
 }
 
 /** A summary as a plain label: no marks, one line. */
-const labelOf = (text: string): string =>
-  text
-    .replace(/<[^>]+>/gu, '')
-    .replace(/[*_`]/gu, '')
-    .replace(/\s+/gu, ' ')
-    .trim()
+const labelOf = (text: string): string => removeAll(text, MARKUP).replace(/[*_`]/gu, '').replace(/\s+/gu, ' ').trim()
 
 const OPEN_TAG = /<details\b([^>]*)>/iu
 

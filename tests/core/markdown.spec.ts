@@ -132,3 +132,86 @@ test('parsing the folds of a document loses no text, and keeps each fold, its su
     })
   )
 })
+
+// ---- a strip made once leaves what it was nested in -------------------------------------------------------------------
+
+/** The text as GitLab sends it, read and drawn with its folds closed. */
+const drawn = (text: string): string => flatOf(cleanBody(text, HOST, 'g/p'))
+
+/** The label of the fold a summary heads: `text` is written between `<summary>` and `</summary>`. */
+function summaryOf(text: string): string {
+  const fold = partsOf(cleanBody(`<details><summary>${text}</summary>x</details>`, HOST, 'g/p')).find(part => 'summary' in part)
+  if (fold === undefined || !('summary' in fold)) {
+    throw new Error('expected a fold')
+  }
+  return fold.summary
+}
+
+/** What each strip removes: a whole comment, any tag, and from a summary anything between `<` and `>`. */
+const COMMENT = /<!--[\s\S]*?-->/u
+const TAG = /<\/?[a-z][a-z0-9-]*\b[^>]*>/iu
+const MARKUP = /<[^>]+>/u
+
+/**
+ * Text built of the pieces markup is made of, each put in at any place in what is built so far: inside another's
+ * brackets, a piece is nested, and cutting it out joins what is left into a new piece.
+ */
+const markupArb = fc
+  .array(fc.tuple(fc.constantFrom('<', '>', '!--', '<!--', '-->', '<!-- c -->', '<script>', '<b>', 'script', 'a', 'x', '\n'), fc.nat()), { maxLength: 12 })
+  .map(steps =>
+    steps.reduce((text, [piece, place]) => {
+      const at = place % (text.length + 1)
+      return `${text.slice(0, at)}${piece}${text.slice(at)}`
+    }, '')
+  )
+
+test('a comment that cutting one out makes whole is cut out too', () => {
+  // The comment inside the first one goes, and the two halves of the outer one are joined into a whole.
+  expect(drawn('before <!-<!-- a -->- b --> after')).toBe('before  after')
+  expect(drawn('before <!<!-- a -->-- b --> after')).toBe('before  after')
+  // Three deep: each round cut out leaves the next whole.
+  expect(drawn('<!-<!-<!-- a -->- b -->- c -->tail')).toBe('tail')
+  // A tag cut out can join a comment too.
+  expect(drawn('<!-- c -<b>-> after')).toBe('after')
+})
+
+test('a tag that cutting one out makes whole is cut out too', () => {
+  expect(drawn('x <<script>script>y')).toBe('x y')
+  expect(drawn('x <<b>b>y')).toBe('x y')
+  expect(drawn('x <<<b>b>b>y')).toBe('x y')
+  for (const text of ['x <<script>script>y', 'x <<b>b>y', 'x <scr<script>ipt>y', '<<<b>b>b>']) {
+    const flat = drawn(text)
+    expect(flat).not.toContain('<script')
+    expect(flat).not.toMatch(TAG)
+  }
+})
+
+test('a summary keeps no tag of its own, however its markup is nested', () => {
+  expect(summaryOf('<<b>b>Title')).toBe('b>Title')
+  expect(summaryOf('<b>Ti<i>tle</i></b>')).toBe('Title')
+  expect(summaryOf('<scr<script>ipt>Title')).not.toMatch(MARKUP)
+})
+
+test('drawn text holds no whole comment, whatever pieces it is made of', () => {
+  fc.assert(
+    fc.property(markupArb, text => {
+      expect(drawn(text)).not.toMatch(COMMENT)
+    })
+  )
+})
+
+test('drawn text holds no tag, whatever pieces it is made of', () => {
+  fc.assert(
+    fc.property(markupArb, text => {
+      expect(drawn(text)).not.toMatch(TAG)
+    })
+  )
+})
+
+test('a summary holds nothing between < and >, whatever pieces it is made of', () => {
+  fc.assert(
+    fc.property(markupArb, text => {
+      expect(summaryOf(text)).not.toMatch(MARKUP)
+    })
+  )
+})
