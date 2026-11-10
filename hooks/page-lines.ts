@@ -52,6 +52,7 @@ function standingOf(card: MrCard, badge: Badge): string | null {
     case 'ready':
     case 'bots':
     case 'changes':
+    default:
       return null
   }
 }

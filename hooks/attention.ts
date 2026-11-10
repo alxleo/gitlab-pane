@@ -50,7 +50,7 @@ type BadgeKind = 'failed' | 'check' | 'conflicts' | 'changes' | 'threads' | 'reb
  */
 export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string; words: string; check?: string }
 
-const ACRONYMS = /\b(ci|lfs)\b/g
+const ACRONYMS = /\b(ci|lfs)\b/gu
 
 /** A check in words, from the identifier GitLab names it by (`CI_MUST_PASS`): a check GitLab adds later reads right with no change here. */
 const checkWords = (id: string): string =>

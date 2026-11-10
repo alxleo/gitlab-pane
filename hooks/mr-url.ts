@@ -2,21 +2,21 @@ import { bareHost, cardKey } from './hosts.ts'
 
 import type { Pinned } from '../types'
 
-const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 
 /** A host list as a regex alternation; the longest first, so `a.com:8443` is not cut at `a.com`. */
 const alternation = (hosts: readonly string[]): string =>
-  [...hosts]
-    .sort((a, b) => b.length - a.length)
+  hosts
+    .toSorted((a, b) => b.length - a.length)
     .map(escaped)
     .join('|')
 
 /** Every merge request URL on one of `hosts` in a text. */
-export const mrUrls = (hosts: readonly string[]): RegExp => new RegExp(`https://(?:${alternation(hosts)})/[\\w.\\-/]+?/-/merge_requests/\\d+`, 'gi')
+export const mrUrls = (hosts: readonly string[]): RegExp => new RegExp(`https://(?:${alternation(hosts)})/[\\w.\\-/]+?/-/merge_requests/\\d+`, 'giu')
 
 /** The MR a URL on one of `hosts` names, or null for any other address. */
 export function parseMrUrl(url: string, hosts: readonly string[]): Pinned | null {
-  const match = new RegExp(`^https://(${alternation(hosts)})/(.+?)/-/merge_requests/(\\d+)`, 'i').exec(url.trim())
+  const match = new RegExp(`^https://(${alternation(hosts)})/(.+?)/-/merge_requests/(\\d+)`, 'iu').exec(url.trim())
   const host = bareHost(match?.[1] ?? '')
   const path = match?.[2]
   if (host === '' || path === undefined || match?.[3] === undefined) {

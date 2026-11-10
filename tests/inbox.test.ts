@@ -130,7 +130,7 @@ test('a review requested of you shows until you approve it, and a push since you
   // Marked seen, it stays in the queue, grey; the author's push then makes it new again.
   await ui.press({ key: `inbox-seen-${hashOf('gitlab.com/g/p!2')}` })
   expect(await titleOf(ui, 2)).toBe('▸ thing 2')
-  expect(await ui.find({ type: 'Text', text: /new$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /new$/u })).toBeUndefined()
   world.queue = [queued(2, [system(21, 'alice', -5, 'commit', 'added 2 commits')])]
   await ui.press({ key: 'inbox-sync' })
   expect(await ui.find({ type: 'Text', text: '1 new' })).toBeDefined()
@@ -255,12 +255,12 @@ test('a session that leads shows the inbox the store keeps while its own slow re
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   expect(await titleOf(ui, 1)).toBe('▸ thing 1')
-  expect((await ui.find({ type: 'Text', text: /^↻ synced/ }))?.text).toBe('↻ synced 3h ago')
+  expect((await ui.find({ type: 'Text', text: /^↻ synced/u }))?.text).toBe('↻ synced 3h ago')
   expect(kit.marks()).toEqual([])
 
   answer()
   await clock.settle()
-  expect((await ui.find({ type: 'Text', text: /synced/ }))?.text).toBe('synced just now')
+  expect((await ui.find({ type: 'Text', text: /synced/u }))?.text).toBe('synced just now')
   await ui.unmount()
 })
 
@@ -373,13 +373,13 @@ test('a failed read says why and keeps the rules it last applied', async ($, on)
   await ui.press({ key: 'tab-inbox' })
   world.isDown = true
   await ui.press({ key: 'inbox-sync' })
-  expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toMatch(/^sync failed: .*connection refused/)
+  expect((await ui.find({ type: 'Text', text: /sync failed/u }))?.text).toMatch(/^sync failed: .*connection refused/u)
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   expect(await titleOf(ui, 1)).toBeDefined()
   // Back up, it is fresh again.
   world.isDown = false
   await ui.press({ key: 'inbox-sync' })
-  expect(await ui.find({ type: 'Text', text: /sync failed/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /sync failed/u })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -399,7 +399,7 @@ test('a host without GitLab 17.4 is asked for the older to-do field once it says
   expect(gitlab.requests.filter(request => request === 'gitlab.com InboxTodos')).toHaveLength(1)
   expect(gitlab.requests.filter(request => request === 'gitlab.com InboxTodosPlain').length).toBeGreaterThan(1)
   await ui.press({ key: 'tab-inbox' })
-  expect(await ui.find({ type: 'Text', text: /sync failed/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /sync failed/u })).toBeUndefined()
   expect(JSON.stringify(await ui.drawn())).toContain('"Mentions · 1 new"')
   await ui.unmount()
 })
@@ -411,9 +411,9 @@ test('without a token the Inbox says so, /gitlab lists it, and the rest is drawn
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
-  expect(await ui.find({ type: 'Text', text: /^Ready/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready/u })).toBeDefined()
   await ui.press({ key: 'tab-inbox' })
-  expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toMatch(/^sync failed: no GitLab token for gitlab.com/)
+  expect((await ui.find({ type: 'Text', text: /sync failed/u }))?.text).toMatch(/^sync failed: no GitLab token for gitlab.com/u)
   expect((await $.command.run({ ...typed(''), command: 'gitlab' })).text).toContain('inbox: no GitLab token for gitlab.com')
   await ui.unmount()
 })
@@ -432,7 +432,7 @@ test("/mrs hands the briefing to the model, out of the transcript, with other pe
   await clock.advance(FIRST_SYNC_MS)
   const answer = await $.command.run(typed('p!1 https://gitlab.com/g/p/-/merge_requests/2'))
   expect(gitlab.requests.filter(request => request.endsWith('InboxBrief'))).toEqual(['gitlab.com InboxBrief', 'gitlab.com InboxBrief'])
-  expect(answer.text).toMatch(/^Briefed 2 MRs \(/)
+  expect(answer.text).toMatch(/^Briefed 2 MRs \(/u)
   expect(answer.text).toContain('Thread refs like repo!iid#note_N name each thread.')
   const context = answer.context?.[0] ?? ''
   expect(answer.context?.length).toBe(1)
@@ -447,7 +447,7 @@ test("/mrs hands the briefing to the model, out of the transcript, with other pe
   }
 
   const usage = await $.command.run(typed(''))
-  expect(usage.text).toMatch(/^Usage: \/mrs/)
+  expect(usage.text).toMatch(/^Usage: \/mrs/u)
   expect(usage.text).toContain('Rules: review-requested (1), mentions (0), build-failed (0), cant-merge (0), on-my-mrs (1), following (0)')
   expect(usage.context).toBeUndefined()
 })
@@ -462,10 +462,10 @@ test('/mrs --rule briefs the MRs a rule shows, and says so for a rule that is no
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
   const answer = await $.command.run(typed('--rule on-my-mrs'))
-  expect(answer.text).toMatch(/^Briefed 1 MR \(/)
+  expect(answer.text).toMatch(/^Briefed 1 MR \(/u)
   expect(answer.context?.[0]).toContain('## g/p!1')
   expect(answer.context?.[0]).not.toContain('## g/p!2')
-  expect((await $.command.run(typed('--rule Review requested'))).text).toMatch(/^Briefed 1 MR \(/)
+  expect((await $.command.run(typed('--rule Review requested'))).text).toMatch(/^Briefed 1 MR \(/u)
   expect((await $.command.run(typed('--rule nope'))).text).toBe('/mrs: nope is not a rule. Rules: review-requested, mentions, build-failed, cant-merge, on-my-mrs, following')
   expect((await $.command.run(typed('--rule mentions'))).text).toBe('/mrs: nothing in Mentions right now')
   await ui.unmount()
@@ -509,7 +509,7 @@ test('a full inbox and each rule open in turn stay inside the 100,000 characters
   await ui.press({ key: 'tab-inbox' })
   for (const rule of ['review-requested', 'mentions', 'on-my-mrs']) {
     await ui.press({ key: `inbox-rule-${rule}` })
-    const isClosed = (button: { key?: string; props?: Record<string, unknown> }) => /^inbox-open-/.test(button.key ?? '') && String(button.props?.label).startsWith('▸')
+    const isClosed = (button: { key?: string; props?: Record<string, unknown> }) => (button.key ?? '').startsWith('inbox-open-') && String(button.props?.label).startsWith('▸')
     expect((await ui.findAll({ type: 'Button' })).some(isClosed)).toBe(true)
     // Every card drawn opened too, so the open rule is at its largest; an opened card pushes the last ones out.
     for (let opened = 0; opened < 30; opened += 1) {
@@ -523,7 +523,7 @@ test('a full inbox and each rule open in turn stay inside the 100,000 characters
   }
   // Cards past the inbox's share are counted, not drawn: the open rule held more than it could show.
   await ui.press({ key: 'inbox-rule-mentions' })
-  expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^\+\d+ more$/u })).toBeDefined()
   expect(await ui.find({ type: 'Button', key: 'inbox-sync' })).toBeDefined()
   await ui.unmount()
 })
@@ -541,7 +541,7 @@ test('an actor who wrote an MR in the inbox has the initials of their name, like
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-review-requested' })
   await ui.press({ key: `inbox-open-${hashOf('gitlab.com/g/p!1')}` })
-  const discs = (await ui.findAll({ type: 'Svg' })).map(svg => [svg.props.alt, /<text[^>]*>([^<]*)</.exec(String(svg.props.source))?.[1]])
+  const discs = (await ui.findAll({ type: 'Svg' })).map(svg => [svg.props.alt, /<text[^>]*>([^<]*)</u.exec(String(svg.props.source))?.[1]])
   // GitLab names the author of an MR, not an actor of its activity: the others stay as the username gives them.
   expect(discs).toEqual([
     ['zed99', 'ZE'],
@@ -585,7 +585,7 @@ test('"here" in a session with no repo says so in every section', async ($, on) 
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-here' })
-  expect(await ui.find({ type: 'Text', text: /^Nothing else in: Review requested \(this session has no GitLab repo\)/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Nothing else in: Review requested \(this session has no GitLab repo\)/u })).toBeDefined()
   await ui.unmount()
 })
 
@@ -623,7 +623,7 @@ test('with nobody followed the Following tab says how to follow', async ($, on) 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
   await ui.press({ key: 'tab-inbox' })
-  expect(await ui.find({ type: 'Text', text: /Following \(name people or projects in the inboxFollow setting\)/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Following \(name people or projects in the inboxFollow setting\)/u })).toBeDefined()
   await ui.unmount()
 })
 

@@ -29,8 +29,8 @@ const MANIFEST = join(ROOT, 'release', 'files')
 const SUFFIXES = ['.ts', '.tsx', '.js', '.mjs']
 const ENGINE = 'claude-code'
 // What the plugin never needs and a team must not receive, even if the allowlist were to name it.
-const DEVELOPMENT = /^(tools|tests|docs|\.github|node_modules)\/|^package(-lock)?\.json$|^tsconfig[^/]*\.json$/
-const LINK = /\]\((?<md>[^)\s]+)|\b(?:src|href)=["'](?<html>[^"']+)/g
+const DEVELOPMENT = /^(tools|tests|docs|\.github|node_modules)\/|^package(-lock)?\.json$|^tsconfig[^/]*\.json$/u
+const LINK = /\]\((?<md>[^)\s]+)|\b(?:src|href)=["'](?<html>[^"']+)/gu
 
 type Entry = { readonly source: string; readonly destination: string }
 
@@ -43,9 +43,9 @@ function entries(): Entry[] {
       if (line === '' || line.startsWith('#')) {
         return
       }
-      const parts = line.split(/\s+/)
+      const parts = line.split(/\s+/u)
       const [source, destination] = [parts[0], parts[parts.length - 1]]
-      if (parts.length > 2 || /[*?[\]]/.test(line) || source === undefined || destination === undefined) {
+      if (parts.length > 2 || /[*?[\]]/u.test(line) || source === undefined || destination === undefined) {
         throw new Error(`${relative(ROOT, MANIFEST)}:${index + 1}: one path, or a source and a destination; no patterns`)
       }
       found.push({ source, destination })
@@ -114,7 +114,7 @@ function tokenize(code: string): Token[] {
     const char = code.charAt(at)
     const next = code.charAt(at + 1)
     const last = tokens[tokens.length - 1]
-    if (/\s/.test(char)) {
+    if (/\s/u.test(char)) {
       at += 1
     } else if (char === '/' && next === '/') {
       const end = code.indexOf('\n', at)
@@ -369,7 +369,7 @@ function closure(tree: string): { readonly loaded: Set<string>; readonly problem
 function verify(tree: string): string[] {
   const { loaded, problems } = closure(tree)
   const hooks = join(tree, 'hooks')
-  const shipped = existsSync(hooks) ? readdirSync(hooks).sort() : []
+  const shipped = existsSync(hooks) ? readdirSync(hooks).toSorted() : []
   for (const name of shipped) {
     if ((name.endsWith('.ts') || name.endsWith('.tsx')) && !loaded.has(join(hooks, name))) {
       problems.push(`hooks/${name} ships but nothing loads it: take it out of release/files`)

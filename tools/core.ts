@@ -23,8 +23,8 @@ export function includeOf(parsed: unknown): string[] {
 /** Everything tsconfig.core.json includes, `/`-separated and relative to the root, declarations among them. */
 export function coreInclude(): string[] {
   // The file carries `//` comments, which TypeScript allows and JSON does not, so they are stripped before it is read.
-  return includeOf(parseJson(readFileSync(join(ROOT, 'tsconfig.core.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '')))
+  return includeOf(parseJson(readFileSync(join(ROOT, 'tsconfig.core.json'), 'utf8').replace(/^\s*\/\/.*$/gmu, '')))
 }
 
 /** The core's source files: what it includes, less the declarations. */
-export const coreFiles = (): string[] => coreInclude().filter(file => /\.tsx?$/.test(file) && !file.endsWith('.d.ts'))
+export const coreFiles = (): string[] => coreInclude().filter(file => /\.tsx?$/u.test(file) && !file.endsWith('.d.ts'))

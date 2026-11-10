@@ -43,7 +43,7 @@ test('a manual job the pipeline waits on links to its page, where a person start
   const card = toCard(HOST, rawMr(11, { headPipeline: manual }))
   const waiting = pageHead(card, JIRA).standing.find(line => line.text.includes('Waiting on'))
   expect(waiting?.text).toContain('deploy-prod')
-  expect(waiting?.href).toMatch(/\/jobs\//)
+  expect(waiting?.href).toMatch(/\/jobs\//u)
 })
 
 test('a page opened on one person heads their comments with where they stand, and says which are still open', () => {

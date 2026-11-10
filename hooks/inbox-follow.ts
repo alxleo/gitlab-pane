@@ -6,8 +6,8 @@ import type { InboxFollow } from '../types'
 /** The most entries followed: each costs one small query per host a minute. */
 const FOLLOW_MOST = 10
 
-const USER = /^@([\w.-]+)$/
-const PROJECT = /^[\w.-]+(?:\/[\w.-]+)+$/
+const USER = /^@([\w.-]+)$/u
+const PROJECT = /^[\w.-]+(?:\/[\w.-]+)+$/u
 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : typeof value === 'string' ? [value] : [])
 

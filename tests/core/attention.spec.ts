@@ -22,7 +22,7 @@ test('MRs sort by what needs you: failing, then running, then waiting, then read
   const failing = toCard(HOST, rawMr(4, { headPipeline: pipe('FAILED') }))
   const asked = toCard(HOST, rawMr(5, { reviewers: { nodes: [reviewer('tim', 'REQUESTED_CHANGES')] } }))
 
-  expect([ready, waiting, running, asked, failing].sort(byAttention).map(card => card.iid)).toEqual([5, 4, 3, 2, 1])
+  expect([ready, waiting, running, asked, failing].toSorted(byAttention).map(card => card.iid)).toEqual([5, 4, 3, 2, 1])
 })
 
 test('on a host with no merge checks each blocker is its own marker: a glyph and a count, no words', async () => {
@@ -120,24 +120,42 @@ const isBlocked = (card: MrCard): boolean =>
   card.openThreads.length > 0
 
 test('a card ranks 0 if and only if something blocks its merge, and a blocked card is neither ready nor mergeable', () => {
+  const isReady = (card: MrCard): boolean => badges(card).some(badge => badge.kind === 'ready')
   fc.assert(
     fc.property(readCardArb, card => {
       expect(rank(card) === 0).toBe(isBlocked(card))
-      if (isBlocked(card)) {
-        expect(badges(card).some(badge => badge.kind === 'ready')).toBe(false)
-        expect(verdictOf(card)?.tone).not.toBe('success')
-      }
-      if (badges(card).some(badge => badge.kind === 'ready')) {
-        expect(rank(card)).toBe(3)
-      }
-      // A job that failed turns the border red, as it puts the card under "needs you", even while the pipeline still runs.
-      if (card.pipeline !== undefined && failedCount(card.pipeline) > 0) {
+    })
+  )
+  // Each of the rest holds for a kind of card, so each is run on cards of that kind, not on every card with the others skipped.
+  fc.assert(
+    fc.property(readCardArb.filter(isBlocked), card => {
+      expect(isReady(card)).toBe(false)
+      expect(verdictOf(card)?.tone).not.toBe('success')
+    })
+  )
+  // Ready is about one generated card in five hundred, so these are made to order, and fewer of them.
+  fc.assert(
+    fc.property(readCardArb.filter(isReady), card => {
+      expect(rank(card)).toBe(3)
+    }),
+    { numRuns: 20 }
+  )
+  // A job that failed turns the border red, as it puts the card under "needs you", even while the pipeline still runs.
+  fc.assert(
+    fc.property(
+      readCardArb.filter(card => card.pipeline !== undefined && failedCount(card.pipeline) > 0),
+      card => {
         expect(reviewTone(card)).toBe('error')
       }
-      // A card with no merge checks read marks each blocker itself, so a blocked one always shows a marker or a failed pipeline.
-      if (card.mergeStatus === null && isBlocked(card)) {
+    )
+  )
+  // A card with no merge checks read marks each blocker itself, so a blocked one always shows a marker or a failed pipeline.
+  fc.assert(
+    fc.property(
+      readCardArb.filter(card => card.mergeStatus === null && isBlocked(card)),
+      card => {
         expect(badges(card).length > 0 || card.pipeline?.status === 'failed').toBe(true)
       }
-    })
+    )
   )
 })
