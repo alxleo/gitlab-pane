@@ -27,7 +27,7 @@ import { ago } from './format'
 import { describe } from './wake'
 import { parseMrUrl, pinKey } from './mr-url'
 import { dotted, EMPTY, foreign, line, lines, URL_ROOM, type ModelLine } from './model-text'
-import { isPaneDrawn, openPane } from './panes'
+import { notePaneDrawn, openPane } from './panes'
 import { readGitLab, readRaised, readSingle } from './read-gitlab'
 import type { HostAsk } from './read-gitlab'
 import { readFailures } from './job-failures'
@@ -328,7 +328,7 @@ async function watchTick($: EngineInterface, own: readonly Pinned[]): Promise<vo
  */
 async function stepOnce($: EngineInterface): Promise<void> {
   const own = await readPins($)
-  const tick = await leaseTick($, { isDrawing: await isPaneDrawn($), raisedPins: own.filter(isRaised).length })
+  const tick = await leaseTick($, { isDrawing: await notePaneDrawn($), raisedPins: own.filter(isRaised).length })
   await setRole($, tick.role)
   if (tick.problem !== null) {
     await record($, 'store', tick.problem)

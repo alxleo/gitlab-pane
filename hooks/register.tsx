@@ -11,7 +11,7 @@ import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
-import { forgetScrolling, openPane, readScrolling } from './panes'
+import { bandOf, forgetScrolling, openInbox, openPane, readScrolling } from './panes'
 import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
@@ -130,6 +130,21 @@ export const register: Register = (on, options) => {
       .catch(() => undefined)
     return ran
   }).catch(($, e, next) => next(e))
+
+  // The band above the prompt, in every session: the inbox news while the pane's tabs do not say it. Otherwise the band is
+  // passed on, so a survey or another mod has it. Pressed, it opens the pane on the Inbox tab.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const label = await bandOf($, e.props.hasSurvey)
+    if (label === null) {
+      return next(e)
+    }
+    const { Button, Text } = $.ui.resolve(e)
+    return (
+      <Button key="inbox-band" plain label={label} onPress={() => openInbox($)}>
+        <Text color="warning">{label}</Text>
+      </Button>
+    )
+  })
 
   // A drawing that throws says why in the pane, where the engine would only report it in the debug log.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

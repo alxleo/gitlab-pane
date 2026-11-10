@@ -23,13 +23,20 @@ const PANE = {
   },
 } as const
 
+/** The band above the prompt, with no survey in it. */
+const BAND = {
+  plugin: 'gitlab-pane',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 11 }, view: {} },
+} as const
+
 const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
 /** The host with `world` behind it; every call is in `requests`. The token comes from the environment. */
 function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
-  const { store } = fakeSession(on)
+  const { store, panes } = fakeSession(on)
   const gitlab = fakeGitLab(
     on,
     {
@@ -45,7 +52,7 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { ...gitlab, store, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
+  return { ...gitlab, store, panes, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }
 
 /** The inbox's first read waits this long after the session starts. */
@@ -188,6 +195,53 @@ test('✓ marks one MR seen on this machine only, and GitLab is not asked again'
   expect(gitlab.marks().map(([, at]) => at)).toEqual([NOW + FIRST_SYNC_MS])
   expect(gitlab.requests.every(request => request.startsWith('gitlab.com '))).toBe(true)
   await ui.unmount()
+})
+
+test('the band above the prompt says the inbox news while the pane is not shown, opens the Inbox tab, and clears once all is seen', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const gitlab = engine(on, { ...emptyWorld(), opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])] })
+  const bandOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }) =>
+    (await ui.find({ type: 'Button', key: 'inbox-band' }))?.props?.label
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(JSON.stringify(await pane.drawn())).toContain('"Inbox · 1 new"')
+  // The pane's tab says it already, so the band leaves the place to anything else that draws there.
+  const shown = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await bandOf(shown)).toBeUndefined()
+  await shown.unmount()
+  await pane.unmount()
+
+  // Closed, the pane says nothing; within a tick the band does, on each surface it draws on.
+  gitlab.panes.delete('gitlab-pane')
+  await clock.advance(FIRST_SYNC_MS)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const band = await $.ui.mount({ ...BAND, surface })
+    expect(await bandOf(band)).toBe('Inbox · 1 new')
+    await band.unmount()
+  }
+  // A survey holds the band, and the mod gives way to it.
+  const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'desktop' })
+  expect(await bandOf(survey)).toBeUndefined()
+  await survey.unmount()
+
+  // Pressing it opens the pane on the Inbox tab, whose tab now says the count, so the band goes.
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await band.press({ key: 'inbox-band' })
+  expect(gitlab.panes.has('gitlab-pane')).toBe(true)
+  expect(await bandOf(band)).toBeUndefined()
+  const opened = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await opened.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
+
+  // Everything marked seen, there is no news, and the band stays away with the pane closed again.
+  await opened.press({ key: 'inbox-rule-on-my-mrs' })
+  await opened.press({ key: `inbox-seen-${hashOf('gitlab.com/g/p!1')}` })
+  await opened.unmount()
+  gitlab.panes.delete('gitlab-pane')
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await bandOf(band)).toBeUndefined()
+  await band.unmount()
 })
 
 test('the mark outlives the pane, and an MR that has left the inbox loses its mark', async ($, on) => {

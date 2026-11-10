@@ -421,6 +421,8 @@ declare module 'claude-code' {
       /** Avatar URLs that failed to fetch, not asked for again until the session loads the mod again. */
       unreachable: string[]
       scrolling: Scrolling
+      /** Whether a surface drew the pane at the last tick, for the band above the prompt, which says the inbox news only while it does not. */
+      paneDrawn: boolean
       problems: Problems
       /** What the session that reads GitLab last failed with, as its snapshot says. */
       reported: Problems

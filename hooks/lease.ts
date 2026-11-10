@@ -45,7 +45,7 @@ export type LeaseInput = {
   /** This session's id. */
   me: string
   now: number
-  /** Whether a surface draws this session's pane now: the engine's `$.ui.panes()` says so (see `isPaneDrawn` in panes.ts). */
+  /** Whether a surface draws this session's pane now: the engine's `$.ui.panes()` says so (see `notePaneDrawn` in panes.ts). */
   isDrawing: boolean
   /** How many MRs this session raised that are still open. */
   raisedPins: number
