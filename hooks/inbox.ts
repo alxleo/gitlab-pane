@@ -271,7 +271,7 @@ type Wanted = { hosts: string[]; path: string; iid: number }
 
 /** Where an argument of `/mrs` points: a URL on a configured host, or a reference found in the inbox, or in the session's repo, or on any host. */
 async function wanted($: EngineInterface, arg: string, hosts: readonly string[], mrs: readonly InboxMr[]): Promise<Wanted | string> {
-  if (/^https?:\/\//.test(arg)) {
+  if (/^https?:\/\//u.test(arg)) {
     const parsed = parseMrUrl(arg, hosts)
     return parsed === null ? `${arg} is not a merge request on ${hosts.join(', ')}` : { hosts: [parsed.host], path: parsed.path, iid: parsed.iid }
   }
@@ -327,7 +327,7 @@ function ruleTargets(name: string, snapshot: InboxSnapshot, seen: Readonly<Recor
 
 /** `/mrs`: a Markdown briefing on several MRs, handed to the model and kept out of the transcript. */
 export async function briefCommand($: EngineInterface, input: string): Promise<{ text: string; context?: string[] }> {
-  const args = input.trim().split(/\s+/).filter(Boolean)
+  const args = input.trim().split(/\s+/u).filter(Boolean)
   const { snapshot, seen } = await read($, inboxAtom)
   const context = await contextOf($)
   if (args.length === 0) {

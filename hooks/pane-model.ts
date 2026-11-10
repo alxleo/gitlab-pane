@@ -202,16 +202,16 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   const rows = input.cards.filter(row => !hasLeft(row))
   const pinnedKeys = new Set(input.pinned.map(pinKey))
   const counts = rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())
-  const repos = [...counts].sort((a, b) => b[1] - a[1])
+  const repos = [...counts].toSorted((a, b) => b[1] - a[1])
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
   const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
   // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
   // worked out below for the rows that are drawn, once each.
   const order = byRank(new Map(rows.map(row => [row.key, rank(row)])))
-  const session = shown.filter(row => pinnedKeys.has(row.key)).sort(order)
-  const mine = shown.filter(row => !pinnedKeys.has(row.key) && !row.isDraft).sort(order)
-  const drafts = shown.filter(row => !pinnedKeys.has(row.key) && row.isDraft).sort(order)
+  const session = shown.filter(row => pinnedKeys.has(row.key)).toSorted(order)
+  const mine = shown.filter(row => !pinnedKeys.has(row.key) && !row.isDraft).toSorted(order)
+  const drafts = shown.filter(row => !pinnedKeys.has(row.key) && row.isDraft).toSorted(order)
   const showDrafts = input.expanded.includes('drafts')
   const showMore = input.expanded.includes('more')
   const mineShown = showMore ? mine : mine.slice(0, MINE_SHOWN)

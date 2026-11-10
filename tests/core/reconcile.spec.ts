@@ -49,6 +49,13 @@ type Case = {
   expected: { announced: Record<string, string[]>; toasts: (string | RegExp)[]; wakes: (string | RegExp)[]; unpinned: string[]; rows: string[] }
 }
 
+/** The texts said, with each one that the pattern wanted at its place matches replaced by that pattern, so one `toEqual` fails with the text beside the pattern it missed. */
+const asMatched = (said: readonly string[], wanted: readonly (string | RegExp)[]): (string | RegExp)[] =>
+  said.map((text, at) => {
+    const one = wanted[at]
+    return one instanceof RegExp && one.test(text) ? one : text
+  })
+
 const cases: Case[] = [
   {
     name: 'a first sighting seeds what it shows and wakes nothing, however bad it is',
@@ -64,8 +71,8 @@ const cases: Case[] = [
     announced: { [KEY]: [] },
     expected: {
       announced: { [KEY]: ['99:failed'] },
-      toasts: [/^!12 pipeline failed in .*: lint · /],
-      wakes: [/^!12 pipeline failed in .*: lint · /],
+      toasts: [/^!12 pipeline failed in .*: lint · /u],
+      wakes: [/^!12 pipeline failed in .*: lint · /u],
       unpinned: [],
       rows: [KEY],
     },
@@ -82,7 +89,7 @@ const cases: Case[] = [
     pinned: [pin('raised')],
     rows: [card('FAILED', { CI_MUST_PASS: 'failed' }, { id: 100, failedJob: true })],
     announced: { [KEY]: ['99:failed'] },
-    expected: { announced: { [KEY]: ['100:failed'] }, toasts: [/^!12 pipeline failed/], wakes: [/^!12 pipeline failed/], unpinned: [], rows: [KEY] },
+    expected: { announced: { [KEY]: ['100:failed'] }, toasts: [/^!12 pipeline failed/u], wakes: [/^!12 pipeline failed/u], unpinned: [], rows: [KEY] },
   },
   {
     name: 'a job failing while the pipeline still runs wakes too',
@@ -91,8 +98,8 @@ const cases: Case[] = [
     announced: { [KEY]: [] },
     expected: {
       announced: { [KEY]: ['99:failed'] },
-      toasts: [/^!12 a job failed while the pipeline runs: lint/],
-      wakes: [/^!12 a job failed while the pipeline runs: lint/],
+      toasts: [/^!12 a job failed while the pipeline runs: lint/u],
+      wakes: [/^!12 a job failed while the pipeline runs: lint/u],
       unpinned: [],
       rows: [KEY],
     },
@@ -102,14 +109,14 @@ const cases: Case[] = [
     pinned: [pin('watched')],
     rows: [card('FAILED', { CI_MUST_PASS: 'failed' }, { failedJob: true })],
     announced: { [KEY]: [] },
-    expected: { announced: { [KEY]: ['99:failed'] }, toasts: [/^!12 pipeline failed/], wakes: [], unpinned: [], rows: [KEY] },
+    expected: { announced: { [KEY]: ['99:failed'] }, toasts: [/^!12 pipeline failed/u], wakes: [], unpinned: [], rows: [KEY] },
   },
   {
     name: 'a pin kept from before origins were recorded wakes as every pin then did',
     pinned: [pin()],
     rows: [card('FAILED', { CI_MUST_PASS: 'failed' }, { failedJob: true })],
     announced: { [KEY]: [] },
-    expected: { announced: { [KEY]: ['99:failed'] }, toasts: [/^!12 pipeline failed/], wakes: [/^!12 pipeline failed/], unpinned: [], rows: [KEY] },
+    expected: { announced: { [KEY]: ['99:failed'] }, toasts: [/^!12 pipeline failed/u], wakes: [/^!12 pipeline failed/u], unpinned: [], rows: [KEY] },
   },
   {
     name: 'an MR GitLab says can merge wakes once',
@@ -166,10 +173,8 @@ for (const one of cases) {
     const before = JSON.stringify(one.announced)
     const result = await reconcile({ pinned: one.pinned, rows: one.rows, announced: one.announced, now: NOW, failures: noFailures })
     expect(result.announced).toEqual(one.expected.announced)
-    expect(result.toasts.length).toBe(one.expected.toasts.length)
-    expect(result.wakes.length).toBe(one.expected.wakes.length)
-    one.expected.toasts.forEach((want, i) => (typeof want === 'string' ? expect(result.toasts[i]).toBe(want) : expect(result.toasts[i]).toMatch(want)))
-    one.expected.wakes.forEach((want, i) => (typeof want === 'string' ? expect(result.wakes[i]).toBe(want) : expect(result.wakes[i]).toMatch(want)))
+    expect(asMatched(result.toasts, one.expected.toasts)).toEqual(one.expected.toasts)
+    expect(asMatched(result.wakes, one.expected.wakes)).toEqual(one.expected.wakes)
     expect(result.unpinned).toEqual(one.expected.unpinned)
     expect(result.rows.map(row => row.key)).toEqual(one.expected.rows)
     // The announced map it was given is left as it was.
@@ -298,27 +303,41 @@ test('advance: one pipeline never wakes twice for the same thing, whatever it do
   )
 })
 
+const originArb = fc.constantFrom<Pinned['origin']>('raised', 'watched', undefined)
+
+/** What reconcile answers to each read of a history in turn, the announced map of one read carried to the next. */
+const reconciledReads = async (history: readonly Step[], origin: Pinned['origin']) => {
+  let announced: Record<string, string[]> = {}
+  const reads = []
+  for (const read of readsOf(history)) {
+    const done = await reconcile({ pinned: [pin(origin)], rows: [read], announced, now: NOW, failures: noFailures })
+    reads.push({ read, done, unpinning: read.isOpen ? 0 : 1 })
+    announced = done.announced
+  }
+  return reads
+}
+
 test('reconcile: a first sighting never wakes, a watched pin never wakes, and a pin is news at most once per read and kind per pipeline', async () => {
   await fc.assert(
-    fc.asyncProperty(historyArb, fc.constantFrom<Pinned['origin']>('raised', 'watched', undefined), async (history, origin) => {
-      let announced: Record<string, string[]> = {}
-      let news = 0
-      let isFirst = true
-      for (const one of readsOf(history)) {
-        const done = await reconcile({ pinned: [pin(origin)], rows: [one], announced, now: NOW, failures: noFailures })
-        const unpinning = one.isOpen ? 0 : 1
-        if (isFirst) {
-          expect(done.wakes).toEqual([])
-          expect(done.toasts).toHaveLength(unpinning)
-        }
-        if (origin === 'watched') {
-          expect(done.wakes).toEqual([])
-        }
+    fc.asyncProperty(historyArb, originArb, async (history, origin) => {
+      const [first] = await reconciledReads(history, origin)
+      expect(first?.done.wakes).toEqual([])
+      expect(first?.done.toasts.length).toBe(first?.unpinning)
+    })
+  )
+  await fc.assert(
+    fc.asyncProperty(historyArb, async history => {
+      const reads = await reconciledReads(history, 'watched')
+      expect(reads.flatMap(({ done }) => done.wakes)).toEqual([])
+    })
+  )
+  await fc.assert(
+    fc.asyncProperty(historyArb, originArb, async (history, origin) => {
+      const reads = await reconciledReads(history, origin)
+      for (const { done, unpinning } of reads) {
         expect(done.toasts.length - unpinning).toBeLessThanOrEqual(1)
-        news += done.toasts.length - unpinning
-        announced = done.announced
-        isFirst = false
       }
+      const news = reads.reduce((sum, { done, unpinning }) => sum + done.toasts.length - unpinning, 0)
       const pipelines = new Set(readsOf(history).map(one => one.pipeline?.id))
       expect(news).toBeLessThanOrEqual(2 * pipelines.size)
     })

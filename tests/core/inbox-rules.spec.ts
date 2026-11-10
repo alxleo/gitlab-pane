@@ -97,7 +97,7 @@ test('a ref is the shortest repo!iid no other MR shares', () => {
     sections
       .find(section => section.rule === 'mentions')
       ?.items.map(item => item.ref)
-      .sort()
+      .toSorted()
   ).toEqual(['deep!2', 'g/p!1', 'h/p!1'])
 })
 
@@ -292,7 +292,7 @@ test('the snapshot the leader stores is bounded: fifty MRs of ten events stay un
     Array.from({ length: 80 }, (_, i) =>
       mr(
         i,
-        Array.from({ length: 40 }, (_, k) =>
+        Array.from({ length: 40 }, (_signal, k) =>
           signal('comment', k + i, `reviewer.${'y'.repeat(30)}`.slice(0, ACTOR_ROOM), { note: String(1_000_000 + k), excerpt: 'x'.repeat(EXCERPT_ROOM) })
         ),
         {

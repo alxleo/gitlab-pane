@@ -26,10 +26,10 @@ type Answer = { status: number; text: string }
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /** The engine's `plugin: $.http.fetch(url) failed: …` as `host failed: …`, which says as much on a pane's one line. */
-const plainly = (host: string, message: string): string => message.replace(/^(?:[^:]*: )?(?:\$\.http\.fetch(?:\([^)]*\))?(?: over \S+)?:? )+/, `${host} `)
+const plainly = (host: string, message: string): string => message.replace(/^(?:[^:]*: )?(?:\$\.http\.fetch(?:\([^)]*\))?(?: over \S+)?:? )+/u, `${host} `)
 
 /** The engine words a dropped connection `… failed: …` and a policy refusal `… refused: …`; only the first is worth another try. */
-const isDropped = (error: unknown): boolean => /\bfailed\b/.test(messageOf(error)) && !/\brefused:/.test(messageOf(error))
+const isDropped = (error: unknown): boolean => /\bfailed\b/u.test(messageOf(error)) && !/\brefused:/u.test(messageOf(error))
 
 /** GitLab's edge answers 52x now and then, and drops a connection; one more try rides that out. */
 async function post($: EngineInterface, host: string, token: string, request: Request<unknown>): Promise<Answer> {
@@ -90,7 +90,7 @@ export async function ask<Data>($: EngineInterface, host: string, request: Reque
   try {
     return read<Data>(host, found.value, await post($, host, token, request))
   } catch (error) {
-    throw new Failure(error instanceof Failure ? error.kind : /\baborted\b/.test(messageOf(error)) ? 'timeout' : 'network', redact(plainly(host, messageOf(error)), [token]))
+    throw new Failure(error instanceof Failure ? error.kind : /\baborted\b/u.test(messageOf(error)) ? 'timeout' : 'network', redact(plainly(host, messageOf(error)), [token]))
   }
 }
 

@@ -56,7 +56,7 @@ export const project = (fullPath = 'g/p', host = HOST) => ({
 export const user = (username: string, bot = false) => ({
   username,
   name: username
-    .split(/[._]/)
+    .split(/[._]/u)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' '),
   bot,
@@ -171,7 +171,7 @@ export const heavyMr = (iid: number, over: Partial<Mr> = {}): Mr =>
           stage(
             `stage-${s}-with-a-long-name`,
             s === 4 ? 'FAILED' : 'SUCCESS',
-            Array.from({ length: 20 }, (_, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS'))
+            Array.from({ length: 20 }, (_job, j) => job(`job-${s}-${j}-with-a-long-name`, s === 4 && j < 5 ? 'FAILED' : 'SUCCESS'))
           )
         ),
       },

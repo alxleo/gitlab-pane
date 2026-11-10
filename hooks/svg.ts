@@ -23,7 +23,7 @@ const brand = (text: string): SvgSource => text as SvgSource
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }
 
-const escaped = (text: string): string => text.replace(/[&<>"']/g, char => ESCAPES[char] ?? char)
+const escaped = (text: string): string => text.replace(/[&<>"']/gu, char => ESCAPES[char] ?? char)
 
 /** `svg\`<text>${name}</text>\`` with `name` escaped; numbers print as they are, a `raw` fragment is put in unescaped. */
 export function svg(parts: TemplateStringsArray, ...values: readonly (string | number | RawSvg)[]): SvgSource {

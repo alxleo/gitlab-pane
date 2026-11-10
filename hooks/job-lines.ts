@@ -30,5 +30,5 @@ export function listedJobs(stages: readonly Stage[]): Job[] {
   return stages
     .flatMap(stage => stage.jobs)
     .filter(job => ['failed', 'running'].includes(job.status) || (job.status === 'manual' && !job.allowFailure))
-    .sort((a, b) => JOB_RANK[jobKind(a)] - JOB_RANK[jobKind(b)])
+    .toSorted((a, b) => JOB_RANK[jobKind(a)] - JOB_RANK[jobKind(b)])
 }

@@ -49,6 +49,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       case 'line2':
         return partOf(row, 'line2').size
       case 'faces':
+      default:
         return partOf(row, 'faces').size
     }
   }
@@ -103,8 +104,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {line}
       </Text>
     )),
-    ...(model.session.length > 0 ? [<Text bold>This session</Text>, ...model.session.map(draw)] : []),
-    <Text bold>{mine.heading}</Text>,
+    ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),
+    <Text weight="semibold">{mine.heading}</Text>,
     ...(mine.isEmpty ? [<Text dimColor>Nothing open here.</Text>] : []),
     ...mine.rows.map(draw),
     ...(mine.more !== null ? [<Button key="more" plain label={mine.more} onPress={() => toggle($, 'more')} />] : []),

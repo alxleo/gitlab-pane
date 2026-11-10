@@ -13,7 +13,7 @@ export type ToolOptions = { timeoutMs: number }
 // A login shell finds the tools wherever they are installed; the app's own PATH may not. The user's own shell is used
 // when it is bash, zsh or fish at an absolute path that exists (a `$SHELL` left behind by a move is skipped), else zsh
 // where there is one (macOS), else sh. fish takes its arguments as `$argv`, the others as `$0 "$@"`.
-const SHELL = /^\/.*\/(bash|zsh|fish)$/
+const SHELL = /^\/.*\/(bash|zsh|fish)$/u
 
 async function exists($: EngineInterface, path: string): Promise<boolean> {
   try {

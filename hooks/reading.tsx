@@ -55,7 +55,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   const byline = (note: Note, who: string) => (
     <Box flexDirection="row" gap={1}>
       <Box flexShrink={0}>
-        <Text bold>{who}</Text>
+        <Text weight="semibold">{who}</Text>
       </Box>
       <Box flexGrow={1} flexShrink={1}>
         <Text dimColor wrap="truncate-end">
@@ -81,7 +81,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
       <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
       {verdict !== null && (
-        <Text bold={verdict.tone === 'success'} color={verdict.tone}>
+        <Text weight={verdict.tone === 'success' ? 'semibold' : undefined} color={verdict.tone}>
           {verdict.words}
         </Text>
       )}
@@ -94,7 +94,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       line.href !== null ? (
         <Link href={line.href}>{line.text}</Link>
       ) : (
-        <Text bold color={line.tone}>
+        <Text weight="semibold" color={line.tone}>
           {line.text}
         </Text>
       )
@@ -120,7 +120,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     const notes = fitting(person.notes.map(({ note, label }) => said(note, label)))
     return [
       ...head,
-      <Text bold>{person.heading}</Text>,
+      <Text weight="semibold">{person.heading}</Text>,
       ...notes,
       ...(notes.length < person.notes.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of their comments are on GitLab`}</Link>] : []),
       <Button key="page-whole" plain label={`the whole of !${mr.iid} ›`} onPress={() => showWhole($)} />,
@@ -137,12 +137,12 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       ))}
     </Box>
   ))
-  const botNotes = mr.people.filter(person => person.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
+  const botNotes = mr.people.filter(each => each.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
   const blocks = [
     ...(jobs.length > 0
       ? [
           <Box flexDirection="column">
-            <Text bold color="error">
+            <Text weight="semibold" color="error">
               {plural(jobs.length, 'failed job')}
             </Text>
             <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
@@ -153,8 +153,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           </Box>,
         ]
       : []),
-    ...(threads.length > 0 ? [<Text bold>{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
-    ...(botNotes.length > 0 ? [<Text bold>{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(note => said(note))] : []),
+    ...(threads.length > 0 ? [<Text weight="semibold">{plural(threads.length, 'open thread')}</Text>, ...threads] : []),
+    ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(note => said(note))] : []),
   ]
 
   const kept = fitting(blocks)

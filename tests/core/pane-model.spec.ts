@@ -120,7 +120,7 @@ test('the model fills the room by what needs you; rows past the room are counted
     cards
       .filter((_, i) => i % 2 === 0)
       .map(card => card.key)
-      .reverse()
+      .toReversed()
       .slice(0, 3)
   )
   expect(folded.leftOut).toBe('5 more MRs left out to stay within what the app draws; pick a repo above to see them.')
@@ -147,7 +147,7 @@ const drawnRows = (cards: MrCard[]) => {
 }
 
 test("the Mine tab, All and the repos count the same MRs, and this session's, the ready ones and the drafts add up to them", () => {
-  const countOf = (label: string | undefined) => Number(/(\d+)$/.exec(label ?? '')?.[1] ?? NaN)
+  const countOf = (label: string | undefined) => Number(/(\d+)$/u.exec(label ?? '')?.[1] ?? NaN)
   fc.assert(
     fc.property(fc.array(readCardArb, { maxLength: 8 }), fc.array(fc.boolean(), { minLength: 8, maxLength: 8 }), (cards, isPinned) => {
       // One card to a key, and a pin's key that of its card, as the list holds them.

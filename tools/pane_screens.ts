@@ -132,8 +132,8 @@ const STEPS = new Map([
   ['lg', 3],
   ['xl', 4],
 ])
-const SAFE_COLOUR = /^[#\w\s(),.%/-]+$/
-const SAFE_LENGTH = /^-?\d+(\.\d+)?(%|px)?$/
+const SAFE_COLOUR = /^[#\w\s(),.%/-]+$/u
+const SAFE_LENGTH = /^-?\d+(\.\d+)?(%|px)?$/u
 const SIZES = new Set(['caption', 'footnote', 'body', 'heading', 'title'])
 const WEIGHTS = new Set(['regular', 'medium', 'semibold', 'bold'])
 const BORDER_STYLES = new Set(['single', 'double', 'round', 'bold', 'singleDouble', 'doubleSingle', 'classic', 'arrow', 'dashed', 'quote'])
@@ -227,7 +227,7 @@ const HOVER_PROPS = new Set([
 type Lit = { readonly scopes: ReadonlySet<string>; readonly keys: ReadonlySet<string> }
 
 /** Python's `html.escape`, which is what the pages were written with. */
-const escape = (text: string): string => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#x27;')
+const escape = (raw: string): string => raw.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#x27;')
 
 const isText = (value: unknown): value is string => typeof value === 'string'
 
@@ -260,7 +260,7 @@ const either = (...values: (string | null)[]): string | null => values.find(each
 
 const style = (css: ReadonlyMap<string, string>): string => [...css].map(([name, value]) => `${name}: ${value}`).join('; ')
 
-const kebab = (name: string): string => name.replace(/([A-Z])/g, '-$1').toLowerCase()
+const kebab = (name: string): string => name.replace(/([A-Z])/gu, '-$1').toLowerCase()
 
 /** The most specific of `paddingTop`, `paddingY` and `padding` that is set, as Ink resolves them. */
 function side(props: Props, kind: string, edge: string, axis: 'x' | 'y'): string | null {
@@ -292,7 +292,7 @@ function boxStyle(props: Props): { readonly classes: string; readonly css: strin
     ['overflow', 'overflow'],
   ] as const) {
     const value = props[prop]
-    if (isText(value) && /^[\w-]+$/.test(value)) {
+    if (isText(value) && /^[\w-]+$/u.test(value)) {
       css.set(name, value)
     }
   }
@@ -491,7 +491,7 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
     case 'Image': {
       const source = props['source']
       const png = isRecord(source) ? source['png'] : undefined
-      if (isText(png) && /^[A-Za-z0-9+/=]+$/.test(png)) {
+      if (isText(png) && /^[A-Za-z0-9+/=]+$/u.test(png)) {
         const size = `width: ${space(props['columns'], 'x') ?? 'None'}; height: ${space(props['rows'], 'y') ?? 'None'}`
         return `<img class="svg${marked}" alt="${escape(text(props['alt']))}" style="${size}" src="data:image/png;base64,${png}">`
       }
@@ -620,7 +620,7 @@ function drawScenes(claude: string, work: string, root = ROOT): Scene[] {
   }
   const drawn = new Set(scenes.map(scene => scene.name))
   const lost = names.filter(name => !drawn.has(name))
-  const stray = [...drawn].filter(name => !names.includes(name)).sort()
+  const stray = [...drawn].filter(name => !names.includes(name)).toSorted()
   if (lost.length > 0 || stray.length > 0 || drawn.size !== scenes.length) {
     throw new ScreensError(
       `the scenes drawn are not the scenes listed (listed ${JSON.stringify(names)}; lost ${lost.length > 0 ? lost.join(', ') : 'none'}; unlisted ${stray.length > 0 ? stray.join(', ') : 'none'}); the engine said:\n${saidWithoutTrees(output)}`
@@ -631,7 +631,7 @@ function drawScenes(claude: string, work: string, root = ROOT): Scene[] {
 
 function claudeVersion(claude: string): string {
   const ran = spawnSync(claude, ['--version'], { encoding: 'utf8' })
-  const version = ran.stdout.split(/\s+/)[0]
+  const version = ran.stdout.split(/\s+/u)[0]
   if (ran.status !== 0 || version === undefined || version === '') {
     throw new ScreensError(`cannot run \`${claude} --version\`: ${ran.error?.message ?? ran.stderr}`)
   }
@@ -677,7 +677,7 @@ async function photograph(pages: ReadonlyMap<string, string>, out: string, scale
       const borrowed = await fontsBorrowed(context, page)
       if (borrowed.size > 0) {
         throw new ScreensError(
-          `scene ${name} drew with fonts of this machine, not the bundled ones: ${[...borrowed].sort().join(', ')}. Add the missing glyph to tools/screens/fonts (see SOURCES.md), or the shot changes from machine to machine.`
+          `scene ${name} drew with fonts of this machine, not the bundled ones: ${[...borrowed].toSorted().join(', ')}. Add the missing glyph to tools/screens/fonts (see SOURCES.md), or the shot changes from machine to machine.`
         )
       }
       await page.locator('#pane').screenshot({ path: join(out, `${name}.png`), animations: 'disabled', omitBackground: false })
@@ -747,10 +747,10 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
     cpSync(join(SCREENS, 'fonts'), join(site, 'fonts'), { recursive: true })
     copyFileSync(join(SCREENS, 'pane.css'), join(site, 'pane.css'))
     const pages = new Map<string, string>()
-    const undrawn = new Map<string, Set<string>>()
+    const unknownIn = new Map<string, Set<string>>()
     for (const [name, page] of picturesOf(scenes, base, options.width)) {
       if (page.unknown.size > 0) {
-        undrawn.set(name, page.unknown)
+        unknownIn.set(name, page.unknown)
       }
       const path = join(site, `${name}.html`)
       writeFileSync(path, page.document, 'utf8')
@@ -771,8 +771,8 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
         copyFileSync(join(site, `${name}.html`), join(options.keep, `${name}.html`))
       }
     }
-    if (undrawn.size > 0 && !options.allowUnknown) {
-      const said = [...undrawn].map(([name, names]) => `${name}: ${[...names].sort().join(', ')}`).join('; ')
+    if (unknownIn.size > 0 && !options.allowUnknown) {
+      const said = [...unknownIn].map(([name, names]) => `${name}: ${[...names].toSorted().join(', ')}`).join('; ')
       throw new ScreensError(
         `the pane draws what this renderer was not taught (${said}); an unknown element shows as a red dashed box and an unknown prop is dropped. Teach tools/pane_screens.ts (DRAWN and KEPT list the props), or pass --allow-unknown. Nothing was written.`
       )
@@ -862,11 +862,11 @@ function scenesOnly(claude: string): number {
 }
 
 /** A whole number in a range, or a ScreensError naming the option. */
-function integer(text: string | undefined, name: string, least: number, most: number, fallback: number | null): number | null {
-  if (text === undefined) {
+function integer(given: string | undefined, name: string, least: number, most: number, fallback: number | null): number | null {
+  if (given === undefined) {
     return fallback
   }
-  const number = Number(text)
+  const number = Number(given)
   if (!Number.isInteger(number) || number < least || number > most) {
     throw new ScreensError(`bad option: --${name} must be a whole number from ${least} to ${most}`)
   }
