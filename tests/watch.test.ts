@@ -396,6 +396,11 @@ test('a repo picked until its MRs all closed is forgotten, so the repo coming ba
   const ready = async () => (await ui.find({ type: 'Text', text: /^Ready · /u }))?.text
   await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
   expect(await ready()).toBe('Ready · 1')
+  // A read that still finds the repo's MR keeps the pick.
+  fake.mrs = [...kept, changed(3, 'g/q')]
+  await clock.advance(180_000)
+  expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('gitlab.com/g/q')
+  expect(await ready()).toBe('Ready · 1')
   fake.mrs = [...kept, changed(3, 'g/q', 'merged'), changed(4, 'g/r')]
   await clock.advance(180_000)
   expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('all')
