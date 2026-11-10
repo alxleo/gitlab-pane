@@ -3,7 +3,7 @@
  * by whoever can open an MR, so it enters a line only through `foreign`; the rest of a line is this code's own words.
  */
 
-import { graphemes } from './graphemes.ts'
+import { shorten } from './graphemes.ts'
 
 /** One line of text for the model: no line breaks or control characters in what GitLab supplied. */
 export type ModelLine = string & { readonly __brand: 'ModelLine' }
@@ -24,7 +24,7 @@ const INVISIBLE = /[\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}\u{115F}\u{1160}\u{3164}
 /**
  * A foreign value as one line: control, format and invisible characters (bidi overrides, zero-width marks, variation
  * selectors) gone, every run of whitespace and line breaks one space, cut at `room` characters as a person counts them
- * (a flag or an accented letter is one), so a cut never leaves half of one.
+ * and at `room` UTF-16 units, so a cut never leaves half of a flag and a letter's marks never lengthen a line.
  */
 export function foreign(text: string, room = NAME_ROOM): ModelLine {
   // Format characters go first: removed after the whitespace is joined, one between two spaces would leave a double space.
@@ -33,8 +33,7 @@ export function foreign(text: string, room = NAME_ROOM): ModelLine {
     .replace(INVISIBLE, '')
     .replace(/[\p{Cc}\p{Z}\s]+/gu, ' ')
     .trim()
-  const chars = graphemes(flat)
-  return brand(chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : flat)
+  return brand(shorten(flat, room))
 }
 
 /**

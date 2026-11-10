@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { discSource } from '../../hooks/avatar.ts'
-import { graphemes } from '../../hooks/graphemes.ts'
+import { cut } from '../../hooks/graphemes.ts'
 import { discColour, firstName, hash, initials, shortHash } from '../../hooks/identity.ts'
 
 test('initials come from the display name, so a handle like ixm5302 is IM beside Ines Mendel', () => {
@@ -51,6 +51,17 @@ test('initials never cut a character the way a person sees it: an accented lette
   expect(initials('', 'a🇺🇸')).toBe('A🇺🇸')
   expect(initials('Ana B🇺🇸', '', true)).toBe('AB🇺🇸')
   expect(initials('', 'a👍🏽b', true)).toBe('A👍🏽B')
+  // The cap on one initial is five UTF-16 units, the most a name's character takes: ệ written as `e` and two marks is
+  // three, a flag four, and a Devanagari conjunct of three consonants (a letter, a virama, a letter, a virama, a letter) five.
+  expect(initials('e\u{323}\u{302}x')).toBe('E\u{323}\u{302}X')
+  expect(initials('\u{938}\u{94D}\u{924}\u{94D}\u{930} \u{915}')).toBe('\u{938}\u{94D}\u{924}\u{94D}\u{930}\u{915}')
+})
+
+test('an initial keeps the first five UTF-16 units of its character, so an accent stays and a hundred thousand marks do not', () => {
+  const marked = (letter: string) => `${letter}${'\u{301}'.repeat(100_000)}`
+  // Each initial is one letter with its first four marks; the rest of the marks are not carried into the card.
+  expect(initials(`${marked('a')} ${marked('b')}`)).toBe(`A${'\u{301}'.repeat(4)}B${'\u{301}'.repeat(4)}`)
+  expect(initials(marked('a'), '', true)).toBe(`A${'\u{301}'.repeat(4)}`)
 })
 
 test('a first name ends at a space, dot or underscore, not a hyphen', () => {
@@ -88,16 +99,21 @@ const nameArb = fc.string({
   maxLength: 30,
 })
 
-test('initials are stable, one to three characters, and the longer form extends the short one', () => {
+test('initials are stable, one to three characters of a few units each, and the longer form extends the short one', () => {
+  // The bound is three characters as a person counts them and 3 × 5 UTF-16 units, not three code points: a bound of three
+  // code points is exactly what dropped the acute of an `é` written as `e` and a combining accent.
+  const within = (initial: string): void => {
+    expect(initial).not.toBe('')
+    expect(cut(initial, 3, Number.POSITIVE_INFINITY)).toBe(initial)
+    expect(initial.length).toBeLessThanOrEqual(3 * 5)
+  }
   fc.assert(
     fc.property(nameArb, nameArb, (name, username) => {
       const short = initials(name, username)
       const long = initials(name, username, true)
       expect(initials(name, username)).toBe(short)
-      expect(graphemes(short).length).toBeGreaterThanOrEqual(1)
-      expect(graphemes(short).length).toBeLessThanOrEqual(3)
-      expect(graphemes(long).length).toBeGreaterThanOrEqual(1)
-      expect(graphemes(long).length).toBeLessThanOrEqual(3)
+      within(short)
+      within(long)
       expect(long.startsWith(short)).toBe(true)
     })
   )

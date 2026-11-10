@@ -1,7 +1,7 @@
 // A person's identity on the pane: the hash behind keys and colours, the initials, the first name. Pure, so the Mine tab
 // and the Inbox, which meet the same person through a display name and a username, draw one and the same disc.
 
-import { graphemes } from './graphemes.ts'
+import { leading } from './graphemes.ts'
 
 /**
  * A string's hash, stable across runs; the key of a hover scope and the pick of a colour both come from it. It runs over
@@ -25,8 +25,16 @@ export const discColour = (username: string): string => FILLS[hash(username) % F
 
 const wordsOf = (text: string, start: RegExp): string[] => text.split(/[\s._-]+/).filter(word => start.test(word))
 
-/** The first `count` characters as a person sees them, so a name in Han or Cyrillic, an accented letter or a flag is never cut in half. */
-const head = (text: string, count: number): string => graphemes(text).slice(0, count).join('')
+/**
+ * The most UTF-16 units one initial keeps. A character a person writes in a name is a few: a letter with two or three marks
+ * (Vietnamese ệ written as `e` and two marks is three units), a flag (four), a Devanagari conjunct of three consonants, the
+ * longest of the usual (five). Five keeps every one of those whole, and cuts a letter that carries a hundred thousand marks
+ * to its first four, instead of carrying them in the card to every surface that draws it; four would cut that conjunct.
+ */
+const INITIAL_SIZE = 5
+
+/** The first `count` characters as a person sees them, a name in Han or Cyrillic, an accented letter or a flag each whole. */
+const head = (text: string, count: number): string => leading(text, count, INITIAL_SIZE).join('')
 
 /**
  * Initials from the display name: first and last word's first letter, `Ines Mendel` is IM; one word gives its first
@@ -43,7 +51,7 @@ export function initials(name: string, username = '', longer = false): string {
   if (last === undefined) {
     return head(first.toUpperCase(), longer ? 3 : 2)
   }
-  return `${head(first.toUpperCase(), 1)}${head(last.toUpperCase(), 1)}` + (longer ? head(graphemes(last).slice(1).join(''), 1) : '')
+  return `${head(first.toUpperCase(), 1)}${head(last.toUpperCase(), 1)}` + (longer ? leading(last, 2, INITIAL_SIZE).slice(1).join('') : '')
 }
 
 /**
