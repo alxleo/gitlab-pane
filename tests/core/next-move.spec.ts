@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { toCard } from '../../hooks/gitlab.ts'
-import { afterMerge, conflictsTask, firstStep, FOLLOW_TRIES, nextMove, nextStep } from '../../hooks/next-move.ts'
+import { afterMerge, conflictsTask, firstStep, FOLLOW_MS, FOLLOW_TRIES, isConfirmed, liveOf, nextMove, nextStep } from '../../hooks/next-move.ts'
 import type { Fresh } from '../../hooks/next-move.ts'
 import { readCardArb, textArb } from './arbitrary.ts'
 import { HOST, gitlabSays, rawMr } from '../fixtures.ts'
@@ -168,6 +168,27 @@ test('after a rebase, the pane waits for GitLab to finish it; a rebase that merg
   // Nothing to wait for: it merges now.
   expect(nextStep('rebase-merge', before, { ...rebased, status: 'MERGEABLE' }, 3)).toEqual({ does: 'merge', head: 'def456', strategy: null })
   expect(nextStep('rebase-merge', before, rebased, FOLLOW_TRIES)).toEqual(stop('rebased; merge it once its checks pass', true))
+})
+
+test('a press that merges goes ahead only while this session’s arm for that move and head still holds; the others need none', () => {
+  const armed: Pressed = { kind: 'merge', state: 'armed', head: 'abc123', at: 0 }
+  expect(isConfirmed('merge', armed, 'abc123')).toBe(true)
+  // A drawing left from before the arm ran out, or before a push, merges nothing: the press arms again.
+  expect(isConfirmed('merge', undefined, 'abc123')).toBe(false)
+  expect(isConfirmed('merge', armed, 'def456')).toBe(false)
+  expect(isConfirmed('rebase-merge', armed, 'abc123')).toBe(false)
+  expect(isConfirmed('rebase', undefined, 'abc123')).toBe(true)
+  expect(isConfirmed('conflicts', undefined, 'abc123')).toBe(true)
+})
+
+test('a press sent to GitLab holds only while the pane could still be following it, so one a closed session left does not say merging for ever', () => {
+  const sent: Pressed = { kind: 'merge', state: 'sent', head: 'abc123', at: 0 }
+  expect(liveOf(sent, FOLLOW_MS * FOLLOW_TRIES)).toBe(sent)
+  expect(liveOf(sent, FOLLOW_MS * FOLLOW_TRIES + 60_001)).toBeUndefined()
+  // A hand-off to Claude takes as long as Claude does; a failed press says why until it is pressed again.
+  const handed: Pressed = { kind: 'conflicts', state: 'handed', head: 'abc123', at: 0 }
+  expect(liveOf(handed, 86_400_000)).toBe(handed)
+  expect(liveOf(undefined, 0)).toBeUndefined()
 })
 
 test('a move whose last press failed is offered again, with GitLab’s reason beside it, until it is pressed or the head moves', () => {

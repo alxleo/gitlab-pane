@@ -42,6 +42,13 @@ const said = (label: string, check: string | null): Move => ({ label, check, pre
 const ARMS: ReadonlySet<MoveKind> = new Set(['merge', 'rebase-merge'])
 
 /**
+ * Whether a press may make its move: one that merges only while this session's arm for that move, on that head, still
+ * holds, so a drawing from before the arm ran out, or before a push, merges nothing.
+ */
+export const isConfirmed = (kind: MoveKind, held: Pressed | undefined, head: string): boolean =>
+  !ARMS.has(kind) || (held?.state === 'armed' && held.kind === kind && held.head === head)
+
+/**
  * The move GitLab's checks name: conflicts before a rebase, which they would stop, and a rebase before a merge, which it
  * blocks. A rebase with nothing else failing also merges once the checks pass. Conflicts go to Claude only from a session
  * in the MR's repo, where Claude can work on the branch.
@@ -101,6 +108,15 @@ export function nextMove(card: MrCard, pressed: Pressed | undefined, isHere: boo
 /** How often the pane looks at an MR while GitLab carries out a move, and how many times before it stops looking. */
 export const FOLLOW_MS = 3_000
 export const FOLLOW_TRIES = 40
+
+/**
+ * A press as it holds now: one sent to GitLab only while the pane could still be following it (a minute past its last
+ * look), so a session closed mid-move leaves no `merging…` behind. Armed presses are taken back by a timer, and a hand-off
+ * or a failure holds until the head moves.
+ */
+export function liveOf(pressed: Pressed | undefined, now: number): Pressed | undefined {
+  return pressed?.state === 'sent' && now - pressed.at > FOLLOW_MS * FOLLOW_TRIES + 60_000 ? undefined : pressed
+}
 
 /** One MR as GitLab says it just now (`MoveState`): enough to make a move, and to see it through. */
 export type Fresh = {

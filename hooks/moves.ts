@@ -11,7 +11,7 @@ import { ask, write } from './graphql'
 import { projectOf, redact } from './hosts'
 import { parseRemote } from './inbox-refs'
 import { lines } from './model-text'
-import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, nextStep } from './next-move'
+import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, isConfirmed, nextStep } from './next-move'
 import type { Fresh, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
 import { tokenFor } from './tokens'
@@ -164,7 +164,7 @@ async function press($: EngineInterface, key: string, kind: MoveKind, does: 'arm
   }
   const { head } = card.merging
   const at = await $.clock.now()
-  if (does === 'arm') {
+  if (does === 'arm' || !isConfirmed(kind, (await read($, pressedAtom))[key], head)) {
     await mark($, key, { kind, state: 'armed', head, at })
     $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
     return
