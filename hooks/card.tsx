@@ -27,6 +27,19 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Box flexGrow={1} flexShrink={1}>
             <Button key={row.titleKey} plain label={row.title} onPress={() => openReading($, row.key)} />
           </Box>
+          {/* A quiet row is this line alone: what it waits on, or that it can merge, goes beside its title. */}
+          {row.isQuiet && row.verdict !== null && (
+            <Box flexShrink={0}>
+              <Text weight={row.verdict.bold ? 'semibold' : undefined} color={row.verdict.tone}>
+                {row.verdict.words}
+              </Text>
+            </Box>
+          )}
+          {row.isQuiet && row.verdict === null && row.blocker !== null && (
+            <Box flexShrink={0}>
+              <Text dimColor>{row.blocker.text}</Text>
+            </Box>
+          )}
           <Text dimColor size="footnote">
             {row.ago}
           </Text>

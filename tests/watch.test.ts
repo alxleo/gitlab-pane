@@ -44,6 +44,9 @@ const boxesOf = (node: unknown): Drawn[] => elementsOf(node).filter(element => e
 /** Whether an element's `key` starts with `prefix`. */
 const keyed = (prefix: string) => (element: FoundElement) => element.key?.startsWith(prefix) === true
 
+/** A running pipeline keeps a row's second line, where its links and faces are drawn: a quiet row is its title alone. */
+const SHOWN = { headPipeline: pipe('RUNNING') }
+
 /** The title a card of MR `iid` draws, among the buttons drawn: every title is a button, which opens the MR's page. */
 const titleOf = (buttons: FoundElement[], iid: number) => buttons.find(keyed(`open-${iid}-`))?.props.label
 
@@ -380,7 +383,7 @@ test('a raised MR wakes when GitLab newly says it can merge, never for a passed 
 
 test('an avatar kept by an earlier session is drawn without fetching it again', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [rawMr(12, { reviewers: { nodes: [reviewer('tim', 'APPROVED')] } })], isDown: false }
+  const fake: Fake = { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'APPROVED')] } })], isDown: false }
   const kept = { 'https://gitlab.com/uploads/-/system/user/avatar/1/tim.png?v=1': 'data:image/png;base64,KEPT' }
   const { avatars } = engine(on, fake, { avatars: kept })
 
@@ -395,7 +398,7 @@ test('an avatar kept by an earlier session is drawn without fetching it again', 
 
 test('with no Jira site set, ticket keys show as plain text and Jira is never read', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const { jiraReads } = engine(on, { mrs: [rawMr(12)], isDown: false })
+  const { jiraReads } = engine(on, { mrs: [rawMr(12, SHOWN)], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -408,7 +411,7 @@ test('with no Jira site set, ticket keys show as plain text and Jira is never re
 
 test('a Jira site links each ticket key and reads its details', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [rawMr(12)], isDown: false }
+  const fake: Fake = { mrs: [rawMr(12, SHOWN)], isDown: false }
   const { jiraReads, shells } = engine(on, fake)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -429,7 +432,7 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
 
 test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label counting MRs with news', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  engine(on, { mrs: [rawMr(12)], isDown: false })
+  engine(on, { mrs: [rawMr(12, SHOWN)], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -450,7 +453,7 @@ test('someone without a picture is their initials on a disc, beside their first 
   const clock = mock.clock(on, { now: NOW })
   const ines = { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }
   const mel = { ...reviewer('mel.northcote', 'UNREVIEWED'), name: 'Mel.Northcote', avatarUrl: null }
-  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: [ines, mel] } })], isDown: false })
+  engine(on, { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: [ines, mel] } })], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -477,7 +480,7 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
     { ...reviewer('tessa.r', 'REQUESTED_CHANGES'), avatarUrl: null },
     { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null },
   ]
-  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people } })], isDown: false })
+  engine(on, { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: people } })], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -631,13 +634,27 @@ test('a stage strip draws its passed stages as one run, counted in its title; ot
   await ui.unmount()
 })
 
+test('a passed MR that waits on an approval is one line, its title and what it waits on; a running one keeps its second line', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, { mrs: [rawMr(12), rawMr(13, SHOWN)], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Link', text: '🔀 !12' })).toBeUndefined()
+  expect(await ui.find({ type: 'Link', text: '🔀 !13' })).toBeDefined()
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBe('thing 12')
+  // With no merge checks read, the pane's own marker says what it waits on, as on a full row.
+  expect((await ui.findAll({ type: 'Text' })).map(text => text.text)).toContain('👤 needs 1 approval')
+  await ui.unmount()
+})
+
 test('a face is one small drawing: about 360 characters, 520 with a badge', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
     { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null },
   ]
-  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people } })], isDown: false })
+  engine(on, { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: people } })], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
