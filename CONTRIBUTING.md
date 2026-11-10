@@ -52,7 +52,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | Plugin installs from GitHub; release branch holds the latest tag | | | | | x |
 | gitleaks over the whole history | | | | | x |
 
-Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. Pin one Claude Code version in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`, and change them together. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
+Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
 
 ## GitLab's types
 

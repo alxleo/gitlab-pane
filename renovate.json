@@ -1,4 +1,36 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"]
+  "description": "Keeps the pinned actions, the dev-time npm packages and the pinned Claude Code current. The mod itself has no npm packages.",
+  "extends": ["config:recommended", "schedule:monthly"],
+  "minimumReleaseAge": "14 days",
+  "packageRules": [
+    {
+      "description": "The pinned actions in one pull request a month.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["!node"],
+      "groupName": "actions"
+    },
+    {
+      "description": "The tooling's minor and patch releases in one pull request a month; each major comes on its own, so its release notes are read alone.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "tooling"
+    },
+    {
+      "description": "typescript-eslint cannot load TypeScript past 6.0, so `typescript` (the linter's) stays on 6.x while `typescript-7` is the compiler that CI and the hooks run.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<6.1"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The one Claude Code version CI tests and screens.yml photographs: check.yml (twice), screens.yml and tools/pane_screens.ts, raised together. A raise that draws the pane differently fails screens.yml until `npm run screens -- render` is committed.",
+      "managerFilePatterns": ["/^\\.github/workflows/(check|screens)\\.yml$/", "/^tools/pane_screens\\.ts$/"],
+      "matchStrings": ["CLAUDE_CODE_VERSION: \"(?<currentValue>[^\"]+)\"", "const EXPECTED_CLAUDE = '(?<currentValue>[^']+)'"],
+      "depNameTemplate": "@anthropic-ai/claude-code",
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    }
+  ]
 }

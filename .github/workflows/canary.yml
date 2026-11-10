@@ -6,8 +6,8 @@
 # files arrive, checks that the release branch holds the latest released version once there is one, and checks every query the pane sends against gitlab.com's live schema
 # (tools/gitlab_schema.ts), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
-# the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
-# check.yml and screens.yml to match.
+# the repository; the next green run closes it. Renovate raises the pinned version in check.yml and screens.yml (see
+# renovate.json); a failure here on the newest Claude Code warns before that pull request arrives.
 #
 # A pull request that changes the queries gets the schema check alone. GitHub turns schedules off in a public
 # repository after 60 days without a commit; the Actions tab then offers to turn this back on.
