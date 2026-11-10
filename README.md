@@ -7,7 +7,7 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 | ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
 | **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
 | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
-| **`pin`: the MRs you work on today, the rest one line** | |
+| **☆: the MRs you work on today, the rest one line** | |
 | ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | |
 
 <sub>Made-up data.</sub>
@@ -20,7 +20,7 @@ flowchart LR
   poll -->|MR can merge| ready["Session wakes:<br/>!iid can merge"]
 ```
 
-Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with a card's `pin`, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
+Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
 
 ## Install
 

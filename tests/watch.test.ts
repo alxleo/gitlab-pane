@@ -464,6 +464,8 @@ test('pinning a card puts it in this session and folds the rest to one line; unp
   expect((await ui.find({ type: 'Button', key: 'others' }))?.props.label).toBe('▸ 2 others')
   expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
   expect((await pinOf(13))?.props.label).toBe('unpin')
+  // The label names the press; what is drawn is the star.
+  expect((await pinOf(13))?.children).toEqual(['★'])
   expect(await pinOf(12)).toBeUndefined()
   // The leader reads every session's pins from the store, so a pin from a card is published there.
   expect([...store.keys()].some(key => key.startsWith('pins'))).toBe(true)

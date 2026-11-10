@@ -238,6 +238,9 @@ test("this session's MRs keep the order they came in; one it raised has no unpin
   expect(model.session.map(row => row.mr.text)).toEqual(['🔀 !41', '🔀 !43', '🔀 !42'])
   expect(model.session.map(row => row.pin?.label ?? null)).toEqual([null, 'unpin', 'unpin'])
   expect(modelOf(cards).mine.rows.map(row => row.pin?.label)).toEqual(['pin', 'pin', 'pin'])
+  // The press is a star, as anywhere else: filled on an MR pinned here, hollow on one that is not.
+  expect(model.session.map(row => row.pin?.mark ?? null)).toEqual([null, '★', '★'])
+  expect(modelOf(cards).mine.rows.map(row => row.pin?.mark)).toEqual(['☆', '☆', '☆'])
 })
 
 test('the list draws a shared slim card as it draws the whole one', () => {
