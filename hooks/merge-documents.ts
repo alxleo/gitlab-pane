@@ -2,7 +2,7 @@
 // before and during a move, and the merge, the only document that changes anything in GitLab. GraphQL has no rebase,
 // which goes over REST (moves.ts). DOCUMENTS in gitlab-documents.ts holds these with the rest, for the schema check.
 import type { MergeMutation, MergeMutationVariables, MergeStatusQuery, MergeStrategyEnum, MoveStateQuery, MoveStateQueryVariables } from './gitlab.generated.ts'
-import type { Request } from './gitlab-documents.ts'
+import type { Operations, Request } from './gitlab-documents.ts'
 
 import type { HostFeatures } from '../types'
 
@@ -21,7 +21,7 @@ export const MERGE_STATUS = /* GraphQL */ `
 // What a move needs just before it is made, and after a rebase until it is done: one MR, read fresh.
 export const MOVE_STATE = /* GraphQL */ `
   query MoveState($path: ID!, $iid: String!) {
-    project(fullPath: $path) { mergeRequest(iid: $iid) { state detailedMergeStatus diffHeadSha rebaseInProgress mergeError availableAutoMergeStrategies } }
+    project(fullPath: $path) { mergeRequest(iid: $iid) { state detailedMergeStatus diffHeadSha rebaseCommitSha rebaseInProgress mergeError availableAutoMergeStrategies } }
   }
 `
 
@@ -32,6 +32,15 @@ export const MERGE = /* GraphQL */ `
     mergeRequestAccept(input: { projectPath: $path, iid: $iid, sha: $sha, strategy: $strategy }) { errors mergeRequest { state mergeError } }
   }
 `
+
+/** The documents that change GitLab: mutations, which the schema check never sends to be scored. */
+export const WRITES = ['Merge'] as const satisfies readonly (keyof Operations)[]
+
+/** Whether a request changes GitLab, by the document it sends: such a request is sent once and never again on a failure. */
+export function isWrite(request: { operation: keyof Operations }): boolean {
+  const writes: readonly string[] = WRITES
+  return writes.includes(request.operation)
+}
 
 /**
  * GitLab's own merge checks for the same MRs, or none for a host that lacks them. Asked on its own: its single verdict (`detailedMergeStatus`) answered

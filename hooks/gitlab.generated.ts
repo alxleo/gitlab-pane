@@ -830,6 +830,7 @@ export type MoveStateQuery = {
       state: MergeRequestState
       detailedMergeStatus: DetailedMergeStatus | null
       diffHeadSha: string | null
+      rebaseCommitSha: string | null
       rebaseInProgress: boolean
       mergeError: string | null
       availableAutoMergeStrategies: Array<string> | null

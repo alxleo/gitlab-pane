@@ -3,15 +3,16 @@ import type { EngineInterface } from 'claude-code'
 
 import { parseJson, isRecord } from './decode'
 import { pinMr, readPinned, readRows } from './data'
-import { Failure } from './failure'
+import { Failure, kindOf } from './failure'
 import { quietly } from './failures'
 import { mergeWrite, moveStateQuery } from './merge-documents'
 import { mergeRefusal, readMoveState } from './gitlab'
-import { ask, write } from './graphql'
+import { ask } from './graphql'
 import { projectOf, redact } from './hosts'
+import { forgetFound } from './in-flight'
 import { parseRemote } from './inbox-refs'
 import { lines } from './model-text'
-import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, isConfirmed, nextStep } from './next-move'
+import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, isConfirmed, mayHaveLanded, nextStep, why } from './next-move'
 import type { Fresh, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
 import { tokenFor } from './tokens'
@@ -63,11 +64,16 @@ async function freshOf($: EngineInterface, card: MrCard): Promise<Fresh> {
   return fresh
 }
 
-/** Asks GitLab to rebase the MR (`PUT …/merge_requests/:iid/rebase`: GraphQL has no such write); why it would not, or null. */
-async function sendRebase($: EngineInterface, card: MrCard): Promise<string | null> {
+/** Why a write did not take, and whether it may have reached GitLab all the same (then it is followed, never sent again). */
+type Refusal = { reason: string; mayHaveLanded: boolean }
+
+const refusal = (reason: string, landed = false): Refusal => ({ reason: why(reason), mayHaveLanded: landed })
+
+/** Asks GitLab to rebase the MR (`PUT …/merge_requests/:iid/rebase`: GraphQL has no such write), once; why not, or null. */
+async function sendRebase($: EngineInterface, card: MrCard): Promise<Refusal | null> {
   const found = await tokenFor($, card.host)
   if (!found.ok) {
-    return found.reason
+    return refusal(found.reason)
   }
   const { token, source } = found.value
   try {
@@ -78,8 +84,12 @@ async function sendRebase($: EngineInterface, card: MrCard): Promise<string | nu
     if (answer.status >= 200 && answer.status < 300) {
       return null
     }
+    if (answer.status === 401) {
+      forgetFound()
+      return refusal(`GitLab rejected the token from ${source} (HTTP 401)`)
+    }
     if (answer.status === 403) {
-      return `GitLab refused it (HTTP 403): the token from ${source} needs the api scope, and you need to be able to push to the branch`
+      return refusal(`GitLab refused it (HTTP 403): the token from ${source} needs the api scope, and you push access to the branch`)
     }
     let said: unknown = null
     try {
@@ -87,15 +97,20 @@ async function sendRebase($: EngineInterface, card: MrCard): Promise<string | nu
     } catch {
       said = null
     }
-    return `GitLab answered HTTP ${answer.status}${isRecord(said) && typeof said.message === 'string' ? `: ${said.message}` : ''}`
+    return refusal(`GitLab answered HTTP ${answer.status}${isRecord(said) && typeof said.message === 'string' ? `: ${said.message}` : ''}`, answer.status >= 500)
   } catch (error) {
-    return redact(messageOf(error), [token])
+    return refusal(redact(messageOf(error), [token]), true)
   }
 }
 
-/** Asks GitLab to merge the MR at `head`; why it would not, or null. */
-async function sendMerge($: EngineInterface, card: MrCard, head: string, strategy: MergeStrategyEnum | null): Promise<string | null> {
-  return mergeRefusal(await write($, card.host, mergeWrite(card.path, card.iid, head, strategy)))
+/** Asks GitLab to merge the MR at `head`, once; why it would not, or null. */
+async function sendMerge($: EngineInterface, card: MrCard, head: string, strategy: MergeStrategyEnum | null): Promise<Refusal | null> {
+  try {
+    const refused = mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, head, strategy)))
+    return refused !== null ? refusal(refused) : null
+  } catch (error) {
+    return refusal(messageOf(error), mayHaveLanded(kindOf(error)))
+  }
 }
 
 /** A move under way: the MR as it was when pressed, what was pressed, the head it is on now and how often it was looked at. */
@@ -119,7 +134,10 @@ async function carry($: EngineInterface, course: Course, step: Step): Promise<vo
       return undefined
     case 'rebase': {
       const refused = await sendRebase($, course.card)
-      return refused !== null ? end($, course, { does: 'stop', say: `not rebased: ${refused}`, isDone: false }) : carry($, course, { does: 'wait' })
+      // One that may have reached GitLab is followed as one that did: GitLab's own state says how it went.
+      return refused !== null && !refused.mayHaveLanded
+        ? end($, course, { does: 'stop', say: `not rebased: ${refused.reason}`, isDone: false })
+        : carry($, course, { does: 'wait' })
     }
     case 'merge':
     default: {
@@ -127,10 +145,10 @@ async function carry($: EngineInterface, course: Course, step: Step): Promise<vo
       const merging: Course = { ...course, kind: 'merge', head: step.head }
       await mark($, course.card.key, { kind: 'merge', state: 'sent', head: step.head, at: await $.clock.now() })
       const refused = await sendMerge($, course.card, step.head, step.strategy)
-      if (refused !== null) {
-        return end($, merging, { does: 'stop', say: `not merged: ${refused}`, isDone: false })
+      if (refused !== null && !refused.mayHaveLanded) {
+        return end($, merging, { does: 'stop', say: `not merged: ${refused.reason}`, isDone: false })
       }
-      return carry($, merging, afterMerge(step.strategy) ?? { does: 'wait' })
+      return carry($, merging, (refused === null ? afterMerge(step.strategy) : null) ?? { does: 'wait' })
     }
   }
 }
@@ -140,7 +158,7 @@ async function look($: EngineInterface, course: Course): Promise<void> {
     const now = await freshOf($, course.card)
     await carry($, { ...course, head: now.head }, nextStep(course.kind, course.before, now, course.tries))
   } catch (error) {
-    await end($, course, { does: 'stop', say: `lost track of it: ${messageOf(error)}`, isDone: false })
+    await end($, course, { does: 'stop', say: `lost track of it: ${why(messageOf(error))}`, isDone: false })
   }
 }
 
@@ -150,11 +168,28 @@ async function handConflicts($: EngineInterface, card: MrCard, head: string): Pr
   await publishPins($, await readPinned($))
   const at = await $.clock.now()
   await mark($, card.key, { kind: 'conflicts', state: 'handed', head, at })
-  try {
-    await $.prompt.submit({ text: lines(conflictsTask(card)) })
-  } catch (error) {
-    await mark($, card.key, { kind: 'conflicts', state: 'failed', head, at, say: `Claude was not reached: ${messageOf(error)}` })
+  // A prompt a hook or the engine drops resolves with why, and never reaches Claude.
+  const dropped = await $.prompt.submit({ text: lines(conflictsTask(card)) }).then(
+    sent => sent.drop ?? null,
+    (error: unknown) => messageOf(error)
+  )
+  if (dropped !== null) {
+    await mark($, card.key, { kind: 'conflicts', state: 'failed', head, at, say: `Claude was not reached: ${why(dropped)}` })
   }
+}
+
+/**
+ * Turns this session's live press on `key` into one sent, if it may go ahead (`isConfirmed`), in one write, so two
+ * presses at once send one move. Gives whether this call made it.
+ */
+async function claim($: EngineInterface, key: string, kind: MoveKind, head: string, at: number): Promise<boolean> {
+  const sent: Pressed = { kind, state: 'sent', head, at }
+  let isClaimed = false
+  await update($, pressedAtom, all => {
+    isClaimed = isConfirmed(kind, all[key], head) && all[key]?.state !== 'sent'
+    return isClaimed ? { ...all, [key]: sent } : all
+  })
+  return isClaimed
 }
 
 async function press($: EngineInterface, key: string, kind: MoveKind, does: 'arm' | 'make'): Promise<void> {
@@ -164,22 +199,25 @@ async function press($: EngineInterface, key: string, kind: MoveKind, does: 'arm
   }
   const { head } = card.merging
   const at = await $.clock.now()
-  if (does === 'arm' || !isConfirmed(kind, (await read($, pressedAtom))[key], head)) {
-    await mark($, key, { kind, state: 'armed', head, at })
-    $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
-    return
-  }
   if (kind === 'conflicts') {
     await handConflicts($, card, head)
     return
   }
-  await mark($, key, { kind, state: 'sent', head, at })
+  if (does === 'arm' || !(await claim($, key, kind, head, at))) {
+    // A press from a drawing older than its arm arms again; one while the move is sent does nothing.
+    if ((await read($, pressedAtom))[key]?.state !== 'sent') {
+      await mark($, key, { kind, state: 'armed', head, at })
+      $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
+    }
+    return
+  }
   try {
     const before = await freshOf($, card)
     await carry($, { card, kind, before, head, tries: 0 }, firstStep(kind, head, before))
   } catch (error) {
-    await mark($, key, { kind, state: 'failed', head, at, say: messageOf(error) })
-    $.ui.toast(`!${card.iid}: ${messageOf(error)}`)
+    const say = why(messageOf(error))
+    await mark($, key, { kind, state: 'failed', head, at, say })
+    $.ui.toast(`!${card.iid}: ${say}`)
   }
 }
 

@@ -81,7 +81,7 @@ export type FakeWorld = {
   /** The token glab stored, which `glab config get token --host <host>` prints when its environment holds none; a host not listed prints nothing. */
   glab?: Record<string, string>
   /** An HTTP status to answer the next request with instead of GitLab's own, once; an edge that fails now and then. */
-  glitch?: () => number | undefined
+  glitch?: (operation: string) => number | undefined
   /** True while the network is down: every request fails as a dropped connection does. */
   isDown?: () => boolean
   /** What each GraphQL answer waits on before it is given: a GitLab that is slow to answer. */
@@ -131,7 +131,7 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
     if (world.isDown?.() === true) {
       return { deny: `$.http.fetch(${e.url}) failed: connection refused` }
     }
-    const glitch = world.glitch?.()
+    const glitch = world.glitch?.(request.operation)
     if (glitch !== undefined) {
       return { value: { status: glitch, ok: false, headers: {}, text: '<html>Gateway</html>' } }
     }

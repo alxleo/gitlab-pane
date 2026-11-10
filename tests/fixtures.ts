@@ -104,7 +104,15 @@ export type Mr = MrFieldsFragment & {
   reviewers: { nodes: Array<ReviewerFieldsFragment | null> | null } | null
   mergeabilityChecks?: MergeabilityCheck[]
   /** What the MergeStatus query says of merging it, beside its checks; by default its head is `head-<iid>` and the user may merge it. */
-  merging?: Partial<{ diffHeadSha: string | null; rebaseInProgress: boolean; autoMergeEnabled: boolean; userPermissions: { canMerge: boolean; pushToSourceBranch: boolean } }>
+  merging?: Partial<{
+    diffHeadSha: string | null
+    rebaseInProgress: boolean
+    autoMergeEnabled: boolean
+    userPermissions: { canMerge: boolean; pushToSourceBranch: boolean }
+    /** What a fresh read of one MR (`MoveState`) says beside: the last rebase's commit and the last merge error. */
+    rebaseCommitSha: string | null
+    mergeError: string | null
+  }>
 }
 
 export const rawMr = (iid: number, over: Partial<Mr> = {}): Mr => ({
@@ -161,11 +169,10 @@ export const mergeStatuses = (mrs: readonly Mr[]) => ({
           iid: mr.iid,
           project: { fullPath: mr.project.fullPath },
           mergeabilityChecks: mr.mergeabilityChecks ?? [],
-          diffHeadSha: `head-${mr.iid}`,
-          rebaseInProgress: false,
-          autoMergeEnabled: false,
-          userPermissions: { canMerge: true, pushToSourceBranch: true },
-          ...mr.merging,
+          diffHeadSha: mr.merging?.diffHeadSha ?? `head-${mr.iid}`,
+          rebaseInProgress: mr.merging?.rebaseInProgress ?? false,
+          autoMergeEnabled: mr.merging?.autoMergeEnabled ?? false,
+          userPermissions: mr.merging?.userPermissions ?? { canMerge: true, pushToSourceBranch: true },
         })),
       },
     },

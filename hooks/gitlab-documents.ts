@@ -1,6 +1,7 @@
 // Every GraphQL document the pane sends (those on merging an MR are in merge-documents.ts), and the requests built from them.
 // tools/gitlab_schema.ts checks DOCUMENTS against GitLab; graphql-codegen reads both files for gitlab.generated.ts.
 import { MERGE, MERGE_STATUS, MOVE_STATE } from './merge-documents.ts'
+import type { WRITES } from './merge-documents.ts'
 import type {
   AuthoredPlainQuery,
   AuthoredPlainQueryVariables,
@@ -321,9 +322,6 @@ export type Operations = {
   Merge: { variables: MergeMutationVariables; data: MergeMutation }
 }
 
-/** The documents that change GitLab: mutations, which the schema check never sends to be scored. */
-export const WRITES = ['Merge'] as const satisfies readonly (keyof Operations)[]
-
 type Reads = Exclude<keyof Operations, (typeof WRITES)[number]>
 
 /** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
@@ -364,7 +362,7 @@ export const COMPLEXITY = {
   InboxTodos: 39,
   InboxTodosPlain: 39,
   MergeStatus: 34,
-  MoveState: 15,
+  MoveState: 16,
   Pinned: 100,
   PinnedPlain: 98,
   Usual: 8,

@@ -90,7 +90,7 @@ export const CHECK_TONE: Record<MergeabilityCheckIdentifier, Tone> = {
 const isKnownCheck = (id: string): id is MergeabilityCheckIdentifier => Object.hasOwn(CHECK_TONE, id)
 
 /** A failing check's tone; one GitLab adds after this was written blocks the merge, so it is red until it has a tone. */
-const failureTone = (id: string): Tone => (isKnownCheck(id) ? CHECK_TONE[id] : 'error')
+export const failureTone = (id: string): Tone => (isKnownCheck(id) ? CHECK_TONE[id] : 'error')
 
 /** A check in words; the approvals and the threads ones say how many, as the pane knows. */
 function wordsFor(card: MrCard, id: string): string {

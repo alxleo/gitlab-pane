@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { toCard } from '../../hooks/gitlab.ts'
-import { afterMerge, conflictsTask, firstStep, FOLLOW_MS, FOLLOW_TRIES, isConfirmed, liveOf, nextMove, nextStep } from '../../hooks/next-move.ts'
+import { afterMerge, conflictsTask, firstStep, FOLLOW_MS, FOLLOW_TRIES, isConfirmed, liveOf, mayHaveLanded, nextMove, nextStep, why } from '../../hooks/next-move.ts'
 import type { Fresh } from '../../hooks/next-move.ts'
 import { readCardArb, textArb } from './arbitrary.ts'
 import { HOST, gitlabSays, rawMr } from '../fixtures.ts'
@@ -118,7 +118,16 @@ test('an MR has at most one move, and a press only for a check GitLab fails, or 
   )
 })
 
-const fresh = (over: Partial<Fresh> = {}): Fresh => ({ state: 'opened', status: 'MERGEABLE', head: 'abc123', isRebasing: false, mergeError: null, strategies: [], ...over })
+const fresh = (over: Partial<Fresh> = {}): Fresh => ({
+  state: 'opened',
+  status: 'MERGEABLE',
+  head: 'abc123',
+  rebased: '',
+  isRebasing: false,
+  mergeError: null,
+  strategies: [],
+  ...over,
+})
 
 const stop = (say: string, isDone: boolean) => ({ does: 'stop', say, isDone })
 
@@ -132,6 +141,10 @@ test('a merge is sent only for the head the verdict was read on, while GitLab st
   expect(firstStep('merge', 'abc123', fresh({ head: 'def456' }))).toEqual(stop('changed since it was read: look again', false))
   expect(firstStep('merge', 'abc123', fresh({ status: 'CI_STILL_RUNNING' }))).toEqual(stop('cannot merge just now: GitLab says CI still running', false))
   expect(firstStep('rebase-merge', 'abc123', fresh({ status: 'NEED_REBASE' }))).toEqual({ does: 'rebase' })
+  // A rebase that merges is armed on a head too: a push meanwhile is not merged unseen.
+  expect(firstStep('rebase-merge', 'abc123', fresh({ head: 'zzz999', status: 'NEED_REBASE' }))).toEqual(stop('changed since it was read: look again', false))
+  // A rebase alone merges nothing, so it rebases whatever the branch holds.
+  expect(firstStep('rebase', 'abc123', fresh({ head: 'zzz999' }))).toEqual({ does: 'rebase' })
 })
 
 test('after a merge is sent, the pane looks again until GitLab says it merged, or why not, and says how it ended in one line', () => {
@@ -142,6 +155,8 @@ test('after a merge is sent, the pane looks again until GitLab says it merged, o
   expect(nextStep('merge', before, before, 1)).toEqual({ does: 'wait' })
   expect(nextStep('merge', before, before, FOLLOW_TRIES)).toEqual(stop('GitLab has not merged it yet; see the MR', false))
   expect(nextStep('merge', before, fresh({ state: 'closed' }), 1)).toEqual(stop('not merged: it was closed', false))
+  // GitLab locks an MR while it merges it: that is the merge under way, not its end.
+  expect(nextStep('merge', before, fresh({ state: 'locked' }), 1)).toEqual({ does: 'wait' })
   // A merge GitLab makes later is as done as the pane can make it; one made now is followed.
   expect(afterMerge('MERGE_WHEN_CHECKS_PASS')).toEqual(stop('merges when checks pass', true))
   expect(afterMerge('ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS')).toEqual(stop('merges when checks pass', true))
@@ -151,11 +166,19 @@ test('after a merge is sent, the pane looks again until GitLab says it merged, o
 
 test('after a rebase, the pane waits for GitLab to finish it; a rebase that merges then sets the merge for once checks pass', () => {
   const before = fresh({ status: 'NEED_REBASE' })
-  const rebased = fresh({ head: 'def456', status: 'CI_STILL_RUNNING' })
+  const rebased = fresh({ head: 'def456', rebased: 'def456', status: 'CI_STILL_RUNNING' })
   expect(nextStep('rebase', before, fresh({ status: 'NEED_REBASE', isRebasing: true }), 1)).toEqual({ does: 'wait' })
   expect(nextStep('rebase', before, before, 1)).toEqual({ does: 'wait' })
   expect(nextStep('rebase', before, rebased, 2)).toEqual(stop('rebased', true))
   expect(nextStep('rebase', before, fresh({ mergeError: 'Rebase failed: conflicts' }), 2)).toEqual(stop('not rebased: Rebase failed: conflicts', false))
+  // GitLab words a failed rebase the same each time: the same error again, with the rebase over and the head unmoved, is this rebase's.
+  const failedBefore = fresh({ status: 'NEED_REBASE', mergeError: 'Rebase failed: conflicts' })
+  expect(nextStep('rebase', failedBefore, failedBefore, 1)).toEqual({ does: 'wait' })
+  expect(nextStep('rebase', failedBefore, failedBefore, 2)).toEqual(stop('not rebased: Rebase failed: conflicts', false))
+  // A head that moved, but not to GitLab's rebase, is someone's push: it is not merged unseen.
+  expect(nextStep('rebase-merge', before, { ...rebased, rebased: 'old-rebase', strategies: ['merge_when_checks_pass'] }, 3)).toEqual(
+    stop('changed during the rebase: look again', false)
+  )
   expect(nextStep('rebase', before, before, FOLLOW_TRIES)).toEqual(stop('GitLab has not finished the rebase; see the MR', false))
   // Its new pipeline is not there yet, so there is no merge to set; once it is, the merge waits for its checks, in a train where there is one.
   expect(nextStep('rebase-merge', before, rebased, 2)).toEqual({ does: 'wait' })
@@ -168,6 +191,32 @@ test('after a rebase, the pane waits for GitLab to finish it; a rebase that merg
   // Nothing to wait for: it merges now.
   expect(nextStep('rebase-merge', before, { ...rebased, status: 'MERGEABLE' }, 3)).toEqual({ does: 'merge', head: 'def456', strategy: null })
   expect(nextStep('rebase-merge', before, rebased, FOLLOW_TRIES)).toEqual(stop('rebased; merge it once its checks pass', true))
+})
+
+test('GitLab’s auto-merge is said only while what holds the MR is others or time; a check to fix keeps its words and its move', () => {
+  const auto = { isAutoMerging: true }
+  expect(nextMove(mr({ CI_MUST_PASS: 'checking' }, auto), undefined, true)?.label).toBe('✓ merges when checks pass')
+  expect(nextMove(mr({ NOT_APPROVED: 'failed' }, auto), undefined, true)?.label).toBe('✓ merges when checks pass')
+  // Conflicts never pass on their own: the hand-off stays.
+  expect(nextMove(mr({ CONFLICT: 'failed', NOT_APPROVED: 'failed' }, auto), undefined, true)?.label).toBe('⇄ hand conflicts to Claude')
+  expect(nextMove(mr({ CI_MUST_PASS: 'failed' }, auto), undefined, true)).toBe(null)
+  expect(nextMove(mr({ REQUESTED_CHANGES: 'failed' }, auto), undefined, true)).toBe(null)
+})
+
+test('a rebase is held back where the MR waits on something before it: a draft, a failed pipeline, a request for changes', () => {
+  expect(nextMove(mr({ NEED_REBASE: 'failed', DRAFT_STATUS: 'failed' }), undefined, false)).toBe(null)
+  expect(nextMove(mr({ NEED_REBASE: 'failed', CI_MUST_PASS: 'failed' }), undefined, false)).toBe(null)
+  expect(nextMove(mr({ NEED_REBASE: 'failed', REQUESTED_CHANGES: 'failed' }), undefined, false)).toBe(null)
+  expect(nextMove(mr({ NEED_REBASE: 'failed', NOT_APPROVED: 'failed' }), undefined, false)?.label).toBe('↻ rebase')
+})
+
+test('a write that failed on the way back may have reached GitLab, and is followed, never sent again; a refusal is the end', () => {
+  expect(mayHaveLanded('network')).toBe(true)
+  expect(mayHaveLanded('timeout')).toBe(true)
+  expect(mayHaveLanded('server')).toBe(true)
+  expect(mayHaveLanded('unauthorized')).toBe(false)
+  expect(mayHaveLanded('bad-answer')).toBe(false)
+  expect(why('GitLab said\nno‮')).toBe('GitLab said no')
 })
 
 test('a press that merges goes ahead only while this session’s arm for that move and head still holds; the others need none', () => {
@@ -183,8 +232,8 @@ test('a press that merges goes ahead only while this session’s arm for that mo
 
 test('a press sent to GitLab holds only while the pane could still be following it, so one a closed session left does not say merging for ever', () => {
   const sent: Pressed = { kind: 'merge', state: 'sent', head: 'abc123', at: 0 }
-  expect(liveOf(sent, FOLLOW_MS * FOLLOW_TRIES)).toBe(sent)
-  expect(liveOf(sent, FOLLOW_MS * FOLLOW_TRIES + 60_001)).toBeUndefined()
+  expect(liveOf(sent, 2 * FOLLOW_MS * FOLLOW_TRIES)).toBe(sent)
+  expect(liveOf(sent, 2 * FOLLOW_MS * FOLLOW_TRIES + 1)).toBeUndefined()
   // A hand-off to Claude takes as long as Claude does; a failed press says why until it is pressed again.
   const handed: Pressed = { kind: 'conflicts', state: 'handed', head: 'abc123', at: 0 }
   expect(liveOf(handed, 86_400_000)).toBe(handed)

@@ -56,7 +56,8 @@ import { join, relative } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
-import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS, WRITES } from '../hooks/gitlab-documents.ts'
+import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
+import { WRITES } from '../hooks/merge-documents.ts'
 import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
 import { formatted } from './format.ts'
 
@@ -233,7 +234,7 @@ const SCORING = ((): readonly SelectionNode[] => {
 })()
 
 /** The document with GitLab's own score of it added to its operation, and the variables the operation declares. */
-function scored(text: string): { readonly query: string; readonly variables: Record<string, string> } {
+export function scored(text: string): { readonly query: string; readonly variables: Record<string, string> } {
   const names: string[] = []
   const document = visit(parse(text), {
     VariableDefinition(node) {
@@ -646,9 +647,12 @@ async function main(): Promise<number> {
   return 2
 }
 
-try {
-  process.exitCode = await main()
-} catch (error) {
-  console.error(`gitlab-schema: ${messageOf(error)}`)
-  process.exitCode = 2
+// Run as a command, not when its spec imports it.
+if (import.meta.main) {
+  try {
+    process.exitCode = await main()
+  } catch (error) {
+    console.error(`gitlab-schema: ${messageOf(error)}`)
+    process.exitCode = 2
+  }
 }

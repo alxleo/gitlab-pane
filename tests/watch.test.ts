@@ -93,8 +93,9 @@ function moveAnswers(fake: () => Mr[], strategies: () => string[], merged: strin
                     state: mr.state,
                     detailedMergeStatus: isMergeableNow(mr) ? 'MERGEABLE' : 'BLOCKED_STATUS',
                     diffHeadSha: mr.merging?.diffHeadSha ?? `head-${mr.iid}`,
-                    rebaseInProgress: false,
-                    mergeError: null,
+                    rebaseCommitSha: mr.merging?.rebaseCommitSha ?? null,
+                    rebaseInProgress: mr.merging?.rebaseInProgress ?? false,
+                    mergeError: mr.merging?.mergeError ?? null,
                     availableAutoMergeStrategies: strategies(),
                   },
           },
@@ -169,7 +170,17 @@ function engine(
   fake: Fake,
   stored: Record<string, unknown> = {},
   others: Record<string, FakeHost> = {},
-  world: { glab?: Record<string, string>; session?: string; held?: () => Promise<void>; remote?: string; onRebase?: (path: string, iid: string) => void } = {}
+  world: {
+    glab?: Record<string, string>
+    session?: string
+    held?: () => Promise<void>
+    remote?: string
+    onRebase?: (path: string, iid: string) => void
+    /** An HTTP status to answer a request of this operation with, instead of GitLab's answer. */
+    glitch?: (operation: string) => number | undefined
+    /** Why the session drops every prompt submitted to it, as a hook or a stop does. */
+    drops?: string
+  } = {}
 ) {
   const woken: string[] = []
   const toasts: string[] = []
@@ -207,6 +218,7 @@ function engine(
       isDown: () => fake.isDown,
       ...(world.glab !== undefined ? { glab: world.glab } : {}),
       ...(world.held !== undefined ? { held: world.held } : {}),
+      ...(world.glitch !== undefined ? { glitch: world.glitch } : {}),
     }
   )
   on('session.repo', () => ({ value: world.remote !== undefined ? { root: '/r', remote: world.remote, internal: false, name: null } : null }))
@@ -227,7 +239,7 @@ function engine(
   })
   on('prompt.submit', (_, e) => {
     woken.push(e.text)
-    return { text: e.text }
+    return world.drops !== undefined ? { drop: world.drops } : { text: e.text }
   })
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
@@ -652,7 +664,7 @@ test('an MR behind its target with nothing else failing rebases and then merges 
       // GitLab rebases it: a new head, whose pipeline is still to run, and a merge it now offers for once checks pass.
       onRebase: (path, iid) => {
         rebases.push(`${path}!${iid}`)
-        fake.mrs = [ready(12, { mergeabilityChecks: checks({ CI_MUST_PASS: 'CHECKING' }), merging: { diffHeadSha: 'rebased-12' } })]
+        fake.mrs = [ready(12, { mergeabilityChecks: checks({ CI_MUST_PASS: 'CHECKING' }), merging: { diffHeadSha: 'rebased-12', rebaseCommitSha: 'rebased-12' } })]
         fake.strategies = ['merge_when_checks_pass']
       },
     }
@@ -674,6 +686,69 @@ test('an MR behind its target with nothing else failing rebases and then merges 
   expect(toasts).toContain('!12 merges when checks pass')
   await clock.advance(60_000)
   expect(await ui.find({ type: 'Text', text: '✓ merges when checks pass' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a merge whose answer is lost on the way back is sent once, and GitLab’s own state then says it merged', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [ready(12)], isDown: false }
+  // GitLab merges it, and the edge in front of it answers 502.
+  const glitch = (operation: string) => {
+    if (operation !== 'Merge') {
+      return undefined
+    }
+    fake.mrs = fake.mrs.map(mr => ({ ...mr, state: 'merged' as const }))
+    return 502
+  }
+  const { gitlab, toasts } = engine(on, fake, {}, {}, { glitch })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  await clock.advance(3_000)
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Merge')).toHaveLength(1)
+  expect(toasts).toContain('!12 merged')
+  expect(toasts.some(toast => toast.includes('not merged'))).toBe(false)
+  await ui.unmount()
+})
+
+test('a rebase GitLab could not make says why beside the move, which can be pressed again', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [ready(12, { mergeabilityChecks: checks({ NEED_REBASE: 'FAILED', NOT_APPROVED: 'FAILED' }) })], isDown: false }
+  const onRebase = () => {
+    fake.mrs = fake.mrs.map(mr => ({ ...mr, merging: { ...mr.merging, mergeError: 'Rebase failed: resolve the conflicts locally' } }))
+  }
+  const { toasts } = engine(on, fake, {}, {}, { onRebase })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // A rebase can be undone and merges nothing, so one press makes it.
+  expect((await moveOf(ui, 12))?.label).toBe('↻ rebase')
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: '↻ rebasing…' })).toBeDefined()
+  await clock.advance(3_000)
+  expect(toasts).toContain('!12 not rebased: Rebase failed: resolve the conflicts locally')
+  expect((await moveOf(ui, 12))?.label).toBe('↻ rebase')
+  expect(await ui.find({ type: 'Text', text: 'not rebased: Rebase failed: resolve the conflicts locally' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a hand-off the session drops never says Claude has it: the reason stands beside the move, to press again', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const conflicted = rawMr(12, { ...SHOWN, mergeabilityChecks: checks({ CONFLICT: 'FAILED' }) })
+  engine(on, { mrs: [conflicted], isDown: false }, {}, {}, { remote: 'git@gitlab.com:g/p.git', drops: 'the session is stopped' })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: '⇄ conflicts · with Claude' })).toBeUndefined()
+  expect((await moveOf(ui, 12))?.label).toBe('⇄ hand conflicts to Claude')
+  expect(await ui.find({ type: 'Text', text: 'Claude was not reached: the session is stopped' })).toBeDefined()
   await ui.unmount()
 })
 

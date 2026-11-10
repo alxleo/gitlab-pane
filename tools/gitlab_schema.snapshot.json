@@ -1396,6 +1396,18 @@
             "deprecationReason": null,
             "description": null,
             "isDeprecated": false,
+            "name": "rebaseCommitSha",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
             "name": "rebaseInProgress",
             "type": {
               "kind": "NON_NULL",
