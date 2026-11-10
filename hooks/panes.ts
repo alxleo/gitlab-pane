@@ -5,10 +5,11 @@ import { closePage, readPage, readTab, setPage, setTab } from './choices'
 import { readRows } from './data'
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
-import { inboxView } from './inbox'
-import { ringStep } from './inbox-ring'
+import { inboxView, markSeen } from './inbox'
+import { arrowSteps, cardButtons, ringAfterSeen, ringStep } from './inbox-ring'
+import type { RingScroll } from './inbox-ring'
 import { ownedSections } from './inbox-rules'
-import { nextDraw, rowDrawn } from './in-flight'
+import { cardsDrawn, nextDraw, rowDrawn } from './in-flight'
 import { titleKey } from './drawing'
 
 import type { Scrolling } from '../types'
@@ -28,24 +29,47 @@ export async function noteRing($: EngineInterface, element: string): Promise<voi
   await update($, ringAtom, () => element)
 }
 
-/**
- * An arrow pressed in the pane (`by` 1 down, -1 up): on the inbox's cards, moves the focus ring to the next or previous
- * card and says it did. It does not while Mine or an MR's page shows, past the first and last card, or when the card is
- * not drawn; the arrow then scrolls, as the engine does with it.
- */
-export async function stepRing($: EngineInterface, by: 1 | -1): Promise<boolean> {
-  const [tab, page] = await Promise.all([readTab($), readPage($)])
-  if (tab !== 'inbox' || page !== '') {
-    return false
-  }
-  const [{ sections, open }, at] = await Promise.all([inboxView($), read($, ringAtom)])
+/** The open rule and its cards as the inbox last drew them: the ones the ring may go to. */
+async function drawnCards($: EngineInterface) {
+  const { sections, open } = await inboxView($)
   const rule = open[0] ?? ''
-  const key = ringStep(ownedSections(sections).find(section => section.rule === rule)?.items ?? [], rule, at, by)
-  if (key === null) {
-    return false
-  }
+  const items = ownedSections(sections).find(section => section.rule === rule)?.items ?? []
+  const drawn = cardsDrawn(rule)
+  return { rule, cards: drawn === undefined ? items : items.filter(item => drawn.includes(item.key)) }
+}
+
+/** Puts the ring on one of the pane's buttons; whether it went. */
+async function ringTo($: EngineInterface, key: string): Promise<boolean> {
   const moved = await $.ui.focus({ requestId: PANE_ID, key }).catch((error: unknown) => ({ deny: String(error) }))
   return moved.deny === undefined
+}
+
+/**
+ * A scroll the engine asks of the pane: when it is the person's arrows on the inbox's cards, moves the focus ring that
+ * many cards instead and says it did. Anything else, Mine, an MR's page, past the first and last card, scrolls as asked.
+ */
+export async function stepRing($: EngineInterface, scroll: Omit<RingScroll, 'isInboxList'>): Promise<boolean> {
+  const [tab, page] = await Promise.all([readTab($), readPage($)])
+  const steps = arrowSteps({ ...scroll, isInboxList: tab === 'inbox' && page === '' })
+  if (steps === 0) {
+    return false
+  }
+  const [{ rule, cards }, at] = await Promise.all([drawnCards($), read($, ringAtom)])
+  const key = ringStep(cards, rule, at, steps)
+  return key !== null && ringTo($, key)
+}
+
+/**
+ * ✓ on one inbox card: marks it seen and, when the ring was on that card, hands the ring to the card that takes its
+ * place, so read, ✓, read goes on from the keyboard.
+ */
+export async function seenOne($: EngineInterface, key: string): Promise<void> {
+  const [{ rule, cards }, at] = await Promise.all([drawnCards($), read($, ringAtom)])
+  const next = Object.values(cardButtons(key)).includes(at) ? ringAfterSeen(cards, rule, key) : null
+  await markSeen($, { key })
+  if (next !== null) {
+    await ringTo($, next)
+  }
 }
 
 export function readScrolling($: EngineInterface): Promise<Scrolling> {

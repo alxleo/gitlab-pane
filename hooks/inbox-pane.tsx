@@ -8,6 +8,8 @@ import { firstName, initials, shortHash } from './identity'
 import { reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
 import { ITEMS_SHOWN, cardButtons, footerButtons } from './inbox-ring'
+import { inboxDrawn } from './in-flight'
+import { seenOne } from './panes'
 import { ownedSections } from './inbox-rules'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -139,7 +141,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Box>
           )}
           <Box flexShrink={0}>
-            <Button key={buttons.seen} plain label="✓" onPress={() => markSeen($, { key: item.key }).catch(reported($, 'inbox'))} />
+            <Button key={buttons.seen} plain label="✓" onPress={() => seenOne($, item.key).catch(reported($, 'inbox'))} />
           </Box>
         </Box>
         <Box flexDirection="row" gap={1}>
@@ -182,6 +184,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       return []
     }
     const lines = []
+    const keys: string[] = []
     for (const item of section.items.slice(0, ITEMS_SHOWN)) {
       const line = itemCard(item)
       const size = measure(line, INBOX_BUDGET)
@@ -190,7 +193,10 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       }
       room -= size
       lines.push(line)
+      keys.push(item.key)
     }
+    // The focus ring's arrows walk only these.
+    inboxDrawn(section.rule, keys)
     const left = section.items.length - lines.length
     const footer = footerButtons(section.rule)
     return [

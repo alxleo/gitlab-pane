@@ -24,17 +24,55 @@ export function footerButtons(rule: string): { discuss: string; seen: string } {
 /** Where the ring stops on a card: its title, or its ✓ when it has nothing to open. */
 const stopOf = (card: RingCard): string => (card.activity.length > 0 ? cardButtons(card.key).open : cardButtons(card.key).seen)
 
+/** A scroll the engine asks of the pane, as the ring reads it; and whether the inbox's list is what the pane shows. */
+export type RingScroll = { isPerson: boolean; hasPointer: boolean; by: number; bodyRows: number; isInboxList: boolean }
+
 /**
- * The button an arrow moves the ring to, from the button `at` holding it now (`''`: none), over the open rule's cards:
- * the next card's stop down (`by` 1) or the previous one's up (`by` -1). From above the cards down lands on the first;
- * from the footer up lands on the last. `null` leaves the arrow to the engine, which scrolls: past either end, and up
- * from above the cards.
+ * How many cards a scroll moves the ring, signed, or 0 to leave it a scroll. Only the person's scroll keys count, never
+ * the wheel (it has a pointer) or a plugin's scroll, and only the arrows among them: an arrow is a row, and arrows
+ * pressed while the pane was still answering arrive summed, while a page key is the window's rows and Home or End more.
  */
-export function ringStep(cards: readonly RingCard[], rule: string, at: string, by: 1 | -1): string | null {
-  const shown = cards.slice(0, ITEMS_SHOWN)
+export function arrowSteps(scroll: RingScroll): number {
+  const rows = Math.abs(scroll.by)
+  const isArrow = rows === 1 || (rows > 0 && rows < scroll.bodyRows)
+  return scroll.isPerson && !scroll.hasPointer && scroll.isInboxList && isArrow ? scroll.by : 0
+}
+
+/** One card on from `at`, `by` 1 or -1, as `ringStep` says. */
+function oneStep(shown: readonly RingCard[], rule: string, at: string, by: 1 | -1): string | null {
   const holding = shown.findIndex(card => Object.values(cardButtons(card.key)).includes(at))
   const isBelow = Object.values(footerButtons(rule)).includes(at)
   const target = holding >= 0 ? holding + by : isBelow ? (by === -1 ? shown.length - 1 : -1) : by === 1 ? 0 : -1
   const card = shown[target]
   return card === undefined ? null : stopOf(card)
+}
+
+/**
+ * The button arrows move the ring to, from the button `at` holding it now (`''`: none), over the cards the open rule
+ * drew: `steps` cards on, down when positive, up when negative, stopping at the last there is. From above the cards
+ * down lands on the first; from the footer up lands on the last. `null` leaves the arrows to the engine, which scrolls:
+ * past either end, and up from above the cards.
+ */
+export function ringStep(cards: readonly RingCard[], rule: string, at: string, steps: number): string | null {
+  const shown = cards.slice(0, ITEMS_SHOWN)
+  const by = steps > 0 ? 1 : -1
+  let landed: string | null = null
+  for (let left = Math.abs(steps); left > 0; left -= 1) {
+    const next = oneStep(shown, rule, landed ?? at, by)
+    if (next === null) {
+      break
+    }
+    landed = next
+  }
+  return landed
+}
+
+/**
+ * Where the ring goes once the card `key` is marked seen, so the next card is ready for Enter or ✓: the card below,
+ * or above when it was the last; `null` when it was the only one or is not drawn.
+ */
+export function ringAfterSeen(cards: readonly RingCard[], rule: string, key: string): string | null {
+  const shown = cards.slice(0, ITEMS_SHOWN)
+  const at = cardButtons(key).seen
+  return shown.some(card => card.key === key) ? (oneStep(shown, rule, at, 1) ?? oneStep(shown, rule, at, -1)) : null
 }

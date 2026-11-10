@@ -132,13 +132,10 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // On the inbox an arrow moves the focus ring a card at a time instead of scrolling a row; Enter presses the card's title.
-  // A press of the arrow is the person's scroll of one row with no pointer, where a wheel tick has one.
+  // Which scrolls are arrows is `arrowSteps` in inbox-ring.ts.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
-    const by = e.by === 1 || e.by === -1 ? e.by : 0
-    if (e.origin.kind !== 'person' || e.pointer !== undefined || by === 0) {
-      return next(e)
-    }
-    return (await stepRing($, by)) ? {} : next(e)
+    const scroll = { isPerson: e.origin.kind === 'person', hasPointer: e.pointer !== undefined, by: e.by, bodyRows: e.bodyRows }
+    return (await stepRing($, scroll)) ? {} : next(e)
   }).catch(($, e, next) => next(e))
   // Where the ring lands, the person's move or the mod's, so the next arrow knows where it is. Failing to note it costs
   // only that the next arrow starts from where the ring was before.
