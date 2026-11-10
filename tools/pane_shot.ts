@@ -604,14 +604,14 @@ class Visit {
         hammerspoon(`
           local p = hs.mouse.absolutePosition()
           if math.abs(p.x - ${lua(put.x)}) <= 2 and math.abs(p.y - ${lua(put.y)}) <= 2 then ${movePointer(was)} end
-          return hs.json.encode({})`)
+          return hs.json.encode({ done = true })`)
       }
       if (this.#raisedFrom !== null && this.#window !== null) {
         hammerspoon(`
           local front = hs.window.frontmostWindow()
           local back = hs.window.get(${lua(this.#raisedFrom)})
           if front ~= nil and front:id() == ${lua(this.#window)} and back ~= nil then back:focus() end
-          return hs.json.encode({})`)
+          return hs.json.encode({ done = true })`)
       }
     } catch (error) {
       console.error(`pane-shot: could not put things back: ${messageOf(error)}`)
