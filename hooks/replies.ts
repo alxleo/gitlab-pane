@@ -2,18 +2,18 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { ensureDetail } from './detail'
-import { asFailure } from './failure'
 import { quietly } from './failures'
 import { replyMutation } from './page-documents'
 import { ask } from './graphql'
-import { joined } from './in-flight'
-import { CLOSED, isPostable, mayHavePosted, openedBox, postedOf, reasonOf, reviewed, unanswered } from './reply-model'
-import type { Posted } from './reply-model'
+import { CLOSED, decidePost, openedBox, postedOf, replyId, sayOf } from './reply-model'
+import { refusalOf } from './write-model'
+import { claimWrite, heldWrite, setWrite } from './writes'
 
 import type { Note, ReplyBox } from '../types'
 
-// The reply being written on an MR's page, and what was typed in each thread's box. The engine reads an atom only in the
-// file that declares it, so everything that reads or writes them goes through the functions below.
+// The reply box open on an MR's page, and what was typed in each thread's box. How far a reply got (confirmed, out,
+// failed) is its entry in the ledger of writes, `reply:` and the thread. The engine reads an atom only in the file that
+// declares it, so everything that reads or writes these goes through the functions below.
 const replyAtom = atom({ plugin: 'gitlab-pane', key: 'reply' } as const, CLOSED)
 // Not read by the drawing, so typing into a box redraws nothing: the box keeps what is typed in it, and a box opened again
 // starts from what was typed there before.
@@ -40,81 +40,79 @@ export function typeReply($: EngineInterface, thread: string, text: string): voi
   )
 }
 
-/** Enter in the box: its text waits to be confirmed. Nothing is sent. */
+/** Enter in the box: text with something in it waits, armed, for the press that posts exactly it. Nothing is sent. */
 export function confirmReply($: EngineInterface, thread: string, text: string): void {
-  quietly($, Promise.all([update($, typedAtom, typed => ({ ...typed, [thread]: text })), update($, replyAtom, box => (box.thread === thread ? reviewed(box, text) : box))]))
+  quietly($, armReply($, thread, text))
+}
+
+async function armReply($: EngineInterface, thread: string, text: string): Promise<void> {
+  await update($, typedAtom, typed => ({ ...typed, [thread]: text }))
+  if (text.trim() !== '') {
+    await setWrite($, replyId(thread), { kind: 'reply', state: 'armed', on: text, at: await $.clock.now() })
+  }
 }
 
 /** Back from confirming, or from a failure, to the box with the text in it. */
-export function editReply($: EngineInterface): void {
-  quietly(
-    $,
-    update($, replyAtom, (box): ReplyBox => ({ ...box, stage: 'writing', reason: '' }))
-  )
+export function editReply($: EngineInterface, thread: string): void {
+  quietly($, takeBack($, thread, true))
 }
 
-/** Closes the box; what was typed in it stays for the next time it opens. */
-export function closeReply($: EngineInterface): void {
+/** Closes the box, and drops a reply confirmed or failed under it; what was typed stays for the next time it opens. */
+export function closeReply($: EngineInterface, thread: string): void {
+  quietly($, takeBack($, thread, false))
+}
+
+async function takeBack($: EngineInterface, thread: string, isEditing: boolean): Promise<void> {
+  const held = await heldWrite($, replyId(thread))
+  if (held?.state === 'sent') {
+    return
+  }
+  await setWrite($, replyId(thread), null)
+  await update($, replyAtom, () => (isEditing ? { thread, text: held?.on ?? '' } : CLOSED))
+}
+
+/** Leaving the page: the box goes, what was typed staying; a reply confirmed, out or failed keeps its entry, to say how it ended. */
+export function putAwayReply($: EngineInterface): void {
   quietly(
     $,
     update($, replyAtom, () => CLOSED)
   )
 }
 
-/** Leaving the page: a box being written goes, what was typed staying; one posting or failed stays, to say how it ended. */
-export function putAwayReply($: EngineInterface): void {
-  quietly(
-    $,
-    update($, replyAtom, box => (box.stage === 'posting' || box.stage === 'failed' ? box : CLOSED))
-  )
-}
-
-/** A mod loading: a reply that was out when it went has lost its answer, and its box says so instead of posting for good. */
-export async function forgetPosting($: EngineInterface): Promise<void> {
-  if ((await read($, replyAtom)).stage === 'posting') {
-    await update($, replyAtom, unanswered)
-  }
-}
-
 /**
- * Posts the confirmed text under `note`'s thread on the MR `key` of `host`, as the token's owner, once: a press while it
- * is out joins it, and a box that was not confirmed sends nothing. The MR is read whole again after a reply GitLab kept,
- * or one whose fate is unknown, so the thread shows it; the box closes on success and keeps the text, saying why, on failure.
+ * Posts `text`, as confirmed and drawn under `note`'s thread on the MR `key` of `host`, as the token's owner, once
+ * (`decidePost`). The MR is read whole again after a reply GitLab kept, or one whose fate is unknown, so the thread shows
+ * it; the entry goes on success and says why on failure.
  */
-export function postReply($: EngineInterface, key: string, host: string, note: Note): void {
-  quietly(
-    $,
-    joined(`reply:${note.url}`, () => post($, key, host, note))
-  )
+export function postReply($: EngineInterface, key: string, host: string, note: Note, text: string): void {
+  quietly($, post($, key, host, note, text))
 }
 
-async function post($: EngineInterface, key: string, host: string, note: Note): Promise<void> {
-  const box = await read($, replyAtom)
+async function post($: EngineInterface, key: string, host: string, note: Note, text: string): Promise<void> {
   const { answer } = note
-  if (answer === undefined || !isPostable(box, note.url)) {
+  if (answer === undefined) {
     return
   }
-  await update($, replyAtom, () => ({ ...box, stage: 'posting', reason: '' }))
-  let posted: Posted
-  let isUnknown = false
-  try {
-    posted = postedOf(host, await ask($, host, replyMutation(answer.mr, answer.thread, box.text)))
-  } catch (error) {
-    const failure = asFailure(error)
-    isUnknown = mayHavePosted(failure)
-    posted = { isPosted: false, reason: reasonOf(failure) }
+  const id = replyId(note.url)
+  const at = await $.clock.now()
+  if ((await claimWrite($, id, held => decidePost(held, text, at))) === null) {
+    return
   }
-  if (posted.isPosted || isUnknown) {
-    // The box settles whatever this read does: a reply GitLab kept shows at the next read if not at this one.
+  const refusal = await ask($, host, replyMutation(answer.mr, answer.thread, text)).then(
+    response => postedOf(host, response),
+    (error: unknown) => refusalOf(error)
+  )
+  if (refusal === null || refusal.mayHaveLanded) {
+    // The entry settles whatever this read does: a reply GitLab kept shows at the next read if not at this one.
     await ensureDetail($, key, true).catch(() => undefined)
   }
-  if (posted.isPosted) {
+  if (refusal === null) {
     await Promise.all([
+      setWrite($, id, null),
       update($, typedAtom, typed => Object.fromEntries(Object.entries(typed).filter(([thread]) => thread !== note.url))),
       update($, replyAtom, current => (current.thread === note.url ? CLOSED : current)),
     ])
     return
   }
-  const { reason } = posted
-  await update($, replyAtom, (current): ReplyBox => (current.thread === note.url ? { ...current, stage: 'failed', reason } : current))
+  await setWrite($, id, { kind: 'reply', state: 'failed', on: text, at, say: sayOf(refusal) })
 }

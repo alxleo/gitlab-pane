@@ -5,8 +5,9 @@
 import type { MergeMutation, MergeMutationVariables, MergeStatusQuery, MergeStrategyEnum, MoveStateQuery, MoveStateQueryVariables } from './gitlab.generated.ts'
 import type { Operations, RawResponse, Request } from './gitlab-documents.ts'
 import { dataOf, isRecord, isSome, parseJson } from './decode.ts'
-import { why } from './next-move.ts'
-import type { Fresh, Refusal } from './next-move.ts'
+import type { Fresh } from './next-move.ts'
+import { why } from './write-model.ts'
+import type { Refusal } from './write-model.ts'
 
 import type { HostFeatures } from '../types'
 

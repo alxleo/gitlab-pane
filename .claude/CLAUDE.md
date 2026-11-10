@@ -38,7 +38,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 | Constraint | Consequence |
 | --- | --- |
 | A hook's matcher is read from literals and consts in `register.tsx` only | `PANE` lives there, beside `PANE_ID` in `panes.ts`; `tests/register.test.ts` keeps them equal. |
-| An atom is read and written only in the file that declares it (`claude plugin validate` fails otherwise) | Go through that file's functions: `data.ts`, `choices.ts`, `panes.ts`, `failures.ts`, `inbox.ts`, `job-failures.ts`, `replies.ts`. |
+| An atom is read and written only in the file that declares it (`claude plugin validate` fails otherwise) | Go through that file's functions: `data.ts`, `choices.ts`, `panes.ts`, `failures.ts`, `inbox.ts`, `job-failures.ts`, `replies.ts`, `writes.ts` (every write to GitLab: what was confirmed, sent, and how it ended). |
 | `$` goes in no object, and is passed on only into function declarations (`function quietly($, …)`), not arrow consts | The draw kit (`kit.tsx`) holds no `$`; `buildCard($, kit, …)` takes both. |
 | A render hook may not write an atom | What it records (`health` in `register.tsx`, `drawn` in `in-flight.ts`) cannot be one. |
 | The desktop draws nothing for a tree past 100,000 characters | `DRAWING_BUDGET` in `drawing.ts` is 85,000. Measure with `measure`; drop rows rather than overshoot. |

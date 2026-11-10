@@ -2,11 +2,12 @@
 // only where GitLab's checks name it and the signed-in user may make it, so a card has a move only when that move is what
 // moves the MR along; waiting on people, on a pipeline or on a fix stays as quiet as it was. Pure, on plain data.
 import { checkWords, failureTone, verdictOf } from './attention.ts'
-import { kindOf, messageOf } from './failure.ts'
 import type { MergeStrategyEnum } from './gitlab.generated.ts'
 import { foreign, line, URL_ROOM, type ModelLine } from './model-text.ts'
+import { liveOf, why } from './write-model.ts'
+import type { Refusal } from './write-model.ts'
 
-import type { MoveKind, MrCard, Pressed } from '../types'
+import type { MoveKind, MrCard, Pressed, Write } from '../types'
 
 /** How long a merge stays armed after its first press; a second press within it merges, and past it the press is forgotten. */
 export const ARMED_MS = 10_000
@@ -33,6 +34,20 @@ export const MOVES: Record<MoveKind, { label: string; underWay: string; check: s
 const said = (label: string, check: string | null): Move => ({ label, check, press: null, isArmed: false, failed: null })
 const underWay = (kind: MoveKind): Move => said(MOVES[kind].underWay, MOVES[kind].check)
 
+/** The ledger's id of the press on a card's move, by its card key. */
+export const moveId = (key: string): string => `move:${key}`
+
+const isMoveKind = (kind: string): kind is MoveKind => kind in MOVES
+
+/** The ledger's entry as a press on a move, or none when it is another feature's. */
+export function pressOf(write: Write | undefined): Pressed | undefined {
+  if (write === undefined) {
+    return undefined
+  }
+  const { kind } = write
+  return isMoveKind(kind) ? { ...write, kind } : undefined
+}
+
 /**
  * What a press on a row's move records, against the press this session holds on the MR (as it holds at `at`): the move
  * `sent`, `armed` to ask for the press that confirms one that merges, `handed` for conflicts, or null for nothing (a
@@ -41,15 +56,15 @@ const underWay = (kind: MoveKind): Move => said(MOVES[kind].underWay, MOVES[kind
  */
 export function decidePress(press: { kind: MoveKind; does: 'arm' | 'make' }, held: Pressed | undefined, head: string, at: number): Pressed | null {
   const live = liveOf(held, at)
-  const isSame = live !== undefined && live.kind === press.kind && live.head === head
+  const isSame = live !== undefined && live.kind === press.kind && live.on === head
   if (press.kind === 'conflicts') {
-    return isSame && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', head, at }
+    return isSame && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', on: head, at }
   }
   if (live?.state === 'sent') {
     return null
   }
   const isConfirmed = !MOVES[press.kind].isMerging || (isSame && live.state === 'armed')
-  return { kind: press.kind, state: press.does === 'make' && isConfirmed ? 'sent' : 'armed', head, at }
+  return { kind: press.kind, state: press.does === 'make' && isConfirmed ? 'sent' : 'armed', on: head, at }
 }
 
 /**
@@ -99,7 +114,7 @@ export function nextMove(card: MrCard, pressed: Pressed | undefined, isHere: boo
   if (merging?.isRebasing === true) {
     return underWay('rebase')
   }
-  const press = pressed !== undefined && pressed.head === merging?.head ? pressed : undefined
+  const press = pressed !== undefined && pressed.on === merging?.head ? pressed : undefined
   if (press?.state === 'sent') {
     return underWay(press.kind)
   }
@@ -126,15 +141,6 @@ export function nextMove(card: MrCard, pressed: Pressed | undefined, isHere: boo
 /** How often the pane looks at an MR while GitLab carries out a move, and how many times before it stops looking. */
 export const FOLLOW_MS = 3_000
 export const FOLLOW_TRIES = 40
-
-/**
- * A press as it holds now: one sent to GitLab only while the pane could still be following it (twice its looks' time, as
- * each look also waits on GitLab), so a session closed mid-move leaves no `merging…` behind. Armed presses are taken back
- * by a timer, and a hand-off or a failure holds until the head moves.
- */
-export function liveOf(pressed: Pressed | undefined, now: number): Pressed | undefined {
-  return pressed?.state === 'sent' && now - pressed.at > 2 * FOLLOW_MS * FOLLOW_TRIES ? undefined : pressed
-}
 
 /** One MR as GitLab says it just now (`MoveState`): enough to make a move, and to see it through. */
 export type Fresh = {
@@ -169,22 +175,6 @@ const nowStrategy = (fresh: Fresh): MergeStrategyEnum | null => (offers(fresh, '
 /** A merge once checks pass joins the train where there is one. Null while GitLab offers neither (no pipeline yet). */
 const whenStrategy = (fresh: Fresh): MergeStrategyEnum | null =>
   (['ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS', 'MERGE_WHEN_CHECKS_PASS'] as const).find(strategy => offers(fresh, strategy)) ?? null
-
-/** GitLab's words for why a move failed, or an error's, on one short line for a row and a toast. */
-export const why = (error: string): string => foreign(error, 120)
-
-/**
- * Why a merge or rebase did not take, and whether it may have reached GitLab all the same: a dropped connection, a
- * timeout or a server error may have come after GitLab took it, and such a write is followed, never sent again.
- */
-export type Refusal = { reason: string; mayHaveLanded: boolean }
-
-/** An error from sending a write as a refusal. The engine's own refusal (`… refused: …`, a policy) never left the machine. */
-export function refusalOf(error: unknown): Refusal {
-  const message = messageOf(error)
-  const kind = kindOf(error)
-  return { reason: why(message), mayHaveLanded: (kind === 'network' || kind === 'timeout' || kind === 'server') && !/\brefused:/u.test(message) }
-}
 
 /**
  * The first step of a move GitLab makes, from the MR as GitLab says it just before. A move that merges is made only on

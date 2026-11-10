@@ -12,7 +12,6 @@ import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
 import { forgetScrolling, openPane, readScrolling } from './panes'
-import { forgetPosting } from './replies'
 import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
@@ -37,7 +36,6 @@ export const register: Register = (on, options) => {
       rememberLogs($, options.failureLogs),
       forgetProblems($),
       forgetScrolling($),
-      forgetPosting($),
     ])
     health.loadedAt = new Date(await $.clock.now()).toISOString().slice(11, 19)
     await $.command.register({

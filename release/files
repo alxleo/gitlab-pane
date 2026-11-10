@@ -65,6 +65,8 @@ hooks/tokens.ts
 hooks/tools.ts
 hooks/view.ts
 hooks/wake.ts
+hooks/write-model.ts
+hooks/writes.ts
 hooks/equal.ts
 hooks/face-model.ts
 hooks/job-failures.ts

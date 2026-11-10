@@ -7,10 +7,12 @@ import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
 import { closeReply, confirmReply, editReply, openReply, postReply, typeReply } from './replies'
+import { replyId } from './reply-model'
+import { liveOf } from './write-model'
 
 import type { MarkdownText, Part } from './markdown'
 import type { PageHead } from './page-lines'
-import type { MrCard, Note, ReplyBox } from '../types'
+import type { MrCard, Note, ReplyBox, Write } from '../types'
 
 /** Room kept for the link that says the rest is on GitLab. */
 const CUT_NOTE_SIZE = 300
@@ -18,16 +20,16 @@ const CUT_NOTE_SIZE = 300
 /**
  * How a page is drawn: `folds` are the `<details>` drawn the other way from how GitLab first shows them, `focus` the
  * person whose comments alone it shows (empty for the whole MR), `head` what it says of the ticket and the merge, `reply`
- * the reply being written under one of its threads.
+ * the reply box open under one of its threads, `writes` the ledger that says how far each reply got.
  */
-export type PageView = { folds: string[]; focus: string; head: PageHead; now: number; reply: ReplyBox }
+export type PageView = { folds: string[]; focus: string; head: PageHead; now: number; reply: ReplyBox; writes: Readonly<Record<string, Write>> }
 
 /**
  * One MR whole, as a page of its own drawn alone: the jobs, threads and bot comments that need acting on take the room first,
  * then the description what is left, cut where it runs out. Opened on one person, it shows what they wrote and leads on to
  * the whole MR.
  */
-export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now, reply }: PageView) {
+export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now, reply, writes }: PageView) {
   const { Box, Text, Button, Link, Markdown, Code, Input } = $.ui.resolve(e)
   /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
   const markdown = (text: MarkdownText) => <Markdown text={text} />
@@ -140,47 +142,52 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     if (e.surface === 'mobile' || thread.answer === undefined) {
       return []
     }
+    const tag = shortHash(thread.url)
+    const cancel = <Button key={`reply-cancel-${tag}`} plain dimColor label="cancel" onPress={() => closeReply($, thread.url)} />
+    // How far a reply under this thread got is its entry in the ledger of writes; without one, the box or the press that opens it.
+    const write = liveOf(writes[replyId(thread.url)], now)
+    if (write?.state === 'sent') {
+      return [<Text dimColor>posting…</Text>]
+    }
+    if (write?.state === 'armed' || write?.state === 'failed') {
+      // Drawn as a reply is, under a byline that says it is not one yet.
+      return [
+        <Box flexDirection="column" paddingLeft={2}>
+          <Box flexDirection="row" gap={1}>
+            <Text weight="semibold">you</Text>
+            <Text dimColor>not posted yet</Text>
+          </Box>
+          <Text>{write.on}</Text>
+        </Box>,
+        ...(write.state === 'failed' ? [<Text color="warning">{write.say}</Text>] : []),
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+          <Button
+            key={`reply-post-${tag}`}
+            variant="primary"
+            label={write.state === 'failed' ? 'post again' : 'post as you'}
+            onPress={() => postReply($, mr.key, mr.host, thread, write.on)}
+          />
+          <Button key={`reply-edit-${tag}`} plain label="edit" onPress={() => editReply($, thread.url)} />
+          {cancel}
+        </Box>,
+      ]
+    }
     if (reply.thread !== thread.url) {
-      return [<Button key={`reply-open-${shortHash(thread.url)}`} plain dimColor label="↩ reply" onPress={() => openReply($, thread.url)} />]
+      return [<Button key={`reply-open-${tag}`} plain dimColor label="↩ reply" onPress={() => openReply($, thread.url)} />]
     }
-    const cancel = <Button key="reply-cancel" plain dimColor label="cancel" onPress={() => closeReply($)} />
-    switch (reply.stage) {
-      case 'writing':
-        return [
-          <Input
-            key="reply-box"
-            rows={3}
-            autoFocus
-            value={reply.text}
-            placeholder="Your reply, posted on GitLab as you"
-            submitLabel="review"
-            onInput={text => typeReply($, thread.url, text)}
-            onSubmit={text => confirmReply($, thread.url, text)}
-          />,
-          cancel,
-        ]
-      case 'posting':
-        return [<Text dimColor>posting…</Text>]
-      case 'confirming':
-      case 'failed':
-      default:
-        // Drawn as a reply is, under a byline that says it is not one yet.
-        return [
-          <Box flexDirection="column" paddingLeft={2}>
-            <Box flexDirection="row" gap={1}>
-              <Text weight="semibold">you</Text>
-              <Text dimColor>not posted yet</Text>
-            </Box>
-            <Text>{reply.text}</Text>
-          </Box>,
-          ...(reply.stage === 'failed' ? [<Text color="warning">{reply.reason}</Text>] : []),
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            <Button key="reply-post" variant="primary" label={reply.stage === 'failed' ? 'post again' : 'post as you'} onPress={() => postReply($, mr.key, mr.host, thread)} />
-            <Button key="reply-edit" plain label="edit" onPress={() => editReply($)} />
-            {cancel}
-          </Box>,
-        ]
-    }
+    return [
+      <Input
+        key="reply-box"
+        rows={3}
+        autoFocus
+        value={reply.text}
+        placeholder="Your reply, posted on GitLab as you"
+        submitLabel="review"
+        onInput={text => typeReply($, thread.url, text)}
+        onSubmit={text => confirmReply($, thread.url, text)}
+      />,
+      cancel,
+    ]
   }
   const threads = mr.openThreads.map(thread => (
     <Box flexDirection="column" gap={1}>

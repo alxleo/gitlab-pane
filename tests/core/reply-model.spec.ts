@@ -1,13 +1,15 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { CLOSED, EXCERPT_LINES, LINE_MOST, hunkOf, isPostable, mayHavePosted, openedBox, postedOf, reasonOf, reviewed, unanswered } from '../../hooks/reply-model.ts'
+import { CLOSED, decidePost, EXCERPT_LINES, LINE_MOST, hunkOf, openedBox, postedOf, replyId, sayOf } from '../../hooks/reply-model.ts'
 import type { DiffLine } from '../../hooks/reply-model.ts'
+import { refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
+import { Failure } from '../../hooks/failure.ts'
 import type { ReplyMutation } from '../../hooks/gitlab.generated.ts'
 import type { RawResponse } from '../../hooks/gitlab-documents.ts'
 
-import type { FailureKind } from '../../types'
+import type { FailureKind, Write } from '../../types'
 
 const context = (old: number, now: number, text: string): DiffLine => ({ oldLine: old, newLine: now, type: null, text: ` ${text}` })
 const removed = (old: number, text: string): DiffLine => ({ oldLine: old, newLine: null, type: 'old', text: `-${text}` })
@@ -75,66 +77,57 @@ test('a hunk always says as many old and new lines as it holds, and never more l
 })
 
 test('a reply GitLab kept is posted; one it refused, would not keep, or ran as quick actions alone says why in one line', () => {
-  expect(postedOf('gitlab.com', answer({ data: { createNote: { errors: [], note: { id: 'gid://gitlab/Note/9' }, quickActionsStatus: null } } }))).toEqual({ isPosted: true })
+  /** GitLab answered, and kept no note: the reply was not made. */
+  const not = (reason: string) => ({ reason, mayHaveLanded: false })
+  expect(postedOf('gitlab.com', answer({ data: { createNote: { errors: [], note: { id: 'gid://gitlab/Note/9' }, quickActionsStatus: null } } }))).toBeNull()
   // A token of read_api alone may not write: GitLab refuses the whole mutation, with no word of the scope.
-  const refused = answer({
+  const refusal = answer({
     data: { createNote: null },
     errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }],
   })
-  expect(postedOf('gitlab.com', refused)).toEqual({
-    isPosted: false,
-    reason:
-      "gitlab.com refused the reply: The resource that you are attempting to access does not exist or you don't have permission to perform this action. A token with only the read_api scope is refused so; replying needs api.",
-  })
-  expect(postedOf('gitlab.com', answer({ data: { createNote: { errors: ["Note can't be blank", 'Note is\ntoo long'], note: null, quickActionsStatus: null } } }))).toEqual({
-    isPosted: false,
-    reason: "gitlab.com did not post the reply: Note can't be blank; Note is too long",
-  })
-  expect(postedOf('gitlab.com', answer({ data: { createNote: { errors: [], note: null, quickActionsStatus: { commandsOnly: true, errorMessages: [] } } } }))).toEqual({
-    isPosted: false,
-    reason: 'gitlab.com ran the quick actions in the reply and kept no note',
-  })
+  expect(postedOf('gitlab.com', refusal)).toEqual(
+    not(
+      "gitlab.com refused the reply: The resource that you are attempting to access does not exist or you don't have permission to perform this action. A token with only the read_api scope is refused so; replying needs api."
+    )
+  )
+  expect(postedOf('gitlab.com', answer({ data: { createNote: { errors: ["Note can't be blank", 'Note is\ntoo long'], note: null, quickActionsStatus: null } } }))).toEqual(
+    not("gitlab.com did not post the reply: Note can't be blank; Note is too long")
+  )
+  expect(postedOf('gitlab.com', answer({ data: { createNote: { errors: [], note: null, quickActionsStatus: { commandsOnly: true, errorMessages: [] } } } }))).toEqual(
+    not('gitlab.com ran the quick actions in the reply and kept no note')
+  )
   expect(
     postedOf(
       'gitlab.com',
       answer({ data: { createNote: { errors: [], note: null, quickActionsStatus: { commandsOnly: true, errorMessages: ['Could not apply merge command.'] } } } })
     )
-  ).toEqual({ isPosted: false, reason: 'gitlab.com ran the quick actions in the reply and kept no note: Could not apply merge command.' })
-  expect(postedOf('gitlab.com', answer({ data: null }))).toEqual({ isPosted: false, reason: 'gitlab.com sent no answer to the reply' })
-  // No answer at all: a refused token says so; a dropped connection may have dropped after GitLab kept the reply.
-  expect(reasonOf({ kind: 'unauthorized', message: 'gitlab.com refused the token from GITLAB_TOKEN (HTTP 403): it needs the api scope' })).toBe(
-    'gitlab.com refused the token from GITLAB_TOKEN (HTTP 403): it needs the api scope'
-  )
-  expect(reasonOf({ kind: 'network', message: 'gitlab.com failed: connection reset' })).toBe(
-    'gitlab.com failed: connection reset. It may have reached GitLab: look in the thread before posting again.'
-  )
-  // GitLab's edge answers 52x now and then, after GitLab itself may have kept the reply.
-  expect(reasonOf({ kind: 'server', message: 'gitlab.com answered HTTP 524' })).toBe(
-    'gitlab.com answered HTTP 524. It may have reached GitLab: look in the thread before posting again.'
-  )
-  const kinds: FailureKind[] = ['network', 'timeout', 'server', 'unauthorized', 'bad-answer', 'no-token']
-  expect(kinds.map(kind => mayHavePosted({ kind }))).toEqual([true, true, true, false, false, false])
+  ).toEqual(not('gitlab.com ran the quick actions in the reply and kept no note: Could not apply merge command.'))
+  expect(postedOf('gitlab.com', answer({ data: null }))).toEqual(not('gitlab.com sent no answer to the reply'))
+  // No answer at all: a refused token says so; a dropped connection, or GitLab's edge answering 52x, may have come after
+  // GitLab kept the reply.
+  const failed = (kind: FailureKind, message: string) => sayOf(refusalOf(new Failure(kind, message)))
+  expect(failed('unauthorized', 'gitlab.com refused the token (HTTP 403): it needs the api scope')).toBe('gitlab.com refused the token (HTTP 403): it needs the api scope')
+  expect(failed('network', 'gitlab.com failed: connection reset')).toBe('gitlab.com failed: connection reset. It may have reached GitLab: look in the thread before posting again.')
+  expect(failed('server', 'gitlab.com answered HTTP 524')).toBe('gitlab.com answered HTTP 524. It may have reached GitLab: look in the thread before posting again.')
 })
 
-test('a reply box opens on what was last typed for its thread, asks to confirm only text with something in it, and posts only from there', () => {
+test('a reply box opens on what was last typed for its thread; each thread’s reply has its own entry in the ledger', () => {
   const thread = 'https://gitlab.com/g/p/-/merge_requests/12#note_1'
-  const open = openedBox(thread, { [thread]: 'half a thought' })
-  expect(open).toEqual({ thread, text: 'half a thought', stage: 'writing', reason: '' })
+  expect(openedBox(thread, { [thread]: 'half a thought' })).toEqual({ thread, text: 'half a thought' })
   expect(openedBox('other', { [thread]: 'half a thought' }).text).toBe('')
-  expect(isPostable(open, thread)).toBe(false)
-  // Enter on nothing, or on spaces, keeps the box open with what is in it.
-  expect(reviewed(open, '  \n')).toEqual({ ...open, text: '  \n' })
-  const confirming = reviewed(open, 'Done, renamed.')
-  expect(confirming).toEqual({ thread, text: 'Done, renamed.', stage: 'confirming', reason: '' })
-  expect([isPostable(confirming, thread), isPostable(confirming, 'other')]).toEqual([true, false])
-  expect(isPostable({ ...confirming, stage: 'failed', reason: 'down' }, thread)).toBe(true)
-  expect(isPostable({ ...confirming, stage: 'posting' }, thread)).toBe(false)
-  expect(isPostable(CLOSED, '')).toBe(false)
-  // A reload while a reply was out loses its answer: the box says so and offers the text again, never stays posting.
-  expect(unanswered({ ...confirming, stage: 'posting' })).toEqual({
-    ...confirming,
-    stage: 'failed',
-    reason: 'The pane reloaded before GitLab answered. It may have reached GitLab: look in the thread before posting again.',
-  })
-  expect(unanswered(confirming)).toBe(confirming)
+  expect(CLOSED).toEqual({ thread: '', text: '' })
+  expect(replyId(thread)).toBe(`reply:${thread}`)
+})
+
+test('post sends exactly the text it was drawn with, once, and only while that text waits confirmed or failed', () => {
+  const at = 1_000
+  const held = (state: 'armed' | 'sent' | 'handed', on = 'Renamed it.'): Write => ({ kind: 'reply', state, on, at: 0 })
+  expect(decidePost(held('armed'), 'Renamed it.', at)).toEqual({ kind: 'reply', state: 'sent', on: 'Renamed it.', at })
+  expect(decidePost({ kind: 'reply', state: 'failed', on: 'Renamed it.', at: 0, say: 'HTTP 502' }, 'Renamed it.', at)?.state).toBe('sent')
+  // A second press, or one while the reply is out, sends nothing; nor does a drawing older than an edit, nor no confirm.
+  expect(decidePost(held('sent'), 'Renamed it.', at)).toBeNull()
+  expect(decidePost(held('armed', 'Renamed it, and more.'), 'Renamed it.', at)).toBeNull()
+  expect(decidePost(undefined, 'Renamed it.', at)).toBeNull()
+  // One a closed session left out has lost its answer, and may be posted again once looked for.
+  expect(decidePost(held('sent'), 'Renamed it.', SENT_HOLDS_MS + 1)?.state).toBe('sent')
 })

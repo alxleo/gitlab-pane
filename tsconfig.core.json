@@ -54,6 +54,7 @@
     "hooks/closers.ts",
     "hooks/reconcile.ts",
     "hooks/reply-model.ts",
+    "hooks/write-model.ts",
     "hooks/page-documents.ts",
     "hooks/status.ts",
     "hooks/svg.ts",

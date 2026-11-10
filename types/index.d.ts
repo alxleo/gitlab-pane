@@ -51,11 +51,17 @@ export type Merging = {
 export type MoveKind = 'merge' | 'rebase' | 'rebase-merge' | 'conflicts'
 
 /**
- * A press this session made on a move, by card key, kept until the MR's head moves: armed, waiting for the press that
- * confirms a merge; sent, while GitLab carries it out; handed to Claude; or failed, with GitLab's reason in a line, which
- * the row says beside the move until it is pressed again. `head` is the head it was made on.
+ * Something this session set out to write to GitLab, by its id in the ledger (`writes.ts`): armed, waiting for the press
+ * that confirms it; sent, while GitLab carries it out; handed on (to Claude), which takes as long as it takes; or failed,
+ * with why in a line, said beside it until it is tried again. `on` is what it was confirmed for (a merge's head, a
+ * reply's text), so a confirm holds for what the person saw and nothing newer.
  */
-export type Pressed = { kind: MoveKind; state: 'armed' | 'sent' | 'handed'; head: string; at: number } | { kind: MoveKind; state: 'failed'; head: string; at: number; say: string }
+export type Write<Kind extends string = string> =
+  | { kind: Kind; state: 'armed' | 'sent' | 'handed'; on: string; at: number }
+  | { kind: Kind; state: 'failed'; on: string; at: number; say: string }
+
+/** A press this session made on a move, by card key, kept until the MR's head moves (`on`). */
+export type Pressed = Write<MoveKind>
 
 /** What happened to an MR that an inbox rule counts; each has its own glyph and word in the pane. */
 export type InboxKind =
@@ -114,11 +120,10 @@ export type Note = {
 }
 
 /**
- * The one reply being written on an MR's page: the thread it answers (by its first note's address; empty while there is
- * none), the text, and how far it got. `writing` shows the box, `confirming` the text and the press that posts it,
- * `posting` that it is out, `failed` the text again with why.
+ * The one reply box open on an MR's page: the thread it answers (by its first note's address; empty while none is open)
+ * and the text it opened with. How far the reply got is its entry in the ledger of writes (`Write`).
  */
-export type ReplyBox = { thread: string; text: string; stage: 'writing' | 'confirming' | 'posting' | 'failed'; reason: string }
+export type ReplyBox = { thread: string; text: string }
 
 /** Someone other than the author, a bot included, who reviewed or commented. */
 export type Person = {
@@ -468,8 +473,8 @@ declare module 'claude-code' {
       reported: Problems
       /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
       logs: boolean
-      /** This session's presses on merges, rebases and conflicts, by card key. */
-      pressed: Record<string, Pressed>
+      /** What this session set out to write to GitLab, by id: merges, rebases and hand-offs (`move:<card key>`), replies (`reply:<thread>`). */
+      writes: Record<string, Write>
       /** The reply being written on an MR's page, if any. */
       reply: ReplyBox
       /** What was last typed in the reply box of each thread, by its first note's address; no drawing reads it. */

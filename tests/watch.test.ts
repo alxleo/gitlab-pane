@@ -1001,14 +1001,14 @@ test('a reply under a thread is sent only once confirmed and then shows in the t
   expect(reads).not.toContain('Reply')
   expect(await ui.find({ type: 'Input' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'Renamed it to doubled.' })).toBeDefined()
-  expect((await ui.find({ type: 'Button', key: 'reply-post' }))?.props.label).toBe('post as you')
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post as you')
 
   // GitLab refuses it: the pane says why, and the text stays to post again.
-  await ui.press({ key: 'reply-post' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
   expect(reads.filter(read => read === 'Reply')).toHaveLength(1)
   expect((await ui.find({ type: 'Text', text: /refused the reply: .* replying needs api\.$/u }))?.props.color).toBe('warning')
   expect(await ui.find({ type: 'Text', text: 'Renamed it to doubled.' })).toBeDefined()
-  expect((await ui.find({ type: 'Button', key: 'reply-post' }))?.props.label).toBe('post again')
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post again')
 
   // GitLab takes it: the MR is read again at once, and the reply is in the thread.
   const posted: ReplyMutationVariables[] = []
@@ -1018,11 +1018,11 @@ test('a reply under a thread is sent only once confirmed and then shows in the t
     fake.mrs = [rawMr(12, { updatedAt: stamp(clock), discussions: { nodes: [answered] } })]
     return { data: { createNote: { errors: [], note: { id: 'gid://gitlab/Note/999' }, quickActionsStatus: null } } }
   }
-  await ui.press({ key: 'reply-post' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
   expect(posted).toEqual([{ mr: mrId('12'), thread: threadId(0), body: 'Renamed it to doubled.' }])
   expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('Renamed it to doubled.')
   expect(await ui.find({ type: 'Text', text: 'Renamed it to doubled.' })).toBeUndefined()
-  expect(await ui.find({ type: 'Button', key: 'reply-post' })).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))).toBeUndefined()
   await ui.unmount()
 
   // A phone may not have been sent a text field: the thread links to GitLab, and offers no reply.
@@ -1045,7 +1045,7 @@ test('a reply whose answer GitLab’s edge lost is sent once, says it may have p
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-open-'))?.key ?? '' })
   await ui.input({ key: 'reply-box', text: 'Renamed.' })
   const reads = gitlab.requests.filter(request => request === 'gitlab.com Pinned').length
-  await ui.press({ key: 'reply-post' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
   // A write is never sent twice, and the MR is read again in case it was kept.
   expect(gitlab.requests.filter(request => request === 'gitlab.com Reply')).toHaveLength(1)
   expect(gitlab.requests.filter(request => request === 'gitlab.com Pinned').length).toBe(reads + 1)
@@ -1055,7 +1055,7 @@ test('a reply whose answer GitLab’s edge lost is sent once, says it may have p
   await ui.press({ key: 'back-bottom' })
   await open()
   expect(await ui.find({ type: 'Text', text: maybe })).toBeDefined()
-  expect((await ui.find({ type: 'Button', key: 'reply-post' }))?.props.label).toBe('post again')
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post again')
   await ui.unmount()
 })
 
@@ -1098,9 +1098,9 @@ test('a reply GitLab kept closes its box even when the MR cannot be read again a
     fake.isDown = true
     return { data: { createNote: { errors: [], note: { id: 'gid://gitlab/Note/7' }, quickActionsStatus: null } } }
   }
-  await ui.press({ key: 'reply-post' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
   expect(await ui.find({ type: 'Text', text: 'posting…' })).toBeUndefined()
-  expect(await ui.find({ type: 'Button', key: 'reply-post' })).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))).toBeUndefined()
   expect((await ui.findAll({ type: 'Button' })).some(keyed('reply-open-'))).toBe(true)
   await ui.unmount()
 })
