@@ -15,8 +15,9 @@ import {
   endOf,
   endPass,
   failedAsks,
-  isMoving,
+  isMovingTickets,
   isStillOpen,
+  liveTargets,
   moveTargets,
   noStep,
   plan,
@@ -24,7 +25,7 @@ import {
   startKey,
   storeKey,
 } from './jira-moves'
-import type { Ending, Kept, Move, MoveMemory, MoveStep } from './jira-moves'
+import type { Ending, Kept, MoveMemory, MoveStep, TicketMove } from './jira-moves'
 import { runJson } from './tools'
 
 import type { MoveTargets, MrCard, OwnMrs } from '../types'
@@ -37,9 +38,13 @@ const ownAtom = atom({ plugin: 'gitlab-pane', key: 'ownMrs' } as const, {})
 
 const TIMEOUT_MS = 60_000
 
-/** A mod loading takes the `jiraInReview` and `jiraOnMerge` settings. */
+/**
+ * A mod loading takes the `jiraInReview` and `jiraOnMerge` settings, and forgets who the user is on each host, which the
+ * inbox reads again: a host the settings no longer name then has no merged MRs to move tickets for.
+ */
 export async function setMoveTargets($: EngineInterface, inReview: unknown, onMerge: unknown): Promise<void> {
   await update($, targetsAtom, () => moveTargets(inReview, onMerge))
+  await update($, ownAtom, () => ({}))
 }
 
 /** What the inbox's read of the user's own MRs on a host said: who they are there, and which merged lately. */
@@ -77,11 +82,11 @@ async function readKept($: EngineInterface): Promise<MoveMemory> {
 }
 
 /** Tries a move's statuses in turn with acli, until one ends it. */
-async function transition($: EngineInterface, move: Move, now: number): Promise<Ending> {
+async function transition($: EngineInterface, move: TicketMove, now: number): Promise<Ending> {
   for (const name of move.names) {
     const said = await runJson($, 'acli', transitionArgs(move.ticket, name), raw => readTransition(raw, move.ticket), { timeoutMs: TIMEOUT_MS })
     if (!said.ok) {
-      await record($, 'moves', new Failure(said.kind, `${move.ticket}: ${said.reason}`))
+      await record($, 'jira-moves', new Failure(said.kind, `${move.ticket}: ${said.reason}`))
     }
     const ended = endOf(move, name, said.ok ? said.value : { kind: 'failed', reason: said.reason }, now)
     if (ended !== null) {
@@ -98,32 +103,31 @@ async function transition($: EngineInterface, move: Move, now: number): Promise<
 export function moveTickets($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
   return joined('jira-moves', async () => {
     const [browse, set, own, started, now] = await Promise.all([readBrowse($), read($, targetsAtom), read($, ownAtom), startedSteps($), $.clock.now()])
-    // Without a Jira site no step is on, whatever its setting says.
-    const targets = browse !== '' ? set : NO_TARGETS
-    const memory = isMoving(targets) ? await readKept($) : null
+    const targets = liveTargets(browse, set)
+    const memory = isMovingTickets(targets) ? await readKept($) : null
     const steps = plan({ rows, own, targets, memory, started, now })
     await Promise.all(steps.drop.map(step => $.store.delete(startKey(step))))
     if (steps.wait !== null) {
-      await record($, 'moves', new Failure('failed', steps.wait))
+      await record($, 'jira-moves', new Failure('failed', steps.wait))
     }
     await Promise.all(steps.forget.map(key => $.store.delete(key)))
     await keep($, steps.found)
     await Promise.all(steps.start.map(step => $.store.set(startKey(step), now)))
     if (steps.isClear) {
-      await clear($, 'moves')
+      await clear($, 'jira-moves')
     }
     if (memory === null || steps.take.length === 0) {
       return
     }
     const searched = await runJson($, 'acli', searchArgs([...new Set(steps.take.map(one => one.ticket))]), readTickets, { timeoutMs: TIMEOUT_MS })
     if (!searched.ok) {
-      await record($, 'moves', new Failure(searched.kind, searched.reason))
+      await record($, 'jira-moves', new Failure(searched.kind, searched.reason))
       await keep($, failedAsks(steps.take, now))
       return
     }
     const { moves, endings, problem } = afterSearch(steps.take, searched.value, targets, memory, now)
     if (problem !== null) {
-      await record($, 'moves', new Failure('bad-answer', problem))
+      await record($, 'jira-moves', new Failure('bad-answer', problem))
     }
     await end($, endings)
     const moved: Ending[] = []
@@ -135,11 +139,11 @@ export function moveTickets($: EngineInterface, rows: readonly MrCard[]): Promis
         moved.push(ended)
       }
     }
-    const after = endPass(searched.value, moves, [...endings, ...moved])
+    const after = endPass(searched.value, moves, [...endings, ...moved], memory)
     // What Jira says of these tickets now, for their MRs' pages here; the other tickets are read at their own pace.
     await knowTickets($, after.tickets)
     if (after.isClear) {
-      await clear($, 'moves')
+      await clear($, 'jira-moves')
     }
   })
 }

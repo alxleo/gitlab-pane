@@ -155,7 +155,7 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
 export function afterRead($: EngineInterface, open: readonly MrCard[], now: number): void {
   quietly($, readUsualTimes($, open, now), 'usual')
   quietly($, readAvatars($, open), 'avatars')
-  quietly($, moveTickets($, open), 'moves')
+  quietly($, moveTickets($, open), 'jira-moves')
 }
 
 const USUAL_STORE = 'usual'

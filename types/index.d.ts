@@ -409,7 +409,7 @@ export type InboxState = {
 export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server' | 'failed' | 'unknown'
 
 /** What a background job reports failing, by where it ran. */
-export type ProblemSource = 'gitlab' | 'jira' | 'moves' | 'usual' | 'avatars' | 'inbox' | 'pane' | 'store'
+export type ProblemSource = 'gitlab' | 'jira' | 'jira-moves' | 'usual' | 'avatars' | 'inbox' | 'pane' | 'store'
 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
 export type Problems = { [Source in ProblemSource]?: { message: string; kind: FailureKind; at: number } }

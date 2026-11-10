@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { HOST, NOW, SELF_MANAGED, project, rawMr, reviewer } from '../fixtures.ts'
 
 import { toCard } from '../../hooks/gitlab.ts'
-import { MOVE_PREFIX, RETRY_MS, STEPS, afterSearch, endOf, endPass, failedAsks, isStillOpen, moveTargets, noStep, plan, readMemory } from '../../hooks/jira-moves.ts'
+import { MOVE_PREFIX, RETRY_MS, STEPS, afterSearch, endOf, endPass, failedAsks, isStillOpen, liveTargets, moveTargets, noStep, plan, readMemory } from '../../hooks/jira-moves.ts'
 import type { MoveMemory, MoveRecord, MoveStep, Wanted } from '../../hooks/jira-moves.ts'
 import { slimCard } from '../../hooks/slim.ts'
 
@@ -46,11 +46,12 @@ test('an MR of the user out of draft with a person asked to review it wants its 
   expect(taken([inReview()])).toEqual([step()])
 })
 
-test('a draft, an MR no other person is asked to review, or someone else’s MR moves nothing', () => {
+test('a draft, an MR no other person is asked to review, or someone else’s MR moves nothing; the author asking themselves beside another does not hide the other', () => {
   expect(taken([inReview({ draft: true })])).toEqual([])
   expect(taken([inReview({ reviewers: { nodes: [reviewer('review-bot', 'UNREVIEWED', true)] } })])).toEqual([])
-  // The author asking themselves is no review.
+  // The author asking themselves is no review; asking themselves first and then someone else is.
   expect(taken([inReview({ reviewers: { nodes: [reviewer('alex', 'UNREVIEWED')] } })])).toEqual([])
+  expect(taken([inReview({ reviewers: { nodes: [reviewer('alex', 'UNREVIEWED'), reviewer('maya', 'UNREVIEWED')] } })])).toEqual([step()])
   expect(taken([inReview({ author: { username: 'maya' } })])).toEqual([])
   // A title with no ticket has nothing to move.
   expect(taken([inReview({ title: 'fix: the thing' })])).toEqual([])
@@ -144,7 +145,7 @@ test('a ticket the search leaves out is refused, unless the search found none, w
   expect(outcomes(failedAsks(two, NOW))).toEqual(['failed', 'failed'])
 })
 
-test('each status is tried in turn until one ends the move, and each end that changed or could not change the ticket says so', () => {
+test('a status with no step leaves the move to the next status, and each end that changed or could not change the ticket says so', () => {
   const move = { ...step(), from: 'Backlog' }
   expect(endOf(move, 'In Review', { kind: 'no-step' }, NOW)).toBeNull()
   expect(endOf(move, 'Code Review', { kind: 'moved' }, NOW)).toEqual({
@@ -160,12 +161,21 @@ test('each status is tried in turn until one ends the move, and each end that ch
   expect(endOf(move, 'In Review', { kind: 'failed', reason: 'acli is not installed' }, NOW)).toMatchObject({ record: { outcome: 'failed' }, toast: null })
 })
 
-test('after the moves the tickets show their new status, and a pass is clear only when no step failed', () => {
+test('after the moves the tickets show their new status, and a pass is clear only when no step, this pass’s or an earlier one’s, waits to be tried again', () => {
   const move = { ...step(), from: 'Backlog' }
   const moved = endOf(move, 'In Review', { kind: 'moved' }, NOW)
   const endings = moved !== null ? [moved] : []
-  expect(endPass({ 'ABC-1': ticket('Backlog') }, [move], endings)).toEqual({ tickets: { 'ABC-1': ticket('In Review') }, isClear: true })
-  expect(endPass({ 'ABC-1': ticket('Backlog') }, [move], failedAsks([move], NOW)).isClear).toBe(false)
+  expect(endPass({ 'ABC-1': ticket('Backlog') }, [move], endings, {})).toEqual({ tickets: { 'ABC-1': ticket('In Review') }, isClear: true })
+  expect(endPass({ 'ABC-1': ticket('Backlog') }, [move], failedAsks([move], NOW), {}).isClear).toBe(false)
+  // ABC-2 failed earlier and waits for its retry: ABC-1 moving now does not make that past.
+  expect(endPass({ 'ABC-1': ticket('Backlog') }, [move], endings, { 'ABC-2>review': record('failed') }).isClear).toBe(false)
+  // A step that failed before and moves now is past.
+  expect(endPass({ 'ABC-1': ticket('Backlog') }, [move], endings, { 'ABC-1>review': record('failed', NOW - RETRY_MS) }).isClear).toBe(true)
+})
+
+test('with no Jira site, no step is on whatever the settings say', () => {
+  expect(liveTargets('', TARGETS)).toEqual({ review: [], done: [] })
+  expect(liveTargets('https://jira.example.com/browse/', TARGETS)).toEqual(TARGETS)
 })
 
 test('the memory is one store entry a step, and a step is forgotten only when nothing names its ticket and it is old', () => {

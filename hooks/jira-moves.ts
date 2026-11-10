@@ -34,7 +34,7 @@ export type MoveMemory = Record<string, MoveRecord>
 export type Wanted = { ticket: string; step: MoveStep; mr: string; iid: number; names: string[] }
 
 /** A step to take, with the status the ticket is in now. */
-export type Move = Wanted & { from: string }
+export type TicketMove = Wanted & { from: string }
 
 /** A step's record, under its store key. */
 export type Kept = { key: string; record: MoveRecord }
@@ -68,7 +68,10 @@ function statusNames(setting: unknown): string[] {
 /** The two settings as the steps' targets. */
 export const moveTargets = (inReview: unknown, onMerge: unknown): MoveTargets => ({ review: statusNames(inReview), done: statusNames(onMerge) })
 
-export const isMoving = (targets: MoveTargets): boolean => targets.review.length + targets.done.length > 0
+export const isMovingTickets = (targets: MoveTargets): boolean => targets.review.length + targets.done.length > 0
+
+/** The targets that hold: with no Jira site (`browse` empty) no step is on, whatever its setting says. */
+export const liveTargets = (browse: string, set: MoveTargets): MoveTargets => (browse !== '' ? set : NO_TARGETS)
 
 const keyOf = (ticket: string, step: MoveStep): string => `${ticket}>${step}`
 /** The store key of a step's record. */
@@ -174,7 +177,7 @@ export function plan(input: {
   const { rows, own, targets, memory, started, now } = input
   const drop = started.filter(step => targets[step].length === 0)
   const unknown = unknownHosts(rows, own)
-  if (memory === null || !isMoving(targets)) {
+  if (memory === null || !isMovingTickets(targets)) {
     return { ...IDLE, drop }
   }
   if (unknown.length > 0) {
@@ -189,8 +192,17 @@ export function plan(input: {
     found: wanted.filter(one => !started.includes(one.step)).map(one => kept(one, 'settled', now)),
     start: STEPS.filter(step => targets[step].length > 0 && !started.includes(step)),
     take,
-    isClear: take.length === 0 && Object.values(memory).every(one => one.outcome !== 'failed'),
+    isClear: take.length === 0 && isNothingFailed(memory, []),
   }
+}
+
+/** Whether no step failed and waits to be tried again: the memory, with this pass's endings laid over it. */
+function isNothingFailed(memory: MoveMemory, endings: readonly Kept[]): boolean {
+  const now = new Map(Object.entries(memory).map(([key, one]) => [`${MOVE_PREFIX}${key}`, one.outcome]))
+  for (const one of endings) {
+    now.set(one.key, one.record.outcome)
+  }
+  return [...now.values()].every(outcome => outcome !== 'failed')
 }
 
 /** A search that could not be made: each step to take is a failed ask, tried again later. */
@@ -229,9 +241,9 @@ export function afterSearch(
   targets: MoveTargets,
   memory: MoveMemory,
   now: number
-): { moves: Move[]; endings: Ending[]; problem: string | null } {
+): { moves: TicketMove[]; endings: Ending[]; problem: string | null } {
   const isAnswered = Object.keys(tickets).length > 0
-  const moves: Move[] = []
+  const moves: TicketMove[] = []
   const endings: Ending[] = []
   for (const one of take) {
     const ticket = tickets[one.ticket]
@@ -253,7 +265,7 @@ export function afterSearch(
 export type Said = Transition | { kind: 'failed'; reason: string }
 
 /** How a move ends once acli said `said` of the status `name`, or null to try the move's next status. */
-export function endOf(move: Move, name: string, said: Said, now: number): Ending | null {
+export function endOf(move: TicketMove, name: string, said: Said, now: number): Ending | null {
   if (said.kind === 'no-step') {
     return null
   }
@@ -262,10 +274,18 @@ export function endOf(move: Move, name: string, said: Said, now: number): Ending
 }
 
 /** How a move ends once none of its statuses had a step from where the ticket is. */
-export const noStep = (move: Move, now: number): Ending => ({ ...kept(move, 'no-step', now), toast: toastOf(move, 'no-step', '', '') })
+export const noStep = (move: TicketMove, now: number): Ending => ({ ...kept(move, 'no-step', now), toast: toastOf(move, 'no-step', '', '') })
 
-/** After the moves: the tickets as they are now, for their MRs' pages, and whether every step this pass ended for good. */
-export function endPass(tickets: Readonly<Record<string, Ticket>>, moves: readonly Move[], endings: readonly Kept[]): { tickets: Record<string, Ticket>; isClear: boolean } {
+/**
+ * After the moves: the tickets as they are now, for their MRs' pages, and whether /gitlab has nothing left to say of the
+ * moves: no step, of this pass or kept from an earlier one, failed and waits to be tried again.
+ */
+export function endPass(
+  tickets: Readonly<Record<string, Ticket>>,
+  moves: readonly TicketMove[],
+  endings: readonly Kept[],
+  memory: MoveMemory
+): { tickets: Record<string, Ticket>; isClear: boolean } {
   const current = { ...tickets }
   for (const move of moves) {
     const ticket = current[move.ticket]
@@ -274,5 +294,5 @@ export function endPass(tickets: Readonly<Record<string, Ticket>>, moves: readon
       current[move.ticket] = { ...ticket, status: ended.status }
     }
   }
-  return { tickets: current, isClear: endings.every(one => one.record.outcome !== 'failed') }
+  return { tickets: current, isClear: isNothingFailed(memory, endings) }
 }

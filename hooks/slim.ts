@@ -38,7 +38,7 @@ export const slimChecks = (checks: MergeStatus | null): MergeStatus | null => {
  * The card without its heavy words: no description (its first line stays as `lead`), each person's latest note as an
  * excerpt (`noteCount` still says how many), the first few open threads as excerpts with no replies and the first few failed
  * jobs, the rest counted; of the stages' jobs only those the card lists, and when each ran only where a row shows it. The
- * first person asked to review stays of the reviewers, each of whom is on the card as a person: whether one is asked is
+ * first person other than the author asked to review stays of the reviewers, each of whom is on the card as a person: whether one is asked is
  * what moves a ticket in Jira. The store every session rewrites whole holds fifty of these in a few hundred kilobytes.
  */
 export function slimCard(card: MrCard): MrCard {
@@ -59,7 +59,7 @@ export function slimCard(card: MrCard): MrCard {
       held: card.threadsLeft.held + left.filter(note => held.has(note.author)).length,
     },
     mergeStatus: slimChecks(card.mergeStatus),
-    reviewers: card.reviewers.filter(reviewer => !reviewer.isBot).slice(0, 1),
+    reviewers: card.reviewers.filter(reviewer => !reviewer.isBot && reviewer.username !== card.author).slice(0, 1),
     ...(pipeline !== undefined
       ? {
           pipeline: {
