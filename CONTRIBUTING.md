@@ -75,7 +75,7 @@ flowchart LR
   publish --> branch["release branch + tag plugin-vX.Y.Z<br/>(one commit a version, never forced)"]
 ```
 
-- `feat:` raises the minor number, `fix:` the patch; `!` or a `BREAKING CHANGE:` footer raises the minor while the version is 0.x. Other kinds wait for one of those.
+- While the version is 0.x, `feat:` and `fix:` both raise the patch number (0.4.0 to 0.4.1); `!` or a `BREAKING CHANGE:` footer raises the minor (`bump-patch-for-minor-pre-major` and `bump-minor-pre-major` in `release-please-config.json`). Other kinds wait for one of those.
 - No check starts on the release PR by itself, as GitHub starts no workflow for a PR its own token opened, yet main requires `check` before any merge. To release, close the PR and reopen it as yourself: that starts its checks, and it merges once they pass. A run started by hand (`gh workflow run check.yml --ref <its branch>`) passes on the same commit but does not count, because GitHub ties it to no pull request.
 - Users get the files in `release/files` and nothing else (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`). A file the plugin loads at run time goes in that list; `release-tree -- check` fails otherwise.
 - A team pins `"ref": "plugin-vX.Y.Z"` in its marketplace source (the tree has its own `release/marketplace.json`).
