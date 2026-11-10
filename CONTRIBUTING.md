@@ -1,6 +1,6 @@
 # Contributing
 
-Node 22.18 or newer runs everything, TypeScript tools included (types stripped). No Python, no shell script, no other toolchain.
+Node 26 or newer runs everything, TypeScript tools included (types stripped). No Python, no shell script, no other toolchain.
 
 ## Set up
 

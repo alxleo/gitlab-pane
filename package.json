@@ -4,7 +4,7 @@
   "description": "Dev-time tooling only: the checks, generators and screenshots of the gitlab-pane mod. The mod itself has no npm packages and ships none (release/files leaves this file out).",
   "type": "module",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26"
   },
   "scripts": {
     "setup": "simple-git-hooks && node tools/engine_types.ts",

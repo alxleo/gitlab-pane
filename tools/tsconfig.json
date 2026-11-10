@@ -1,5 +1,5 @@
 {
-  // The dev tools in tools/*.ts: Node runs them as they are (type stripping, Node 22.18+), so only syntax that erases is allowed.
+  // The dev tools in tools/*.ts: Node runs them as they are (type stripping, Node 26+), so only syntax that erases is allowed.
   // They may import the core (each by its .ts path) and nothing of the engine. tools/screens and tools/store-probe have configs of their own.
   "compilerOptions": {
     "strict": true,
