@@ -1,5 +1,5 @@
 import { parseJson } from '../hooks/decode.ts'
-import type { On } from 'claude-code'
+import type { On, RenderSurface } from 'claude-code'
 
 import { sent, serve, traced } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
@@ -10,8 +10,9 @@ export const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /**
- * A session that draws on the desktop, as the engine holds it: its id, the surface, and the panes it opened, which
- * `$.ui.panes()` lists (that is how a session knows its pane is drawn), and the plugin's store, holding `store` to start with.
+ * A session that draws on the desktop, as the engine holds it: its id, the surfaces it has (a test may empty them, as a
+ * session run without a window has none), and the panes it opened, which `$.ui.panes()` lists (that is how a session knows
+ * its pane is drawn), and the plugin's store, holding `store` to start with.
  * The store is the one `$.store` is in the engine: JSON in, JSON out, a file of 4 MiB at most. It is returned as a map, so a test
  * can play another session by writing it. `isBroken` makes opening a pane fail.
  */
@@ -44,7 +45,8 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
   const titles: string[] = []
   const panes = new Set<string>()
   on('session.id', () => ({ value: options.id ?? 'session-a' }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
+  const surfaces: RenderSurface[] = ['desktop']
+  on('session.surfaces', () => ({ value: [...surfaces] }))
   on('ui.open', (_, e) => {
     if (options.isBroken?.() === true) {
       throw new Error('no window to open in')
@@ -59,7 +61,7 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: [...panes].map(id => ({ id, title: 'GitLab', isShown: true, isFocused: false, isPlaced: true })) }))
-  return { opened, titles, panes, store, writes }
+  return { opened, titles, panes, surfaces, store, writes }
 }
 
 /** The most the engine's store holds, in characters of JSON. */

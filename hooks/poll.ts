@@ -35,7 +35,7 @@ import { TAIL_JOBS } from './job-tail'
 import { reconcile } from './reconcile'
 import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
-import { followInbox, leadInbox, sharedInboxAt } from './inbox'
+import { followInboxTick, inboxAlone, inboxPass } from './inbox-turn'
 import { FOOTER_MS, INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS, waitingRows } from './snapshot'
 import { failuresFrom, toShared } from './snapshot'
 import type { Cursor, ReadResult, Snapshot } from './snapshot'
@@ -146,14 +146,6 @@ async function reasonsFor($: EngineInterface, rows: readonly MrCard[], pins: rea
     wanted.map(async ({ row, pipeline }) => [String(pipeline.id), toShared(await readFailures($, row, pipeline.failed.slice(0, TAIL_JOBS)))] as const)
   )
   return { ...kept, ...Object.fromEntries(fetched) }
-}
-
-/** The leader's one read of the inbox, when it is due (the pace, or a person asked for a read): shared in the store, and drawn here. */
-async function inboxPass($: EngineInterface, hosts: readonly string[], isDue: boolean, at: number): Promise<void> {
-  if (isDue) {
-    await changeReads($, state => ({ ...state, inboxAt: at }))
-    await leadInbox($, hosts)
-  }
 }
 
 /** What the leader read: one snapshot from every host's answer, for it and for the sessions that follow. */
@@ -290,19 +282,13 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   await inboxPass($, await readHosts($), isInboxDue, now)
 }
 
-/**
- * A follower's turn: draws the snapshot when it has a version it has not drawn, and the leader's inbox when that changed or
- * a minute has passed, which is how often it looks at the marks (a mark is kept in the store by whichever session it was made in).
- */
+/** A follower's turn: draws the snapshot when it has a version it has not drawn, and the leader's inbox (`followInboxTick`). */
 async function followTick($: EngineInterface): Promise<void> {
-  const [snapshot, reads, shared, now] = await Promise.all([loadSnapshot($), readReads($), sharedInboxAt($), $.clock.now()])
+  const [snapshot, reads] = await Promise.all([loadSnapshot($), readReads($)])
   if (snapshot !== null && snapshot.version !== reads.adopted) {
     await adopt($, snapshot)
   }
-  if (shared !== null && (shared !== reads.inboxSeen || now - (reads.inboxAt ?? 0) >= INBOX_EVERY_MS)) {
-    const seen = await followInbox($)
-    await changeReads($, state => ({ ...state, inboxAt: now, inboxSeen: seen }))
-  }
+  await followInboxTick($)
 }
 
 /** The turn of a session that draws no pane but raised an MR: those MRs alone, slowly. */
@@ -341,10 +327,12 @@ async function stepOnce($: EngineInterface): Promise<void> {
       return leadTick($, own)
     case 'follower':
       return followTick($)
+    // No pane is drawn anywhere, so no leader reads the inbox: the band above the prompt still wants it (inbox-turn.ts).
     case 'wake-only':
-      return watchTick($, own)
+      await watchTick($, own)
+      return inboxAlone($)
     case 'idle':
-      return undefined
+      return inboxAlone($)
   }
 }
 
