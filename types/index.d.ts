@@ -421,6 +421,8 @@ declare module 'claude-code' {
       /** Avatar URLs that failed to fetch, not asked for again until the session loads the mod again. */
       unreachable: string[]
       scrolling: Scrolling
+      /** The key of the pane's button holding the focus ring, `''` for none: where the next arrow moves it on from. No drawing reads it. */
+      ring: string
       problems: Problems
       /** What the session that reads GitLab last failed with, as its snapshot says. */
       reported: Problems

@@ -7,6 +7,7 @@ import { measure } from './drawing'
 import { firstName, initials, shortHash } from './identity'
 import { reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
+import { ITEMS_SHOWN, cardButtons, footerButtons } from './inbox-ring'
 import { ownedSections } from './inbox-rules'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types'
@@ -34,7 +35,6 @@ const KINDS = Object.keys(VERB).filter((kind): kind is InboxKind => kind in VERB
  * tabs and the footer; past it, an open rule's cards are counted, not drawn.
  */
 const INBOX_BUDGET = 70_000
-const ITEMS_SHOWN = 30
 
 /** The inbox the built-in rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
@@ -112,6 +112,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const about = [bang > 0 ? item.ref.slice(0, bang) : '', item.isMine ? '' : item.author, item.isDraft ? 'draft' : '', item.state === 'opened' ? '' : item.state, ...counted]
     const canOpen = item.activity.length > 0
     const isOpen = canOpen && cards.includes(item.key)
+    const buttons = cardButtons(item.key)
     return (
       <Box
         key={`ib-${shortHash(item.key)}`}
@@ -125,7 +126,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           <Box flexGrow={1} flexShrink={1}>
             {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}
             {canOpen ? (
-              <Button key={`inbox-open-${shortHash(item.key)}`} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`} onPress={() => toggleCard($, item.key)} />
+              <Button key={buttons.open} plain label={`${isOpen ? '▾' : '▸'} ${shortTitle(item.title)}`} onPress={() => toggleCard($, item.key)} />
             ) : (
               <Text weight="semibold" wrap="truncate-end">
                 {shortTitle(item.title)}
@@ -138,7 +139,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Box>
           )}
           <Box flexShrink={0}>
-            <Button key={`inbox-seen-${shortHash(item.key)}`} plain label="✓" onPress={() => markSeen($, { key: item.key }).catch(reported($, 'inbox'))} />
+            <Button key={buttons.seen} plain label="✓" onPress={() => markSeen($, { key: item.key }).catch(reported($, 'inbox'))} />
           </Box>
         </Box>
         <Box flexDirection="row" gap={1}>
@@ -152,7 +153,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           </Box>
         </Box>
         {isOpen ? item.activity.map(one => event(one, true)) : item.activity[0] !== undefined && event(item.activity[0], false)}
-        {isOpen && <Button key={`inbox-less-${shortHash(item.key)}`} plain label="▴ less" onPress={() => toggleCard($, item.key)} />}
+        {isOpen && <Button key={buttons.less} plain label="▴ less" onPress={() => toggleCard($, item.key)} />}
       </Box>
     )
   }
@@ -191,15 +192,18 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
       lines.push(line)
     }
     const left = section.items.length - lines.length
+    const footer = footerButtons(section.rule)
     return [
       ...lines,
       <Box key={`inbox-foot-${section.rule}`} flexDirection="row" flexWrap="wrap" columnGap={1}>
         {left > 0 && <Text dimColor>{`+${left} more`}</Text>}
-        <Button key={`inbox-discuss-${section.rule}`} variant="secondary" label="discuss in chat" onPress={() => discussRule($, section.rule).catch(reported($, 'inbox'))} />
+        <Button key={footer.discuss} variant="secondary" label="discuss in chat" onPress={() => discussRule($, section.rule).catch(reported($, 'inbox'))} />
+        {/* s presses it while the pane holds the keyboard; the terminal, where that is proven, says so. */}
         <Button
-          key={`inbox-seen-rule-${section.rule}`}
+          key={footer.seen}
           variant="secondary"
-          label="✓ mark all seen"
+          hotkey="s"
+          label={e.surface === 'terminal' ? '✓ mark all seen (s)' : '✓ mark all seen'}
           onPress={() => markSeen($, { rule: section.rule }).catch(reported($, 'inbox'))}
         />
       </Box>,

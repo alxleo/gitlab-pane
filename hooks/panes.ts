@@ -5,6 +5,9 @@ import { closePage, readPage, readTab, setPage, setTab } from './choices'
 import { readRows } from './data'
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
+import { inboxView } from './inbox'
+import { ringStep } from './inbox-ring'
+import { ownedSections } from './inbox-rules'
 import { nextDraw, rowDrawn } from './in-flight'
 import { titleKey } from './drawing'
 
@@ -15,6 +18,35 @@ export const PANE_ID = 'gitlab-pane'
 
 // Why the pane's last scroll did not move, and how far going back from a page got; /gitlab reports both.
 const scrollingAtom = atom({ plugin: 'gitlab-pane', key: 'scrolling' } as const, { refused: '', goingBack: '' } satisfies Scrolling)
+
+// The key of the button holding the pane's focus ring, `''` for none. No drawing reads it, so moving the ring draws nothing
+// again: the engine draws the ring itself.
+const ringAtom = atom({ plugin: 'gitlab-pane', key: 'ring' } as const, '')
+
+/** Keeps which of the pane's buttons holds the focus ring, where the next arrow moves it on from. */
+export async function noteRing($: EngineInterface, element: string): Promise<void> {
+  await update($, ringAtom, () => element)
+}
+
+/**
+ * An arrow pressed in the pane (`by` 1 down, -1 up): on the inbox's cards, moves the focus ring to the next or previous
+ * card and says it did. It does not while Mine or an MR's page shows, past the first and last card, or when the card is
+ * not drawn; the arrow then scrolls, as the engine does with it.
+ */
+export async function stepRing($: EngineInterface, by: 1 | -1): Promise<boolean> {
+  const [tab, page] = await Promise.all([readTab($), readPage($)])
+  if (tab !== 'inbox' || page !== '') {
+    return false
+  }
+  const [{ sections, open }, at] = await Promise.all([inboxView($), read($, ringAtom)])
+  const rule = open[0] ?? ''
+  const key = ringStep(ownedSections(sections).find(section => section.rule === rule)?.items ?? [], rule, at, by)
+  if (key === null) {
+    return false
+  }
+  const moved = await $.ui.focus({ requestId: PANE_ID, key }).catch((error: unknown) => ({ deny: String(error) }))
+  return moved.deny === undefined
+}
 
 export function readScrolling($: EngineInterface): Promise<Scrolling> {
   return read($, scrollingAtom)

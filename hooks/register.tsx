@@ -11,7 +11,7 @@ import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
-import { forgetScrolling, openPane, readScrolling } from './panes'
+import { forgetScrolling, noteRing, openPane, readScrolling, stepRing } from './panes'
 import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
@@ -130,6 +130,25 @@ export const register: Register = (on, options) => {
       .catch(() => undefined)
     return ran
   }).catch(($, e, next) => next(e))
+
+  // On the inbox an arrow moves the focus ring a card at a time instead of scrolling a row; Enter presses the card's title.
+  // A press of the arrow is the person's scroll of one row with no pointer, where a wheel tick has one.
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    const by = e.by === 1 || e.by === -1 ? e.by : 0
+    if (e.origin.kind !== 'person' || e.pointer !== undefined || by === 0) {
+      return next(e)
+    }
+    return (await stepRing($, by)) ? {} : next(e)
+  }).catch(($, e, next) => next(e))
+  // Where the ring lands, the person's move or the mod's, so the next arrow knows where it is. Failing to note it costs
+  // only that the next arrow starts from where the ring was before.
+  on('ui.focus', { requestId: PANE }, async ($, e, next) => {
+    const moved = await next(e)
+    if (moved.deny === undefined) {
+      await noteRing($, e.element ?? '').catch(() => undefined)
+    }
+    return moved
+  })
 
   // A drawing that throws says why in the pane, where the engine would only report it in the debug log.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

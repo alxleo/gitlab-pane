@@ -145,6 +145,7 @@ The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's na
 - An MR can show under several tabs; the Inbox tab's count counts it once.
 - `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.
 - ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project.
+- In the terminal, ↑ and ↓ move the focus ring a card at a time, onto its title (its ✓ when it has nothing to open), and Enter opens it; past the first or last card they scroll again, and from the footer ↑ comes back to the last card (`hooks/inbox-ring.ts`). `s` presses `✓ mark all seen (s)`. The engine draws the ring, so moving it draws nothing again.
 - An empty tab says why when it can: no token for a host, no repo for `here`, nobody followed.
 
 ## Text
