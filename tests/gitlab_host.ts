@@ -1,7 +1,7 @@
 import { parseJson } from '../hooks/decode.ts'
 import type { On } from 'claude-code'
 
-import { sent, serve, traced } from './gitlab_fake'
+import { rebased, sent, serve, traced } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 
 /** What `$.process.run` resolves with. */
@@ -71,6 +71,8 @@ export type FakeHost = {
   accepts?: string
   /** The log of each job the REST API serves, by `<project path>#<job number>`; any other job is not found. */
   traces?: Record<string, string>
+  /** Hears a rebase the REST API was asked for, which it accepts (HTTP 202). */
+  onRebase?: (path: string, iid: string) => void
 }
 
 export type FakeWorld = {
@@ -109,6 +111,17 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
           headers: {},
           text: isAccepted ? (log ?? '404 Not found') : '401 Unauthorized',
         },
+      }
+    }
+    const rebase = rebased(e.url, e.init)
+    if (rebase !== null) {
+      requests.push(`${rebase.host} rebase ${rebase.path}!${rebase.iid}`)
+      const isAccepted = rebase.token !== undefined && rebase.token === hosts[rebase.host]?.accepts
+      if (isAccepted) {
+        hosts[rebase.host]?.onRebase?.(rebase.path, rebase.iid)
+      }
+      return {
+        value: { status: isAccepted ? 202 : 401, ok: isAccepted, headers: {}, text: JSON.stringify(isAccepted ? { rebase_in_progress: true } : { message: '401 Unauthorized' }) },
       }
     }
     const request = sent(e.url, e.init)

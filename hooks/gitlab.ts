@@ -1,7 +1,9 @@
 import type {
   AuthoredPlainQuery,
   AuthoredQuery,
+  MergeMutation,
   MergeStatusQuery,
+  MoveStateQuery,
   MrFieldsFragment,
   NoteFieldsFragment,
   PinnedPlainQuery,
@@ -18,9 +20,10 @@ import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { lead, ranOf } from './format.ts'
 import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
+import type { Fresh } from './next-move.ts'
 import { firstDifference } from './order.ts'
 
-import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
+import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, Merging, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
 
 /**
  * Which features a host lacks, from the answer it gave: GitLab validates a whole document and says, for each field its
@@ -42,8 +45,11 @@ export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeat
   })
 }
 
+/** GitLab's merge checks of an MR, and what it says of merging it, from the same answer. */
+export type GitLabVerdict = { checks: MergeStatus; merging: Merging }
+
 /** Each MR's merge checks by card key; an MR missing from the answer, or sent with no checks, has none. */
-export function readMergeStatus(host: string, response: RawResponse<MergeStatusQuery>): Map<string, MergeStatus> {
+export function readMergeStatus(host: string, response: RawResponse<MergeStatusQuery>): Map<string, GitLabVerdict> {
   const nodes = response.data?.currentUser?.authoredMergeRequests?.nodes ?? []
   return new Map(
     nodes.flatMap(node => {
@@ -51,7 +57,14 @@ export function readMergeStatus(host: string, response: RawResponse<MergeStatusQ
         return []
       }
       const checks = node.mergeabilityChecks.map(check => ({ id: check.identifier, status: checkStatusOf(check.status) }))
-      return checks.length > 0 ? [[cardKey(host, node.project.fullPath, node.iid), checks] as const] : []
+      const merging: Merging = {
+        head: node.diffHeadSha ?? '',
+        isRebasing: node.rebaseInProgress,
+        isAutoMerging: node.autoMergeEnabled,
+        canMerge: node.userPermissions.canMerge,
+        canPush: node.userPermissions.pushToSourceBranch,
+      }
+      return checks.length > 0 ? [[cardKey(host, node.project.fullPath, node.iid), { checks, merging }] as const] : []
     })
   )
 }
@@ -283,6 +296,7 @@ export function toCard(host: string, raw: RawMr): MrCard {
     approvalsRequired: raw.approvalsRequired ?? 0,
     // Filled from `mergeStatusQuery`, which reads it truer than this MR's own fields do.
     mergeStatus: null,
+    merging: null,
     approvers: present(raw.approvedBy?.nodes)
       .filter(user => !user.bot)
       .map(user => user.username),
@@ -338,4 +352,28 @@ export const readResponse = (host: string, response: RawResponse<AuthoredQuery |
 export const readPinned = (host: string, response: RawResponse<PinnedQuery | PinnedPlainQuery>): MrCard[] => {
   const raw = dataOf(response).project?.mergeRequest
   return isSome(raw) ? [toCard(host, raw)] : []
+}
+
+/** One MR as a move needs it; none when GitLab named no such MR, and a throw when it sent no data at all. */
+export function readMoveState(response: RawResponse<MoveStateQuery>): Fresh | null {
+  const raw = dataOf(response).project?.mergeRequest
+  return isSome(raw)
+    ? {
+        state: raw.state,
+        status: raw.detailedMergeStatus,
+        head: raw.diffHeadSha ?? '',
+        isRebasing: raw.rebaseInProgress,
+        mergeError: raw.mergeError,
+        strategies: raw.availableAutoMergeStrategies ?? [],
+      }
+    : null
+}
+
+/** Why GitLab refused a merge, in its words, or null when it took it. */
+export function mergeRefusal(response: RawResponse<MergeMutation>): string | null {
+  const said = [...(response.errors ?? []).map(error => error.message), ...(response.data?.mergeRequestAccept?.errors ?? [])]
+  if (said.length > 0) {
+    return said.join('; ')
+  }
+  return isSome(response.data?.mergeRequestAccept) ? null : 'GitLab sent no answer'
 }

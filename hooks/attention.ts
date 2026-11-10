@@ -53,7 +53,7 @@ export type Badge = { kind: BadgeKind; glyph: string; tone: Tone; count: string;
 const ACRONYMS = /\b(ci|lfs)\b/gu
 
 /** A check in words, from the identifier GitLab names it by (`CI_MUST_PASS`): a check GitLab adds later reads right with no change here. */
-const checkWords = (id: string): string =>
+export const checkWords = (id: string): string =>
   id
     .toLowerCase()
     .replaceAll('_', ' ')

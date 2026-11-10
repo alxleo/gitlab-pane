@@ -35,6 +35,28 @@ export type MergeCheck = { id: string; status: CheckStatus }
 /** Every merge check GitLab runs on an MR, in its own order, which is the order of its precedence. */
 export type MergeStatus = MergeCheck[]
 
+/** What GitLab says of merging an MR, read in the same answer as its merge checks. */
+export type Merging = {
+  /** The head commit the checks were made on, which a merge names so GitLab merges nothing newer; empty where GitLab gave none. */
+  head: string
+  isRebasing: boolean
+  /** GitLab will merge it once its checks pass. */
+  isAutoMerging: boolean
+  /** The signed-in user may merge it, and push to its source branch (which a rebase does). */
+  canMerge: boolean
+  canPush: boolean
+}
+
+/** A move the pane can make for an MR, when GitLab's verdict names it: the one thing that moves the MR along. */
+export type MoveKind = 'merge' | 'rebase' | 'rebase-merge' | 'conflicts'
+
+/**
+ * A press this session made on a move, by card key, kept until the MR's head moves: armed, waiting for the press that
+ * confirms a merge; sent, while GitLab carries it out; handed to Claude; or failed, with GitLab's reason in a line, which
+ * the row says beside the move until it is pressed again. `head` is the head it was made on.
+ */
+export type Pressed = { kind: MoveKind; state: 'armed' | 'sent' | 'handed'; head: string; at: number } | { kind: MoveKind; state: 'failed'; head: string; at: number; say: string }
+
 /** What happened to an MR that an inbox rule counts; each has its own glyph and word in the pane. */
 export type InboxKind =
   | 'changes_requested'
@@ -140,6 +162,8 @@ export type MrCard = {
   approvalsRequired: number
   /** GitLab's own merge checks, under the project's merge rules; null while they were not read. */
   mergeStatus: MergeStatus | null
+  /** What GitLab says of merging it, from the same read as `mergeStatus`; null while that was not read. */
+  merging: Merging | null
   approvers: string[]
   reviewers: { username: string; isBot: boolean; state: ReviewState }[]
   people: Person[]
@@ -426,6 +450,8 @@ declare module 'claude-code' {
       reported: Problems
       /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
       logs: boolean
+      /** This session's presses on merges, rebases and conflicts, by card key. */
+      pressed: Record<string, Pressed>
     }
   }
 }

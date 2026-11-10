@@ -4,7 +4,8 @@ import { asFailure, Failure } from './failure'
 import { lostIn, readMergeStatus, readPinned, readResponse } from './gitlab'
 import { AUTHORED_PAGE, authoredQuery } from './authored-request'
 import type { AuthoredScope } from './authored-request'
-import { mergeStatusQuery, pinnedQuery } from './gitlab-documents'
+import { pinnedQuery } from './gitlab-documents'
+import { mergeStatusQuery } from './merge-documents'
 import { askVariant } from './graphql'
 import { cursorAfter, mergeReads, MOVING_MAX, movingRows, scopeFor } from './incremental'
 import { pinKey } from './mr-url'
@@ -62,7 +63,9 @@ async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
   const [authored, verdicts] = await Promise.all([
     askVariant($, host, features => authoredQuery(features, scope)),
     askVariant($, host, mergeStatusQuery)
-      .then(answer => (answer !== null ? new Map([...readMergeStatus(host, answer)].map(([key, checks]) => [key, slimChecks(checks) ?? checks])) : null))
+      .then(answer =>
+        answer !== null ? new Map([...readMergeStatus(host, answer)].map(([key, verdict]) => [key, { ...verdict, checks: slimChecks(verdict.checks) ?? verdict.checks }])) : null
+      )
       .catch((error: unknown) => {
         notes.push(asFailure(error, message => `merge status: ${message}`))
         return null

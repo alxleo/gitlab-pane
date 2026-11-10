@@ -56,7 +56,7 @@ import { join, relative } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
-import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
+import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS, WRITES } from '../hooks/gitlab-documents.ts'
 import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
 import { formatted } from './format.ts'
 
@@ -64,6 +64,8 @@ const ROOT = join(import.meta.dirname, '..')
 const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
 const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
+/** The files graphql-codegen reads documents from: DOCUMENTS's, and those on merging an MR, kept apart. */
+const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-documents.ts')]
 const ENDPOINT = 'https://gitlab.com/api/graphql'
 /**
  * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has
@@ -239,6 +241,10 @@ function scored(text: string): { readonly query: string; readonly variables: Rec
     },
     OperationDefinition: {
       leave(node) {
+        // Scoring sends the document to gitlab.com; a write sent there would be run, as whoever the request signs in as.
+        if (node.operation !== 'query') {
+          throw new SchemaError(`${node.name?.value ?? 'a document'} is a ${node.operation}, which is never sent to be scored`)
+        }
         return { ...node, selectionSet: { ...node.selectionSet, selections: [...node.selectionSet.selections, ...SCORING] } }
       },
     },
@@ -387,10 +393,12 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
   const full: IntrospectionSchema = introspection.__schema
   const typeNamed = new Map(full.types.map(kind => [kind.name, kind]))
   const { fields, arguments: args, variables } = used(buildClientSchema(introspection), queries)
-  /** The types the queries reach from the query type: through the fields they select, and the types they name. */
+  // The mutation type is kept only when a document writes.
+  const mutationType = isSome(full.mutationType) && fields.has(full.mutationType.name) ? full.mutationType : null
+  /** The types the queries reach from the query type, and the mutation type: through the fields they select, and the types they name. */
   const reach = (): Set<string> => {
     const reached = new Set<string>()
-    const todo = [full.queryType.name, ...variables]
+    const todo = [full.queryType.name, ...(mutationType !== null ? [mutationType.name] : []), ...variables]
     for (let name = todo.pop(); name !== undefined; name = todo.pop()) {
       if (reached.has(name)) {
         continue
@@ -476,7 +484,7 @@ function prune(introspection: IntrospectionQuery, queries: Queries): unknown {
   return {
     __schema: {
       queryType: full.queryType,
-      mutationType: null,
+      mutationType,
       subscriptionType: null,
       types: [...keep].toSorted().flatMap(name => {
         const kind = typeNamed.get(name)
@@ -512,7 +520,7 @@ async function generate(schemaFile: string): Promise<string> {
     cwd: ROOT,
     silent: true,
     schema: schemaFile,
-    documents: QUERIES,
+    documents: DOCUMENT_FILES,
     generates: {
       [TYPES]: {
         plugins: ['typescript-operations'],
@@ -601,8 +609,9 @@ async function types(checking: boolean): Promise<number> {
     console.log(`✗ ${found.query}: ${found.problem}`)
     return 1
   }
-  // The weekly check sends every document with sample variables; a variable without one would fail only there.
-  for (const [name, text] of Object.entries(DOCUMENTS)) {
+  // The weekly check sends every read with sample variables; a variable without one would fail only there. A write is never sent.
+  const writes: readonly string[] = WRITES
+  for (const [name, text] of Object.entries(DOCUMENTS).filter(([operation]) => !writes.includes(operation))) {
     try {
       scored(text)
     } catch (error) {

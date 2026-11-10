@@ -15,7 +15,7 @@ import type { Failures } from './wake.ts'
 import type { FailureKind, HostStatus, MrCard, Pinned } from '../types'
 
 /** The shape of the snapshot; a snapshot of another is ignored, as the store keeps whatever any version of the mod wrote. */
-const FORMAT = 3
+const FORMAT = 4
 export const SNAPSHOT_KEY = 'snapshot'
 /** A session's pins are under `pins:<session id>`. */
 export const PINS_PREFIX = 'pins:'
