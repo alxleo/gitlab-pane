@@ -33,7 +33,8 @@ export async function setWrite($: EngineInterface, id: string, write: Write | nu
 /**
  * Decides `id`'s entry against the one held and records it, in one write, so two presses at once make one write. Gives
  * the entry recorded, or null when `decide` made none. `decide` is the feature's own, on plain data, and sees the entry
- * as stored: it says how it holds now (`liveOf`).
+ * as stored: it says how it holds now (`liveOf`). Confirming is the feature's choice: a merge or a reply arms first and
+ * goes `sent` only on an armed entry; a rebase or a hand-off goes `sent` (`handed`) on the first press.
  */
 export async function claimWrite<Made extends Write>($: EngineInterface, id: string, decide: (held: Write | undefined) => Made | null): Promise<Made | null> {
   const made: Made[] = []
