@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { lead } from '../../hooks/format.ts'
+import { excerpt, lead } from '../../hooks/format.ts'
 import { cleanBody } from '../../hooks/gitlab.ts'
 import { MAX_ROUNDS, cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
 import type { Part } from '../../hooks/markdown.ts'
@@ -234,12 +234,23 @@ test('an <a> whose attribute holds a < keeps its words but not its link', () => 
 
 // ---- a strip takes time in proportion to the text, however hostile it is ------------------------------------------------
 
-/** What `toCard` runs for every MR on every poll: the description cleaned, then its lead drawn. Milliseconds. */
-function msToLead(body: string): number {
-  const start = performance.now()
-  lead(cleanBody(body, HOST, 'g/p'), 240)
-  return performance.now() - start
+/**
+ * What reading a body costs, in milliseconds: the slowest of what a poll runs on it (its lead, or a note's first line) and
+ * what an MR's page runs on it (its parts), each from the body as GitLab sends it.
+ */
+function msToRead(body: string): number {
+  const reads = [() => lead(cleanBody(body, HOST, 'g/p'), 240), () => excerpt(cleanBody(body, HOST, 'g/p')), () => partsOf(cleanBody(body, HOST, 'g/p'))]
+  return Math.max(
+    ...reads.map(read => {
+      const start = performance.now()
+      read()
+      return performance.now() - start
+    })
+  )
 }
+
+/** A megabyte of text, which GitLab takes as one description or one comment. */
+const MEGABYTE = 1_000_000
 
 /** `open` as many times as `size` characters allow, then `close` as many times: markup nested as deep as it can be. */
 const nestedTo = (open: string, close: string, size: number): string => {
@@ -247,21 +258,71 @@ const nestedTo = (open: string, close: string, size: number): string => {
   return `${open.repeat(depth)}${close.repeat(depth)}`
 }
 
-/** Written to make a strip slow: each is quadratic in the text for a strip that repeats whole passes, or looks ahead from every `<`. */
+/** `piece` over and over, a megabyte of it. */
+const over = (piece: string): string => piece.repeat(Math.floor(MEGABYTE / piece.length))
+
+/** `piece` run one longer each time, each ended by `end`, a megabyte of runs: no two runs the same length. */
+const runsOf = (piece: string, end: string): string => Array.from({ length: Math.ceil(Math.sqrt(2 * MEGABYTE)) }, (_, at) => `${piece.repeat(at + 1)}${end}`).join('')
+
+/**
+ * Written to make a reading slow: each is quadratic in the text, or worse, for a pattern that reads to the end of the text
+ * from every opener it finds, or a strip that repeats whole passes, or a fold read once for each fold around it.
+ */
 const HOSTILE: [string, string][] = [
-  ['tags nested in tags', nestedTo('<', 'b>', 200_000)],
-  // A level of comment is eight characters here, so it takes this many to be as slow as the tags.
-  ['comments nested in comments', `${'<!-'.repeat(75_000)}<!-- a -->${'- -->'.repeat(75_000)}`],
-  ['a tag opened over and over and never closed', '<a'.repeat(100_000)],
-  ['a tag name of hyphens, never closed', `<${'a-'.repeat(100_000)}`],
-  ['a comment opened over and over and never closed', '<!--'.repeat(50_000)],
-  ['a comment closed once, then opened over and over', `<!-- a -->${'<!--'.repeat(50_000)}`],
-  ['a summary of < and nothing else', `<details><summary>${'<'.repeat(200_000)}</summary>x</details>`],
-  ...['p', 'li', 'img', 'details'].map((name): [string, string] => [`<${name} opened over and over and never closed`, `<${name}`.repeat(Math.floor(200_000 / (name.length + 1)))]),
+  ['tags nested in tags', nestedTo('<', 'b>', MEGABYTE)],
+  ['tags that each leave a < behind when cut out', over('a<<b>')],
+  ['comments nested in comments', `${'<!-'.repeat(MEGABYTE / 8)}<!-- a -->${'- -->'.repeat(MEGABYTE / 8)}`],
+  ['a tag opened over and over and never closed', over('<a')],
+  ['a tag name of hyphens, never closed', `<${over('a-')}`],
+  ['a comment opened over and over and never closed', over('<!--')],
+  ['a comment closed once, then opened over and over', `<!-- a -->${over('<!--')}`],
+  ['a summary of < and nothing else', `<details><summary>${over('<')}</summary>x</details>`],
+  ...['p', 'li', 'img', 'details'].map((name): [string, string] => [`<${name} opened over and over and never closed`, over(`<${name}`)]),
+  ...['b', 'strong', 'i', 'em', 's', 'code', 'kbd', 'picture', 'a href="x"'].map((tag): [string, string] => [`<${tag}> opened over and over and never closed`, over(`<${tag}>`)]),
+  ['<b> closed only by </i>', over('<b>x</i>')],
+  ['an <a> that says href over and over', `<a${over(' href="x"')}`],
+  ['folds nested in folds', nestedTo('<details>', '</details>', MEGABYTE)],
+  ['a fold opened over and over and never closed', over('<details>')],
+  ['a fold with a summary opened over and over and never closed', over('<details><summary>')],
+  ['a link opened over and over and never closed', over('[a](')],
+  ['a picture opened over and over and never closed', over('![a](')],
+  ['[ and nothing else', over('[')],
+  ['![ and nothing else', over('![')],
+  ['a fence opened over and over and never closed', over('```x\n')],
+  ['fences of every length, none closed', runsOf('`', 'x\n').replace(/^`{1,2}x\n/gmu, '')],
+  ['backtick runs of every length on one line', runsOf('`', 'x')],
+  ['spaces inside a line', `x${over(' ')}y`],
+  ['tabs inside a line', `x${over('\t')}y`],
+  ['form feeds inside a line', `x${over('\f')}y`],
+  ['lines of a form feed alone, then a task', `x\n${over('\f\n')}- [x] y`],
+  ['lines of a form feed alone, then a callout', `x\n${over('\f\n')}> [!NOTE]`],
 ]
 
-test.each(HOSTILE)('a body of %s is drawn in under a second', (_, body) => {
-  expect(msToLead(body)).toBeLessThan(1000)
+// Each is read in well under 100 ms on a laptop, and took minutes before it was made linear: half a second leaves room for a
+// slow machine and none for a reading that is quadratic again.
+test.each(HOSTILE)('a megabyte of %s is read in under half a second', (_, body) => {
+  expect(msToRead(body)).toBeLessThan(500)
+})
+
+// ---- a fold nested past reading -----------------------------------------------------------------------------------------
+
+/** The fold depth of `parts`: none for text alone. */
+const depthOf = (parts: Part[]): number => Math.max(0, ...parts.map(part => ('summary' in part ? 1 + depthOf(part.parts) : 0)))
+
+test('folds nested thousands deep are read as folds sixteen deep, the deeper ones as their words', () => {
+  // About as deep as a stack of calls, one per fold, can go.
+  const text = `${'<details><summary>s</summary>'.repeat(6_000)}words${'</details>'.repeat(6_000)}`
+  const parts = partsOf(cleanBody(text, HOST, 'g/p'))
+  expect(depthOf(parts)).toBe(16)
+  expect(flatOf(cleanBody(text, HOST, 'g/p'))).toBe('▸ s')
+  expect(lead(cleanBody(`Lead.\n\n${text}`, HOST, 'g/p'))).toBe('Lead.')
+})
+
+test('folds nested sixteen deep are each a fold', () => {
+  const text = `${'<details open><summary>s</summary>'.repeat(16)}words${'</details>'.repeat(16)}`
+  const parts = partsOf(cleanBody(text, HOST, 'g/p'))
+  expect(depthOf(parts)).toBe(16)
+  expect(flatOf(cleanBody(text, HOST, 'g/p'))).toBe(`${'▾ s\n\n'.repeat(16)}words`)
 })
 
 // ---- a strip that is still cutting when it reaches its last round leaves no markup ------------------------------------
@@ -276,14 +337,21 @@ const pastTheCapArb = fc
   })
   .map(({ kind, depth, before, after }) => `${before}${kind === 'tags' ? nestedTo('<', 'b>', 3 * depth) : `${'<!-'.repeat(depth)}<!-- a -->${'- -->'.repeat(depth)}`}${after}`)
 
-test('markup nested past the last round leaves no < in what is drawn', () => {
+test('markup nested past the last round leaves no < in what is drawn, and keeps the words after it', () => {
   fc.assert(
     fc.property(pastTheCapArb, text => {
-      expect(drawn(text)).not.toContain('<')
+      expect(drawn(`${text} tail words`)).not.toContain('<')
+      expect(drawn(`${text} tail words`)).toMatch(/ tail words$/u)
     })
   )
 })
 
 test('markup within the rounds is cut to the last piece, and a < of its own is kept', () => {
   expect(drawn('a < b <<<b>b>b> c')).toBe('a < b  c')
+  // Seven deep is cut in seven rounds, and an eighth finds nothing more: the last round there is.
+  expect(drawn(`a < b ${nestedTo('<', 'b>', 3 * 7)} c`)).toBe('a < b  c')
+})
+
+test('markup nested eight deep is still being cut in the last round, so every < goes', () => {
+  expect(drawn(`a < b ${nestedTo('<', 'b>', 3 * 8)} c`)).toBe('a  b  c')
 })

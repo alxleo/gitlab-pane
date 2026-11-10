@@ -13,6 +13,7 @@ hooks/attention.ts
 hooks/avatar.ts
 hooks/card.tsx
 hooks/choices.ts
+hooks/closers.ts
 hooks/data.ts
 hooks/decode.ts
 hooks/drawing.ts
