@@ -302,9 +302,9 @@ class Desktop {
     await this.draw()
   }
 
-  /** Notes what the window shows now, unless it showed just that last. */
+  /** Notes what the window shows now, unless it showed just that last. A shorter tree has pulled the window up before it shows. */
   #saw(): void {
-    const now = `${viewOf(this.#tree)} at ${this.#offset}`
+    const now = `${viewOf(this.#tree)} at ${this.#clamped(this.#offset)}`
     if (this.shown.at(-1) !== now) {
       this.shown.push(now)
     }
@@ -410,10 +410,16 @@ async function title(engine: Engine): Promise<string> {
   }
 }
 
-/** Which view a drawing is: an MR's page, the inbox or the list. */
+/** Which view a drawing is: an MR's page, the inbox, the list, or something else, such as the pane's failure to draw. */
 function viewOf(tree: Json): string {
   const keys = new Set(walk(tree).map(keyOf))
-  return keys.has('back-top') ? 'page' : [...keys].some(key => key.startsWith('inbox')) ? 'inbox' : 'list'
+  if (keys.has('back-top')) {
+    return 'page'
+  }
+  if ([...keys].some(key => key.startsWith('inbox'))) {
+    return 'inbox'
+  }
+  return keys.has('tab-mine') ? 'list' : 'other'
 }
 
 async function describe(desktop: Desktop, engine: Engine, show: number, before: { scrolls: number; shown: number }): Promise<string[]> {
@@ -470,7 +476,7 @@ async function flow(options: Options): Promise<number> {
     const readAt = seconds()
     await desktop.settle(options.settleMs)
     console.log(`ready: first cards at ${cardsAt ?? readAt}s, the read done at ${readAt}s`)
-    console.log((await describe(desktop, engine, options.show, { scrolls: 0, shown: desktop.shown.length })).join('\n'))
+    console.log((await describe(desktop, engine, options.show, { scrolls: 0, shown: 0 })).join('\n'))
     for (const spec of options.presses) {
       const before = { scrolls: desktop.scrolls.length, shown: desktop.shown.length }
       const step = await desktop.press(spec)
