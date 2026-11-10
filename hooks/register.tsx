@@ -140,7 +140,18 @@ export const register: Register = (on, options) => {
     }
     const { Button, Text } = $.ui.resolve(e)
     return (
-      <Button key="inbox-band" plain label={label} onPress={() => openInbox($)}>
+      <Button
+        key="inbox-band"
+        plain
+        label={label}
+        onPress={() =>
+          quietly(
+            $,
+            openInbox($).then(() => step($)),
+            'gitlab'
+          )
+        }
+      >
         <Text color="warning">{label}</Text>
       </Button>
     )

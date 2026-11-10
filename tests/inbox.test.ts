@@ -4,7 +4,8 @@ import type { On } from 'claude-code'
 import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
-import { NOW, mergeStatuses } from './fixtures'
+import { NOW, mergeStatuses, pipe, rawMr } from './fixtures'
+import type { Mr } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
@@ -33,8 +34,8 @@ const BAND = {
 const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
-/** The host with `world` behind it; every call is in `requests`. The token comes from the environment. */
-function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>) {
+/** The host with `world` behind it, and `mine` as your open MRs on Mine; every call is in `requests`. The token comes from the environment. */
+function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>, mine: Mr[] = []) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
   const { store, panes } = fakeSession(on)
   const gitlab = fakeGitLab(
@@ -42,7 +43,12 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
     {
       'gitlab.com': {
         accepts: TOKEN,
-        answers: { ...inboxAnswers(world), Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: [] } } } }), MergeStatus: () => mergeStatuses([]) },
+        answers: {
+          ...inboxAnswers(world),
+          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mine } } } }),
+          MergeStatus: () => mergeStatuses(mine),
+          Pinned: ({ path, iid }) => ({ data: { project: { mergeRequest: mine.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } } }),
+        },
       },
     },
     { env: hasToken ? { GITLAB_TOKEN: TOKEN } : {}, isDown: () => world.isDown, ...(held !== undefined ? { held } : {}) }
@@ -199,7 +205,8 @@ test('✓ marks one MR seen on this machine only, and GitLab is not asked again'
 
 test('the band above the prompt says the inbox news while the pane is not shown, opens the Inbox tab, and clears once all is seen', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const gitlab = engine(on, { ...emptyWorld(), opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])] })
+  const world = { ...emptyWorld(), opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])] }
+  const gitlab = engine(on, world, true, REMOTE, undefined, [rawMr(5, { headPipeline: pipe('RUNNING') })])
   const bandOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }) =>
     (await ui.find({ type: 'Button', key: 'inbox-band' }))?.props?.label
 
@@ -209,6 +216,15 @@ test('the band above the prompt says the inbox news while the pane is not shown,
   expect(JSON.stringify(await pane.drawn())).toContain('"Inbox · 1 new"')
   // The pane's tab says it already, so the band leaves the place to anything else that draws there.
   const shown = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await bandOf(shown)).toBeUndefined()
+  // An MR read whole puts its way back where the tabs were, so the band says the count meanwhile; its press leaves the
+  // page for the Inbox tab, which says it again.
+  await pane.press({ key: (await pane.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-5-') === true)?.key ?? '' })
+  expect(await pane.find({ type: 'Button', key: 'back-top' })).toBeDefined()
+  expect(await bandOf(shown)).toBe('Inbox · 1 new')
+  await shown.press({ key: 'inbox-band' })
+  expect(await pane.find({ type: 'Button', key: 'back-top' })).toBeUndefined()
+  expect((await pane.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
   expect(await bandOf(shown)).toBeUndefined()
   await shown.unmount()
   await pane.unmount()

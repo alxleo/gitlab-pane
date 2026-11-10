@@ -246,11 +246,6 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   }
 }
 
-/**
- * The pane's list as data. Rows come in order of what needs you, then pictures on faces where room is left. Rows that do
- * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
- * a row, once.
- */
 /** The Inbox tab's words: how many MRs have news, when any do. */
 const inboxLabel = (count: number): string => (count > 0 ? `Inbox · ${count} new` : 'Inbox')
 
@@ -264,6 +259,11 @@ export function inboxBand(input: { count: number; isPaneDrawn: boolean; isPageOp
   return input.count > 0 && !isTabShown && !input.hasSurvey ? inboxLabel(input.count) : null
 }
 
+/**
+ * The pane's list as data. Rows come in order of what needs you, then pictures on faces where room is left. Rows that do
+ * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
+ * a row, once.
+ */
 export function buildPane(input: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
   // GitLab says an MR is no longer open before the authored list drops it.
   const rows = input.cards.filter(row => !hasLeft(row))

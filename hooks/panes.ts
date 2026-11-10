@@ -69,14 +69,15 @@ export async function bandOf($: EngineInterface, hasSurvey: boolean): Promise<st
   return inboxBand({ count: news.count, isPaneDrawn, isPageOpen: page !== '', hasSurvey })
 }
 
-/** The band's press: the pane, open on the Inbox tab, which says the count from then on in the band's place. */
-export function openInbox($: EngineInterface): void {
-  quietly(
-    $,
-    showInbox($)
-      .then(() => openPane($))
-      .then(() => notePaneDrawn($))
-  )
+/**
+ * The band's press: the pane, open on the Inbox tab, which says the count from then on in the band's place. The band goes
+ * at once; the caller then runs a tick, after any tick already out, so a tick that asked the engine before the pane
+ * opened cannot leave the band beside the tab.
+ */
+export async function openInbox($: EngineInterface): Promise<void> {
+  await showInbox($)
+  await openPane($)
+  await notePaneDrawn($)
 }
 
 /** Shows the MR list (`mine`) or the inbox; only the open tab is drawn. */
