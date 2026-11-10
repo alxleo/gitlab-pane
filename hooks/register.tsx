@@ -27,7 +27,8 @@ const answer = (result: ModelLine) => ({ result })
 export const register: Register = (on, options) => {
   // What the pane last did, so /gitlab can say why it is blank. It lives here, in what this load of the mod owns, because the
   // render hook that keeps it may not write an atom (the engine denies a write while drawing); a reload starts it over.
-  const health = { loadedAt: '', draws: 0, last: 'never asked to draw' }
+  // `strip` says why the strip that drags the pins is not drawn, when it is not: the surface has no region for it, or it failed.
+  const health = { loadedAt: '', draws: 0, last: 'never asked to draw', strip: '' }
   on('session.start', async ($, e, next) => {
     forgetProbed()
     const hosts = parseHosts(options.gitlabHosts)
@@ -84,13 +85,14 @@ export const register: Register = (on, options) => {
     const isGoingBackStuck = scrolling.goingBack !== '' && scrolling.goingBack !== 'done'
     const failures = await problems($)
     const hostLine = hostsLine((await readPoll($)).hosts)
-    if (opened.isPlaced && !health.last.startsWith('threw') && scrolling.refused === '' && !isGoingBackStuck && failures.length === 0) {
+    if (opened.isPlaced && !health.last.startsWith('threw') && health.strip === '' && scrolling.refused === '' && !isGoingBackStuck && failures.length === 0) {
       return { text: 'GitLab pane open' }
     }
     return {
       text: [
         opened.isPlaced ? 'GitLab pane open' : `GitLab pane not placed: ${opened.reason}`,
         `${health.last} (${health.draws} draws since ${health.loadedAt} UTC)`,
+        ...(health.strip !== '' ? [`no drag strip: ${health.strip}`] : []),
         ...(scrolling.refused !== '' ? [`last scroll refused: ${scrolling.refused}`] : []),
         ...(isGoingBackStuck ? [`going back: ${scrolling.goingBack}`] : []),
         ...(hostLine !== '' ? [hostLine] : []),
@@ -152,6 +154,7 @@ export const register: Register = (on, options) => {
   // The strip failed where it is drawn: the engine draws the pane again, and the pane leaves the strip out on that surface.
   on('ui.fault', async ($, e, next) => {
     if (e.element === PIN_STRIP) {
+      health.strip = `it failed on ${e.surface} as it ${{ load: 'loaded', render: 'drew', run: 'ran' }[e.phase]}: ${e.reason.slice(0, 120)}`
       await markStripFault($, e.surface)
     }
     return next(e)
@@ -163,7 +166,11 @@ export const register: Register = (on, options) => {
     try {
       const tree = await drawPane($, e)
       drawn(e.props.scroll.offset)
-      health.last = `drew ${JSON.stringify(tree).length} characters on ${e.surface}`
+      const drawing = JSON.stringify(tree)
+      health.last = `drew ${drawing.length} characters on ${e.surface}${drawing.includes('"Client"') ? ', the drag strip among them' : ''}`
+      if (!('Client' in $.ui.resolve(e))) {
+        health.strip = `${e.surface} has no region a mod draws itself`
+      }
       return tree
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
