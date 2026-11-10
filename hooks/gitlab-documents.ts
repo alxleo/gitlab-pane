@@ -1,7 +1,7 @@
-// Every GraphQL document the pane sends (those on merging an MR are in merge-documents.ts), and the requests built from them.
+// Every GraphQL document the pane sends (those on merging an MR are in merge-gitlab.ts), and the requests built from them.
 // tools/gitlab_schema.ts checks DOCUMENTS against GitLab; graphql-codegen reads both files for gitlab.generated.ts.
-import { MERGE, MERGE_STATUS, MOVE_STATE } from './merge-documents.ts'
-import type { WRITES } from './merge-documents.ts'
+import { MERGE, MERGE_STATUS, MOVE_STATE } from './merge-gitlab.ts'
+import type { WRITES } from './merge-gitlab.ts'
 import type {
   AuthoredPlainQuery,
   AuthoredPlainQueryVariables,

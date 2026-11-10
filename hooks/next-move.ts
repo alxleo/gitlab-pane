@@ -2,10 +2,11 @@
 // only where GitLab's checks name it and the signed-in user may make it, so a card has a move only when that move is what
 // moves the MR along; waiting on people, on a pipeline or on a fix stays as quiet as it was. Pure, on plain data.
 import { checkWords, failureTone, verdictOf } from './attention.ts'
+import { kindOf, messageOf } from './failure.ts'
 import type { MergeStrategyEnum } from './gitlab.generated.ts'
 import { foreign, line, URL_ROOM, type ModelLine } from './model-text.ts'
 
-import type { FailureKind, MoveKind, MrCard, Pressed } from '../types'
+import type { MoveKind, MrCard, Pressed } from '../types'
 
 /** How long a merge stays armed after its first press; a second press within it merges, and past it the press is forgotten. */
 export const ARMED_MS = 10_000
@@ -17,36 +18,39 @@ export const ARMED_MS = 10_000
  */
 export type Move = { label: string; check: string | null; press: { kind: MoveKind; does: 'arm' | 'make' } | null; isArmed: boolean; failed: string | null }
 
-/** What each move says while it can be pressed, in DESIGN.md's order. */
-export const MOVE_LABEL: Record<MoveKind, string> = {
-  merge: '✓ merge',
-  rebase: '↻ rebase',
-  'rebase-merge': '↻ rebase and merge',
-  conflicts: '⇄ hand conflicts to Claude',
-}
-
-/** The checks a move speaks for: a merge for GitLab's verdict that the MR can merge, the others for the check they fix. */
-const CHECK: Record<MoveKind, string | null> = { merge: null, rebase: 'NEED_REBASE', 'rebase-merge': 'NEED_REBASE', conflicts: 'CONFLICT' }
-
-/** What a move says while it is under way. */
-const UNDER_WAY: Record<MoveKind, string> = {
-  merge: '✓ merging…',
-  rebase: '↻ rebasing…',
-  'rebase-merge': '↻ rebasing…',
-  conflicts: '⇄ conflicts · with Claude',
+/**
+ * Each move, in DESIGN.md's order: what it says while it can be pressed and while it is under way, the GitLab check it
+ * speaks for (null: GitLab's verdict that the MR can merge), and whether it merges, which asks for a second press; a
+ * rebase can be undone and a hand-off does nothing until Claude pushes, so they go at once.
+ */
+export const MOVES: Record<MoveKind, { label: string; underWay: string; check: string | null; isMerging: boolean }> = {
+  merge: { label: '✓ merge', underWay: '✓ merging…', check: null, isMerging: true },
+  rebase: { label: '↻ rebase', underWay: '↻ rebasing…', check: 'NEED_REBASE', isMerging: false },
+  'rebase-merge': { label: '↻ rebase and merge', underWay: '↻ rebasing…', check: 'NEED_REBASE', isMerging: true },
+  conflicts: { label: '⇄ hand conflicts to Claude', underWay: '⇄ conflicts · with Claude', check: 'CONFLICT', isMerging: false },
 }
 
 const said = (label: string, check: string | null): Move => ({ label, check, press: null, isArmed: false, failed: null })
-
-/** Moves that merge ask for a second press; a rebase or a hand-off to Claude can be undone, or does nothing until Claude pushes. */
-const ARMS: ReadonlySet<MoveKind> = new Set(['merge', 'rebase-merge'])
+const underWay = (kind: MoveKind): Move => said(MOVES[kind].underWay, MOVES[kind].check)
 
 /**
- * Whether a press may make its move: one that merges only while this session's arm for that move, on that head, still
- * holds, so a drawing from before the arm ran out, or before a push, merges nothing.
+ * What a press on a row's move records, against the press this session holds on the MR (as it holds at `at`): the move
+ * `sent`, `armed` to ask for the press that confirms one that merges, `handed` for conflicts, or null for nothing (a
+ * move is already under way, or the conflicts were handed over on this head). A merge goes only on a live arm for that
+ * move and head, so a drawing from before the arm ran out, or before a push, arms again instead of merging.
  */
-export const isConfirmed = (kind: MoveKind, held: Pressed | undefined, head: string): boolean =>
-  !ARMS.has(kind) || (held?.state === 'armed' && held.kind === kind && held.head === head)
+export function decidePress(press: { kind: MoveKind; does: 'arm' | 'make' }, held: Pressed | undefined, head: string, at: number): Pressed | null {
+  const live = liveOf(held, at)
+  const isSame = live !== undefined && live.kind === press.kind && live.head === head
+  if (press.kind === 'conflicts') {
+    return isSame && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', head, at }
+  }
+  if (live?.state === 'sent') {
+    return null
+  }
+  const isConfirmed = !MOVES[press.kind].isMerging || (isSame && live.state === 'armed')
+  return { kind: press.kind, state: press.does === 'make' && isConfirmed ? 'sent' : 'armed', head, at }
+}
 
 /**
  * The move GitLab's checks name: conflicts before a rebase, which they would stop, and a rebase before a merge, which it
@@ -93,24 +97,24 @@ export function nextMove(card: MrCard, pressed: Pressed | undefined, isHere: boo
     return said('✓ merges when checks pass', verdictOf(card)?.check ?? null)
   }
   if (merging?.isRebasing === true) {
-    return said(UNDER_WAY.rebase, CHECK.rebase)
+    return underWay('rebase')
   }
   const press = pressed !== undefined && pressed.head === merging?.head ? pressed : undefined
   if (press?.state === 'sent') {
-    return said(UNDER_WAY[press.kind], CHECK[press.kind])
+    return underWay(press.kind)
   }
   const kind = offered(card, isHere)
   if (kind === null) {
     return null
   }
   if (press?.state === 'handed' && press.kind === kind) {
-    return said(UNDER_WAY[kind], CHECK[kind])
+    return underWay(kind)
   }
   const isArmed = press?.state === 'armed' && press.kind === kind
   return {
-    label: isArmed ? `${MOVE_LABEL[kind]} !${card.iid}? press again` : MOVE_LABEL[kind],
-    check: CHECK[kind],
-    press: { kind, does: ARMS.has(kind) && !isArmed ? 'arm' : 'make' },
+    label: isArmed ? `${MOVES[kind].label} !${card.iid}? press again` : MOVES[kind].label,
+    check: MOVES[kind].check,
+    press: { kind, does: MOVES[kind].isMerging && !isArmed ? 'arm' : 'make' },
     isArmed,
     // Why the last press of this move did not take, until it is pressed again or the head moves.
     failed: press?.state === 'failed' && press.kind === kind ? press.say : null,
@@ -170,11 +174,17 @@ const whenStrategy = (fresh: Fresh): MergeStrategyEnum | null =>
 export const why = (error: string): string => foreign(error, 120)
 
 /**
- * Whether a write that failed this way may still have reached GitLab: a dropped connection, a timeout or a server error
- * may have come after GitLab took it. Such a write is followed, as one that went through is; it is never sent again. The
- * engine's own refusal (`… refused: …`, a policy that never let it leave the machine) did not land.
+ * Why a merge or rebase did not take, and whether it may have reached GitLab all the same: a dropped connection, a
+ * timeout or a server error may have come after GitLab took it, and such a write is followed, never sent again.
  */
-export const mayHaveLanded = (kind: FailureKind, message: string): boolean => (kind === 'network' || kind === 'timeout' || kind === 'server') && !/\brefused:/u.test(message)
+export type Refusal = { reason: string; mayHaveLanded: boolean }
+
+/** An error from sending a write as a refusal. The engine's own refusal (`… refused: …`, a policy) never left the machine. */
+export function refusalOf(error: unknown): Refusal {
+  const message = messageOf(error)
+  const kind = kindOf(error)
+  return { reason: why(message), mayHaveLanded: (kind === 'network' || kind === 'timeout' || kind === 'server') && !/\brefused:/u.test(message) }
+}
 
 /**
  * The first step of a move GitLab makes, from the MR as GitLab says it just before. A move that merges is made only on
@@ -246,14 +256,18 @@ export function nextStep(kind: 'merge' | 'rebase' | 'rebase-merge', before: Fres
 }
 
 /**
- * Once GitLab took a merge: one it carries out later (once checks pass, or in its train) is as done as the pane can make
- * it, and the row says so from GitLab's next read; one it makes now is followed until it merged (null).
+ * The step after a merge or rebase was sent, given GitLab's refusal of it, if any. A refusal is the end; a write that may
+ * have landed is followed. Of those GitLab took, a merge it carries out later (once checks pass, or in its train) is as
+ * done as the pane can make it, and one it makes now, like a rebase, is followed until GitLab says how it ended.
  */
-export function afterMerge(strategy: MergeStrategyEnum | null): Step | null {
-  if (strategy === 'MERGE_TRAIN') {
-    return done('added to the merge train')
+export function afterSend(sent: Extract<Step, { does: 'merge' | 'rebase' }>, refusal: Refusal | null): Step {
+  if (refusal !== null && !refusal.mayHaveLanded) {
+    return failed(`${sent.does === 'merge' ? 'not merged' : 'not rebased'}: ${refusal.reason}`)
   }
-  return strategy !== null ? done('merges when checks pass') : null
+  if (refusal === null && sent.does === 'merge' && sent.strategy !== null) {
+    return done(sent.strategy === 'MERGE_TRAIN' ? 'added to the merge train' : 'merges when checks pass')
+  }
+  return { does: 'wait' }
 }
 
 /**

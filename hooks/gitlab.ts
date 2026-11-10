@@ -1,9 +1,7 @@
 import type {
   AuthoredPlainQuery,
   AuthoredQuery,
-  MergeMutation,
   MergeStatusQuery,
-  MoveStateQuery,
   MrFieldsFragment,
   NoteFieldsFragment,
   PinnedPlainQuery,
@@ -13,14 +11,12 @@ import type {
   UsualQuery,
 } from './gitlab.generated.ts'
 import type { RawResponse } from './gitlab-documents.ts'
-import { isFilled, isSome } from './decode.ts'
-import { Failure } from './failure.ts'
+import { dataOf, isFilled, isSome } from './decode.ts'
 import { checkStatusOf, ciStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { lead, ranOf } from './format.ts'
 import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
-import type { Fresh } from './next-move.ts'
 import { firstDifference } from './order.ts'
 
 import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, Merging, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
@@ -335,15 +331,6 @@ export function toCard(host: string, raw: RawMr): MrCard {
 export const lostIn = (response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): number =>
   (response.data?.currentUser?.authoredMergeRequests?.nodes ?? []).filter(node => node === null).length
 
-const dataOf = <Data>(response: RawResponse<Data>): Data => {
-  const { data } = response
-  if (!isSome(data)) {
-    const reason = (response.errors ?? []).map(error => error.message).join('; ')
-    throw reason === '' ? new Failure('bad-answer', 'GitLab sent no data') : new Failure('server', reason)
-  }
-  return data
-}
-
 /** The authored MRs as cards. A read with no data at all throws; a partial one keeps what came back. */
 export const readResponse = (host: string, response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): MrCard[] =>
   present(dataOf(response).currentUser?.authoredMergeRequests?.nodes).map(raw => toCard(host, raw))
@@ -352,30 +339,4 @@ export const readResponse = (host: string, response: RawResponse<AuthoredQuery |
 export const readPinned = (host: string, response: RawResponse<PinnedQuery | PinnedPlainQuery>): MrCard[] => {
   const raw = dataOf(response).project?.mergeRequest
   return isSome(raw) ? [toCard(host, raw)] : []
-}
-
-/** One MR as a move needs it; none when GitLab named no such MR, and a throw when it sent no data at all. */
-export function readMoveState(response: RawResponse<MoveStateQuery>): Fresh | null {
-  const raw = dataOf(response).project?.mergeRequest
-  return isSome(raw)
-    ? {
-        state: raw.state,
-        status: raw.detailedMergeStatus,
-        head: raw.diffHeadSha ?? '',
-        rebased: raw.rebaseCommitSha ?? '',
-        isRebasing: raw.rebaseInProgress,
-        isAutoMerging: raw.autoMergeEnabled,
-        mergeError: raw.mergeError,
-        strategies: raw.availableAutoMergeStrategies ?? [],
-      }
-    : null
-}
-
-/** Why GitLab refused a merge, in its words, or null when it took it. */
-export function mergeRefusal(response: RawResponse<MergeMutation>): string | null {
-  const said = [...(response.errors ?? []).map(error => error.message), ...(response.data?.mergeRequestAccept?.errors ?? [])]
-  if (said.length > 0) {
-    return said.join('; ')
-  }
-  return isSome(response.data?.mergeRequestAccept) ? null : 'GitLab sent no answer'
 }

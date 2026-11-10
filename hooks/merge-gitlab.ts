@@ -1,8 +1,12 @@
-// The documents on merging an MR, and the requests built from them: GitLab's verdict on the user's MRs, one MR read fresh
-// before and during a move, and the merge, the only document that changes anything in GitLab. GraphQL has no rebase,
-// which goes over REST (moves.ts). DOCUMENTS in gitlab-documents.ts holds these with the rest, for the schema check.
+// What the pane says to GitLab about merging an MR, and how it reads the answers: GitLab's verdict on the user's MRs, one
+// MR read fresh before and during a move, the merge (the only document that changes anything in GitLab), and the rebase,
+// which GraphQL lacks and goes over REST (moves.ts sends it). DOCUMENTS in gitlab-documents.ts holds the documents with the
+// rest, for the schema check.
 import type { MergeMutation, MergeMutationVariables, MergeStatusQuery, MergeStrategyEnum, MoveStateQuery, MoveStateQueryVariables } from './gitlab.generated.ts'
-import type { Operations, Request } from './gitlab-documents.ts'
+import type { Operations, RawResponse, Request } from './gitlab-documents.ts'
+import { dataOf, isRecord, isSome, parseJson } from './decode.ts'
+import { why } from './next-move.ts'
+import type { Fresh, Refusal } from './next-move.ts'
 
 import type { HostFeatures } from '../types'
 
@@ -62,3 +66,50 @@ export const mergeWrite = (path: string, iid: number, sha: string, strategy: Mer
   query: MERGE,
   variables: { path, iid: String(iid), sha, ...(strategy !== null ? { strategy } : {}) } satisfies MergeMutationVariables,
 })
+
+/** The REST path that starts a rebase of the MR; GitLab answers `202 {"rebase_in_progress": true}` when it takes it. */
+export const rebasePath = (path: string, iid: number): string => `projects/${encodeURIComponent(path)}/merge_requests/${iid}/rebase`
+
+/** One MR as a move needs it; none when GitLab named no such MR, and a throw when it sent no data at all. */
+export function readMoveState(response: RawResponse<MoveStateQuery>): Fresh | null {
+  const raw = dataOf(response).project?.mergeRequest
+  return isSome(raw)
+    ? {
+        state: raw.state,
+        status: raw.detailedMergeStatus,
+        head: raw.diffHeadSha ?? '',
+        rebased: raw.rebaseCommitSha ?? '',
+        isRebasing: raw.rebaseInProgress,
+        isAutoMerging: raw.autoMergeEnabled,
+        mergeError: raw.mergeError,
+        strategies: raw.availableAutoMergeStrategies ?? [],
+      }
+    : null
+}
+
+/** Why GitLab refused a merge, in its words, or null when it took it. */
+export function mergeRefusal(response: RawResponse<MergeMutation>): Refusal | null {
+  const said = [...(response.errors ?? []).map(error => error.message), ...(response.data?.mergeRequestAccept?.errors ?? [])]
+  if (said.length > 0) {
+    return { reason: why(said.join('; ')), mayHaveLanded: false }
+  }
+  return isSome(response.data?.mergeRequestAccept) ? null : { reason: 'GitLab sent no answer', mayHaveLanded: false }
+}
+
+const jsonOrNull = (text: string): unknown => {
+  try {
+    return parseJson(text)
+  } catch {
+    return null
+  }
+}
+
+/** Why GitLab would not start a rebase, in its words, or null when it took it. A server error may have come after it took it. */
+export function rebaseRefusal(answer: { status: number; text: string }): Refusal | null {
+  if (answer.status >= 200 && answer.status < 300) {
+    return null
+  }
+  const said = jsonOrNull(answer.text)
+  const message = isRecord(said) && typeof said.message === 'string' ? `: ${said.message}` : ''
+  return { reason: why(`GitLab answered HTTP ${answer.status}${message}`), mayHaveLanded: answer.status >= 500 }
+}

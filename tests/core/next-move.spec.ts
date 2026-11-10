@@ -2,11 +2,13 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { toCard } from '../../hooks/gitlab.ts'
-import { afterMerge, conflictsTask, firstStep, FOLLOW_MS, FOLLOW_TRIES, isConfirmed, liveOf, mayHaveLanded, nextMove, nextStep, why } from '../../hooks/next-move.ts'
+import { Failure } from '../../hooks/failure.ts'
+import type { MergeStrategyEnum } from '../../hooks/gitlab.generated.ts'
+import { afterSend, conflictsTask, decidePress, firstStep, FOLLOW_MS, FOLLOW_TRIES, liveOf, nextMove, nextStep, refusalOf } from '../../hooks/next-move.ts'
 import type { Fresh } from '../../hooks/next-move.ts'
 import { readCardArb, textArb } from './arbitrary.ts'
 import { HOST, gitlabSays, rawMr } from '../fixtures.ts'
-import type { CheckStatus, Merging, MrCard, Pressed } from '../../types'
+import type { CheckStatus, FailureKind, Merging, MrCard, Pressed } from '../../types'
 
 const CAN: Merging = { head: 'abc123', isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true }
 
@@ -160,11 +162,22 @@ test('after a merge is sent, the pane looks again until GitLab says it merged, o
   expect(nextStep('merge', before, fresh({ state: 'locked' }), 1)).toEqual({ does: 'wait' })
   // A merge for once checks pass whose answer was lost: GitLab holding it is as done as it gets.
   expect(nextStep('merge', before, fresh({ isAutoMerging: true }), 1)).toEqual(stop('merges when checks pass', true))
-  // A merge GitLab makes later is as done as the pane can make it; one made now is followed.
-  expect(afterMerge('MERGE_WHEN_CHECKS_PASS')).toEqual(stop('merges when checks pass', true))
-  expect(afterMerge('ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS')).toEqual(stop('merges when checks pass', true))
-  expect(afterMerge('MERGE_TRAIN')).toEqual(stop('added to the merge train', true))
-  expect(afterMerge(null)).toBe(null)
+})
+
+test('once a write is sent: a merge GitLab makes later is done, one made now and a rebase are followed, a refusal is the end', () => {
+  const merge = (strategy: MergeStrategyEnum | null) => ({ does: 'merge', head: 'abc123', strategy }) as const
+  expect(afterSend(merge('MERGE_WHEN_CHECKS_PASS'), null)).toEqual(stop('merges when checks pass', true))
+  expect(afterSend(merge('ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS'), null)).toEqual(stop('merges when checks pass', true))
+  expect(afterSend(merge('MERGE_TRAIN'), null)).toEqual(stop('added to the merge train', true))
+  expect(afterSend(merge(null), null)).toEqual({ does: 'wait' })
+  expect(afterSend({ does: 'rebase' }, null)).toEqual({ does: 'wait' })
+  const refused = refusalOf(new Failure('unauthorized', 'gitlab.com refused the token (HTTP 403): it needs the api scope'))
+  expect(afterSend(merge(null), refused)).toEqual(stop('not merged: gitlab.com refused the token (HTTP 403): it needs the api scope', false))
+  expect(afterSend({ does: 'rebase' }, refused)).toEqual(stop('not rebased: gitlab.com refused the token (HTTP 403): it needs the api scope', false))
+  // An answer lost on the way back may come after GitLab took the write: followed, and never sent again, even one made later.
+  const lost = refusalOf(new Failure('network', 'gitlab.com failed: connection reset'))
+  expect(afterSend(merge('MERGE_WHEN_CHECKS_PASS'), lost)).toEqual({ does: 'wait' })
+  expect(afterSend({ does: 'rebase' }, lost)).toEqual({ does: 'wait' })
 })
 
 test('after a rebase, the pane waits for GitLab to finish it; a rebase that merges then sets the merge for once checks pass', () => {
@@ -215,26 +228,38 @@ test('a rebase is held back where the MR waits on something before it: a draft, 
   expect(nextMove(mr({ NEED_REBASE: 'failed', NOT_APPROVED: 'failed' }), undefined, false)?.label).toBe('↻ rebase')
 })
 
-test('a write that failed on the way back may have reached GitLab, and is followed, never sent again; a refusal is the end', () => {
-  expect(mayHaveLanded('network', 'gitlab.com failed: connection reset')).toBe(true)
-  expect(mayHaveLanded('timeout', 'aborted')).toBe(true)
-  expect(mayHaveLanded('server', 'gitlab.com answered HTTP 502')).toBe(true)
-  expect(mayHaveLanded('unauthorized', 'HTTP 401')).toBe(false)
-  expect(mayHaveLanded('bad-answer', 'not JSON')).toBe(false)
+test('a write that failed on the way back may have reached GitLab; one GitLab or the engine refused did not, and it says why in a line', () => {
+  const landed = (kind: FailureKind, message: string) => refusalOf(new Failure(kind, message)).mayHaveLanded
+  expect(landed('network', 'gitlab.com failed: connection reset')).toBe(true)
+  expect(landed('timeout', 'aborted')).toBe(true)
+  expect(landed('server', 'gitlab.com answered HTTP 502')).toBe(true)
+  expect(landed('unauthorized', 'HTTP 401')).toBe(false)
+  expect(landed('bad-answer', 'not JSON')).toBe(false)
   // The engine refused to send it: it never left the machine.
-  expect(mayHaveLanded('network', 'gitlab.com refused: blocked by policy')).toBe(false)
-  expect(why('GitLab said\nno‮')).toBe('GitLab said no')
+  expect(landed('network', 'gitlab.com refused: blocked by policy')).toBe(false)
+  expect(refusalOf(new Failure('failed', 'GitLab said\nno‮')).reason).toBe('GitLab said no')
 })
 
-test('a press that merges goes ahead only while this session’s arm for that move and head still holds; the others need none', () => {
-  const armed: Pressed = { kind: 'merge', state: 'armed', head: 'abc123', at: 0 }
-  expect(isConfirmed('merge', armed, 'abc123')).toBe(true)
+test('a press records what it does against the press held: a merge goes only on a live arm for that move and head, else it arms', () => {
+  const at = 1_000
+  const held = (over: Partial<Pick<Pressed, 'kind' | 'head'>> & { state: 'armed' | 'sent' | 'handed' }): Pressed => ({ kind: 'merge', head: 'abc123', at: 0, ...over })
+  const merge = { kind: 'merge', does: 'make' } as const
+  expect(decidePress(merge, held({ state: 'armed' }), 'abc123', at)).toEqual({ kind: 'merge', state: 'sent', head: 'abc123', at })
   // A drawing left from before the arm ran out, or before a push, merges nothing: the press arms again.
-  expect(isConfirmed('merge', undefined, 'abc123')).toBe(false)
-  expect(isConfirmed('merge', armed, 'def456')).toBe(false)
-  expect(isConfirmed('rebase-merge', armed, 'abc123')).toBe(false)
-  expect(isConfirmed('rebase', undefined, 'abc123')).toBe(true)
-  expect(isConfirmed('conflicts', undefined, 'abc123')).toBe(true)
+  expect(decidePress(merge, undefined, 'abc123', at)).toEqual({ kind: 'merge', state: 'armed', head: 'abc123', at })
+  expect(decidePress(merge, held({ state: 'armed' }), 'def456', at)?.state).toBe('armed')
+  expect(decidePress({ kind: 'rebase-merge', does: 'make' }, held({ state: 'armed' }), 'abc123', at)?.state).toBe('armed')
+  expect(decidePress({ kind: 'merge', does: 'arm' }, undefined, 'abc123', at)?.state).toBe('armed')
+  // A rebase can be undone and merges nothing, so it goes at once.
+  expect(decidePress({ kind: 'rebase', does: 'make' }, undefined, 'abc123', at)?.state).toBe('sent')
+  // While a move is sent, a press does nothing; one a closed session left long ago no longer holds.
+  expect(decidePress(merge, held({ state: 'sent' }), 'abc123', at)).toBe(null)
+  expect(decidePress(merge, held({ state: 'sent' }), 'abc123', 1_000_000)?.state).toBe('armed')
+  // Conflicts are handed over once per head.
+  const conflicts = { kind: 'conflicts', does: 'make' } as const
+  expect(decidePress(conflicts, undefined, 'abc123', at)).toEqual({ kind: 'conflicts', state: 'handed', head: 'abc123', at })
+  expect(decidePress(conflicts, held({ kind: 'conflicts', state: 'handed' }), 'abc123', at)).toBe(null)
+  expect(decidePress(conflicts, held({ kind: 'conflicts', state: 'handed' }), 'def456', at)?.state).toBe('handed')
 })
 
 test('a press sent to GitLab holds only while the pane could still be following it, so one a closed session left does not say merging for ever', () => {

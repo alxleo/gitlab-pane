@@ -8,7 +8,7 @@ import { VERB } from '../hooks/inbox-pane'
 import { RULES } from '../hooks/inbox-rules'
 import { FULL_EVERY_MS } from '../hooks/incremental'
 import { EXPIRY_MS, RENEW_MS, TICK_MS } from '../hooks/lease'
-import { FOLLOW_MS, FOLLOW_TRIES, MOVE_LABEL } from '../hooks/next-move'
+import { FOLLOW_MS, FOLLOW_TRIES, MOVES } from '../hooks/next-move'
 import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
 import { BACKOFF_MAX_MS, INBOX_EVERY_MS, WAKE_ONLY_EVERY_MS, pollEvery } from '../hooks/snapshot'
 import { STAGE_COLOURS, statusMark } from '../hooks/status'
@@ -98,5 +98,5 @@ test("DESIGN's badges, link marks and inbox events are the code's, in its order"
 })
 
 test("DESIGN's moves are the ones a card offers, in its order", () => {
-  expect(DESIGN.moves).toEqual(Object.values(MOVE_LABEL))
+  expect(DESIGN.moves).toEqual(Object.values(MOVES).map(move => move.label))
 })

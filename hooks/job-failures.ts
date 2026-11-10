@@ -1,11 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { ask, mayBeCut } from './graphql'
+import { ask, askRest, mayBeCut } from './graphql'
 import { failuresQuery } from './gitlab-documents'
 import { jobIdOf, tailOf } from './job-tail'
 import { foreign } from './model-text'
-import { tokenFor } from './tokens'
 import type { Failures, JobFailure } from './wake'
 
 import type { JobLink, MrCard } from '../types'
@@ -45,12 +44,10 @@ async function reasonsOf($: EngineInterface, card: MrCard): Promise<Map<number, 
  */
 async function tailFor($: EngineInterface, card: MrCard, id: number): Promise<JobFailure['tail']> {
   try {
-    const found = await tokenFor($, card.host)
-    if (!found.ok) {
-      return []
-    }
-    const answer = await $.http.fetch(`https://${card.host}/api/v4/projects/${encodeURIComponent(card.path)}/jobs/${id}/trace`, {
-      headers: { Authorization: `Bearer ${found.value.token}`, Accept: 'text/plain', Range: `bytes=-${TAIL_BYTES}` },
+    const answer = await askRest($, card.host, `projects/${encodeURIComponent(card.path)}/jobs/${id}/trace`, {
+      method: 'GET',
+      headers: { Accept: 'text/plain', Range: `bytes=-${TAIL_BYTES}` },
+      scope: 'read_api',
     })
     return (answer.status === 200 || answer.status === 206) && !mayBeCut(answer.text) ? tailOf(answer.text) : []
   } catch {

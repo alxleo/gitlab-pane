@@ -57,7 +57,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
 import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
-import { WRITES } from '../hooks/merge-documents.ts'
+import { WRITES } from '../hooks/merge-gitlab.ts'
 import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
 import { formatted } from './format.ts'
 
@@ -66,7 +66,7 @@ const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
 const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
 /** The files graphql-codegen reads documents from: DOCUMENTS's, and those on merging an MR, kept apart. */
-const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-documents.ts')]
+const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-gitlab.ts')]
 const ENDPOINT = 'https://gitlab.com/api/graphql'
 /**
  * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has

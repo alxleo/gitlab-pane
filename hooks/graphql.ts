@@ -1,9 +1,9 @@
 import type { EngineInterface } from 'claude-code'
 
 import { decodeGraphql, isRecord, parseJson } from './decode'
-import { Failure } from './failure'
+import { Failure, messageOf } from './failure'
 import type { RawResponse, Request } from './gitlab-documents'
-import { isWrite } from './merge-documents'
+import { isWrite } from './merge-gitlab'
 import { redact } from './hosts'
 import { missingFeatures } from './gitlab'
 import { featuresOf, forgetFound, learnLack } from './in-flight'
@@ -23,8 +23,6 @@ const ENGINE_READS_BYTES = 4 * 1024 * 1024
 export const mayBeCut = (text: string): boolean => new TextEncoder().encode(text).length > ENGINE_READS_BYTES * 0.9
 
 type Answer = { status: number; text: string }
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /** The engine's `plugin: $.http.fetch(url) failed: …` as `host failed: …`, which says as much on a pane's one line. */
 const plainly = (host: string, message: string): string => message.replace(/^(?:[^:]*: )?(?:\$\.http\.fetch(?:\([^)]*\))?(?: over \S+)?:? )+/u, `${host} `)
@@ -103,6 +101,38 @@ export async function ask<Data>($: EngineInterface, host: string, request: Reque
   } catch (error) {
     throw new Failure(error instanceof Failure ? error.kind : /\baborted\b/u.test(messageOf(error)) ? 'timeout' : 'network', redact(plainly(host, messageOf(error)), [token]))
   }
+}
+
+/**
+ * Sends one request to a host's REST API, `https://<host>/api/v4/<path>`, with the host's token, once. Gives GitLab's
+ * status and text, whatever the status, but for a rejected token (401, forgotten so it is asked for again) and a refused
+ * one (403, said to need `scope`). Whatever else fails says why, with no token in the words.
+ */
+export async function askRest(
+  $: EngineInterface,
+  host: string,
+  path: string,
+  init: { method: 'GET' | 'PUT'; headers: Record<string, string>; scope: 'read_api' | 'api' }
+): Promise<Answer> {
+  const found = await tokenFor($, host)
+  if (!found.ok) {
+    throw failureOf(found)
+  }
+  const { token, source } = found.value
+  let answer: Answer
+  try {
+    answer = await $.http.fetch(`https://${host}/api/v4/${path}`, { method: init.method, headers: { ...init.headers, Authorization: `Bearer ${token}` } })
+  } catch (error) {
+    throw new Failure(/\baborted\b/u.test(messageOf(error)) ? 'timeout' : 'network', redact(plainly(host, messageOf(error)), [token]))
+  }
+  if (answer.status === 401) {
+    forgetFound()
+    throw new Failure('unauthorized', `${host} rejected the token from ${source} (HTTP 401)`)
+  }
+  if (answer.status === 403) {
+    throw new Failure('unauthorized', `${host} refused the token from ${source} (HTTP 403): it needs the ${init.scope} scope, and you the access`)
+  }
+  return answer
 }
 
 /**

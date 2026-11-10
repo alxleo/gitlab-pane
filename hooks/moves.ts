@@ -1,28 +1,24 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { parseJson, isRecord } from './decode'
 import { pinMr, readPinned, readRows } from './data'
-import { Failure, kindOf } from './failure'
+import { Failure, messageOf } from './failure'
 import { quietly } from './failures'
-import { mergeWrite, moveStateQuery } from './merge-documents'
-import { mergeRefusal, readMoveState } from './gitlab'
-import { ask } from './graphql'
-import { projectOf, redact } from './hosts'
-import { forgetFound } from './in-flight'
+import { ask, askRest } from './graphql'
+import { projectOf } from './hosts'
 import { parseRemote } from './inbox-refs'
+import { mergeRefusal, mergeWrite, moveStateQuery, readMoveState, rebasePath, rebaseRefusal } from './merge-gitlab'
 import { lines } from './model-text'
-import { afterMerge, ARMED_MS, conflictsTask, firstStep, FOLLOW_MS, isConfirmed, liveOf, mayHaveLanded, nextStep, why } from './next-move'
-import type { Fresh, Step } from './next-move'
+import { afterSend, ARMED_MS, conflictsTask, decidePress, firstStep, FOLLOW_MS, nextStep, refusalOf, why } from './next-move'
+import type { Fresh, Refusal, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
-import { tokenFor } from './tokens'
 
-import type { MergeStrategyEnum } from './gitlab.generated'
 import type { MoveKind, MrCard, Pressed } from '../types'
 
-// The MR moves a press makes: merge, rebase, or hand the conflicts to Claude. Which move a card offers is next-move.ts's to
-// say; this file makes it and sees it through. What was pressed is this session's own (an atom, not the store), kept by
-// card key until the MR's head moves. The engine reads an atom only in the file that declares it.
+// The MR moves a press makes: merge, rebase, or hand the conflicts to Claude. What a card offers, what a press records and
+// each step after it are next-move.ts's to decide; this file sends what it decides to GitLab or to Claude, keeps this
+// session's presses (an atom, not the store) and looks at GitLab until the move is done. The engine reads an atom only in
+// the file that declares it.
 const pressedAtom = atom({ plugin: 'gitlab-pane', key: 'pressed' } as const, {})
 
 /** What the pane draws from; reading it here makes the pane redraw when a press changes. */
@@ -53,8 +49,6 @@ async function disarm($: EngineInterface, key: string, at: number): Promise<void
   }
 }
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
 /** The MR as GitLab says it now. */
 async function freshOf($: EngineInterface, card: MrCard): Promise<Fresh> {
   const fresh = readMoveState(await ask($, card.host, moveStateQuery(card.path, card.iid)))
@@ -64,53 +58,15 @@ async function freshOf($: EngineInterface, card: MrCard): Promise<Fresh> {
   return fresh
 }
 
-/** Why a write did not take, and whether it may have reached GitLab all the same (then it is followed, never sent again). */
-type Refusal = { reason: string; mayHaveLanded: boolean }
-
-const refusal = (reason: string, landed = false): Refusal => ({ reason: why(reason), mayHaveLanded: landed })
-
-/** Asks GitLab to rebase the MR (`PUT …/merge_requests/:iid/rebase`: GraphQL has no such write), once; why not, or null. */
-async function sendRebase($: EngineInterface, card: MrCard): Promise<Refusal | null> {
-  const found = await tokenFor($, card.host)
-  if (!found.ok) {
-    return refusal(found.reason)
-  }
-  const { token, source } = found.value
+/** Sends a merge or a rebase to GitLab, once (GraphQL has no rebase, so it goes over REST); why it did not take, or null. */
+async function send($: EngineInterface, card: MrCard, step: Extract<Step, { does: 'merge' | 'rebase' }>): Promise<Refusal | null> {
   try {
-    const answer = await $.http.fetch(`https://${card.host}/api/v4/projects/${encodeURIComponent(card.path)}/merge_requests/${card.iid}/rebase`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    })
-    if (answer.status >= 200 && answer.status < 300) {
-      return null
+    if (step.does === 'merge') {
+      return mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, step.head, step.strategy)))
     }
-    if (answer.status === 401) {
-      forgetFound()
-      return refusal(`GitLab rejected the token from ${source} (HTTP 401)`)
-    }
-    if (answer.status === 403) {
-      return refusal(`GitLab refused it (HTTP 403): the token from ${source} needs the api scope, and you push access to the branch`)
-    }
-    let said: unknown = null
-    try {
-      said = parseJson(answer.text)
-    } catch {
-      said = null
-    }
-    return refusal(`GitLab answered HTTP ${answer.status}${isRecord(said) && typeof said.message === 'string' ? `: ${said.message}` : ''}`, answer.status >= 500)
+    return rebaseRefusal(await askRest($, card.host, rebasePath(card.path, card.iid), { method: 'PUT', headers: { Accept: 'application/json' }, scope: 'api' }))
   } catch (error) {
-    const said = redact(messageOf(error), [token])
-    return refusal(said, mayHaveLanded('network', said))
-  }
-}
-
-/** Asks GitLab to merge the MR at `head`, once; why it would not, or null. */
-async function sendMerge($: EngineInterface, card: MrCard, head: string, strategy: MergeStrategyEnum | null): Promise<Refusal | null> {
-  try {
-    const refused = mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, head, strategy)))
-    return refused !== null ? refusal(refused) : null
-  } catch (error) {
-    return refusal(messageOf(error), mayHaveLanded(kindOf(error), messageOf(error)))
+    return refusalOf(error)
   }
 }
 
@@ -133,23 +89,14 @@ async function carry($: EngineInterface, course: Course, step: Step): Promise<vo
     case 'wait':
       $.clock.after(FOLLOW_MS, () => quietly($, look($, { ...course, tries: course.tries + 1 })))
       return undefined
-    case 'rebase': {
-      const refused = await sendRebase($, course.card)
-      // One that may have reached GitLab is followed as one that did: GitLab's own state says how it went.
-      return refused !== null && !refused.mayHaveLanded
-        ? end($, course, { does: 'stop', say: `not rebased: ${refused.reason}`, isDone: false })
-        : carry($, course, { does: 'wait' })
-    }
+    case 'rebase':
+      return carry($, course, afterSend(step, await send($, course.card, step)))
     case 'merge':
     default: {
       // A merge after a rebase is on the new head: the row's press, kept on the old one, would no longer hold.
       const merging: Course = { ...course, kind: 'merge', head: step.head }
       await mark($, course.card.key, { kind: 'merge', state: 'sent', head: step.head, at: await $.clock.now() })
-      const refused = await sendMerge($, course.card, step.head, step.strategy)
-      if (refused !== null && !refused.mayHaveLanded) {
-        return end($, merging, { does: 'stop', say: `not merged: ${refused.reason}`, isDone: false })
-      }
-      return carry($, merging, (refused === null ? afterMerge(step.strategy) : null) ?? { does: 'wait' })
+      return carry($, merging, afterSend(step, await send($, course.card, step)))
     }
   }
 }
@@ -164,12 +111,7 @@ async function look($: EngineInterface, course: Course): Promise<void> {
 }
 
 /** Pins the MR in this session, which then owns it, and hands Claude its conflicts as a prompt that waits for a turn of its own. */
-async function handConflicts($: EngineInterface, card: MrCard, head: string, at: number): Promise<void> {
-  // Two presses at once hand the conflicts over once.
-  const isFirst = await claim($, card.key, { kind: 'conflicts', state: 'handed', head, at }, held => !(held?.state === 'handed' && held.head === head))
-  if (!isFirst) {
-    return
-  }
+async function handConflicts($: EngineInterface, card: MrCard, handed: Pressed): Promise<void> {
   await pinMr($, { url: card.url, host: card.host, path: card.path, iid: card.iid }, 'watched')
   await publishPins($, await readPinned($))
   // A prompt a hook or the engine drops resolves with why, and never reaches Claude.
@@ -178,55 +120,54 @@ async function handConflicts($: EngineInterface, card: MrCard, head: string, at:
     (error: unknown) => messageOf(error)
   )
   if (dropped !== null) {
-    await mark($, card.key, { kind: 'conflicts', state: 'failed', head, at, say: `Claude was not reached: ${why(dropped)}` })
+    await mark($, card.key, { ...handed, state: 'failed', say: `Claude was not reached: ${why(dropped)}` })
   }
 }
 
-/**
- * Records `next` as the press on `key` if `mayGo` allows it against the press held (as it holds now, `liveOf`), in one
- * write, so two presses at once make one move. Gives whether this call made it.
- */
-async function claim($: EngineInterface, key: string, next: Pressed, mayGo: (held: Pressed | undefined) => boolean): Promise<boolean> {
-  let isClaimed = false
+/** Decides the press on `key` against the one held and records it, in one write, so two presses at once make one move. */
+async function claim($: EngineInterface, key: string, decide: (held: Pressed | undefined) => Pressed | null): Promise<Pressed | null> {
+  const made: Pressed[] = []
   await update($, pressedAtom, all => {
-    isClaimed = mayGo(liveOf(all[key], next.at))
-    return isClaimed ? { ...all, [key]: next } : all
+    const next = decide(all[key])
+    made.splice(0, made.length, ...(next !== null ? [next] : []))
+    return next !== null ? { ...all, [key]: next } : all
   })
-  return isClaimed
+  return made[0] ?? null
 }
 
-async function press($: EngineInterface, key: string, kind: MoveKind, does: 'arm' | 'make'): Promise<void> {
+async function press($: EngineInterface, key: string, move: { kind: MoveKind; does: 'arm' | 'make' }): Promise<void> {
   const card = (await readRows($)).find(row => row.key === key)
   if (card === undefined || card.merging === null) {
     return
   }
   const { head } = card.merging
   const at = await $.clock.now()
-  if (kind === 'conflicts') {
-    await handConflicts($, card, head, at)
+  const pressed = await claim($, key, held => decidePress(move, held, head, at))
+  if (pressed === null) {
     return
   }
-  const isSent = (held: Pressed | undefined) => held?.state === 'sent'
-  const mayGo = (held: Pressed | undefined) => does === 'make' && isConfirmed(kind, held, head) && !isSent(held)
-  if (!(await claim($, key, { kind, state: 'sent', head, at }, mayGo))) {
-    // A press from a drawing older than its arm arms again; one while the move is sent does nothing.
-    if (!isSent(liveOf((await read($, pressedAtom))[key], at))) {
-      await mark($, key, { kind, state: 'armed', head, at })
-      $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
-    }
+  if (pressed.state === 'armed') {
+    $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
+    return
+  }
+  if (pressed.state === 'handed') {
+    await handConflicts($, card, pressed)
+    return
+  }
+  if (pressed.kind === 'conflicts') {
     return
   }
   try {
     const before = await freshOf($, card)
-    await carry($, { card, kind, before, head, tries: 0 }, firstStep(kind, head, before))
+    await carry($, { card, kind: pressed.kind, before, head, tries: 0 }, firstStep(pressed.kind, head, before))
   } catch (error) {
     const say = why(messageOf(error))
-    await mark($, key, { kind, state: 'failed', head, at, say })
+    await mark($, key, { kind: pressed.kind, state: 'failed', head, at, say })
     $.ui.toast(`!${card.iid}: ${say}`)
   }
 }
 
 /** The press on a row's move: `arm` asks for a second press before a merge, `make` makes the move. */
 export function pressMove($: EngineInterface, key: string, move: { kind: MoveKind; does: 'arm' | 'make' }): void {
-  quietly($, press($, key, move.kind, move.does))
+  quietly($, press($, key, move))
 }
