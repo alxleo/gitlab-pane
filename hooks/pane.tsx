@@ -45,7 +45,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // A JSON array of three costs the three and four characters between and around them.
     switch (piece) {
       case 'head':
-        return partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4
+        return row.isQuiet ? partOf(row, 'line1').size : partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4
       case 'line2':
         return partOf(row, 'line2').size
       case 'faces':
@@ -84,8 +84,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     return (
       <Box key={row.boxKey} flexDirection="column" borderStyle={row.border.style} borderColor={row.border.colour} hover={{ borderColor: 'claude' }} paddingX={1}>
         {partOf(row, 'line1').element}
-        {fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element}
-        {partOf(row, 'said').element}
+        {!row.isQuiet && (fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element)}
+        {!row.isQuiet && partOf(row, 'said').element}
       </Box>
     )
   }

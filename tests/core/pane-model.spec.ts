@@ -80,6 +80,24 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
 })
 
+test('a row that passed and waits on nothing of yours folds to one line; one that runs, failed, is blocked or quotes a person does not', () => {
+  const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
+  const rows = {
+    waiting: toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS') })),
+    mergeable: { ...toCard(HOST, rawMr(2, { ...approved, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() },
+    running: toCard(HOST, rawMr(3, { headPipeline: pipe('RUNNING') })),
+    failed: toCard(HOST, rawMr(4, { headPipeline: pipe('FAILED') })),
+    conflict: { ...toCard(HOST, rawMr(5, { headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays({ CONFLICT: 'failed' }) },
+    // Human feedback always surfaces, approved or not.
+    asked: toCard(HOST, rawMr(6, { ...approved, headPipeline: pipe('SUCCESS'), discussions: { nodes: [thread('Rename this.', 'mel')] } })),
+  }
+  const model = modelOf(Object.values(rows))
+  const quiet = Object.fromEntries(Object.entries(rows).map(([name, card]) => [name, model.mine.rows.find(row => row.key === card.key)?.isQuiet]))
+  expect(quiet).toEqual({ waiting: true, mergeable: true, running: false, failed: false, conflict: false, asked: false })
+  // Its one line still says what it waits on, or that it can merge.
+  expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.verdict?.words).toBe('✓ mergeable')
+})
+
 test('a render works out the facts of the rows drawn alone, and measures each piece of a row at most once', async () => {
   const worked = new Set<string>()
   // cardFacts is the only reader of a card's title, so a card whose title is read has its facts worked out.

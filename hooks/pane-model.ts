@@ -2,7 +2,7 @@
 // colours and links, and how much of each fits the drawing's room. The draw files only map this to elements. Pure: the
 // one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to, which it asks once for
 // each piece it needs and never for a piece it will not use.
-import { hasLeft, rank } from './attention.ts'
+import { badges, hasLeft, rank } from './attention.ts'
 import { firstDifference } from './order.ts'
 import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
@@ -60,6 +60,8 @@ export type RowModel = {
   people: PersonRow[]
   /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
   said: { label: string; username: string } | null
+  /** Nothing to show past the title and verdict, so the row is one line: its title, its verdict and its age. */
+  isQuiet: boolean
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -143,6 +145,23 @@ function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['f
   return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
 }
 
+/** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
+const WAITING: readonly string[] = ['approvals', 'ready']
+
+/**
+ * Whether a row has nothing to show past its title and verdict: its pipeline passed, nothing stands before a merge but
+ * approvals (no thread, request for changes or bot holds it, whatever face speaks for it), GitLab's verdict is neither red
+ * nor amber, and no person's open thread is quoted on it.
+ */
+function isQuiet(card: MrCard, facts: CardFacts): boolean {
+  return (
+    card.pipeline?.status === 'success' &&
+    facts.said === null &&
+    badges(card).every(badge => WAITING.includes(badge.kind)) &&
+    (facts.verdict === null || facts.verdict.tone === 'success' || facts.verdict.tone === 'subtle')
+  )
+}
+
 /** A row as data; its faces take their pictures where the room allows. */
 function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string | undefined, hasSvg: boolean, now: number): RowModel {
   const suffix = `${card.iid}-${shortHash(card.project)}`
@@ -187,6 +206,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
       picture: person.face.picture,
     })),
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
+    isQuiet: isQuiet(card, facts),
     hasPictures: facts.hasPictures,
     fit: { isDrawn: false, hasFaces: false },
   }
@@ -241,7 +261,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     }
   }
   for (const [key, row] of finished) {
-    if (row.hasPictures) {
+    // A quiet row draws no faces, so it takes no pictures.
+    if (row.hasPictures && !row.isQuiet) {
       finished.set(key, { ...row, fit: { ...row.fit, hasFaces: fits(budget.sizeOf(row, 'faces'), budget.sizeOf(row, 'line2')) } })
     }
   }
