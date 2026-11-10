@@ -65,5 +65,10 @@
     "typescript": "7.0.2",
     "vitest": "5.1.0",
     "yaml": "2.9.1"
+  },
+  "overrides": {
+    "graphql-config": {
+      "minimatch": "11.0.5"
+    }
   }
 }
