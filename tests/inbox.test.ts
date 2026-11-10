@@ -411,7 +411,7 @@ test('without a token the Inbox says so, /gitlab lists it, and the rest is drawn
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await clock.advance(FIRST_SYNC_MS)
-  expect(await ui.find({ type: 'Text', text: /^Mine/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Ready/ })).toBeDefined()
   await ui.press({ key: 'tab-inbox' })
   expect((await ui.find({ type: 'Text', text: /sync failed/ }))?.text).toMatch(/^sync failed: no GitLab token for gitlab.com/)
   expect((await $.command.run({ ...typed(''), command: 'gitlab' })).text).toContain('inbox: no GitLab token for gitlab.com')
