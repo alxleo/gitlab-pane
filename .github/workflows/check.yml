@@ -12,8 +12,8 @@
 # messages, and the changelog. Merging that pull request is the release: it raises `version` in
 # .claude-plugin/plugin.json, which is what makes Claude Code offer installed copies the update, and the release job
 # then tags it and publishes the GitHub release. Its settings are release-please-config.json; the last released version
-# is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no checks run on it; they run
-# once it is merged.
+# is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no check starts on it by itself,
+# and main requires one: closing and reopening it as a person starts it (CONTRIBUTING.md, Releasing).
 #
 # What a team can pin is not this repository but the tree tools/release_tree.ts builds from the allowlist release/files:
 # the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so
