@@ -17,7 +17,8 @@ export class Failure extends Error {
 /** What kind of failure `error` is; an error nobody classified is `unknown`. */
 export const kindOf = (error: unknown): FailureKind => (error instanceof Failure ? error.kind : 'unknown')
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+/** An error's words, whatever was thrown. */
+export const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /** An error as a failure that keeps its kind. */
 export const asFailure = (error: unknown, label = (message: string) => message): Failure => new Failure(kindOf(error), label(messageOf(error)))

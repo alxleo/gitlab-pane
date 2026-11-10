@@ -13,6 +13,16 @@ export const parseJson = (json: string): unknown => JSON.parse(json)
 /** Not null or undefined, for an optional value tested without a loose truthiness check (`0` and `''` are values). */
 export const isSome = <T>(value: T | null | undefined) => value !== null && value !== undefined
 
+/** A GraphQL answer's data. One with none throws: a server failure in GitLab's words, or a bad answer when it gave none. */
+export const dataOf = <Data>(response: RawResponse<Data>): Data => {
+  const { data } = response
+  if (!isSome(data)) {
+    const reason = (response.errors ?? []).map(error => error.message).join('; ')
+    throw reason === '' ? new Failure('bad-answer', 'GitLab sent no data') : new Failure('server', reason)
+  }
+  return data
+}
+
 /** A string with something in it; null, undefined and the empty string are none. */
 export const isFilled = (value: string | null | undefined): value is string => typeof value === 'string' && value !== ''
 

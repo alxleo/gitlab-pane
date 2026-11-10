@@ -131,6 +131,7 @@ function readDocs() {
       links: tableOf(DESIGN, ['Mark', 'Opens']).rows.map(row => row[0] ?? ''),
       inboxEvents: tableOf(DESIGN, ['Mark', 'Event']).rows.map(row => [row[0] ?? '', row[1] ?? '']),
       inboxTabs: tableOf(DESIGN, ['Tab', 'Name', 'Lists']).rows.map((row, at) => [row[0] ?? '', firstTicked(`Inbox tab row ${at + 1}`, row[1])]),
+      moves: tableOf(DESIGN, ['Move', 'Offered when', 'A press']).rows.map((row, at) => firstTicked(`Move row ${at + 1}`, row[0])),
     },
   }
 }

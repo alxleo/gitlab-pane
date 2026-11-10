@@ -41,8 +41,11 @@ hooks/inbox.ts
 hooks/jira.ts
 hooks/kit.tsx
 hooks/markdown.ts
+hooks/merge-gitlab.ts
 hooks/model-text.ts
+hooks/moves.ts
 hooks/mr-url.ts
+hooks/next-move.ts
 hooks/order.ts
 hooks/pane.tsx
 hooks/panes.ts
