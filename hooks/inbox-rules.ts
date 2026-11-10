@@ -229,6 +229,6 @@ const newest = (mr: InboxMr): number => mr.signals[0]?.at ?? 0
 export function bounded(mrs: readonly InboxMr[]): InboxMr[] {
   return mrs
     .map(mr => ({ ...mr, title: cut(mr.title, TITLE_ROOM, TITLE_ROOM), signals: mr.signals.slice(0, MAX_SIGNALS) }))
-    .sort((a, b) => rank(b.inQueue, newest(b)) - rank(a.inQueue, newest(a)))
+    .toSorted((a, b) => rank(b.inQueue, newest(b)) - rank(a.inQueue, newest(a)))
     .slice(0, MAX_MRS)
 }

@@ -7,15 +7,15 @@ import type { HostStatus } from '../types'
 /** The host used when the setting names none; its projects are drawn without the host before them. */
 const DEFAULT_HOST = 'gitlab.com'
 
-const HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/
+const HOST = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/u
 
 /** `https://GitLab.Example.com/` as `gitlab.example.com`; anything that is not a bare host name is empty. */
 export function bareHost(text: string): string {
   const host = text
     .trim()
     .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/+$/, '')
+    .replace(/^https?:\/\//u, '')
+    .replace(/\/+$/u, '')
   return HOST.test(host) ? host : ''
 }
 
@@ -78,8 +78,8 @@ export function redact(text: string, secrets: readonly string[]): string {
   return secrets
     .filter(isFilled)
     .reduce((safe, secret) => safe.split(secret).join('[token]'), text)
-    .replace(/\b(?:glpat|gloas|glcbt|glptt|gldt|glrt|glsoat|glffct)-[\w-]+/g, '[token]')
-    .replace(/\bBearer\s+\S+/gi, 'Bearer [token]')
+    .replace(/\b(?:glpat|gloas|glcbt|glptt|gldt|glrt|glsoat|glffct)-[\w-]+/gu, '[token]')
+    .replace(/\bBearer\s+\S+/giu, 'Bearer [token]')
 }
 
 /** What a read found of one host: why it failed, or null when it answered. */

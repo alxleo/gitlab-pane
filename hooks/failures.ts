@@ -34,8 +34,8 @@ export async function clear($: EngineInterface, source: ProblemSource): Promise<
 
 /** What the pane draws its first-run lines from; reading it here makes the pane redraw when a source fails or recovers. */
 export async function drawnProblems($: EngineInterface): Promise<Problems> {
-  const [own, reported] = await Promise.all([read($, problemsAtom), read($, reportedAtom)])
-  return { ...reported, ...own }
+  const [own, told] = await Promise.all([read($, problemsAtom), read($, reportedAtom)])
+  return { ...told, ...own }
 }
 
 /** What this session's own reads failed with, for the leader to tell the others. */
@@ -74,7 +74,7 @@ export function quietly($: EngineInterface, work: Promise<unknown>, source: Prob
 
 /** One line per source that last failed. */
 export async function problems($: EngineInterface): Promise<string[]> {
-  const [own, reported] = await Promise.all([read($, problemsAtom), read($, reportedAtom)])
-  const others = Object.fromEntries(Object.entries(reported).filter(([source]) => !(source in own)))
+  const [own, told] = await Promise.all([read($, problemsAtom), read($, reportedAtom)])
+  const others = Object.fromEntries(Object.entries(told).filter(([source]) => !(source in own)))
   return [...problemLines(own), ...problemLines(others, ', reported by the session that reads GitLab')]
 }

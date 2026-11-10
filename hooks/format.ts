@@ -12,10 +12,10 @@ function proseLines(body: GitLabMarkdown): string[] {
   const kept: string[] = []
   let isCode = false
   for (const text of flatOf(body).split('\n')) {
-    if (/^\s*(```|~~~)/.test(text)) {
+    if (/^\s*(```|~~~)/u.test(text)) {
       isCode = !isCode
     } else if (!isCode) {
-      kept.push(text.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'))
+      kept.push(text.replace(/!\[[^\]]*\]\([^)]*\)/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1'))
     }
   }
   return kept
@@ -26,24 +26,24 @@ function proseLines(body: GitLabMarkdown): string[] {
  * code or pictures alone.
  */
 export function excerpt(body: GitLabMarkdown, room = 160): string {
-  const line = proseLines(body).find(text => text.replace(/[#*_>\s-]/g, '').length > 0) ?? ''
+  const first = proseLines(body).find(text => text.replace(/[#*_>\s-]/gu, '').length > 0) ?? ''
   // Underscores stay: in a review they are mostly names (`fn_name`), rarely emphasis.
-  return shorten(line.replace(/^[#>\s]+|[*`]/g, '').trim(), room)
+  return shorten(first.replace(/^[#>\s]+|[*`]/gu, '').trim(), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */
 export function lead(body: GitLabMarkdown, room = 240): string {
   const paragraph =
     flatOf(body)
-      .replace(/^#.*$/gm, '')
-      .split(/\n\s*\n/)
+      .replace(/^#.*$/gmu, '')
+      .split(/\n\s*\n/u)
       .map(text => text.trim())
       .find(Boolean) ?? ''
   const plain = paragraph
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/^[>\-*\s]+/gm, '')
-    .replace(/[*_`]/g, '')
-    .replace(/\s*\n\s*/g, ' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, '$1')
+    .replace(/^[>\-*\s]+/gmu, '')
+    .replace(/[*_`]/gu, '')
+    .replace(/\s*\n\s*/gu, ' ')
   return shorten(plain, room)
 }
 
@@ -82,7 +82,7 @@ export const looseCount = (card: MrCard, held: ReadonlySet<string>): number => c
 /** Merges time spans that touch or overlap into runs, in order. */
 function merged(spans: readonly (readonly [number, number])[]): [number, number][] {
   const runs: [number, number][] = []
-  for (const [start, end] of [...spans].sort((a, b) => a[0] - b[0])) {
+  for (const [start, end] of spans.toSorted((a, b) => a[0] - b[0])) {
     const last = runs.at(-1)
     if (last !== undefined && start <= last[1]) {
       last[1] = Math.max(last[1], end)
@@ -104,7 +104,7 @@ export function ranOf(jobs: readonly Pick<Job, 'startedAt' | 'finishedAt'>[]): R
 
 /** Seconds any of these stages' jobs ran, overlaps counted once, as GitLab counts a pipeline's duration. */
 export function ranFor(stages: readonly Stage[], now: number): number {
-  const spans = stages.flatMap(stage => [...stage.ran.done, ...stage.ran.running.map((start): [number, number] => [start, now])]).sort((a, b) => a[0] - b[0])
+  const spans = stages.flatMap(stage => [...stage.ran.done, ...stage.ran.running.map((start): [number, number] => [start, now])]).toSorted((a, b) => a[0] - b[0])
   let total = 0
   let reach = -Infinity
   spans.forEach(([start, end]) => {
@@ -136,13 +136,13 @@ export function pipelineTime(card: MrCard, now: number, usual?: Usual): ModelLin
   return usual !== undefined ? line`${duration(ran)} · usually ${usualRange(usual)}` : line`${duration(ran)} so far`
 }
 
-const TICKET = /\[([A-Z]+-\d+)\]/
+const TICKET = /\[([A-Z]+-\d+)\]/u
 
 export const ticketOf = (title: string): string | null => TICKET.exec(title)?.[1] ?? null
 
 /** The title without its `type(scope):` lead and ticket, which the row draws apart. */
 export const shortTitle = (title: string): string =>
   title
-    .replace(/^Draft:\s*/i, '')
-    .replace(/^\w+(\([^)]*\))?!?:\s*/, '')
-    .replace(/\[([A-Z]+-\d+|NO-JIRA)\]\s*/, '')
+    .replace(/^Draft:\s*/iu, '')
+    .replace(/^\w+(\([^)]*\))?!?:\s*/u, '')
+    .replace(/\[([A-Z]+-\d+|NO-JIRA)\]\s*/u, '')
