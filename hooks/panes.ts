@@ -66,8 +66,13 @@ export async function stepRing($: EngineInterface, scroll: Omit<RingScroll, 'isI
 export async function seenOne($: EngineInterface, key: string): Promise<void> {
   const [{ rule, cards }, at] = await Promise.all([drawnCards($), read($, ringAtom)])
   const next = Object.values(cardButtons(key)).includes(at) ? ringAfterSeen(cards, rule, key) : null
+  const redrawn = nextDraw()
   await markSeen($, { key })
   if (next !== null) {
+    // The engine keeps the ring by its place among the buttons, so it moves only once the card is gone from the drawing,
+    // which leaves after this resumes, as going back from a page finds.
+    await Promise.race([redrawn, $.clock.sleep(2000)])
+    await $.clock.sleep(50)
     await ringTo($, next)
   }
 }
