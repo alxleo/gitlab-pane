@@ -1,5 +1,6 @@
 // What GitLab's answers to the inbox documents mean: the MRs they name, and the signals on them. Plain data in, plain data
 // out, typed by the generated types of the documents; inbox.ts sends the documents and keeps the result.
+import { cut } from './graphemes.ts'
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
 import { foreign } from './model-text.ts'
 
@@ -61,6 +62,8 @@ function todoKind(action: string): InboxKind | null {
 
 /** The first words of what someone wrote, on one line. */
 const excerptOf = (body: string): string => foreign(body, EXCERPT_ROOM)
+/** A username as the snapshot keeps it: cut between characters at the room it has. */
+const actorOf = (username: string): string => cut(username, ACTOR_ROOM, ACTOR_ROOM)
 
 /** A note's id as the number in its link: `gid://gitlab/Note/123` is `123`. */
 const noteIdOf = (id: string): string | null => /(\d+)$/.exec(id)?.[1] ?? null
@@ -116,7 +119,7 @@ function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: 
     if (kind === undefined || !wanted.has(kind)) {
       return []
     }
-    return [{ kind, actor: note.author.username.slice(0, ACTOR_ROOM), at, note: noteIdOf(note.id), excerpt: kind === 'comment' || kind === 'pushed' ? excerptOf(note.body) : '' }]
+    return [{ kind, actor: actorOf(note.author.username), at, note: noteIdOf(note.id), excerpt: kind === 'comment' || kind === 'pushed' ? excerptOf(note.body) : '' }]
   })
 }
 
@@ -150,7 +153,7 @@ function mrsOfTodos(host: string, me: string | null, todos: readonly Todo[]): Fo
     if (me === null || target === null || !('iid' in target) || kind === null || at === null) {
       return []
     }
-    const signal: InboxSignal = { kind, actor: todo.author.username.slice(0, ACTOR_ROOM), at, note: noteOfUrl(todo.targetUrl), excerpt: excerptOf(todo.body) }
+    const signal: InboxSignal = { kind, actor: actorOf(todo.author.username), at, note: noteOfUrl(todo.targetUrl), excerpt: excerptOf(todo.body) }
     return [mrOf(host, me, target, [signal], PLAIN)]
   })
   return { user: me, mrs }
@@ -176,7 +179,7 @@ export function queueMrs(host: string, data: InboxQueueQuery | null, now: number
       return []
     }
     // The to-do, when there is one, says better who asked and when; `combine` keeps the newest request.
-    const request: InboxSignal = { kind: 'review_requested', actor: (fields.author?.username ?? '').slice(0, ACTOR_ROOM), at: asked, note: null, excerpt: '' }
+    const request: InboxSignal = { kind: 'review_requested', actor: actorOf(fields.author?.username ?? ''), at: asked, note: null, excerpt: '' }
     return [mrOf(host, me, fields, [request, ...noteSignals(present(fields.notes.nodes), me, false, false, now)], { ...PLAIN, inQueue: true, cutoff: cutoffOf(fields.notes) })]
   })
   return { user: me, mrs }
@@ -194,7 +197,7 @@ export function authoredMrs(host: string, data: InboxAuthoredQuery | null, now: 
   const merged = present(data?.currentUser?.merged?.nodes).flatMap((fields): InboxMr[] => {
     const at = timeOf(fields.mergedAt)
     const by = fields.mergeUser?.username
-    return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], PLAIN)]
+    return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: actorOf(by), at, note: null, excerpt: '' }], PLAIN)]
   })
   return { user: me, mrs: [...opened, ...merged] }
 }
@@ -214,7 +217,7 @@ function followedMrs(host: string, me: string | null, group: Followed | null | u
     const by = fields.mergeUser?.username
     return at === null || by === undefined || by === me
       ? []
-      : [mrOf(host, me, fields, [{ kind: 'merged', actor: by.slice(0, ACTOR_ROOM), at, note: null, excerpt: '' }], { ...PLAIN, isFollowed: true })]
+      : [mrOf(host, me, fields, [{ kind: 'merged', actor: actorOf(by), at, note: null, excerpt: '' }], { ...PLAIN, isFollowed: true })]
   })
   return { user: me, mrs: [...opened, ...merged] }
 }

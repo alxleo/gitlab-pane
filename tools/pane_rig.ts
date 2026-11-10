@@ -1,7 +1,7 @@
 // pane-rig: drive the GitLab pane through a real, headless Claude Code engine, standing in for the desktop app.
 //
 //   node tools/pane_rig.ts flow                                       draw the pane once GitLab has answered
-//   node tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press read-42 --press back-top
+//   node tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press back-top
 //
 // (`npm run rig -- flow …` is the same.) Each run starts a fresh `claude -p` process, so it runs the mod as it is on disk: no
 // /reload-plugins. The rig answers the engine as the desktop does: it asks for a drawing when told to redraw or after a
@@ -23,7 +23,7 @@ import { createInterface } from 'node:readline'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
-import { isRecord, parseJson } from '../hooks/decode.ts'
+import { isRecord, parseJson, text } from '../hooks/decode.ts'
 
 const PANE_ID = 'gitlab-pane'
 const PLUGIN = 'gitlab-pane'
@@ -40,6 +40,10 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
 const num = (value: unknown): number => (typeof value === 'number' ? value : 0)
 const record = (value: unknown): Json => (isRecord(value) ? value : {})
 const rowsOf = (length: number): number => Math.max(1, Math.ceil(length / WIDTH))
+/** The reason an answer gives, or the whole answer when it gives none; an object is printed as JSON, not as `[object Object]`. */
+const reasonOf = (reason: unknown, answer: Json): string => (typeof reason === 'string' ? reason : JSON.stringify(reason ?? answer))
+/** The key a drawn element is pressed by, or empty when it has none. */
+const keyOf = (element: Json): string => text(record(element['props'])['key'])
 
 // ---- the engine ---------------------------------------------------------------------------------------------------------
 
@@ -75,7 +79,7 @@ class Engine {
       }
       if (message['type'] === 'control_response') {
         const response = record(message['response'])
-        this.#responses.set(String(response['request_id'] ?? ''), response)
+        this.#responses.set(text(response['request_id']), response)
       } else {
         this.#events.push(message)
       }
@@ -93,7 +97,7 @@ class Engine {
       if (response !== undefined) {
         this.#responses.delete(id)
         if (response['subtype'] !== 'success') {
-          throw new RigError(`${subtype}: ${String(response['error'] ?? JSON.stringify(response))}`)
+          throw new RigError(`${subtype}: ${reasonOf(response['error'], response)}`)
         }
         return record(response['response'])
       }
@@ -181,7 +185,7 @@ function place(node: unknown, top: number, keyed: Keyed[]): number {
   const kind = node['type']
   let rows: number
   if (kind === 'Markdown') {
-    rows = lines(String(props['text'] ?? '')).reduce((total, line) => total + rowsOf(line.length), 0)
+    rows = lines(text(props['text'])).reduce((total, line) => total + rowsOf(line.length), 0)
     rows = rows === 0 ? 1 : rows
   } else if (kind === 'Text' || kind === 'Button' || kind === 'Link' || kind === 'Svg' || kind === 'Image') {
     rows = rowsOf(textOf(node).length)
@@ -203,9 +207,9 @@ function place(node: unknown, top: number, keyed: Keyed[]): number {
     rows = used + border + pad + marginTop
   }
   // The desktop measures only elements it can press (`[data-press-key]`), so a keyed Box is never reported.
-  const key = props['key']
-  if (key !== undefined && key !== null && key !== '' && isRecord(node['press'])) {
-    keyed.push({ plugin: PLUGIN, key: String(key), top, bottom: top + Math.max(rows, 1) - 1 })
+  const key = text(props['key'])
+  if (key !== '' && isRecord(node['press'])) {
+    keyed.push({ plugin: PLUGIN, key, top, bottom: top + Math.max(rows, 1) - 1 })
   }
   return rows
 }
@@ -310,7 +314,7 @@ class Desktop {
   #find(spec: string): Json {
     const buttons = walk(this.#tree).filter(element => isRecord(element['press']))
     const found = buttons.find(element => {
-      const key = String(record(element['props'])['key'] ?? '')
+      const key = keyOf(element)
       return key === spec || key.startsWith(`${spec}-`) || textOf(element) === spec
     })
     if (found === undefined) {
@@ -337,7 +341,7 @@ class Desktop {
     })
     this.#offset = typeof answer['offset'] === 'number' ? Math.trunc(answer['offset']) : this.#offset
     await this.#moved()
-    const moved = answer['moved'] === true ? 'moved' : String(answer['deny'] ?? JSON.stringify(answer))
+    const moved = answer['moved'] === true ? 'moved' : reasonOf(answer['deny'], answer)
     return `scrolled to row ${row}: ${moved}, at ${this.#offset}, on ${this.#landedOn(this.#offset)}`
   }
 
@@ -346,7 +350,7 @@ class Desktop {
       return this.scrollTo(Number(spec.slice('scroll:'.length)))
     }
     const element = this.#find(spec)
-    const key = String(record(element['props'])['key'] ?? '')
+    const key = keyOf(element)
     const press = record(element['press'])
     await this.#engine.ask({ subtype: 'ui_press', plugin: press['plugin'], handle: press['handle'], key, surface: 'desktop' })
     return `pressed ${key}`
@@ -377,7 +381,7 @@ async function title(engine: Engine): Promise<string> {
 }
 
 async function describe(desktop: Desktop, engine: Engine, show: number, scrollsBefore: number): Promise<string[]> {
-  const keys = new Set(walk(desktop.tree).map(element => String(record(element['props'])['key'] ?? '')))
+  const keys = new Set(walk(desktop.tree).map(keyOf))
   const view = keys.has('back-top') ? 'page' : [...keys].some(key => key.startsWith('inbox')) ? 'inbox' : 'list'
   return [
     `  view ${view} · title ${await title(engine)} · ${desktop.draws} drawings · offset ${desktop.offset} of ${desktop.rows} rows`,
@@ -408,15 +412,28 @@ async function flow(options: Options): Promise<number> {
     await engine.ask({ subtype: 'initialize' })
     const desktop = new Desktop(engine, options.bodyRows)
     await desktop.draw()
-    const end = Date.now() + options.waitSeconds * 1000
-    while (desktop.texts().some(text => text.includes('reading GitLab'))) {
+    const startedAt = Date.now()
+    // Only a session whose pane is open reads GitLab, and nothing is attached when the session starts, so the pane stays shut
+    // until a person opens it: the rig opens it as they would, with its tab.
+    if ((await title(engine)) === '(not open)') {
+      await desktop.press('tab-mine')
+    }
+    const seconds = () => ((Date.now() - startedAt) / 1000).toFixed(1)
+    const hasCards = () => desktop.texts().some(text => /^Mine · [1-9]/.test(text.trim()))
+    let cardsAt = hasCards() ? seconds() : null
+    const end = startedAt + options.waitSeconds * 1000
+    // Read once the pane says how old its cards are, with no ↻ beside the age, or says the read failed.
+    const isRead = () => desktop.texts().some(text => /^updated |^GitLab read failed/.test(text.trim()))
+    while (!isRead()) {
       if (Date.now() > end) {
         throw new RigError('GitLab never answered')
       }
-      await desktop.settle(options.settleMs, 5)
+      await desktop.settle(options.settleMs, 1)
+      cardsAt ??= hasCards() ? seconds() : null
     }
+    const readAt = seconds()
     await desktop.settle(options.settleMs)
-    console.log('ready')
+    console.log(`ready: first cards at ${cardsAt ?? readAt}s, the read done at ${readAt}s`)
     console.log((await describe(desktop, engine, options.show, 0)).join('\n'))
     for (const spec of options.presses) {
       const before = desktop.scrolls.length

@@ -12,6 +12,7 @@ import type { PinnedQuery } from '../../hooks/gitlab.generated.ts'
 import { featuresOf, forgetProbed, learnLack } from '../../hooks/in-flight.ts'
 import { excerpt } from '../../hooks/format.ts'
 import { flatOf } from '../../hooks/markdown.ts'
+import { cardFacts } from '../../hooks/row-facts.ts'
 import { undefinedField } from '../gitlab_fake.ts'
 import { HOST, NOW, SELF_MANAGED, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from '../fixtures.ts'
 
@@ -68,6 +69,10 @@ test('two people with the same initials are told apart', async () => {
   ])
   // A disc draws letters only, so a hostile name adds no markup.
   expect(discMarks('x', 16, `<b/>A'"`)).toContain('>bA</text>')
+  // Three UTF-16 units at most, a letter outside the basic plane (two units) whole or not at all: cutting at three left half.
+  expect(discMarks('x', 16, 'A𠮷')).toContain('>A𠮷</text>')
+  expect(discMarks('x', 16, 'AB𠮷')).toContain('>AB</text>')
+  expect(discMarks('x', 16, 'ABC𠮷')).toContain('>ABC</text>')
   expect(discSource('tessa').startsWith("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><circle")).toBe(true)
 })
 
@@ -150,6 +155,16 @@ test('a review bot body draws as Markdown and reads as one line in a hover', asy
   expect(flatOf(clean)).toBe('### Locate test timeout undercuts ready wait\n\nThe locate spec waits up to `ORDER_PAGE_READY_TIMEOUT`.\n\nSee')
   expect(excerpt(clean)).toBe('Locate test timeout undercuts ready wait')
   expect(excerpt(cleanBody('## Summary\n\nDoes a thing that is long', HOST, 'g/p'), 12)).toBe('Summary')
+  // Room 160 is 159 UTF-16 units and the ellipsis: a flag is four, so one that would pass 159 goes whole, not halved.
+  expect(excerpt(cleanBody(`${'x'.repeat(156)}🇺🇸tail`, HOST, 'g/p'))).toBe(`${'x'.repeat(156)}…`)
+})
+
+test('a bot is called by its name, cut between characters when it is long', () => {
+  const author = { ...user('ci-bot', true), name: `${'B'.repeat(10)}🇺🇸tail` }
+  const thread = { resolvable: true, resolved: false, notes: { nodes: [note('Reporting.', 'ci-bot', { author })] } }
+  const card = toCard(HOST, rawMr(1, { discussions: { nodes: [thread] } }))
+  // Room 14 is 13 UTF-16 units and the ellipsis: 10 letters and a flag (four units) make 14, so the flag goes whole.
+  expect(cardFacts(card, {}).people.map(person => person.call)).toEqual([`${'B'.repeat(10)}…`])
 })
 
 test('a status GitLab adds later reads as unknown, drawn as such, and a known one keeps its name', async () => {

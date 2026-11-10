@@ -1,5 +1,6 @@
 // The inbox's built-in rules, and how they turn what GitLab said into sections. Plain data in, plain data out: the engine
 // side (inbox.ts) reads GitLab, keeps the snapshot and the seen marks, and calls these.
+import { cut } from './graphemes.ts'
 import { cardKey } from './hosts.ts'
 import { shortHash } from './identity.ts'
 
@@ -227,7 +228,7 @@ const newest = (mr: InboxMr): number => mr.signals[0]?.at ?? 0
  */
 export function bounded(mrs: readonly InboxMr[]): InboxMr[] {
   return mrs
-    .map(mr => ({ ...mr, title: mr.title.slice(0, TITLE_ROOM), signals: mr.signals.slice(0, MAX_SIGNALS) }))
+    .map(mr => ({ ...mr, title: cut(mr.title, TITLE_ROOM, TITLE_ROOM), signals: mr.signals.slice(0, MAX_SIGNALS) }))
     .sort((a, b) => rank(b.inQueue, newest(b)) - rank(a.inQueue, newest(a)))
     .slice(0, MAX_MRS)
 }

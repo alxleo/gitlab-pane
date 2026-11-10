@@ -1,8 +1,11 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
+import { hasLeft } from '../../hooks/attention.ts'
 import { firstRunLines } from '../../hooks/first-run.ts'
-import { cleanBody, toCard } from '../../hooks/gitlab.ts'
+import { cardKey } from '../../hooks/hosts.ts'
+import { pinKey } from '../../hooks/mr-url.ts'
+import { toCard } from '../../hooks/gitlab.ts'
 import { buildPane, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { slimCard } from '../../hooks/slim.ts'
@@ -18,15 +21,14 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       cards,
       avatars: {},
       pinned: [],
-      tickets: {},
       usual: {},
       browse: '',
       expanded: [],
-      chosen: {},
       repoFilter: '',
       view: 'mine',
       news: 0,
       poll: { fetchedAt: NOW, error: null, hosts: {} },
+      isReading: false,
       isWaking: true,
       failures: {},
       ...over,
@@ -35,6 +37,19 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
     { hasSvg: true },
     { room, sizeOf: (row, piece) => cost(piece, row) }
   )
+
+test('beside the tabs, the age of the cards, with ↻ while a read is out; the footer speaks only of what went wrong', () => {
+  const threeHours = { fetchedAt: NOW - 3 * 3_600_000, error: null, hosts: {} }
+  expect(modelOf([], { poll: threeHours }).status).toEqual({ text: 'updated 3h ago', isWarning: false })
+  expect(modelOf([], { poll: threeHours, isReading: true }).status).toEqual({ text: '↻ updated 3h ago', isWarning: false })
+  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} }, isReading: true }).status.text).toBe('↻ reading GitLab…')
+  // A session that follows has no ↻ of the leader's read, but still says one is out while it has nothing to show.
+  expect(modelOf([], { poll: { fetchedAt: null, error: null, hosts: {} } }).status.text).toBe('reading GitLab…')
+  expect(modelOf([], { poll: threeHours }).footer.text).toBe('')
+  const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
+  expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })
+  expect(modelOf([], { poll: failed }).footer).toMatchObject({ text: 'GitLab read failed: connection refused; showing 10m old data', isWarning: true })
+})
 
 test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
@@ -67,14 +82,14 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
 
 test('a render works out the facts of the rows drawn alone, and measures each piece of a row at most once', async () => {
   const worked = new Set<string>()
-  // cardFacts is the only reader of a card's description, so a card whose description is read has its facts worked out.
+  // cardFacts is the only reader of a card's title, so a card whose title is read has its facts worked out.
   const cards = Array.from({ length: 50 }, (_, i) => {
     const card = toCard(HOST, rawMr(300 + i, { headPipeline: pipe(i % 2 === 0 ? 'FAILED' : 'SUCCESS') }))
-    return Object.defineProperty({ ...card }, 'description', {
+    return Object.defineProperty({ ...card }, 'title', {
       enumerable: true,
       get: () => {
         worked.add(card.key)
-        return card.description
+        return card.title
       },
     })
   })
@@ -88,15 +103,15 @@ test('a render works out the facts of the rows drawn alone, and measures each pi
   expect(drawn).toHaveLength(MINE_SHOWN)
   expect(worked.size).toBe(MINE_SHOWN)
   expect(Math.max(...measured.values())).toBe(1)
-  // Three kinds of piece for a row without detail: its head, its cards, and its faces if it has pictures.
-  expect(measured.size).toBeLessThanOrEqual(MINE_SHOWN * 3)
+  // Two kinds of piece for a row: its head, and its faces if it has pictures.
+  expect(measured.size).toBeLessThanOrEqual(MINE_SHOWN * 2)
 })
 
-test('the model fills the room by what needs you: rows, then hover cards; rows past the room are counted', async () => {
+test('the model fills the room by what needs you; rows past the room are counted', async () => {
   const cards = Array.from({ length: 12 }, (_, i) =>
     toCard(HOST, rawMr(100 + i, { updatedAt: `2026-10-23T15:${String(10 + i).padStart(2, '0')}:00Z`, headPipeline: pipe(i % 2 === 0 ? 'FAILED' : 'SUCCESS') }))
   )
-  const cost = (piece: Piece) => (piece === 'head' ? 10_000 : piece === 'cards' ? 5_000 : 1_000)
+  const cost = (piece: Piece) => (piece === 'head' ? 10_000 : 1_000)
   const folded = modelOf(cards, { expanded: ['more'] }, cost)
   // Seven rows of 10,000 fit 79,000; the failing ones, latest first, come in before the passing.
   const drawn = folded.mine.rows.filter(row => row.fit.isDrawn)
@@ -109,27 +124,6 @@ test('the model fills the room by what needs you: rows, then hover cards; rows p
       .slice(0, 3)
   )
   expect(folded.leftOut).toBe('5 more MRs left out to stay within what the app draws; pick a repo above to see them.')
-  // What is left after the rows goes to hover cards, in the same order.
-  expect(drawn.filter(row => row.fit.hasCards).length).toBe(1)
-  // An opened row takes its place before any other: the last, passing one is drawn because it was opened.
-  const key = cards[11]?.key ?? ''
-  const withDescription = cards.map(card => ({ ...card, description: cleanBody('Does it.', HOST, 'g/p') }))
-  const first = modelOf(withDescription, { expanded: ['more', key] }, cost)
-  expect(first.mine.rows.find(row => row.key === key)?.fit.isDrawn).toBe(true)
-  expect(first.mine.rows.filter(row => row.fit.isDrawn).length).toBe(7)
-})
-
-test('an opened row too big for the room is drawn without its detail, and each piece is measured once', async () => {
-  const card = { ...toCard(HOST, rawMr(5)), description: cleanBody('Does the thing.', HOST, 'g/p') }
-  const asked: string[] = []
-  const model = modelOf([card], { expanded: [card.key] }, piece => {
-    asked.push(piece)
-    return piece === 'detail' ? 90_000 : 1_000
-  })
-  const [row] = model.mine.rows
-  expect(row?.hasDetail).toBe(true)
-  expect(row?.fit).toEqual({ isDrawn: true, hasCards: true, hasFaces: false, hasDetail: false })
-  expect(asked.filter(piece => piece === 'head').length).toBe(1)
 })
 
 test('while nothing has been read, one line per failing source says what to do, from the kind of failure and not its words', async () => {
@@ -146,21 +140,28 @@ test('while nothing has been read, one line per failing source says what to do, 
   expect(modelOf([], { failures, poll: unread }).firstRun.length).toBe(2)
 })
 
-test('a ticket Jira cannot be read for says so, instead of waiting for a read that will not come', async () => {
-  const card = toCard(HOST, rawMr(7))
-  const gone = { jira: { message: 'acli is not installed', at: NOW, kind: 'not-installed' as const } }
-  const texts = (failures: PaneInput['failures']) =>
-    (modelOf([card], { browse: 'https://jira.example.com/browse/', failures }).mine.rows[0]?.about ?? []).flatMap(line => (line.kind === 'text' ? [line.text] : []))
-  expect(texts({})).toContain('ABC-1: not read from Jira yet')
-  expect(texts(gone)).toContain('ABC-1: Jira is not available here')
-})
-
-/** What a row draws on the list itself: its lines, faces and marks, not the hover cards and the detail, which a shared card holds as excerpts. */
+/** What the list draws: its rows, with their lines, faces, marks and the comment each quotes. */
 const drawnRows = (cards: MrCard[]) => {
   const model = modelOf(cards, { expanded: ['drafts'] }, () => 1)
-  const strip = (row: RowModel) => ({ ...row, about: null, blocks: null, detail: null, people: row.people.map(person => ({ ...person, card: [] })) })
-  return { session: model.session.map(strip), mine: model.mine.rows.map(strip), drafts: model.drafts?.rows.map(strip) ?? [], more: model.mine.more, leftOut: model.leftOut }
+  return { session: model.session, mine: model.mine.rows, drafts: model.drafts?.rows ?? [], more: model.mine.more, leftOut: model.leftOut }
 }
+
+test("the Mine tab, All and the repos count the same MRs, and this session's, the ready ones and the drafts add up to them", () => {
+  const countOf = (label: string | undefined) => Number(/(\d+)$/.exec(label ?? '')?.[1] ?? NaN)
+  fc.assert(
+    fc.property(fc.array(readCardArb, { maxLength: 8 }), fc.array(fc.boolean(), { minLength: 8, maxLength: 8 }), (cards, isPinned) => {
+      // One card to a key, and a pin's key that of its card, as the list holds them.
+      const full = cards.map((one, i) => ({ ...one, iid: one.iid + 100 * i, key: cardKey(one.host, one.path, one.iid + 100 * i) }))
+      const pinned = full.filter((_, i) => isPinned[i] === true).map(card => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin: 'watched' as const }))
+      const model = modelOf(full, { pinned, expanded: ['drafts', 'more'] }, () => 1)
+      expect(model.session.length).toBe(pinned.filter(pin => full.some(card => card.key === pinKey(pin) && !hasLeft(card))).length)
+      const tab = countOf(model.tabs.mine)
+      expect(countOf(model.repos.all.label)).toBe(tab)
+      expect(model.repos.each.reduce((sum, repo) => sum + countOf(repo.label), 0)).toBe(tab)
+      expect(model.session.length + countOf(model.mine.heading) + countOf(model.drafts?.label ?? '0')).toBe(tab)
+    })
+  )
+})
 
 test('the list draws a shared slim card as it draws the whole one', () => {
   fc.assert(

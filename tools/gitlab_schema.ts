@@ -203,9 +203,13 @@ type Cost = { readonly score: number; readonly limit: number }
 
 const isCost = (value: unknown): value is Cost => isRecord(value) && typeof value['score'] === 'number' && typeof value['limit'] === 'number'
 
-/** Values for the documents' variables: GitLab scores a document before it runs, so any project and number do. */
+/**
+ * Values for the documents' variables: GitLab scores a document before it runs, so any project and number do. The project
+ * is one that does not exist, so the document then finds nothing and returns at once: run against a project as large as
+ * gitlab-org/gitlab, Usual timed out (HTTP 503) and the score never came back.
+ */
 const SAMPLE_VARIABLES: Readonly<Record<string, string>> = {
-  path: 'gitlab-org/gitlab',
+  path: 'gitlab-pane-schema-check/no-such-project',
   iid: '1',
   since: '2026-01-01T00:00:00Z',
   after: '2026-01-01T00:00:00Z',

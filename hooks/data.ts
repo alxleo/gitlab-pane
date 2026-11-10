@@ -21,6 +21,8 @@ const unreachableAtom = atom({ plugin: 'gitlab-pane', key: 'unreachable' } as co
 const jiraAtom = atom({ plugin: 'gitlab-pane', key: 'jira' } as const, '')
 const roleAtom = atom({ plugin: 'gitlab-pane', key: 'role' } as const, 'idle' satisfies Role)
 const pollAtom = atom({ plugin: 'gitlab-pane', key: 'poll' } as const, { fetchedAt: null, error: null, hosts: {} } satisfies PollState)
+// Whether this session is reading GitLab now. Kept out of the store: only the session that reads can say so.
+const readingAtom = atom({ plugin: 'gitlab-pane', key: 'reading' } as const, false)
 // Not read by the drawing, so writing it redraws nothing.
 const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
   attemptedAt: null,
@@ -35,7 +37,7 @@ const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnData($: EngineInterface) {
-  const [pinned, rows, details, avatars, tickets, usual, poll, browse] = await Promise.all([
+  const [pinned, rows, details, avatars, tickets, usual, poll, isReading, browse] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, detailsAtom),
@@ -43,9 +45,10 @@ export async function drawnData($: EngineInterface) {
     read($, ticketsAtom),
     read($, usualAtom),
     read($, pollAtom),
+    read($, readingAtom),
     read($, jiraAtom),
   ])
-  return { pinned, rows, details, avatars, tickets, usual, poll, browse }
+  return { pinned, rows, details, avatars, tickets, usual, poll, isReading, browse }
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
@@ -95,6 +98,8 @@ export async function startData($: EngineInterface, jiraSite: unknown, hosts: re
   await update($, jiraAtom, () => browseUrl(jiraSite))
   await update($, hostsAtom, () => [...hosts])
   await update($, unreachableAtom, () => [])
+  // A reload mid-read never reaches the read's own reset, and a session that follows never writes this.
+  await update($, readingAtom, () => false)
 }
 
 /** Pins an MR; watching one this session raised keeps it raised, so it still wakes. */
@@ -111,6 +116,11 @@ export async function unpinKeys($: EngineInterface, keys: readonly string[]): Pr
 }
 
 // A write redraws every reader, changed or not, so each setter below writes only what differs from what the atom holds.
+export async function setReading($: EngineInterface, isReading: boolean): Promise<void> {
+  if ((await read($, readingAtom)) !== isReading) {
+    await update($, readingAtom, () => isReading)
+  }
+}
 export async function setRows($: EngineInterface, rows: MrCard[]): Promise<void> {
   if (!isEqual(await read($, rowsAtom), rows)) {
     await update($, rowsAtom, () => rows)

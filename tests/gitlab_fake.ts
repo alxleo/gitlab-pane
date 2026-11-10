@@ -47,11 +47,17 @@ const set = <Handler>(handler: Handler | undefined, operation: string): Handler 
 /** What the pane sent: the host, the operation it names, its variables and the bearer token, checked to be GraphQL over JSON. */
 export type Sent = { host: string; operation: string; variables: Record<string, string>; token: string | undefined }
 
-/** The request `$.http.fetch(url, init)` is given, read as the pane's GraphQL POST; anything else throws. */
-export function sent(url: string, init: { method?: string; headers?: Record<string, string>; body?: string } | undefined): Sent {
+/**
+ * The request `$.http.fetch(url, init)` is given, read as the pane's GraphQL POST; anything else throws. This is a core file, so
+ * `init` cannot name the engine's `HttpInit`; its body is `unknown` because the engine's is text or bytes, and only text is a document.
+ */
+export function sent(url: string, init: { method?: string; headers?: Record<string, string>; body?: unknown } | undefined): Sent {
   const match = /^https:\/\/([^/]+)\/api\/graphql$/.exec(url)
   if (match?.[1] === undefined || init?.method !== 'POST') {
     throw new Error(`the pane fetched something that is not a GraphQL POST: ${init?.method ?? 'GET'} ${url}`)
+  }
+  if (typeof init.body !== 'string' && init.body !== undefined) {
+    throw new Error('the pane sent bytes, not a GraphQL document')
   }
   const body = parseJson(init.body ?? '')
   if (!isRecord(body) || typeof body.query !== 'string' || typeof body.operationName !== 'string') {

@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { discSource } from '../../hooks/avatar.ts'
+import { cut } from '../../hooks/graphemes.ts'
 import { discColour, firstName, hash, initials, shortHash } from '../../hooks/identity.ts'
 
 test('initials come from the display name, so a handle like ixm5302 is IM beside Ines Mendel', () => {
@@ -43,6 +44,29 @@ test('names in other scripts keep whole characters', () => {
   expect(initials('…', 'ana.diaz')).toBe('AD')
 })
 
+test('initials never cut a character the way a person sees it: an accented letter, a flag and a skin-toned hand are one each', () => {
+  // `e` and a combining acute are two code points and one letter.
+  expect(initials('e\u{301}mile durand')).toBe('E\u{301}D')
+  expect(initials('e\u{301}mile')).toBe('E\u{301}M')
+  expect(initials('', 'a🇺🇸')).toBe('A🇺🇸')
+  expect(initials('Ana B🇺🇸', '', true)).toBe('AB🇺🇸')
+  expect(initials('', 'a👍🏽b', true)).toBe('A👍🏽B')
+  // The cap on one initial is five UTF-16 units, the most a name's character takes: ệ written as `e` and two marks is
+  // three, a flag four, and a Devanagari conjunct of three consonants (a letter, a virama, a letter, a virama, a letter) five.
+  expect(initials('e\u{323}\u{302}x')).toBe('E\u{323}\u{302}X')
+  expect(initials('\u{938}\u{94D}\u{924}\u{94D}\u{930} \u{915}')).toBe('\u{938}\u{94D}\u{924}\u{94D}\u{930}\u{915}')
+})
+
+test('an initial keeps a character in five UTF-16 units: an accent stays, a hundred thousand marks do not and a joined emoji is cut to its first code point', () => {
+  const marked = (letter: string) => `${letter}${'\u{301}'.repeat(100_000)}`
+  // Each initial is one letter with its first four marks; the rest of the marks are not carried into the card.
+  expect(initials(`${marked('a')} ${marked('b')}`)).toBe(`A${'\u{301}'.repeat(4)}B${'\u{301}'.repeat(4)}`)
+  expect(initials(marked('a'), '', true)).toBe(`A${'\u{301}'.repeat(4)}`)
+  // A person with a skin tone and red hair is seven units, over the five: it is cut to the person, never to the person, the
+  // skin tone and a joiner that waits for the hair.
+  expect(initials('', 'a\u{1F9D1}\u{1F3FD}\u{200D}\u{1F9B0}')).toBe('A\u{1F9D1}')
+})
+
 test('a first name ends at a space, dot or underscore, not a hyphen', () => {
   expect(firstName('Ines Mendel', 'ixm5302')).toBe('Ines')
   expect(firstName('Mel.Northcote')).toBe('Mel')
@@ -54,6 +78,10 @@ test('a first name ends at a space, dot or underscore, not a hyphen', () => {
 
 test('a person keeps one colour and a hash is stable', () => {
   expect(hash('g/p')).toBe(hash('g/p'))
+  // The hash runs over UTF-16 code units, so a character outside the basic plane counts as its two halves. Pinned: a change
+  // moves every person's colour and every key.
+  expect(hash('ab')).toBe(9832)
+  expect(hash('😀')).toBe(1_779_626)
   expect(shortHash('g/p')).toBe(hash('g/p').toString(36))
   expect(discColour('ixm5302')).toBe(discColour('ixm5302'))
   expect(discColour('ixm5302')).toMatch(/^#[0-9A-F]{6}$/)
@@ -74,16 +102,21 @@ const nameArb = fc.string({
   maxLength: 30,
 })
 
-test('initials are stable, one to three characters, and the longer form extends the short one', () => {
+test('initials are stable, one to three characters of a few units each, and the longer form extends the short one', () => {
+  // The bound is three characters as a person counts them and 3 × 5 UTF-16 units, not three code points: a bound of three
+  // code points is exactly what dropped the acute of an `é` written as `e` and a combining accent.
+  const within = (initial: string): void => {
+    expect(initial).not.toBe('')
+    expect(cut(initial, 3, Number.POSITIVE_INFINITY)).toBe(initial)
+    expect(initial.length).toBeLessThanOrEqual(3 * 5)
+  }
   fc.assert(
     fc.property(nameArb, nameArb, (name, username) => {
       const short = initials(name, username)
       const long = initials(name, username, true)
       expect(initials(name, username)).toBe(short)
-      expect([...short].length).toBeGreaterThanOrEqual(1)
-      expect([...short].length).toBeLessThanOrEqual(3)
-      expect([...long].length).toBeGreaterThanOrEqual(1)
-      expect([...long].length).toBeLessThanOrEqual(3)
+      within(short)
+      within(long)
       expect(long.startsWith(short)).toBe(true)
     })
   )

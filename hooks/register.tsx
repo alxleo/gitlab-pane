@@ -1,7 +1,7 @@
 import type { Register } from 'claude-code'
 
 import { readHosts, readPoll, startData } from './data'
-import { field, isFilled } from './decode'
+import { field, isFilled, text } from './decode'
 import { forgetProblems, problems, quietly, reported } from './failures'
 import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
@@ -100,7 +100,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: TOOL }, async ($, e) => {
     const url = field(e, 'url')
     try {
-      const result = await pin($, String(url ?? ''), 'watched')
+      const result = await pin($, text(url), 'watched')
       quietly($, openPane($))
       return answer(result)
     } catch (error) {
@@ -112,12 +112,12 @@ export const register: Register = (on, options) => {
   // command has run, nothing here may throw: the hook's catch below runs the command again, which could open a second MR.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
-    const command = String(field(e, 'command') ?? '')
+    const command = text(field(e, 'command'))
     if (!/\bmr create\b|merge_request\.create/.test(command) || !isFilled(ran.text)) {
       return ran
     }
-    const raise = async (text: string) => {
-      const urls = new Set(text.match(mrUrls(await readHosts($))) ?? [])
+    const raise = async (output: string) => {
+      const urls = new Set(output.match(mrUrls(await readHosts($))) ?? [])
       for (const url of urls) {
         await pin($, url, 'raised').catch(reported($, 'gitlab'))
       }

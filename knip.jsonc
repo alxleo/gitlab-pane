@@ -17,7 +17,10 @@
     "tests/core/setup.ts"
   ],
   "vitest": false,
-  "project": ["hooks/**/*.{ts,tsx}", "tests/**/*.ts", "tools/**/*.{ts,tsx,cjs}", "types/**/*.ts"],
+  // knip would load oxlint.config.ts to read it, and loading it goes through tsconfig.json, which extends the engine
+  // declarations a fresh clone lacks. Its one plugin, tools/lint_rules.ts, is an entry already (tools/*.ts).
+  "oxlint": false,
+  "project": ["hooks/**/*.{ts,tsx}", "tests/**/*.ts", "tools/**/*.{ts,tsx}", "types/**/*.ts"],
   "ignoreDependencies": [
     // The engine provides these at runtime and its declarations are laid into .claude-plugin/types, so no package holds them.
     "claude-code",

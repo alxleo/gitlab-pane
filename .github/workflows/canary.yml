@@ -6,8 +6,8 @@
 # files arrive, checks that the release branch holds the latest released version once there is one, and checks every query the pane sends against gitlab.com's live schema
 # (tools/gitlab_schema.ts), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
-# the repository; the next green run closes it. When the newest Claude Code passes, raise the pinned version in
-# check.yml and screens.yml to match.
+# the repository; the next green run closes it. Renovate raises the pinned version in check.yml and screens.yml (see
+# renovate.json); a failure here on the newest Claude Code warns before that pull request arrives.
 #
 # A pull request that changes the queries gets the schema check alone. GitHub turns schedules off in a public
 # repository after 60 days without a commit; the Actions tab then offers to turn this back on.
@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       - run: npm install --global @anthropic-ai/claude-code@latest # zizmor: ignore[adhoc-packages] the newest is the point
       - run: claude --version
       - run: claude plugin validate --strict .
@@ -56,7 +56,7 @@ jobs:
         run: |
           claude plugin marketplace add "$GITHUB_REPOSITORY"
           claude plugin install gitlab-pane@gitlab-pane
-          claude plugin list | grep -A3 'gitlab-pane@gitlab-pane' | grep enabled
+          claude plugin list --json | jq -e '.[] | select(.id == "gitlab-pane@gitlab-pane") | .enabled'
       # What a team that pins `plugin-v<version>` gets: the tree's own marketplace, built here, installed from its folder.
       - name: Install the release tree, which holds the plugin's files and nothing else
         env:
@@ -65,8 +65,9 @@ jobs:
           node tools/release_tree.ts build "$RUNNER_TEMP/tree"
           claude plugin marketplace add "$RUNNER_TEMP/tree"
           claude plugin install gitlab-pane@gitlab-pane
-          claude plugin list | grep -A3 'gitlab-pane@gitlab-pane' | grep enabled
-          installed=$(jq -r '.plugins["gitlab-pane@gitlab-pane"][0].installPath' "$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json")
+          # The JSON, not the listing: the listing's lines change between versions (a folder install gained "Read from").
+          plugin=$(claude plugin list --json | jq -e '.[] | select(.id == "gitlab-pane@gitlab-pane" and .enabled)')
+          installed=$(jq -r .installPath <<< "$plugin")
           test -f "$installed/hooks/hooks.json"
           for dev in tools tests docs .github CONTRIBUTING.md release; do
             if [ -e "$installed/$dev" ]; then
@@ -106,7 +107,7 @@ jobs:
       # Node runs tools/gitlab_schema.ts as it is, types stripped; graphql-codegen is in package.json.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       - run: npm ci --ignore-scripts
       - run: npm run schema -- check
 
@@ -122,7 +123,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"

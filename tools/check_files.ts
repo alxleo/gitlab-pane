@@ -1,16 +1,20 @@
-// File hygiene over every file git tracks or would add: json and yaml parse, no merge markers, large files or private keys, one final newline, no trailing whitespace.
+// File hygiene over every file git tracks or would add: json and yaml parse, no merge markers, large files or private keys,
+// no linter directives, one final newline, no trailing whitespace.
 //
 //   node tools/check_files.ts          (npm run files)
 //
-// JSON and YAML parse; no merge-conflict markers, private keys or large files; text files end with one newline and carry no
-// trailing whitespace. The generated fonts and CHANGELOG.md (written by release-please) are left alone. tsconfig files may
-// carry `//` comments, which TypeScript allows and JSON does not, so those are read with them removed.
+// JSON and YAML parse; no merge-conflict markers, private keys or large files; no `oxlint-` or `eslint-` directive in a
+// script's comments (tools/directives.ts says why that is checked here and not by the linter); text files end with one
+// newline and carry no trailing whitespace. The generated fonts and CHANGELOG.md (written by release-please) are left
+// alone. tsconfig files, wherever they sit, may carry `//` comments, which TypeScript allows and JSON does not, so those
+// are read with them removed.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseAllDocuments } from 'yaml'
 
 import { parseJson } from '../hooks/decode.ts'
+import { directivesIn, SCRIPT } from './directives.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const EXEMPT = /^(CHANGELOG\.md|tools\/screens\/fonts\/.*)$/
@@ -44,7 +48,7 @@ function problemsIn(name: string): string[] {
   const found: string[] = []
   if (name.endsWith('.json')) {
     try {
-      parseJson(name.startsWith('tsconfig') ? text.replace(/^\s*\/\/.*$/gm, '') : text)
+      parseJson(/(?:^|\/)tsconfig[^/]*\.json$/.test(name) ? text.replace(/^\s*\/\/.*$/gm, '') : text)
     } catch (error) {
       found.push(`${name}: does not parse as JSON: ${messageOf(error)}`)
     }
@@ -59,6 +63,9 @@ function problemsIn(name: string): string[] {
   }
   if (PRIVATE_KEY.test(text)) {
     found.push(`${name}: holds a private key`)
+  }
+  if (SCRIPT.test(name)) {
+    found.push(...directivesIn(name, text))
   }
   if (text !== '' && !text.endsWith('\n')) {
     found.push(`${name}: does not end with a newline`)

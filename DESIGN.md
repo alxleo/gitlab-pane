@@ -11,12 +11,13 @@ What each colour, border and mark in the pane means, and the code that holds it.
 | What needs you comes first | failing or blocked, then running, then waiting on others, then ready | `rank`, `hooks/attention.ts` |
 | Colour means the same everywhere | one palette for stages, card borders and reviewer rings | `STAGE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
-| Small enough to draw | the desktop draws nothing past 100,000 characters, so opened rows come first, then other rows, then hover cards, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
+| Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
+| Nothing waits for the pointer | no part of a card shows or hides on a hover, so nothing moves under it; the rest of an MR is on its page, a press away | `card.tsx` |
 | Bots show only when they hold the merge | by an open thread or a request for changes; then a bot gets a face like anyone's; otherwise its summary comments stay out of the way | `toCard`, `hooks/gitlab.ts` |
 
 ## Colour
 
-The same in light and dark. Hovering a card that opens turns its border the theme's `claude` colour.
+The same in light and dark. Hovering a card turns its border the theme's `claude` colour.
 
 | Tone | Colour | Means |
 |---|---|---|
@@ -32,8 +33,9 @@ The same in light and dark. Hovering a card that opens turns its border the them
 |---|---|---|
 | Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
 | Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
-| Line 1 | `▸` closed or `▾` open, the title, the time since the last update; open, it ends with `▴ less` and `read whole ›` (the MR as a page) | `card.tsx` |
-| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict with other blockers trailing dimly, then the people | `row-facts.ts` |
+| Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), and the time since the last update | `card.tsx` |
+| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict with other blockers trailing dimly, then the people; a name opens the page on what that person wrote | `row-facts.ts` |
+| Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
 
 ## Merge checks
 

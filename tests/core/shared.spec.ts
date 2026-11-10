@@ -64,28 +64,22 @@ test('fifty heavy MRs share a snapshot well under the store, and a slim card say
   expect(size).toBeLessThan(SNAPSHOT_BUDGET)
   expect(JSON.stringify(full).length).toBeGreaterThan(size * 5)
   expect(readSnapshot(parseJson(JSON.stringify(snapshot)))).toEqual(snapshot)
-  // What a row, a hover card and a wake say is the same from the slim card.
+  // What a row, the comment it quotes and a wake say is the same from the slim card.
   const [one] = full
   const [shared] = slim
   if (one === undefined || shared === undefined) {
     throw new Error('no card')
   }
-  const whole = cardFacts(one, {})
-  const quick = cardFacts(shared, {})
-  expect({ ...quick, detail: null, threads: [], loose: [], people: [] }).toEqual({ ...whole, detail: null, threads: [], loose: [], people: [] })
+  expect(cardFacts(shared, {})).toEqual(cardFacts(one, {}))
   // The first threads stay, and the rest are counted: the row says the same of how many there are.
-  expect(quick.threads.map(note => note.excerpt)).toEqual(whole.threads.slice(0, quick.threads.length).map(note => note.excerpt))
   expect(threadCount(shared)).toBe(threadCount(one))
   if (shared.pipeline === undefined || one.pipeline === undefined) {
     throw new Error('no pipeline')
   }
   expect(failedCount(shared.pipeline)).toBe(failedCount(one.pipeline))
-  expect(quick.people.map(person => [person.standing, person.noteCount, person.notes[0]?.excerpt])).toEqual(
-    whole.people.map(person => [person.standing, person.noteCount, person.notes[0]?.excerpt])
-  )
 })
 
-test('an opened card has its description and threads put back, unless it changed since they were read', () => {
+test('the MR read whole has its description and threads put back, unless it changed since they were read', () => {
   const whole = heavy(1)
   const shared = slimCard(whole)
   expect(shared.description).toBe('')

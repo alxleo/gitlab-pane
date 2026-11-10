@@ -12,8 +12,8 @@
 # messages, and the changelog. Merging that pull request is the release: it raises `version` in
 # .claude-plugin/plugin.json, which is what makes Claude Code offer installed copies the update, and the release job
 # then tags it and publishes the GitHub release. Its settings are release-please-config.json; the last released version
-# is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no checks run on it; they run
-# once it is merged.
+# is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no check starts on it by itself,
+# and main requires one: closing and reopening it as a person starts it (CONTRIBUTING.md, Releasing).
 #
 # What a team can pin is not this repository but the tree tools/release_tree.ts builds from the allowlist release/files:
 # the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so
@@ -66,7 +66,7 @@ jobs:
           fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: npm ci --ignore-scripts
@@ -102,7 +102,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       # A pull request's commits, or the commits a push brought; canary.yml reads the whole history every week.
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
@@ -159,7 +159,7 @@ jobs:
       # release_tree.ts imports nothing from npm, so there is no `npm ci` here.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - name: Commit the tree to the release branch
         env:

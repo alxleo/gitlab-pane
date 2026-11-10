@@ -1,7 +1,7 @@
 // Everything the MR list decides, as plain data: which rows, in what order, under which heading, with which words,
-// colours and links, which are open, and how much of each fits the drawing's room. The draw files only map this to
-// elements. Pure: the one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to,
-// which it asks once for each piece it needs and never for a piece it will not use.
+// colours and links, and how much of each fits the drawing's room. The draw files only map this to elements. Pure: the
+// one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to, which it asks once for
+// each piece it needs and never for a piece it will not use.
 import { hasLeft, rank } from './attention.ts'
 import { firstDifference } from './order.ts'
 import { LINK, titleKey } from './drawing.ts'
@@ -10,8 +10,6 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
-import { aboutLines, blockerLines, detailOf, personLines } from './row-lines.ts'
-import type { DetailModel, Line, RowContext } from './row-lines.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -19,7 +17,7 @@ import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { MrCard, Pinned, PollState, Problems } from '../types'
+import type { MrCard, Pinned, PollState, Problems, Usual } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
@@ -33,26 +31,23 @@ export type PersonRow = {
   username: string
   /** The name beside the face, with the open threads they hold. */
   label: string
-  scope: string
   tone: Tone
   /** The mark a surface without Svg draws. */
   glyph: string
   alt: string
   plain: SvgSource
   picture: SvgSource | null
-  card: Line[]
 }
 
 export type RowModel = {
   key: string
   /** Short and unique among the rows; the key of the row's box. */
   boxKey: string
+  /** The title's key, which opens the MR's page and which the way back from it scrolls to. */
   titleKey: string
-  /** `<iid>-<repo hash>`, which every key and scope of the row ends on. */
+  /** `<iid>-<repo hash>`, which every key of the row ends on. */
   suffix: string
   border: { style: 'bold' | 'round'; colour: string }
-  canOpen: boolean
-  isOpen: boolean
   title: string
   ago: string
   mr: Link
@@ -63,19 +58,16 @@ export type RowModel = {
   verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null } | null
   blocker: { text: string; tone: Tone } | null
   people: PersonRow[]
+  /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
+  said: { label: string; username: string } | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
-  about: Line[] | null
-  blocks: Line[] | null
-  detail: DetailModel | null
-  /** Whether the row opens onto a detail, drawn or not. */
-  hasDetail: boolean
   /** What of the row fits the drawing. */
-  fit: { isDrawn: boolean; hasCards: boolean; hasFaces: boolean; hasDetail: boolean }
+  fit: { isDrawn: boolean; hasFaces: boolean }
 }
 
-/** A piece of a row whose size the drawing decides by: its two lines, the second alone, its hover cards, its faces with pictures, its detail. */
-export type Piece = 'head' | 'line2' | 'cards' | 'faces' | 'detail'
+/** A piece of a row whose size the drawing decides by: its lines, the second alone, its faces with pictures. */
+export type Piece = 'head' | 'line2' | 'faces'
 export type SizeOf = (row: RowModel, piece: Piece) => number
 
 export type PaneInput = {
@@ -83,17 +75,18 @@ export type PaneInput = {
   /** The small pictures kept by URL, which a face is drawn with where there is room. */
   avatars: Readonly<Record<string, string>>
   pinned: readonly Pinned[]
-  tickets: RowContext['tickets']
-  usual: RowContext['usual']
+  usual: Readonly<Record<string, Usual>>
   browse: string
+  /** `drafts` and `more` while those folds are open. */
   expanded: readonly string[]
-  chosen: Readonly<Record<string, string>>
   repoFilter: string
   /** Which view is drawn: only the MR list builds rows. */
   view: 'mine' | 'inbox' | 'reading'
   /** MRs with news in the inbox. */
   news: number
   poll: PollState
+  /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
+  isReading: boolean
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
@@ -109,10 +102,23 @@ export type PaneModel = {
   firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
+  /** Beside the tabs, quietly: how old the cards are, and ↻ while a read is out. */
+  status: { text: string; isWarning: boolean }
+  /** What is wrong with the last read, or what it left out; empty when nothing is. */
   footer: { text: string; isWarning: boolean; wake: string }
 }
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
+
+/** The mark beside the age while this session reads GitLab: the pane has no spinner, and a glyph draws on every surface. */
+export const READING_MARK = '↻'
+
+function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['status'] {
+  const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
+  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's, which only it can mark.
+  const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : hasStale ? '' : 'reading GitLab…'
+  return { text: isReading ? `${READING_MARK} ${age}`.trim() : age, isWarning: hasStale }
+}
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
 const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
@@ -125,22 +131,20 @@ function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['f
   const stale = statuses.filter(([, status]) => status.error !== null)
   const fresh = statuses.filter(([, status]) => status.error === null && status.fetchedAt !== null)
   const named = (host: string, text: string) => (statuses.length > 1 ? `${host}: ${text}` : text)
-  const fetched = age(poll.fetchedAt)
-  const keptNote = (poll.kept ?? 0) > 0 ? `; ${plural(poll.kept ?? 0, 'MR')} kept from the last read` : ''
+  const keptNote = (poll.kept ?? 0) > 0 ? `${plural(poll.kept ?? 0, 'MR')} kept from the last read` : ''
   const failed = stale.map(([host, status]) => {
     const old = age(status.fetchedAt)
     return `${named(host, status.error ?? '')}${old !== null ? `; showing ${old} old data` : ''}`
   })
   // With several hosts a stale one is told with the age of its own data, and the fresh ones beside it.
   const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
-  const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : fetched !== null ? `${updatedLine(fetched)}${keptNote}` : 'reading GitLab…'
+  // How old the cards are is said beside the tabs; down here only what went wrong, or what the read left out.
+  const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : keptNote
   return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
 }
 
-/** A row's two lines, as data; the rest of it is added where the room allows. */
+/** A row as data; its faces take their pictures where the room allows. */
 function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string | undefined, hasSvg: boolean, now: number): RowModel {
-  const isOpen = input.expanded.includes(card.key)
-  const focus = isOpen ? facts.people.find(person => person.username === input.chosen[card.key]) : undefined
   const suffix = `${card.iid}-${shortHash(card.project)}`
   const pipeline = card.pipeline
   const ticketLink = facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null
@@ -156,8 +160,6 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     titleKey: titleKey(card),
     suffix,
     border: { style: facts.rank === 0 ? 'bold' : 'round', colour: STAGE_COLOURS[facts.tone] },
-    canOpen: facts.canOpen,
-    isOpen,
     title: facts.title,
     ago: ago(card.updatedAt, now),
     mr: { href: card.url, text: `${LINK.mr} !${card.iid}` },
@@ -178,27 +180,22 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     people: facts.people.map((person, i) => ({
       username: person.username,
       label: `${callOf(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`,
-      scope: `p${shortHash(person.username)}-${suffix}`,
       tone: person.face.tone,
-      glyph: person.face.badge ?? (focus?.username === person.username ? '◉' : '●'),
+      glyph: person.face.badge ?? '●',
       alt: person.face.alt,
       plain: person.face.plain,
       picture: person.face.picture,
-      card: [],
     })),
+    said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
     hasPictures: facts.hasPictures,
-    about: null,
-    blocks: null,
-    detail: null,
-    hasDetail: isOpen && (facts.canOpen || focus !== undefined),
-    fit: { isDrawn: false, hasCards: false, hasFaces: false, hasDetail: false },
+    fit: { isDrawn: false, hasFaces: false },
   }
 }
 
 /**
- * The pane's list as data. Rows come in order of what needs you. Rows you opened take the room first, with their detail;
- * then the other rows in that order, then hover cards, then pictures on faces. Rows that do not fit at all are left out
- * and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of a row, once.
+ * The pane's list as data. Rows come in order of what needs you, then pictures on faces where room is left. Rows that do
+ * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
+ * a row, once.
  */
 export function buildPane(input: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
   // GitLab says an MR is no longer open before the authored list drops it.
@@ -219,13 +216,6 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
   const showMore = input.expanded.includes('more')
   const mineShown = showMore ? mine : mine.slice(0, MINE_SHOWN)
   const isInbox = input.view === 'inbox'
-  const context: RowContext = {
-    tickets: input.tickets,
-    usual: input.usual,
-    browse: input.browse,
-    homeRepo: home,
-    isJiraUnavailable: input.failures.jira?.kind === 'not-installed',
-  }
 
   const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showDrafts ? drafts : [])] : []
   const built = wanted.map(card => {
@@ -244,33 +234,11 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     return true
   }
   const tried = (row: RowModel): boolean => room >= ROW_FLOOR && fits(budget.sizeOf(row, 'head'))
-  const withCards = (row: RowModel, card: MrCard, facts: CardFacts): RowModel => ({
-    ...row,
-    about: aboutLines(card, facts, context, facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null, now),
-    blocks: facts.row.flatMap(badge => blockerLines(card, facts, badge, now)),
-    people: row.people.flatMap((person, i) => {
-      const facing = facts.people[i]
-      return facing !== undefined ? [{ ...person, card: personLines(facing, now) }] : []
-    }),
-  })
-
-  const opened = built.filter(part => part.row.hasDetail && tried(part.row))
-  const detailed = new Map<string, RowModel>()
-  for (const part of opened) {
-    const focus = part.facts.people.find(person => person.username === input.chosen[part.card.key])
-    const row = { ...part.row, detail: detailOf(part.card, part.facts, focus, now) }
-    if (fits(budget.sizeOf(row, 'detail'))) {
-      detailed.set(part.card.key, row)
-    }
-  }
-  const drawn = new Set([...opened, ...built.filter(part => !part.row.hasDetail && tried(part.row))].map(part => part.card.key))
   const finished = new Map<string, RowModel>()
   for (const part of built) {
-    if (!drawn.has(part.card.key)) {
-      continue
+    if (tried(part.row)) {
+      finished.set(part.card.key, { ...part.row, fit: { isDrawn: true, hasFaces: false } })
     }
-    const row = withCards(detailed.get(part.card.key) ?? part.row, part.card, part.facts)
-    finished.set(part.card.key, { ...row, fit: { isDrawn: true, hasCards: fits(budget.sizeOf(row, 'cards')), hasFaces: false, hasDetail: detailed.has(part.card.key) } })
   }
   for (const [key, row] of finished) {
     if (row.hasPictures) {
@@ -285,7 +253,8 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
 
   return {
     tabs: {
-      mine: `Mine · ${rows.filter(row => !row.isDraft || pinnedKeys.has(row.key)).length}`,
+      // Every MR the tab holds, as `All` counts them: this session's, the ready ones and the drafts add up to it.
+      mine: `Mine · ${rows.length}`,
       inbox: input.news > 0 ? `Inbox · ${input.news} new` : 'Inbox',
       isInbox,
     },
@@ -296,14 +265,17 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     mine: {
-      heading: `Mine · ${mine.length}`,
+      // GitLab's word for an MR that is not a draft; the tab above already says Mine.
+      heading: `Ready · ${mine.length}`,
       isEmpty: mine.length === 0,
       rows: rowsOf(mineShown),
       more: mine.length > MINE_SHOWN ? (showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`) : null,
       isMoreOpen: showMore,
     },
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
-    leftOut: built.length - drawn.size > 0 ? `${plural(built.length - drawn.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
+    leftOut:
+      built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
+    status: statusOf(input.poll, input.isReading, now),
     footer: footerOf(input.poll, input.isWaking, now),
   }
 }
