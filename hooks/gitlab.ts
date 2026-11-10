@@ -98,7 +98,8 @@ export function cleanBody(body: string, host: string, path: string): GitLabMarkd
     body
       .replace(/\]\(\/uploads\//gu, `](${site}/${path}/uploads/`)
       .replace(/\]\(\//gu, `](${site}/`)
-      .replace(/[ \t]+$/gmu, '')
+      // From the start of a run of spaces and tabs only, so a run with no line end after it is read once, not once from each.
+      .replace(/(?<![ \t])[ \t]+$/gmu, '')
       .replace(/\n{3,}/gu, '\n\n')
       .trim()
   )

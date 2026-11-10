@@ -49,6 +49,7 @@
     "hooks/order.ts",
     "hooks/picture.ts",
     "hooks/problems.ts",
+    "hooks/closers.ts",
     "hooks/reconcile.ts",
     "hooks/status.ts",
     "hooks/svg.ts",

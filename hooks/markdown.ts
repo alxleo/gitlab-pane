@@ -5,6 +5,7 @@
  */
 
 import { cut } from './graphemes.ts'
+import { replaceAnchors, replaceFences, replaceLinks, replacePairs, replaceSpans } from './closers.ts'
 
 import type { GitLabMarkdown } from '../types'
 
@@ -45,8 +46,6 @@ export function cutToFit(markdown: MarkdownText, room: number, sizeOf: (text: Ma
 /** Markdown to draw, or a fold: its summary, what it holds, and whether GitLab shows it open. */
 export type Part = { text: MarkdownText } | { summary: string; parts: Part[]; isOpen: boolean }
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gmu
-const SPAN = /(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/gu
 /** The marker of a held piece of code: its number between two NUL characters, which is why the pattern names them. */
 const HELD = /\0(\d+)\0/gu
 
@@ -54,11 +53,18 @@ const HELD = /\0(\d+)\0/gu
 function holdCode(text: string) {
   const held: string[] = []
   const hold = (code: string) => `\0${held.push(code) - 1}\0`
-  const masked = text.replace(FENCE, hold).replace(SPAN, hold)
+  const masked = replaceSpans(replaceFences(text, hold), hold)
   return { masked, restore: (out: string) => out.replace(HELD, (_, i: string) => held[Number(i)] ?? '') }
 }
 
-const ALERT = /^(\s*>\s*)\[!(note|tip|important|warning|caution)\]\s*$/gimu
+/**
+ * The space at a line's start: what `\s*` takes there, short of the line's end (a line feed, a return, or the line and
+ * paragraph separators). A `\s*` that crossed lines would be tried again from each line start it crossed.
+ */
+const INDENT = String.raw`[^\S\n\r\p{Zl}\p{Zp}]*`
+const ALERT = new RegExp(String.raw`^(${INDENT}>\s*)\[!(note|tip|important|warning|caution)\]\s*$`, 'gimu')
+const TASK_DONE = new RegExp(String.raw`^(${INDENT}[-*+]) \[[xX]\] `, 'gmu')
+const TASK_OPEN = new RegExp(String.raw`^(${INDENT}[-*+]) \[ \] `, 'gmu')
 const TAG = /<\/?[a-z][a-z0-9-]*\b[^>]*>/giu
 /** Anything between `<` and `>`, which a summary's label has no use for. */
 const MARKUP = /<[^>]+>/gu
@@ -98,50 +104,69 @@ export const MAX_ROUNDS = 8
  * `tests/core/markdown.spec.ts` are what hold its cut to account.
  */
 function removeAll(text: string, ...steps: (RegExp | ((text: string) => string))[]): string {
-  // Every cut ends in `>`, so what follows the last `>` is never part of one, in any round. It is set aside: a pattern would
-  // try each `<` in it and read to the end of the text for each, the cost of a pass over the text squared.
-  const end = text.lastIndexOf('>') + 1
-  const after = text.slice(end)
-  let rest = text.slice(0, end)
-  let before: string
+  let rest = text
+  let after = ''
+  let isCut: boolean
   let rounds = 0
   do {
-    before = rest
+    isCut = false
     for (const step of steps) {
-      rest = typeof step === 'function' ? step(rest) : rest.replace(step, '')
+      // Every cut ends in `>`, so what follows the last `>` is never part of one. It is set aside before each step, as a cut
+      // can take that `>` away: a pattern would try each `<` after it and read to the end of the text for each, the cost of
+      // a pass over the text squared, and a round that cuts every `<b>` out of `a<<b>` leaves nothing but such `<`s.
+      const end = rest.lastIndexOf('>') + 1
+      after = `${rest.slice(end)}${after}`
+      rest = rest.slice(0, end)
+      const next = typeof step === 'function' ? step(rest) : rest.replace(step, '')
+      isCut ||= next !== rest
+      rest = next
     }
     rounds += 1
-  } while (rest !== before && rounds < MAX_ROUNDS)
-  return rest === before ? `${rest}${after}` : `${rest}${after}`.replace(BRACKET, '')
+  } while (isCut && rounds < MAX_ROUNDS)
+  return isCut ? `${rest}${after}`.replace(BRACKET, '') : `${rest}${after}`
 }
+
+/** `text` with each element `opener` starts, through its closer, as what it holds between two `sign`s. */
+const marked = (text: string, opener: RegExp, sign: string): string =>
+  replacePairs(
+    text,
+    opener,
+    open => `</${open[1] ?? ''}>`,
+    (_, inner) => `${sign}${inner}${sign}`
+  )
 
 /**
  * HTML outside code as Markdown: the marks it means kept, the rest dropped. The tags turned into marks here, and the
  * `<details>` that `split` reads, end their attributes at the next `<`, not at the next `>`: a tag opened and never closed
  * is read up to that `<`, not to the end of the text once for every `<` in it. `TAG` below reads on to the `>` whatever it
  * crosses, so a tag with a `<` in its attributes is still cut out, but as plain text and not as a link, a bullet or a fold.
+ * Each element with a closer is read by `closers.ts`, which finds an opener's closer without reading to the end of the
+ * text for every opener that has none, and reads every text as the pattern it names does (`tests/core/closers.spec.ts`).
  */
 function markdownOf(text: string): string {
-  const marks = removeAll(text, withoutComments)
-    .replace(/<picture\b[\s\S]*?<\/picture>/giu, '')
-    .replace(/<img\b[^<>]*>/giu, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/gu, '')
+  const pictures = replacePairs(
+    removeAll(text, withoutComments),
+    /<picture\b/giu,
+    () => '</picture>',
+    () => ''
+  ).replace(/<img\b[^<>]*>/giu, '')
+  const lines = replaceLinks(pictures, 'must', () => '')
     .split('\n')
     .map(line => line.replace(/<br\s*\/?>/giu, line.trimStart().startsWith('|') ? ' ' : '  \n'))
     .join('\n')
-    .replace(/<(b|strong)>([\s\S]*?)<\/\1>/giu, '**$2**')
-    .replace(/<(i|em)>([\s\S]*?)<\/\1>/giu, '*$2*')
-    .replace(/<(s|del|strike)>([\s\S]*?)<\/\1>/giu, '~~$2~~')
-    .replace(/<(code|kbd)>([\s\S]*?)<\/\1>/giu, '`$2`')
-    .replace(/<a\b[^<>]*\bhref="([^"]+)"[^<>]*>([\s\S]*?)<\/a>/giu, (_, href: string, words: string) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
+  const bold = marked(lines, /<(b|strong)>/giu, '**')
+  const slanted = marked(bold, /<(i|em)>/giu, '*')
+  const struck = marked(slanted, /<(s|del|strike)>/giu, '~~')
+  const coded = marked(struck, /<(code|kbd)>/giu, '`')
+  const marks = replaceAnchors(coded, (href, words) => (words.trim() !== '' ? `[${words.trim()}](${href})` : ''))
     .replace(/<hr\s*\/?>/giu, '\n\n---\n\n')
     .replace(/<\/?p\b[^<>]*>/giu, '\n\n')
     .replace(/<li\b[^<>]*>/giu, '\n- ')
   // Cutting a tag out can join the halves of a comment, and a comment the halves of a tag, so both go until neither is left.
   return removeAll(marks, withoutComments, TAG)
     .replace(/&nbsp;/gu, ' ')
-    .replace(/^(\s*[-*+]) \[[xX]\] /gmu, '$1 ✓ ')
-    .replace(/^(\s*[-*+]) \[ \] /gmu, '$1 ☐ ')
+    .replace(TASK_DONE, '$1 ✓ ')
+    .replace(TASK_OPEN, '$1 ☐ ')
     .replace(ALERT, (_, quote: string, kind: string) => `${quote}**${kind.charAt(0).toUpperCase()}${kind.slice(1).toLowerCase()}**`)
     .replace(/^[ \t]+$/gmu, '')
     .replace(/\n{3,}/gu, '\n\n')
@@ -152,8 +177,14 @@ const labelOf = (text: string): string => removeAll(text, MARKUP).replace(/[*_`]
 
 const OPEN_TAG = /<details\b([^<>]*)>/iu
 
-/** Splits masked text at its outermost `<details>`, each fold read again for those inside it. */
-function split(masked: string, restore: (out: string) => string): Part[] {
+/**
+ * The most folds a fold is read inside. A fold inside that many holds words alone, its own folds' tags cut out as any other
+ * tag is: no one writes folds so deep, and each level is a reading of the text inside it, and a level of drawing.
+ */
+const FOLD_DEPTH = 16
+
+/** Splits masked text at its outermost `<details>`, each fold read again for those inside it, `depth` folds in. */
+function split(masked: string, restore: (out: string) => string, depth: number): Part[] {
   const parts: Part[] = []
   const text = (raw: string) => {
     const out = restore(markdownOf(raw)).trim()
@@ -162,17 +193,17 @@ function split(masked: string, restore: (out: string) => string): Part[] {
     }
   }
   let rest = masked
-  for (let open = OPEN_TAG.exec(rest); open !== null; open = OPEN_TAG.exec(rest)) {
+  for (let open = depth < FOLD_DEPTH ? OPEN_TAG.exec(rest) : null; open !== null; open = OPEN_TAG.exec(rest)) {
     text(rest.slice(0, open.index))
     const start = open.index + open[0].length
     const anyTag = /<(\/?)details\b[^<>]*>/giu
     anyTag.lastIndex = start
-    let depth = 1
+    let unclosed = 1
     let end = rest.length
     let after = rest.length
     for (let tag = anyTag.exec(rest); tag !== null; tag = anyTag.exec(rest)) {
-      depth += tag[1] === '/' ? -1 : 1
-      if (depth === 0) {
+      unclosed += tag[1] === '/' ? -1 : 1
+      if (unclosed === 0) {
         end = tag.index
         after = tag.index + tag[0].length
         break
@@ -183,7 +214,7 @@ function split(masked: string, restore: (out: string) => string): Part[] {
     const label = labelOf(restore(summary?.[1] ?? ''))
     parts.push({
       summary: label === '' ? 'Details' : label,
-      parts: split(summary !== null ? inner.slice(summary[0].length) : inner, restore),
+      parts: split(summary !== null ? inner.slice(summary[0].length) : inner, restore, depth + 1),
       isOpen: /\bopen\b/iu.test(open[1] ?? ''),
     })
     rest = rest.slice(after)
@@ -195,7 +226,7 @@ function split(masked: string, restore: (out: string) => string): Part[] {
 /** GitLab Markdown as parts: Markdown to draw, and a fold for each `<details>`. */
 export function partsOf(source: GitLabMarkdown): Part[] {
   const { masked, restore } = holdCode(source)
-  return split(masked, restore)
+  return split(masked, restore, 0)
 }
 
 /** The same as one Markdown string, each fold its summary alone, as GitLab first shows a closed one. */
