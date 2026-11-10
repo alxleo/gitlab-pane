@@ -472,7 +472,7 @@ test('pinning a card puts it in this session and folds the rest to one line; unp
   // A second pin goes after the first, and Claude watching the first again leaves the order the person made.
   await ui.press({ key: (await pinOf(12))?.key ?? '' })
   await clock.settle()
-  const order = async () => (await ui.findAll({ type: 'Button' })).filter(keyed('pin-')).map(button => `${button.key?.split('-')[1]} ${button.props.label}`)
+  const order = async () => (await ui.findAll({ type: 'Button' })).filter(keyed('pin-')).map(button => `${button.key?.split('-')[1] ?? ''} ${String(button.props.label)}`)
   expect(await order()).toEqual(['13 unpin', '12 unpin', '14 pin'])
   await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: 'https://gitlab.com/g/p/-/merge_requests/13' })
   await clock.settle()
