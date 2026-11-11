@@ -12,6 +12,12 @@ The redesign is currently paused at the brief. Do not resume Penpot edits or imp
 
 ## Pull requests
 
+Before one opens:
+- **Shared capabilities first.** Ask what the change builds that another feature needs or already has: a write sent once and tracked, a reader with a lease, a decoder. That part becomes one module with its own tests, and each feature declares only its own part. A large diff is the warning sign; a module copied privately into a feature is the failure.
+- **Every guard has a test that fails without it.** Break each new guard or rule, check a test goes red, then restore it. Reviews kept finding guards no test held.
+- **An independent adversarial review**, its findings fixed with tests, before the merge.
+- **A drawing change is seen in the desktop app** (below) before the merge. The pictures cannot show what only the desktop draws differently.
+
 A pull request's description is written for someone who has not seen the work, in the order they need it ([#89](https://github.com/alxleo/gitlab-pane/pull/89) is the model):
 
 1. **What changes for the person**, in a sentence or two, then `Closes #N`.
