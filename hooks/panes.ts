@@ -72,8 +72,10 @@ export async function seenOne($: EngineInterface, key: string): Promise<void> {
   if (next === null) {
     return
   }
+  // The drawn cards as the mark leaves them: those still listed, in their new order.
+  const marked = (await drawnCards($)).cards.map(card => card.key)
   const until = (await $.clock.now()) + 2000
-  const now = async () => ({ at, ringNow: await read($, ringAtom), before, drawn: cardsDrawn(rule), isTimeUp: (await $.clock.now()) >= until })
+  const now = async () => ({ at, ringNow: await read($, ringAtom), before, drawn: cardsDrawn(rule), marked, isTimeUp: (await $.clock.now()) >= until })
   for (;;) {
     // Asked for before looking, so a drawing that ends in between is not missed.
     const drew = nextDraw()

@@ -98,13 +98,15 @@ test('✓ on the card holding the ring hands it to the card below, or above when
 test('after ✓ the ring waits for a drawing without the card, and stays put when the person moved it meanwhile', () => {
   const before = cards.map(one => one.key)
   const after = [cards[1]?.key ?? '', cards[2]?.key ?? '']
-  const pressed = { at: tick(1), ringNow: tick(1), before, drawn: before, isTimeUp: false }
+  const pressed = { at: tick(1), ringNow: tick(1), before, drawn: before, marked: after, isTimeUp: false }
   // A drawing that started before the mark still shows the card: the ring would land on it and slip a card.
   expect(handOver(pressed)).toBe('wait')
   expect(handOver({ ...pressed, drawn: after })).toBe('move')
   // In the review queue a card marked seen stays, lower down: the order changing is the drawing to wait for.
   expect(handOver({ ...pressed, drawn: [before[1] ?? '', before[0] ?? '', before[2] ?? ''] })).toBe('move')
-  // A mark that changed nothing drawn waits only so long.
+  // A mark that leaves every card in its place, as in the review queue, has no drawing to wait for: nothing can slip.
+  expect(handOver({ ...pressed, marked: before })).toBe('move')
+  // One whose drawing never comes waits only so long.
   expect(handOver({ ...pressed, isTimeUp: true })).toBe('move')
   expect(handOver({ ...pressed, ringNow: title(3), drawn: after })).toBe('leave')
   expect(handOver({ ...pressed, ringNow: title(3), isTimeUp: true })).toBe('leave')
