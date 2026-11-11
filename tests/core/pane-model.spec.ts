@@ -160,7 +160,7 @@ test('an MR’s one move stands where GitLab’s verdict says what it fixes, and
   // From a session in another repo, the conflicts trail the verdict as they did, with nothing to press.
   expect(rowOf(modelOf([conflicted], { here: null }), conflicted)?.verdict).toMatchObject({ words: 'needs 1 approval', trailing: '· conflict', move: null })
   // A press this session made shows until the head moves.
-  const handed: Pressed = { kind: 'conflicts', state: 'handed', head: CAN.head, at: NOW }
+  const handed: Pressed = { kind: 'conflicts', state: 'handed', on: CAN.head, at: NOW }
   expect(rowOf(modelOf([conflicted], { here, pressed: { [conflicted.key]: handed } }), conflicted)?.verdict?.move).toMatchObject({
     label: '⇄ conflicts · with Claude',
     press: null,

@@ -7,8 +7,10 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 | ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
 | **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
 | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
-| **☆: the MRs you work on today, the rest one line** | **Pane closed: the inbox's news above the prompt** |
-| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | ![The band above the prompt](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band.png) |
+| **☆: the MRs you work on today, the rest one line** | **↩ reply: answer a thread beside its diff, once you confirm** |
+| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | ![A reply under a thread, waiting to be confirmed](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-reply.png) |
+| **Pane closed: the inbox's news above the prompt** | |
+| ![The band above the prompt](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band.png) | |
 
 <sub>Made-up data.</sub>
 
@@ -34,7 +36,7 @@ claude plugin install gitlab-pane --marketplace alxleo/gitlab-pane
 
 Renamed from `gitlab-ci` in 0.3.0. The marketplace tells Claude Code of the rename, so an installed or enabled `gitlab-ci@gitlab-pane` moves to `gitlab-pane@gitlab-pane` by itself. The store (avatars, seen marks) starts empty, the plugin's options may need setting again, and a permission rule for `mcp__gitlab-ci__watch_mr` must be added again as `mcp__gitlab-pane__watch_mr`.
 
-Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`); merging and rebasing from the pane need `api`. Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in.
+Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`); merging, rebasing and replying from the pane need `api`. Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in.
 
 For a team, in the project's `.claude/settings.json`:
 
@@ -73,12 +75,13 @@ For a team, in the project's `.claude/settings.json`:
 
 ## What it runs
 
-Queries, as you. GitLab is written to only when you press a merge or a rebase, and Jira never.
+Queries, as you. GitLab is written to only when you press a merge or a rebase, or post a reply you confirmed, and Jira never.
 
 | Runs | How often | For | Writes (plugin store) |
 |---|---|---|---|
 | GraphQL, per host, by the leader | 30 s while a pinned pipeline runs, else 1 min; after reads where every host failed, 2 min doubling to 10 min; the whole list every 5 min, only what changed between | your open MRs and their merge checks; running and pinned ones not among them, one by one | the snapshot every session draws |
-| GraphQL, one MR | once when you open its page, again when it changes | its description and threads, for this pane only | — |
+| GraphQL, one MR | once when you open its page, again when it changes | its description and threads, where a reply to each goes and the lines of the diff it was left on, for this pane only | — |
+| GraphQL `createNote`, in the session whose page it is | once per press of `post as you`, never sent again on its own | your reply under a thread; then the MR is read whole again, so the thread shows it | — |
 | GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
 | GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
 | GraphQL, per host, by the leader; while no session draws the pane, by one session with a window | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |

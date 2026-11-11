@@ -202,8 +202,11 @@ const DRAWN = new Map<string, ReadonlySet<string>>([
   ['Svg', new Set(['source', 'alt', 'width', 'height'])],
   ['Image', new Set(['source', 'alt', 'columns', 'rows'])],
   ['Markdown', new Set(['text', 'dimColor'])],
+  ['Code', new Set(['source', 'format', 'startLine', 'wrap'])],
 ])
 const KEPT = new Map<string, ReadonlySet<string>>([
+  // What picks a highlighter: the pictures draw code plain.
+  ['Code', new Set(['key', 'path', 'language'])],
   ['Box', new Set(['key'])],
   ['Text', new Set(['dir'])],
   ['Button', new Set(['key', 'hotkey', 'action', 'role', 'autoFocus'])],
@@ -508,9 +511,42 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
     }
     case 'Markdown':
       return `<div class="md${props['dimColor'] === true ? ' dim' : ''}${marked}">${MARKDOWN.render(text(props['text']))}</div>`
+    case 'Code':
+      return `<div class="code${props['wrap'] === 'truncate-end' ? ' cut' : ''}${marked}">${codeRows(text(props['source']), props['format'] === 'diff', props['startLine'])}</div>`
     default:
       return undrawn(node, unknown)
   }
+}
+
+/**
+ * Code as the desktop draws it: a diff's hunks with each line's old and new number, its sign and its colour; plain code
+ * numbered from `startLine` when it has one. A diff that parses as no hunks is drawn plain, as the engine draws it.
+ */
+function codeRows(source: string, isDiff: boolean, startLine: unknown): string {
+  const row = (classes: string, gutters: readonly string[], body: string) =>
+    `<div class="code-row${classes}">${gutters.map(gutter => `<span class="gutter">${escape(gutter)}</span>`).join('')}<span class="src">${escape(body)}</span></div>`
+  const lines = source.split('\n')
+  if (isDiff && lines.some(line => /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/u.test(line))) {
+    let old = 0
+    let now = 0
+    return lines
+      .flatMap(line => {
+        const head = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u.exec(line)
+        if (head !== null) {
+          old = Number(head[1])
+          now = Number(head[2])
+          return []
+        }
+        const sign = line.slice(0, 1)
+        const numbers = [sign === '+' ? '' : String(old), sign === '-' ? '' : String(now)]
+        old += sign === '+' ? 0 : 1
+        now += sign === '-' ? 0 : 1
+        return [row(sign === '+' ? ' add' : sign === '-' ? ' del' : '', numbers, line)]
+      })
+      .join('')
+  }
+  const first = typeof startLine === 'number' ? startLine : null
+  return lines.map((line, at) => row('', first !== null ? [String(first + at)] : [], line)).join('')
 }
 
 function undrawn(node: Node, unknown: Set<string>): string {

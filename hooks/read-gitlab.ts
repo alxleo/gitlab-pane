@@ -6,6 +6,7 @@ import { AUTHORED_PAGE, authoredQuery } from './authored-request'
 import type { AuthoredScope } from './authored-request'
 import { pinnedQuery } from './gitlab-documents'
 import { mergeStatusQuery } from './merge-gitlab'
+import { threadsQuery, withThreads } from './page-documents'
 import { askVariant } from './graphql'
 import { cursorAfter, mergeReads, MOVING_MAX, movingRows, scopeFor } from './incremental'
 import { pinKey } from './mr-url'
@@ -114,9 +115,20 @@ export async function readSingle($: EngineInterface, pin: Pinned): Promise<MrCar
   return readPinned(pin.host, await askVariant($, pin.host, features => pinnedQuery(pin, features))).map(slimCard)[0] ?? null
 }
 
-/** One MR read whole: its description and every thread, which the shared cards leave out. */
+/**
+ * One MR read whole: its description and every thread, which the shared cards leave out, and beside it what its page needs
+ * to answer the threads. That second read failing costs the page its replies and diff lines, never the MR.
+ */
 export async function readWhole($: EngineInterface, pin: Pinned): Promise<MrCard | null> {
-  return readPinned(pin.host, await askVariant($, pin.host, features => pinnedQuery(pin, features)))[0] ?? null
+  const [whole, threads] = await Promise.all([
+    askVariant($, pin.host, features => pinnedQuery(pin, features)),
+    askVariant($, pin.host, features => threadsQuery(pin.path, pin.iid, features)).then(
+      response => ({ response }),
+      (error: unknown) => ({ reason: asFailure(error).message })
+    ),
+  ])
+  const card = readPinned(pin.host, whole)[0]
+  return card !== undefined ? withThreads(card, threads) : null
 }
 
 /** Each of the MRs a session raised, read one by one, for a session that draws no pane. A host that fails loses only its own. */
