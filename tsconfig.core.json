@@ -67,6 +67,7 @@
     "hooks/job-tail.ts",
     "hooks/page-lines.ts",
     "hooks/pane-model.ts",
+    "hooks/repo-filter.ts",
     "hooks/row-facts.ts",
     "hooks/slim.ts",
     "hooks/snapshot.ts",

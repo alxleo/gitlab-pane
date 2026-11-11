@@ -12,6 +12,8 @@ import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { nextMove } from './next-move.ts'
 import type { Move } from './next-move.ts'
+import { keptRepo, repoFilterOf } from './repo-filter.ts'
+import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -29,18 +31,6 @@ const PARKED_AFTER_MS = 7 * 86_400_000
 
 /** The least a row can draw to; with less room than this, no row is tried. */
 const ROW_FLOOR = 300
-
-/** The value the repo filter's All is picked by; a repo's is its project, `host/path`, which has a `/` and so is never this. */
-export const REPO_ALL = 'all'
-
-/** The repo a pick of the filter narrows the list to: its project, or none for All. */
-export const pickedRepo = (value: string): string => (value === REPO_ALL ? '' : value)
-
-/**
- * The repo picked, while it still narrows the list: there are repos to pick between, among the `projects` the open MRs are
- * in, and its own is one of them. Else none, so a pick never hides MRs behind a filter that is not drawn or does not offer it.
- */
-export const keptRepo = (pick: string, projects: ReadonlySet<string>): string => (projects.size > 1 && projects.has(pick) ? pick : '')
 
 type Link = { href: string; text: string }
 
@@ -131,8 +121,8 @@ export type PaneInput = {
 
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
-  /** 📁, then All and each repo by how many MRs it holds, and the one picked; none with fewer than two repos to pick between. */
-  repos: { mark: string; value: string; choices: { value: string; label: string }[] } | null
+  /** None with fewer than two repos to pick between. */
+  repos: RepoFilter | null
   /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
   /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
@@ -305,7 +295,6 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   const input = { ...given, repoFilter: keptRepo(given.repoFilter, new Set(counts.keys())) }
   const pinnedKeys = new Set(input.pinned.map(pinKey))
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
-  const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
   // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
   // worked out below for the rows that are drawn, once each.
@@ -375,16 +364,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
       inbox: inboxLabel(input.news.count),
       isInbox,
     },
-    // The repo link's mark says what is picked between, so All needs no word for it, and counts nothing: the Mine tab beside
-    // it already says how many.
-    repos:
-      repos.length > 1
-        ? {
-            mark: LINK.repo,
-            value: input.repoFilter === '' ? REPO_ALL : input.repoFilter,
-            choices: [{ value: REPO_ALL, label: 'All' }, ...repos.map(([project, count]) => ({ value: project, label: `${repoName(project)} · ${count}` }))],
-          }
-        : null,
+    repos: repoFilterOf(rows, repos, input.repoFilter),
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,

@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { isEqual } from './equal'
 import { quietly } from './failures'
-import { keptRepo } from './pane-model'
+import { keptRepo } from './repo-filter'
 
 import type { Choices } from '../types'
 
