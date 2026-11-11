@@ -583,15 +583,18 @@ test('a merge whose squash commit GitLab will not say draws no build, says so, a
   expect((await ui.find({ type: 'Text', text: 'build unknown' }))?.text).toBe('build unknown')
   expect(gitlab.requests.some(request => request.endsWith(' Landed'))).toBe(false)
   expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 1 new"')
-  // What went wrong is the inbox's own line, which names the MR.
+  // What went wrong is no failure of the inbox, which is whole: its tab says nothing, and `/gitlab` names the MR.
   await ui.press({ key: 'tab-inbox' })
-  expect((await ui.find({ type: 'Text', text: /sync failed/u }))?.text).toMatch(/^sync failed: merged builds: g\/p!31: GitLab answered HTTP 404/u)
+  expect(await ui.find({ type: 'Text', text: /sync failed/u })).toBeUndefined()
+  const gitlabSays = async () => (await $.command.run({ ...typed(''), command: 'gitlab' })).text
+  expect(await gitlabSays()).toContain('merged: g/p!31: GitLab answered HTTP 404')
   await ui.press({ key: 'tab-mine' })
   // GitLab says there is no squash commit when asked again, and the pane has the build from then on.
   world.squashed = { 'g/p!31': null }
   world.pipelines = [{ sha: HEAD_PLAIN, ref: 'main', id: 600, status: 'SUCCESS' }]
   await clock.advance(60_000)
   expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/600')
+  expect(await gitlabSays()).not.toContain('merged:')
   await ui.unmount()
 })
 

@@ -23,8 +23,12 @@ export function dataOf<Data>(answer: RawResponse<Data>): Data {
   return answer.data
 }
 
-/** What one host gave: the MRs the rules count, why a document failed, and the user's MRs merged lately (none when their document failed: the last read's stand). */
-type HostRead = { found: Found; failure: InboxHost['failure']; landed: Landed[] | null }
+/**
+ * What one host gave: the MRs the rules count, why a document failed, and the user's MRs merged lately (none when their document
+ * failed: the last read's stand) with why asking for their commits or builds failed, which is no failure of the inbox and so is
+ * told apart from `failure`: the inbox is whole without it.
+ */
+type HostRead = { found: Found; failure: InboxHost['failure']; landed: Landed[] | null; landedFailure: Failure | null }
 
 type Tried = { label: string; found: Found } | { label: string; error: unknown }
 
@@ -81,14 +85,12 @@ export async function readHost($: EngineInterface, host: string, now: number, fo
   const failed = results.flatMap(one => ('error' in one ? [{ label: one.label, error: one.error }] : []))
   const isSame = failed.length === results.length && new Set(failed.map(one => messageOf(one.error))).size === 1
   const merged = await landing
-  const problems = [...failed, ...(merged !== null && merged.failure !== null ? [{ label: 'merged builds', error: merged.failure }] : [])]
-  const [first] = problems
+  const [first] = failed
   return {
     found: combine(founds),
     failure:
-      first === undefined
-        ? null
-        : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : problems.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
+      first === undefined ? null : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : failed.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
     landed: merged !== null ? merged.landed : null,
+    landedFailure: merged !== null ? merged.failure : null,
   }
 }
