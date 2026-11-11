@@ -130,18 +130,22 @@ const fresh = (over: Partial<Fresh> = {}): Fresh => ({
   isAutoMerging: false,
   mergeError: null,
   strategies: [],
+  squash: false,
   ...over,
 })
 
 const stop = (say: string, isDone: boolean) => ({ does: 'stop', say, isDone })
 
-test('a merge is sent only for the head the verdict was read on, while GitLab still says it can merge, by its train where it has one', () => {
-  expect(firstStep('merge', 'abc123', fresh())).toEqual({ does: 'merge', head: 'abc123', strategy: null })
+test('a merge is sent only for the head the verdict was read on, while GitLab still says it can merge, by its train where it has one, squashed when GitLab will squash it', () => {
+  expect(firstStep('merge', 'abc123', fresh())).toEqual({ does: 'merge', head: 'abc123', strategy: null, squash: false })
   expect(firstStep('merge', 'abc123', fresh({ strategies: ['merge_train', 'add_to_merge_train_when_checks_pass'] }))).toEqual({
     does: 'merge',
     head: 'abc123',
     strategy: 'MERGE_TRAIN',
+    squash: false,
   })
+  // GitLab's `squashOnMerge`: the project's rule (always, never) where it has one, else the MR's own flag.
+  expect(firstStep('merge', 'abc123', fresh({ squash: true }))).toEqual({ does: 'merge', head: 'abc123', strategy: null, squash: true })
   expect(firstStep('merge', 'abc123', fresh({ head: 'def456' }))).toEqual(stop('changed since it was read: look again', false))
   expect(firstStep('merge', 'abc123', fresh({ status: 'CI_STILL_RUNNING' }))).toEqual(stop('cannot merge just now: GitLab says CI still running', false))
   expect(firstStep('rebase-merge', 'abc123', fresh({ status: 'NEED_REBASE' }))).toEqual({ does: 'rebase' })
@@ -166,7 +170,7 @@ test('after a merge is sent, the pane looks again until GitLab says it merged, o
 })
 
 test('once a write is sent: a merge GitLab makes later is done, one made now and a rebase are followed, a refusal is the end', () => {
-  const merge = (strategy: MergeStrategyEnum | null) => ({ does: 'merge', head: 'abc123', strategy }) as const
+  const merge = (strategy: MergeStrategyEnum | null) => ({ does: 'merge', head: 'abc123', strategy, squash: false }) as const
   expect(afterSend(merge('MERGE_WHEN_CHECKS_PASS'), null)).toEqual(stop('merges when checks pass', true))
   expect(afterSend(merge('ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS'), null)).toEqual(stop('merges when checks pass', true))
   expect(afterSend(merge('MERGE_TRAIN'), null)).toEqual(stop('added to the merge train', true))
@@ -201,14 +205,20 @@ test('after a rebase, the pane waits for GitLab to finish it; a rebase that merg
   expect(nextStep('rebase', before, before, FOLLOW_TRIES)).toEqual(stop('GitLab has not finished the rebase; see the MR', false))
   // Its new pipeline is not there yet, so there is no merge to set; once it is, the merge waits for its checks, in a train where there is one.
   expect(nextStep('rebase-merge', before, rebased, 2)).toEqual({ does: 'wait' })
-  expect(nextStep('rebase-merge', before, { ...rebased, strategies: ['merge_when_checks_pass'] }, 3)).toEqual({ does: 'merge', head: 'def456', strategy: 'MERGE_WHEN_CHECKS_PASS' })
+  expect(nextStep('rebase-merge', before, { ...rebased, strategies: ['merge_when_checks_pass'] }, 3)).toEqual({
+    does: 'merge',
+    head: 'def456',
+    strategy: 'MERGE_WHEN_CHECKS_PASS',
+    squash: false,
+  })
   expect(nextStep('rebase-merge', before, { ...rebased, strategies: ['merge_when_checks_pass', 'add_to_merge_train_when_checks_pass'] }, 3)).toEqual({
     does: 'merge',
     head: 'def456',
     strategy: 'ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS',
+    squash: false,
   })
-  // Nothing to wait for: it merges now.
-  expect(nextStep('rebase-merge', before, { ...rebased, status: 'MERGEABLE' }, 3)).toEqual({ does: 'merge', head: 'def456', strategy: null })
+  // Nothing to wait for: it merges now, squashed as GitLab says now it will be.
+  expect(nextStep('rebase-merge', before, { ...rebased, status: 'MERGEABLE', squash: true }, 3)).toEqual({ does: 'merge', head: 'def456', strategy: null, squash: true })
   expect(nextStep('rebase-merge', before, rebased, FOLLOW_TRIES)).toEqual(stop('rebased; merge it once its checks pass', true))
 })
 

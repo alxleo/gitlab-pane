@@ -1739,6 +1739,22 @@
             "deprecationReason": null,
             "description": null,
             "isDeprecated": false,
+            "name": "squashOnMerge",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
             "name": "state",
             "type": {
               "kind": "NON_NULL",
@@ -3863,6 +3879,18 @@
             "description": null,
             "isDeprecated": false,
             "name": "orbit_access_granted"
+          },
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "review_approved"
+          },
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "review_changes_requested"
           },
           {
             "deprecationReason": null,

@@ -113,13 +113,14 @@ function moveAnswers(fake: () => Mr[], strategies: () => string[], merged: strin
                     autoMergeEnabled: mr.merging?.autoMergeEnabled ?? false,
                     mergeError: mr.merging?.mergeError ?? null,
                     availableAutoMergeStrategies: strategies(),
+                    squashOnMerge: mr.merging?.squashOnMerge ?? false,
                   },
           },
         },
       }
     },
-    Merge: ({ path, iid, sha, strategy }) => {
-      merged.push(`${iid}@${sha}${strategy !== undefined && strategy !== null ? ` ${strategy}` : ''}`)
+    Merge: ({ path, iid, sha, strategy, squash }) => {
+      merged.push(`${iid}@${sha}${squash ? ' squashed' : ''}${strategy !== undefined && strategy !== null ? ` ${strategy}` : ''}`)
       const mr = find(path, iid)
       if (mr !== undefined) {
         if (strategy === undefined || strategy === null) {
@@ -955,9 +956,10 @@ const leadOf = async (ui: { findAll: (query: { type?: string }) => Promise<Found
     })
     .slice(0, 3)
 
-test('a mergeable MR’s verdict is its merge: one press arms it, a second merges the head GitLab judged, and the card goes once GitLab says it merged', async ($, on) => {
+test('a mergeable MR’s verdict is its merge: one press arms it, a second merges the head GitLab judged, squashed as its project requires, and the card goes once GitLab says it merged', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [ready(12)], isDown: false }
+  // A project that always squashes, on an MR whose own squash flag is off: GitLab says it will squash.
+  const fake: Fake = { mrs: [ready(12, { merging: { squashOnMerge: true } })], isDown: false }
   const { merged, toasts } = engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -978,7 +980,7 @@ test('a mergeable MR’s verdict is its merge: one press arms it, a second merge
   await clock.settle()
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
   await clock.settle()
-  expect(merged).toEqual(['12@head-12'])
+  expect(merged).toEqual(['12@head-12 squashed'])
   await clock.advance(3_000)
   expect(toasts).toContain('!12 merged')
   await clock.advance(60_000)

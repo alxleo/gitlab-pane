@@ -45,8 +45,14 @@ const set = <Handler>(handler: Handler | undefined, operation: string): Handler 
   return handler
 }
 
-/** What the pane sent: the host, the operation it names, its variables and the bearer token, checked to be GraphQL over JSON. */
+/** What the pane sent: the host, the operation it names, its variables as text and the bearer token, checked to be GraphQL over JSON. */
 export type Sent = { host: string; operation: string; variables: Record<string, string>; token: string | undefined }
+
+/** A request's variables as text: a boolean (a merge's `squash`) as `true` or `false`, so leaving one out is seen. */
+const textOf = (variables: unknown): Record<string, string> => ({
+  ...stringRecord(variables),
+  ...(isRecord(variables) ? Object.fromEntries(Object.entries(variables).flatMap(([name, value]) => (typeof value === 'boolean' ? [[name, String(value)]] : []))) : {}),
+})
 
 /**
  * The request `$.http.fetch(url, init)` is given, read as the pane's GraphQL POST; anything else throws. This is a core file, so
@@ -68,7 +74,7 @@ export function sent(url: string, init: { method?: string; headers?: Record<stri
     throw new Error(`the operationName ${body.operationName} is not the operation of the document sent`)
   }
   const header = Object.entries(init.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
-  return { host: match[1], operation: body.operationName, variables: stringRecord(body.variables), token: header?.replace(/^Bearer /u, '') }
+  return { host: match[1], operation: body.operationName, variables: textOf(body.variables), token: header?.replace(/^Bearer /u, '') }
 }
 
 /** A job's log asked for on the REST API: the host, the project path and job number it names, and the bearer token. */
@@ -170,7 +176,16 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       const strategy = STRATEGIES[variables.strategy ?? '']
       return reply(
         200,
-        set(answers.Merge, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid'), sha: need(variables, 'sha'), ...(strategy !== undefined ? { strategy } : {}) })
+        set(
+          answers.Merge,
+          operation
+        )({
+          path: need(variables, 'path'),
+          iid: need(variables, 'iid'),
+          sha: need(variables, 'sha'),
+          squash: need(variables, 'squash') === 'true',
+          ...(strategy !== undefined ? { strategy } : {}),
+        })
       )
     }
     default:

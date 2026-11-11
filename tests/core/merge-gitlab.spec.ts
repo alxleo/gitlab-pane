@@ -22,7 +22,7 @@ test('a document that changes GitLab is a mutation and is sent once; every other
     const operation = isOperation(name) ? name : 'Authored'
     expect([name, kindOf(text)]).toEqual([name, isWrite({ operation }) ? 'mutation' : 'query'])
   }
-  expect(isWrite(mergeWrite('g/p', 1, 'abc', null))).toBe(true)
+  expect(isWrite(mergeWrite('g/p', 1, 'abc', null, false))).toBe(true)
   expect(isWrite(moveStateQuery('g/p', 1))).toBe(false)
 })
 
@@ -60,6 +60,7 @@ test('an MR read fresh gives what a move needs; one GitLab does not name gives n
     autoMergeEnabled: false,
     mergeError: null,
     availableAutoMergeStrategies: ['merge_when_checks_pass'],
+    squashOnMerge: true,
   }
   expect(readMoveState({ data: { project: { mergeRequest } } })).toEqual({
     state: 'opened',
@@ -70,6 +71,7 @@ test('an MR read fresh gives what a move needs; one GitLab does not name gives n
     isAutoMerging: false,
     mergeError: null,
     strategies: ['merge_when_checks_pass'],
+    squash: true,
   })
   expect(readMoveState({ data: { project: { mergeRequest: null } } })).toBeNull()
   expect(() => readMoveState({ data: null, errors: [{ message: 'timeout' }] })).toThrow('timeout')
