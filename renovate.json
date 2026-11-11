@@ -1,12 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Keeps the pinned actions, the dev-time npm packages and the pinned Claude Code current. The mod itself has no npm packages.",
+  "description": "Keeps the pinned actions, mise.toml's tools, the dev-time npm packages and the pinned Claude Code current. The mod itself has no npm packages.",
   "extends": ["config:recommended", "schedule:monthly"],
   "minimumReleaseAge": "14 days",
   "packageRules": [
     {
-      "description": "The pinned actions in one pull request a month.",
-      "matchManagers": ["github-actions"],
+      "description": "The pinned actions and mise.toml's tools in one pull request a month, so actionlint's image digest in check.yml and its pin in mise.toml move together.",
+      "matchManagers": ["github-actions", "mise"],
       "matchDepNames": ["!node"],
       "groupName": "actions"
     },

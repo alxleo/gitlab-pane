@@ -4,6 +4,8 @@ Node 26 or newer runs everything, TypeScript tools included (types stripped). No
 
 ## Set up
 
+Two things come first: [mise](https://mise.jdx.dev), which installs what `mise.toml` pins, and `claude` (Claude Code) on the PATH, at the `CLAUDE_CODE_VERSION` that `check.yml` pins, since `npm run setup` and `npm run check` use it.
+
 ```bash
 mise install                 # Node and the scanners `npm run scan` runs, at the versions mise.toml pins
 npm ci
