@@ -719,8 +719,8 @@ async function fontsBorrowed(context: BrowserContext, page: Page): Promise<Set<s
 }
 
 /**
- * Run in the page: each character the frame draws, painted alone in its element's own font and compared with what that
- * font paints for U+10FFFD, which no font has. Where no font has a glyph, Chromium paints the first font's empty box and
+ * Run in the page: each character the frame draws, and each letter in it, painted alone in its element's own font and
+ * compared with what that font paints for U+10FFFD, which no font has. Where no font has a glyph, Chromium paints the first font's empty box and
  * credits that font, so `fontsBorrowed` cannot see it; a character that paints the same as U+10FFFD has no glyph.
  */
 const NO_GLYPH_SCRIPT = `(() => {
@@ -745,7 +745,10 @@ const NO_GLYPH_SCRIPT = `(() => {
       seen.set(font, painted(font, '\\u{10FFFD}'))
     }
     for (const { segment } of graphemes.segment(node.data)) {
-      if (!/^[\\s\\p{Cc}\\p{Cf}]+$/u.test(segment) && painted(font, segment) === seen.get(font)) {
+      // A cluster with no glyph paints a box for each of its letters, so its letters are painted alone too; marks,
+      // joiners and selectors are left out, as alone they paint nothing or a dotted circle.
+      const letters = [...segment].filter(one => !/^[\\s\\p{Cc}\\p{Cf}\\p{M}]$/u.test(one))
+      if (letters.length > 0 && [segment, ...letters].some(text => painted(font, text) === seen.get(font))) {
         none.add(segment)
       }
     }
