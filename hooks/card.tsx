@@ -72,12 +72,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
-          {/* The star at the top right, as anywhere else: the label names the press, the star is drawn, dim while hollow. */}
-          {pin !== null && (
-            <Button key={pin.key} plain dimColor={pin.mark === '☆'} label={pin.label} onPress={() => togglePin($, pin.label, pin.mr)}>
-              {pin.mark}
-            </Button>
-          )}
+          {/* The star at the top right, as anywhere else, dim while hollow: the label alone, which the desktop app draws. */}
+          {pin !== null && <Button key={pin.key} plain dimColor={pin.mark === '☆'} label={pin.mark} onPress={() => togglePin($, pin.press, pin.mr)} />}
         </Box>
       )
     }
