@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.2](https://github.com/alxleo/gitlab-pane/compare/v0.4.1...v0.4.2) (2026-11-11)
+
+
+### Features
+
+* a band above the prompt says the inbox news while the pane does not ([#94](https://github.com/alxleo/gitlab-pane/issues/94)) ([fcdcf36](https://github.com/alxleo/gitlab-pane/commit/fcdcf368b3a4141b01e63b7178e77aa919341ac0))
+* a star pins a card; ↻ and 🔔 at the top right refresh and say whether Claude wakes ([#87](https://github.com/alxleo/gitlab-pane/issues/87)) ([d966d15](https://github.com/alxleo/gitlab-pane/commit/d966d15f457f7a1009d3b52e1058f37818316b16))
+* arrows walk the inbox's cards and s marks the open tab seen ([#88](https://github.com/alxleo/gitlab-pane/issues/88)) ([21681fb](https://github.com/alxleo/gitlab-pane/commit/21681fbd7d110996327db217ecf993ca9709e29c))
+* **jira:** move an MR's ticket to in review, and to done after merge ([#92](https://github.com/alxleo/gitlab-pane/issues/92)) ([fdecb04](https://github.com/alxleo/gitlab-pane/commit/fdecb04d174e5c96d5f108d6add82fc40db399a0))
+* pin the MRs you work on and the rest folds to one line; a week untouched parks an MR ([#85](https://github.com/alxleo/gitlab-pane/issues/85)) ([972d478](https://github.com/alxleo/gitlab-pane/commit/972d478682eb762d13631de153d607a4a128b635))
+* reply to a review thread beside its diff, posted once you confirm ([#91](https://github.com/alxleo/gitlab-pane/issues/91)) ([d56922e](https://github.com/alxleo/gitlab-pane/commit/d56922e4b8556102ff2140c3f04109204641b2e2))
+* **rig:** print what the window showed in each step ([#96](https://github.com/alxleo/gitlab-pane/issues/96)) ([6db4e86](https://github.com/alxleo/gitlab-pane/commit/6db4e86d62078bc23bf121376f661faee5e4b1fc))
+* the repo filter is one picker, a single row however many repos; a phone keeps its buttons ([#89](https://github.com/alxleo/gitlab-pane/issues/89)) ([4a3dd52](https://github.com/alxleo/gitlab-pane/commit/4a3dd52b6bbddf175eab80462adfec1074bf681e))
+* the verdict is the MR's one move: merge, rebase, or hand conflicts to Claude ([#95](https://github.com/alxleo/gitlab-pane/issues/95)) ([aa952db](https://github.com/alxleo/gitlab-pane/commit/aa952dbce9299470638c4a2edb23d60913c770d7))
+* **tools:** pane-shot checks the pane in the running desktop app ([#90](https://github.com/alxleo/gitlab-pane/issues/90)) ([c883040](https://github.com/alxleo/gitlab-pane/commit/c883040b92d9f181019e5000eb65918ff414e2dc))
+
+
+### Bug Fixes
+
+* going back from an MR's page corrects for rows that changed above its card ([#83](https://github.com/alxleo/gitlab-pane/issues/83)) ([5a165fa](https://github.com/alxleo/gitlab-pane/commit/5a165fa11c29b284a7d50b6efe5f4c457a26035f)), closes [#18](https://github.com/alxleo/gitlab-pane/issues/18)
+* **jira:** a ticket that has been in review is never moved back to it ([#99](https://github.com/alxleo/gitlab-pane/issues/99)) ([57510a6](https://github.com/alxleo/gitlab-pane/commit/57510a6a9e6773b9c0067900a92c0088cd83bb54))
+* read hostile GitLab text in time in proportion to it ([#81](https://github.com/alxleo/gitlab-pane/issues/81)) ([c64cba5](https://github.com/alxleo/gitlab-pane/commit/c64cba543d80bb5d61a3546d2ce6181ab9b24c4f))
+* the desktop draws ↻, 🔔 and the star, and a reload keeps the pane on older cards ([#97](https://github.com/alxleo/gitlab-pane/issues/97)) ([00c1b62](https://github.com/alxleo/gitlab-pane/commit/00c1b62f776d98f816cad5a347137edafdd02165))
+
 ## [0.4.1](https://github.com/alxleo/gitlab-pane/compare/v0.4.0...v0.4.1) (2026-11-10)
 
 
