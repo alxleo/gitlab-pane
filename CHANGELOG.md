@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/alxleo/gitlab-pane/compare/v0.4.2...v0.4.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* **inbox:** a push says how many commits it added, not GitLab's HTML list of them ([#100](https://github.com/alxleo/gitlab-pane/issues/100)) ([9ecf6b3](https://github.com/alxleo/gitlab-pane/commit/9ecf6b3902b35f984d96399367f09c7084acb4f6))
+
 ## [0.4.2](https://github.com/alxleo/gitlab-pane/compare/v0.4.1...v0.4.2) (2026-11-11)
 
 
