@@ -11,7 +11,7 @@ import type {
   UsualQuery,
 } from './gitlab.generated.ts'
 import type { RawResponse } from './gitlab-documents.ts'
-import { dataOf, isFilled, isSome } from './decode.ts'
+import { dataOf, isFilled, isSome, present } from './decode.ts'
 import { checkStatusOf, ciStatusOf, reviewStateOf } from './gitlab-status.ts'
 import { cardKey, projectOf, siteOf } from './hosts.ts'
 import { lead, ranOf } from './format.ts'
@@ -81,7 +81,6 @@ export function readUsual(response: RawResponse<UsualQuery>): Usual | null {
 }
 
 /** The nodes of a connection that GitLab sent: it may send none, or null in place of one it timed out. */
-const present = <T>(nodes: readonly (T | null)[] | null | undefined): T[] => (nodes ?? []).filter(node => node !== null)
 
 type NodeOf<Connection> = Connection extends { nodes: Array<infer Node> | null } ? NonNullable<Node> : never
 

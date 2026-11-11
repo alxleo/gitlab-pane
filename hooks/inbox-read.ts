@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
-import { Failure, kindOf, messageOf } from './failure'
-import type { RawResponse } from './gitlab-documents'
+import { dataOf } from './decode'
+import { kindOf, messageOf } from './failure'
 import { ask, askVariant } from './graphql'
 import { inboxAuthoredQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './inbox-requests'
 import { authoredMrs, combine, followedProjectMrs, followedUserMrs, ownMrs, queueMrs, todoMrs } from './inbox-gitlab'
@@ -15,14 +15,6 @@ import type { InboxFollow, InboxHost } from '../types'
 
 // One GitLab host's inbox documents, asked at once, and what each makes of the inbox. inbox.ts sends one host after another and keeps
 // what they found.
-
-/** A document's data; an answer without any is the errors GitLab gave in its place. */
-export function dataOf<Data>(answer: RawResponse<Data>): Data {
-  if (answer.data === null || answer.data === undefined) {
-    throw new Failure('bad-answer', answer.errors?.map(one => one.message).join('; ') ?? 'GitLab answered without data')
-  }
-  return answer.data
-}
 
 /**
  * What one host gave: the MRs the rules count, why a document failed, and the user's MRs merged lately, as the inbox's own
