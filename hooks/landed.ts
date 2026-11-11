@@ -29,6 +29,14 @@ export const LANDED_SHOWN = 5
  */
 export const BUILD_APPEARS_MS = 10 * 60_000
 
+/**
+ * How long the pane leaves what a person may still change before it asks again: a build that failed (someone retries the
+ * pipeline or a job, and the same commit then shows green), one that waits to be run by hand, and a squash commit GitLab would
+ * not name. Asking every minute would put as many questions to GitLab for the whole three days on verdicts that rarely
+ * change, and a retry shows within this long of being made; ↻ asks at once.
+ */
+export const RECHECK_MS = 10 * 60_000
+
 /** Letters of a title the snapshot keeps, as it keeps the inbox's own: the snapshot is stored, and what a row says of a title is shorter still. */
 const TITLE_ROOM = 100
 
@@ -126,21 +134,40 @@ export function buildOf(host: string, fallback: string, response: RawResponse<La
   return pipeline !== undefined ? { status: ciStatusOf(pipeline.status), url: isFilled(pipeline.path) ? `${siteOf(host)}${pipeline.path}` : fallback } : null
 }
 
-/** Whether a build will not change again by itself. A manual one waits for a person and may yet run. */
-const isFinished = (status: CiStatus): boolean => isSettled(status) && status !== 'manual'
+/**
+ * Whether a build will not change again: it passed, or it was stopped or skipped. A failed one may be run again (the same
+ * commit then shows green) and a manual one waits for a person, so neither is final.
+ */
+const isFinal = (status: CiStatus): boolean => status === 'success' || status === 'canceled' || status === 'skipped'
 
 /**
- * Whether the build of an MR is still to be looked for, given the entry kept for it: not once it finished, and not once a look
- * made after GitLab could have started one found none. An entry with no commit has nothing to look for yet.
+ * Whether anything is still to ask GitLab of an MR, given the entry kept for it, `now`, and whether a person pressed ↻:
+ *
+ * - a build that is final is never asked again, whatever ↻;
+ * - ↻ asks for everything else;
+ * - a build still running is asked again at every read;
+ * - a build that failed or waits on a person, and a squash commit GitLab did not give, are asked again once `RECHECK_MS` has
+ *   passed since `checkedAt`, when they were last asked;
+ * - with no build seen, the look is made until one made after GitLab could have started a pipeline finds none.
  */
-export function isBuildDue(kept: Landed | undefined, mergedAt: number): boolean {
-  if (kept === undefined || kept.sha === null) {
+export function isDue(kept: Landed | undefined, mergedAt: number, now: number, isAsked: boolean): boolean {
+  if (kept === undefined) {
     return true
   }
-  if (kept.build !== null) {
-    return !isFinished(kept.build.status)
+  if (kept.build !== null && isFinal(kept.build.status)) {
+    return false
   }
-  return kept.checkedAt === null || kept.checkedAt - mergedAt < BUILD_APPEARS_MS
+  if (isAsked) {
+    return true
+  }
+  const hasWaited = kept.checkedAt === null || now - kept.checkedAt >= RECHECK_MS
+  if (kept.sha === null) {
+    return hasWaited
+  }
+  if (kept.build === null) {
+    return kept.checkedAt === null || kept.checkedAt - mergedAt < BUILD_APPEARS_MS
+  }
+  return isSettled(kept.build.status) ? hasWaited : true
 }
 
 /** The entry for an MR merged lately: what the inbox says of it, with the commit and the build as far as they are known. */

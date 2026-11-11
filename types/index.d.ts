@@ -400,7 +400,11 @@ export type Landed = {
   sha: string | null
   /** The newest pipeline of `sha` on `targetBranch` as last read; null while none was seen. */
   build: LandedBuild | null
-  /** When `build` was last looked for, in epoch milliseconds; null before the first look. */
+  /**
+   * When GitLab was last asked of this MR, in epoch milliseconds, and so when a failed or manual build, or a squash commit it
+   * would not name (`sha` null), is asked again; null before the first ask. It moves only when the pane asked, so a read that
+   * asks nothing leaves the entry, and the snapshot, as they were.
+   */
   checkedAt: number | null
 }
 
