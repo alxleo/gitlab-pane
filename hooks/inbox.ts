@@ -113,6 +113,12 @@ async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): Promise<
 /** Where the leader keeps the inbox for the sessions that only draw it: a key of its own, so a mark written beside it is never lost. */
 const INBOX_STORE = 'inbox-snapshot'
 
+/** The snapshot the atom shows, its merged MRs read entry by entry: the atom outlives a reload, so an older version may have left them in another shape. */
+async function shownSnapshot($: EngineInterface): Promise<InboxSnapshot> {
+  const { snapshot } = await read($, inboxAtom)
+  return { ...snapshot, landed: keptLanded(snapshot.landed) }
+}
+
 /**
  * The one place the leader's snapshot is written, and shown: `change` gives the snapshot to put from the one kept (the store's,
  * or the one shown while the store has none), or null when there is nothing to put. The store is rewritten whole for any write,
@@ -122,7 +128,7 @@ const INBOX_STORE = 'inbox-snapshot'
  */
 async function publish($: EngineInterface, change: (kept: InboxSnapshot) => InboxSnapshot | null): Promise<void> {
   const shared = readSnapshot(await $.store.get(INBOX_STORE))
-  const snapshot = change(shared ?? (await read($, inboxAtom)).snapshot)
+  const snapshot = change(shared ?? (await shownSnapshot($)))
   if (snapshot === null) {
     return
   }
@@ -140,7 +146,7 @@ async function publish($: EngineInterface, change: (kept: InboxSnapshot) => Inbo
  * works, so the problem stands until it is asked again.
  */
 async function askLanded($: EngineInterface, lately: readonly Lately[], now: number, isAsked: boolean): Promise<void> {
-  const kept = keptLanded((await read($, inboxAtom)).snapshot.landed)
+  const { landed: kept } = await shownSnapshot($)
   const { landed, failure, isHeld } = await readLanded(
     $,
     lately.flatMap(one => one.merged ?? []),

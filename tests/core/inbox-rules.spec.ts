@@ -339,7 +339,7 @@ test('a snapshot kept before merged MRs were listed reads as none merged, and a 
   const { landed: _none, ...older } = snapshot([])
   expect(readSnapshot(parseJson(JSON.stringify(older)))).toEqual(snapshot([]))
   expect(readSnapshot(parseJson(JSON.stringify({ ...older, landed: [entry, { ...entry, iid: 'four' }] })))?.landed).toEqual([entry])
-  // The silent host's merged MRs are the read's to keep (`readInbox` carries them), so carrying over leaves them as they are.
+  // The silent host's merged MRs are the read's to keep (`knownLanded` carries them), so carrying over leaves them as they are.
   const was = snapshot([], { 'a.com': { user: 'me', failure: null } })
   const down = { at: NOW + 1, hosts: { 'a.com': { user: null, failure: { kind: 'network' as const, message: 'a.com failed' } } }, mrs: [], landed: [entry] }
   expect(carryOver(was, down).landed).toEqual([entry])

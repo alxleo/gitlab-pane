@@ -903,6 +903,47 @@ test('a build GitLab is slow to answer holds back no to-do and no card, the merg
   await ui.unmount()
 })
 
+test('with no snapshot in the store, what the atom held before a reload is kept entry by entry, so an entry an older version left reads as one', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
+  const kit = engine(on, world)
+  // An older version left an entry with no mark of whether its last ask failed, and something that is no entry.
+  const older = {
+    host: 'gitlab.com',
+    path: 'g/p',
+    iid: 21,
+    title: 'thing 21',
+    url: 'https://gitlab.com/g/p/-/merge_requests/21',
+    mergedAt: NOW - 30 * 60_000,
+    targetBranch: 'main',
+    sha: MERGE_COMMIT,
+    build: { status: 'failed', url: 'https://gitlab.com/g/p/-/pipelines/700' },
+    checkedAt: NOW,
+  }
+  // The atom never written reads as that, at the version it stands at, so its first write lands as it would after a reload.
+  on('state.get', async (_, e, next) => {
+    const answer = await next(e)
+    const standing = answer.value
+    return e.key === 'inbox' && standing !== undefined && standing.value === undefined
+      ? {
+          value: {
+            value: { snapshot: { at: NOW - 1, hosts: {}, mrs: [], landed: [older, 'not an entry'] }, seen: {}, isSyncing: false, readAt: null },
+            version: standing.version,
+          },
+        }
+      : answer
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // The entry is what the leader shares, with the mark it lacked, and what it knew of the build is not asked again.
+  expect(JSON.stringify(kit.store.get('inbox-snapshot'))).toContain('"checkedAt":' + String(NOW) + ',"hasFailed":false')
+  expect(kit.requests.filter(request => request.endsWith(' Landed'))).toHaveLength(0)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  await ui.unmount()
+})
+
 test('the leader prunes the marks of MRs that left the inbox without losing one made in another session', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const kit = engine(on, busyWorld())

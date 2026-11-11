@@ -109,7 +109,7 @@ export function carryOver(previous: InboxSnapshot, fresh: InboxSnapshot): InboxS
     at: fresh.at,
     hosts: Object.fromEntries(Object.entries(fresh.hosts).map(([host, one]) => [host, names.has(host) ? { user: previous.hosts[host]?.user ?? null, failure: one.failure } : one])),
     mrs: [...fresh.mrs, ...previous.mrs.filter(mr => names.has(mr.host))],
-    // The read itself keeps the merged MRs of a host whose own document failed (`readInbox`), a silent one's included.
+    // The leader's `publish` keeps the merged MRs of a host whose own document failed (`knownLanded`), a silent one's included.
     landed: fresh.landed,
   }
 }
