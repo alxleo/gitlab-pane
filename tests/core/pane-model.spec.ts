@@ -7,7 +7,7 @@ import { cardKey, projectOf } from '../../hooks/hosts.ts'
 import { shortHash } from '../../hooks/identity.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 import { toCard } from '../../hooks/gitlab.ts'
-import { buildPane, MINE_SHOWN, pickedRepo, REPO_ALL } from '../../hooks/pane-model.ts'
+import { buildPane, inboxBand, MINE_SHOWN, pickedRepo, REPO_ALL } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { slimCard } from '../../hooks/slim.ts'
 import { STAGE_COLOURS } from '../../hooks/status.ts'
@@ -62,6 +62,24 @@ test('beside the tabs, the age of the cards, and ↻ dim while this session read
   // Whether a raised MR wakes Claude is a bell, named for the press: struck through once wakes are off.
   expect(modelOf([]).wake).toEqual({ label: 'wake Claude: on', mark: '🔔' })
   expect(modelOf([], { isWaking: false }).wake).toEqual({ label: 'wake Claude: off', mark: '🔕' })
+})
+
+test('the band above the prompt says the inbox news only while the pane shows no tabs that say it, and gives way to a survey', () => {
+  const band = (over: Partial<Parameters<typeof inboxBand>[0]> = {}) => inboxBand({ count: 2, isPaneDrawn: false, isPageOpen: false, hasSurvey: false, ...over })
+  expect(band()).toBe('Inbox · 2 new')
+  // Nothing new is no news: the band is left to whatever else draws there.
+  expect(band({ count: 0 })).toBeNull()
+  // The pane's Inbox tab says the same words, so the band does not repeat them beside it.
+  expect(band({ isPaneDrawn: true })).toBeNull()
+  // An MR read whole has its way back where the tabs were, so the count is nowhere in the pane and the band says it.
+  expect(band({ isPaneDrawn: true, isPageOpen: true })).toBe('Inbox · 2 new')
+  expect(band({ hasSurvey: true })).toBeNull()
+  // The band and the tab are one fact in one form of words.
+  fc.assert(
+    fc.property(fc.integer({ min: 1, max: 500 }), count => {
+      expect(band({ count })).toBe(modelOf([], { news: { count, keys: [] } }).tabs.inbox)
+    })
+  )
 })
 
 test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
@@ -142,7 +160,7 @@ test('an MR’s one move stands where GitLab’s verdict says what it fixes, and
   // From a session in another repo, the conflicts trail the verdict as they did, with nothing to press.
   expect(rowOf(modelOf([conflicted], { here: null }), conflicted)?.verdict).toMatchObject({ words: 'needs 1 approval', trailing: '· conflict', move: null })
   // A press this session made shows until the head moves.
-  const handed: Pressed = { kind: 'conflicts', state: 'handed', head: CAN.head, at: NOW }
+  const handed: Pressed = { kind: 'conflicts', state: 'handed', on: CAN.head, at: NOW }
   expect(rowOf(modelOf([conflicted], { here, pressed: { [conflicted.key]: handed } }), conflicted)?.verdict?.move).toMatchObject({
     label: '⇄ conflicts · with Claude',
     press: null,

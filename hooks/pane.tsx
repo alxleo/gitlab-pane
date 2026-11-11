@@ -14,6 +14,8 @@ import { pageHead } from './page-lines'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
+import { drawnReply } from './replies'
+import { drawnWrites } from './writes'
 import { withDetail } from './slim'
 import { view } from './view'
 
@@ -183,6 +185,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             focus: chosen[reading.key] ?? '',
             head: pageHead(reading, { tickets, browse, failures }),
             now,
+            reply: await drawnReply($),
+            writes: await drawnWrites($),
           }),
           back('back-bottom'),
         ]

@@ -10,7 +10,7 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
-import { liveOf, nextMove } from './next-move.ts'
+import { nextMove } from './next-move.ts'
 import type { Move } from './next-move.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
@@ -123,7 +123,7 @@ export type PaneInput = {
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
-  /** This session's presses on moves, by card key. */
+  /** This session's presses on moves, by card key, each as it holds now (`liveOf`). */
   pressed: Readonly<Record<string, Pressed>>
   /** The project (`host/group/project`) this session works in, where Claude can take an MR's conflicts; null when none. */
   here: string | null
@@ -223,7 +223,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   const pipeline = card.pipeline
   const ticketLink = facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null
   const [blocker] = facts.row
-  const move = nextMove(card, liveOf(input.pressed[card.key], now), input.here === card.project)
+  const move = nextMove(card, input.pressed[card.key], input.here === card.project)
   // A move needs GitLab's checks, so a row with a move has a verdict to say it in or beside.
   const isVerdict = move !== null && move.check === facts.verdict?.check
   // A move said beside the verdict speaks for its own check, which then trails no more.
@@ -276,6 +276,19 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     hasPictures: facts.hasPictures,
     fit: { isDrawn: false, hasFaces: false },
   }
+}
+
+/** The Inbox tab's words: how many MRs have news, when any do. */
+const inboxLabel = (count: number): string => (count > 0 ? `Inbox · ${count} new` : 'Inbox')
+
+/**
+ * The band above the prompt: the Inbox tab's words, while there is news and the pane shows no tabs that say it (it is not
+ * drawn, or an MR's page holds the place of its tabs). Otherwise nothing, and the band is left to the survey or whatever
+ * else draws there; a survey always has it.
+ */
+export function inboxBand(input: { count: number; isPaneDrawn: boolean; isPageOpen: boolean; hasSurvey: boolean }): string | null {
+  const isTabShown = input.isPaneDrawn && !input.isPageOpen
+  return input.count > 0 && !isTabShown && !input.hasSurvey ? inboxLabel(input.count) : null
 }
 
 /**
@@ -359,7 +372,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     tabs: {
       // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
       mine: `Mine · ${rows.length}`,
-      inbox: input.news.count > 0 ? `Inbox · ${input.news.count} new` : 'Inbox',
+      inbox: inboxLabel(input.news.count),
       isInbox,
     },
     // The repo link's mark says what is picked between, so All needs no word for it, and counts nothing: the Mine tab beside

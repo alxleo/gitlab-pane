@@ -1,5 +1,6 @@
-// Every GraphQL document the pane sends (those on merging an MR are in merge-gitlab.ts), and the requests built from them.
-// tools/gitlab_schema.ts checks DOCUMENTS against GitLab; graphql-codegen reads both files for gitlab.generated.ts.
+// Every GraphQL document the pane sends (those on merging an MR are in merge-gitlab.ts, an MR page's own in
+// page-documents.ts), and the requests built from them. tools/gitlab_schema.ts checks DOCUMENTS against GitLab;
+// graphql-codegen reads all three files for gitlab.generated.ts.
 import { MERGE, MERGE_STATUS, MOVE_STATE } from './merge-gitlab.ts'
 import type { WRITES } from './merge-gitlab.ts'
 import type {
@@ -31,6 +32,8 @@ import type {
   UsualQuery,
   UsualQueryVariables,
 } from './gitlab.generated.ts'
+import { PAGE_COMPLEXITY, PAGE_DOCUMENTS } from './page-documents.ts'
+import type { PageOperations } from './page-documents.ts'
 
 import type { HostFeatures, Pinned } from '../types'
 
@@ -303,7 +306,7 @@ export type Request<Data> = { operation: keyof Operations; query: string; variab
 export type RawResponse<Data> = { data?: Data | null; errors?: { message: string; extensions?: { code?: string; typeName?: string; fieldName?: string } }[] }
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
-export type Operations = {
+export type Operations = PageOperations & {
   Authored: { variables: AuthoredQueryVariables; data: AuthoredQuery }
   AuthoredPlain: { variables: AuthoredPlainQueryVariables; data: AuthoredPlainQuery }
   MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
@@ -333,6 +336,7 @@ export const DOCUMENTS = {
   Pinned: PINNED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
   Usual: USUAL,
+  ...PAGE_DOCUMENTS,
   InboxTodos: INBOX_TODOS + INBOX_MR_FRAGMENT,
   InboxTodosPlain: INBOX_TODOS_PLAIN + INBOX_MR_FRAGMENT,
   InboxQueue: INBOX_QUEUE + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT,
@@ -366,6 +370,7 @@ export const COMPLEXITY = {
   Pinned: 100,
   PinnedPlain: 98,
   Usual: 8,
+  ...PAGE_COMPLEXITY,
 } as const satisfies Record<Reads, number>
 
 /** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */

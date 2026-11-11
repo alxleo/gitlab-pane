@@ -4,11 +4,12 @@ import fc from 'fast-check'
 import { toCard } from '../../hooks/gitlab.ts'
 import { Failure } from '../../hooks/failure.ts'
 import type { MergeStrategyEnum } from '../../hooks/gitlab.generated.ts'
-import { afterSend, conflictsTask, decidePress, firstStep, FOLLOW_MS, FOLLOW_TRIES, liveOf, nextMove, nextStep, refusalOf } from '../../hooks/next-move.ts'
+import { afterSend, conflictsTask, decidePress, firstStep, FOLLOW_TRIES, moveId, nextMove, nextStep, pressOf } from '../../hooks/next-move.ts'
 import type { Fresh } from '../../hooks/next-move.ts'
+import { liveOf, LOST, refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 import { readCardArb, textArb } from './arbitrary.ts'
 import { HOST, gitlabSays, rawMr } from '../fixtures.ts'
-import type { CheckStatus, FailureKind, Merging, MrCard, Pressed } from '../../types'
+import type { CheckStatus, Merging, MrCard, Pressed } from '../../types'
 
 const CAN: Merging = { head: 'abc123', isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true }
 
@@ -19,10 +20,10 @@ const mr = (checks: Partial<Record<string, CheckStatus>> = {}, merging: Partial<
   merging: { ...CAN, ...merging },
 })
 
-const pressed = (over: Partial<Pick<Pressed, 'kind' | 'head'>> & { state?: 'armed' | 'sent' | 'handed' } = {}): Pressed => ({
+const pressed = (over: Partial<Pick<Pressed, 'kind' | 'on'>> & { state?: 'armed' | 'sent' | 'handed' } = {}): Pressed => ({
   kind: 'merge',
   state: 'armed',
-  head: 'abc123',
+  on: 'abc123',
   at: 0,
   ...over,
 })
@@ -228,25 +229,13 @@ test('a rebase is held back where the MR waits on something before it: a draft, 
   expect(nextMove(mr({ NEED_REBASE: 'failed', NOT_APPROVED: 'failed' }), undefined, false)?.label).toBe('↻ rebase')
 })
 
-test('a write that failed on the way back may have reached GitLab; one GitLab or the engine refused did not, and it says why in a line', () => {
-  const landed = (kind: FailureKind, message: string) => refusalOf(new Failure(kind, message)).mayHaveLanded
-  expect(landed('network', 'gitlab.com failed: connection reset')).toBe(true)
-  expect(landed('timeout', 'aborted')).toBe(true)
-  expect(landed('server', 'gitlab.com answered HTTP 502')).toBe(true)
-  expect(landed('unauthorized', 'HTTP 401')).toBe(false)
-  expect(landed('bad-answer', 'not JSON')).toBe(false)
-  // The engine refused to send it: it never left the machine.
-  expect(landed('network', 'gitlab.com refused: blocked by policy')).toBe(false)
-  expect(refusalOf(new Failure('failed', 'GitLab said\nno‮')).reason).toBe('GitLab said no')
-})
-
 test('a press records what it does against the press held: a merge goes only on a live arm for that move and head, else it arms', () => {
   const at = 1_000
-  const held = (over: Partial<Pick<Pressed, 'kind' | 'head'>> & { state: 'armed' | 'sent' | 'handed' }): Pressed => ({ kind: 'merge', head: 'abc123', at: 0, ...over })
+  const held = (over: Partial<Pick<Pressed, 'kind' | 'on'>> & { state: 'armed' | 'sent' | 'handed' }): Pressed => ({ kind: 'merge', on: 'abc123', at: 0, ...over })
   const merge = { kind: 'merge', does: 'make' } as const
-  expect(decidePress(merge, held({ state: 'armed' }), 'abc123', at)).toEqual({ kind: 'merge', state: 'sent', head: 'abc123', at })
+  expect(decidePress(merge, held({ state: 'armed' }), 'abc123', at)).toEqual({ kind: 'merge', state: 'sent', on: 'abc123', at })
   // A drawing left from before the arm ran out, or before a push, merges nothing: the press arms again.
-  expect(decidePress(merge, undefined, 'abc123', at)).toEqual({ kind: 'merge', state: 'armed', head: 'abc123', at })
+  expect(decidePress(merge, undefined, 'abc123', at)).toEqual({ kind: 'merge', state: 'armed', on: 'abc123', at })
   expect(decidePress(merge, held({ state: 'armed' }), 'def456', at)?.state).toBe('armed')
   expect(decidePress({ kind: 'rebase-merge', does: 'make' }, held({ state: 'armed' }), 'abc123', at)?.state).toBe('armed')
   expect(decidePress({ kind: 'merge', does: 'arm' }, undefined, 'abc123', at)?.state).toBe('armed')
@@ -255,25 +244,28 @@ test('a press records what it does against the press held: a merge goes only on 
   // While a move is sent, a press does nothing; one a closed session left long ago no longer holds.
   expect(decidePress(merge, held({ state: 'sent' }), 'abc123', at)).toBe(null)
   expect(decidePress(merge, held({ state: 'sent' }), 'abc123', 1_000_000)?.state).toBe('armed')
+  // Nor does a press of another move from an older drawing, the conflicts' hand-off included.
+  expect(decidePress({ kind: 'conflicts', does: 'make' }, held({ state: 'sent' }), 'abc123', at)).toBe(null)
+  expect(decidePress({ kind: 'rebase', does: 'make' }, held({ state: 'sent' }), 'abc123', at)).toBe(null)
   // Conflicts are handed over once per head.
   const conflicts = { kind: 'conflicts', does: 'make' } as const
-  expect(decidePress(conflicts, undefined, 'abc123', at)).toEqual({ kind: 'conflicts', state: 'handed', head: 'abc123', at })
+  expect(decidePress(conflicts, undefined, 'abc123', at)).toEqual({ kind: 'conflicts', state: 'handed', on: 'abc123', at })
   expect(decidePress(conflicts, held({ kind: 'conflicts', state: 'handed' }), 'abc123', at)).toBe(null)
   expect(decidePress(conflicts, held({ kind: 'conflicts', state: 'handed' }), 'def456', at)?.state).toBe('handed')
 })
 
-test('a press sent to GitLab holds only while the pane could still be following it, so one a closed session left does not say merging for ever', () => {
-  const sent: Pressed = { kind: 'merge', state: 'sent', head: 'abc123', at: 0 }
-  expect(liveOf(sent, 2 * FOLLOW_MS * FOLLOW_TRIES)).toBe(sent)
-  expect(liveOf(sent, 2 * FOLLOW_MS * FOLLOW_TRIES + 1)).toBeUndefined()
-  // A hand-off to Claude takes as long as Claude does; a failed press says why until it is pressed again.
-  const handed: Pressed = { kind: 'conflicts', state: 'handed', head: 'abc123', at: 0 }
-  expect(liveOf(handed, 86_400_000)).toBe(handed)
-  expect(liveOf(undefined, 0)).toBeUndefined()
+test('a merge a closed session left mid-way does not say merging for ever: it is offered again, saying its answer was lost', () => {
+  const sent: Pressed = { kind: 'merge', state: 'sent', on: 'abc123', at: 0 }
+  expect(nextMove(mr(), liveOf(sent, SENT_HOLDS_MS), false)?.label).toBe('✓ merging…')
+  expect(nextMove(mr(), liveOf(sent, SENT_HOLDS_MS + 1), false)).toMatchObject({ label: '✓ merge', press: { kind: 'merge', does: 'arm' }, failed: LOST })
+  // A press is the ledger's entry `move:` and the card key; a reply's entry is no press.
+  expect(moveId('gitlab.com/g/p!12')).toBe('move:gitlab.com/g/p!12')
+  expect(pressOf(sent)).toEqual(sent)
+  expect(pressOf({ kind: 'reply', state: 'armed', on: 'Renamed it.', at: 0 })).toBeUndefined()
 })
 
 test('a move whose last press failed is offered again, with GitLab’s reason beside it, until it is pressed or the head moves', () => {
-  const failedPress: Pressed = { kind: 'merge', state: 'failed', head: 'abc123', at: 0, say: 'not merged: hooks failed' }
+  const failedPress: Pressed = { kind: 'merge', state: 'failed', on: 'abc123', at: 0, say: 'not merged: hooks failed' }
   expect(nextMove(mr(), failedPress, false)).toMatchObject({ label: '✓ merge', press: { kind: 'merge', does: 'arm' }, failed: 'not merged: hooks failed' })
   expect(nextMove(mr({}, { head: 'def456' }), failedPress, false)?.failed).toBe(null)
 })

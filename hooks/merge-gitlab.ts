@@ -5,8 +5,9 @@
 import type { MergeMutation, MergeMutationVariables, MergeStatusQuery, MergeStrategyEnum, MoveStateQuery, MoveStateQueryVariables } from './gitlab.generated.ts'
 import type { Operations, RawResponse, Request } from './gitlab-documents.ts'
 import { dataOf, isRecord, isSome, parseJson } from './decode.ts'
-import { why } from './next-move.ts'
-import type { Fresh, Refusal } from './next-move.ts'
+import type { Fresh } from './next-move.ts'
+import { why } from './write-model.ts'
+import type { Refusal } from './write-model.ts'
 
 import type { HostFeatures } from '../types'
 
@@ -38,7 +39,7 @@ export const MERGE = /* GraphQL */ `
 `
 
 /** The documents that change GitLab: mutations, which the schema check never sends to be scored. */
-export const WRITES = ['Merge'] as const satisfies readonly (keyof Operations)[]
+export const WRITES = ['Merge', 'Reply'] as const satisfies readonly (keyof Operations)[]
 
 /** Whether a request changes GitLab, by the document it sends: such a request is sent once and never again on a failure. */
 export function isWrite(request: { operation: keyof Operations }): boolean {

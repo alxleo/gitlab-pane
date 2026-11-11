@@ -67,6 +67,11 @@ export function closePage($: EngineInterface, key: string): Promise<void> {
   return change($, choices => ({ ...choices, reading: '', person: {}, folds: choices.folds.filter(id => !id.startsWith(`${key}#`)) }))
 }
 
+/** Shows the Inbox tab, leaving any MR's page, with the person it was on and the folds it had open. */
+export function showInbox($: EngineInterface): Promise<void> {
+  return change($, choices => ({ ...choices, tab: 'inbox', reading: '', person: {}, folds: choices.folds.filter(id => !id.startsWith(`${choices.reading}#`)) }))
+}
+
 const toggled = (list: string[], key: string): string[] => (list.includes(key) ? list.filter(one => one !== key) : [...list, key])
 
 /** Opens or closes a fold of the list: the drafts, the parked, the ready past the first few, or all but this session's. */

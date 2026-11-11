@@ -847,3 +847,46 @@ export type MergeMutationVariables = Exact<{
 }>
 
 export type MergeMutation = { mergeRequestAccept: { errors: Array<string>; mergeRequest: { state: MergeRequestState; mergeError: string | null } | null } | null }
+
+export type ThreadsQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type ThreadsQuery = {
+  project: {
+    mergeRequest: {
+      id: string
+      discussions: {
+        nodes: Array<{
+          replyId: string
+          notes: { nodes: Array<{ url: string | null } | null> | null }
+          truncatedDiffLines: Array<{ oldLine: number | null; newLine: number | null; type: string | null; text: string | null }> | null
+        } | null> | null
+      }
+    } | null
+  } | null
+}
+
+export type ThreadsPlainQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type ThreadsPlainQuery = {
+  project: {
+    mergeRequest: { id: string; discussions: { nodes: Array<{ replyId: string; notes: { nodes: Array<{ url: string | null } | null> | null } } | null> | null } } | null
+  } | null
+}
+
+export type ThreadLinesFragment = { truncatedDiffLines: Array<{ oldLine: number | null; newLine: number | null; type: string | null; text: string | null }> | null }
+
+export type ReplyMutationVariables = Exact<{
+  mr: string
+  thread: string
+  body: string
+}>
+
+export type ReplyMutation = {
+  createNote: { errors: Array<string>; note: { id: string } | null; quickActionsStatus: { commandsOnly: boolean | null; errorMessages: Array<string> | null } | null } | null
+}

@@ -1,4 +1,3 @@
-import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { pinMr, readPinned, readRows } from './data'
@@ -9,21 +8,29 @@ import { projectOf } from './hosts'
 import { parseRemote } from './inbox-refs'
 import { mergeRefusal, mergeWrite, moveStateQuery, readMoveState, rebasePath, rebaseRefusal } from './merge-gitlab'
 import { lines } from './model-text'
-import { afterSend, ARMED_MS, conflictsTask, decidePress, firstStep, FOLLOW_MS, nextStep, refusalOf, why } from './next-move'
-import type { Fresh, Refusal, Step } from './next-move'
+import { afterSend, ARMED_MS, conflictsTask, decidePress, firstStep, FOLLOW_MS, moveId, nextStep, pressOf } from './next-move'
+import type { Fresh, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
+import { refusalOf, why } from './write-model'
+import type { Refusal } from './write-model'
+import { claimWrite, drawnWrites, forgetWrite, setWrite } from './writes'
 
 import type { MoveKind, MrCard, Pressed } from '../types'
 
 // The MR moves a press makes: merge, rebase, or hand the conflicts to Claude. What a card offers, what a press records and
-// each step after it are next-move.ts's to decide; this file sends what it decides to GitLab or to Claude, keeps this
-// session's presses (an atom, not the store) and looks at GitLab until the move is done. The engine reads an atom only in
-// the file that declares it.
-const pressedAtom = atom({ plugin: 'gitlab-pane', key: 'pressed' } as const, {})
+// each step after it are next-move.ts's to decide; this file sends what it decides to GitLab or to Claude and looks at
+// GitLab until the move is done. A press is an entry in the ledger of writes (writes.ts), `move:` and the card key.
 
-/** What the pane draws from; reading it here makes the pane redraw when a press changes. */
-export function drawnPressed($: EngineInterface): Promise<Record<string, Pressed>> {
-  return read($, pressedAtom)
+const MOVE = moveId('')
+
+/** The presses the rows draw, by card key; reading them redraws the pane when one changes. */
+export async function drawnPressed($: EngineInterface): Promise<Record<string, Pressed>> {
+  return Object.fromEntries(
+    Object.entries(await drawnWrites($)).flatMap(([id, write]) => {
+      const held = id.startsWith(MOVE) ? pressOf(write) : undefined
+      return held !== undefined ? [[id.slice(MOVE.length), held] as const] : []
+    })
+  )
 }
 
 /** The project this session works in, `host/group/project`, from its remote; Claude can take that project's conflicts. */
@@ -34,19 +41,8 @@ export async function hereProject($: EngineInterface): Promise<string | null> {
 
 /** Records a press on `key`, or forgets it (null), and forgets the presses on MRs no longer listed. */
 async function mark($: EngineInterface, key: string, pressed: Pressed | null): Promise<void> {
-  const listed = new Set((await readRows($)).map(row => row.key))
-  await update($, pressedAtom, all => {
-    const kept = Object.entries(all).filter(([each]) => each !== key && listed.has(each))
-    return Object.fromEntries(pressed !== null ? [...kept, [key, pressed]] : kept)
-  })
-}
-
-/** Takes an armed press back once its time is up, unless it was pressed again meanwhile. */
-async function disarm($: EngineInterface, key: string, at: number): Promise<void> {
-  const held = (await read($, pressedAtom))[key]
-  if (held?.state === 'armed' && held.at === at) {
-    await mark($, key, null)
-  }
+  const listed = new Set((await readRows($)).map(row => moveId(row.key)))
+  await setWrite($, moveId(key), pressed, id => !id.startsWith(MOVE) || listed.has(id))
 }
 
 /** The MR as GitLab says it now. */
@@ -83,7 +79,7 @@ type Course = { card: MrCard; kind: 'merge' | 'rebase' | 'rebase-merge'; before:
 async function end($: EngineInterface, course: Course, step: Extract<Step, { does: 'stop' }>): Promise<void> {
   $.ui.toast(`!${course.card.iid} ${step.say}`)
   const at = await $.clock.now()
-  await mark($, course.card.key, step.isDone ? null : { kind: course.kind, state: 'failed', head: course.head, at, say: step.say })
+  await mark($, course.card.key, step.isDone ? null : { kind: course.kind, state: 'failed', on: course.head, at, say: step.say })
   await askForRefresh($)
 }
 
@@ -101,7 +97,7 @@ async function carry($: EngineInterface, course: Course, step: Step): Promise<vo
     default: {
       // A merge after a rebase is on the new head: the row's press, kept on the old one, would no longer hold.
       const merging: Course = { ...course, kind: 'merge', head: step.head }
-      await mark($, course.card.key, { kind: 'merge', state: 'sent', head: step.head, at: await $.clock.now() })
+      await mark($, course.card.key, { kind: 'merge', state: 'sent', on: step.head, at: await $.clock.now() })
       return carry($, merging, afterSend(step, await send($, course.card, step)))
     }
   }
@@ -130,17 +126,6 @@ async function handConflicts($: EngineInterface, card: MrCard, handed: Pressed):
   }
 }
 
-/** Decides the press on `key` against the one held and records it, in one write, so two presses at once make one move. */
-async function claim($: EngineInterface, key: string, decide: (held: Pressed | undefined) => Pressed | null): Promise<Pressed | null> {
-  const made: Pressed[] = []
-  await update($, pressedAtom, all => {
-    const next = decide(all[key])
-    made.splice(0, made.length, ...(next !== null ? [next] : []))
-    return next !== null ? { ...all, [key]: next } : all
-  })
-  return made[0] ?? null
-}
-
 async function press($: EngineInterface, key: string, move: { kind: MoveKind; does: 'arm' | 'make' }): Promise<void> {
   const card = (await readRows($)).find(row => row.key === key)
   if (card === undefined || card.merging === null) {
@@ -148,12 +133,18 @@ async function press($: EngineInterface, key: string, move: { kind: MoveKind; do
   }
   const { head } = card.merging
   const at = await $.clock.now()
-  const pressed = await claim($, key, held => decidePress(move, held, head, at))
+  const pressed = await claimWrite($, moveId(key), held => decidePress(move, pressOf(held), head, at))
   if (pressed === null) {
     return
   }
   if (pressed.state === 'armed') {
-    $.clock.after(ARMED_MS, () => quietly($, disarm($, key, at)))
+    // Taken back once its time is up, unless it was pressed again meanwhile.
+    $.clock.after(ARMED_MS, () =>
+      quietly(
+        $,
+        forgetWrite($, moveId(key), held => held?.state === 'armed' && held.at === at)
+      )
+    )
     return
   }
   if (pressed.state === 'handed') {
@@ -168,7 +159,7 @@ async function press($: EngineInterface, key: string, move: { kind: MoveKind; do
     await carry($, { card, kind: pressed.kind, before, head, tries: 0 }, firstStep(pressed.kind, head, before))
   } catch (error) {
     const say = why(messageOf(error))
-    await mark($, key, { kind: pressed.kind, state: 'failed', head, at, say })
+    await mark($, key, { kind: pressed.kind, state: 'failed', on: head, at, say })
     $.ui.toast(`!${card.iid}: ${say}`)
   }
 }
