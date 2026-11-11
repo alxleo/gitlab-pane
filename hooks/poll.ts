@@ -33,7 +33,7 @@ import type { HostAsk } from './read-gitlab'
 import { readFailures } from './job-failures'
 import { TAIL_JOBS } from './job-tail'
 import { reconcile } from './reconcile'
-import { loadShared, readAvatars, readJira, readUsualTimes } from './side-reads'
+import { afterRead, loadShared, readJira } from './side-reads'
 import { askForRefresh, loadSnapshot, pinsToRead, publishPins, readRefreshes, saveSnapshot } from './shared'
 import { followInbox, leadInbox, sharedInboxAt } from './inbox'
 import { FOOTER_MS, INBOX_EVERY_MS, isMoving, needsSave, nextSnapshot, pollEvery, WAKE_ONLY_EVERY_MS, waitingRows } from './snapshot'
@@ -242,22 +242,10 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
   } else {
     quietly($, refreshDetails($))
   }
-  quietly(
+  afterRead(
     $,
-    readUsualTimes(
-      $,
-      snapshot.rows.filter(row => row.isOpen),
-      now
-    ),
-    'usual'
-  )
-  quietly(
-    $,
-    readAvatars(
-      $,
-      snapshot.rows.filter(row => row.isOpen)
-    ),
-    'avatars'
+    snapshot.rows.filter(row => row.isOpen),
+    now
   )
 }
 

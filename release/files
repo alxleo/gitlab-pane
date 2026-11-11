@@ -39,6 +39,8 @@ hooks/inbox-rules.ts
 hooks/inbox-snapshot.ts
 hooks/inbox.ts
 hooks/jira.ts
+hooks/jira-mover.ts
+hooks/jira-moves.ts
 hooks/kit.tsx
 hooks/markdown.ts
 hooks/merge-gitlab.ts

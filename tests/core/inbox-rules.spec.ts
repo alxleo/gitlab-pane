@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { parseJson } from '../../hooks/decode.ts'
 import type { TodoActionEnum } from '../../hooks/gitlab.generated.ts'
 import { briefing, readBrief } from '../../hooks/inbox-brief.ts'
-import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from '../../hooks/inbox-gitlab.ts'
+import { authoredMrs, combine, followedProjectMrs, followedUserMrs, ownMrs, queueMrs, todoMrs } from '../../hooks/inbox-gitlab.ts'
 import { parseFollow } from '../../hooks/inbox-follow.ts'
 import { isRefTo, parseRef, parseRemote } from '../../hooks/inbox-refs.ts'
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, MAX_MRS, MAX_SIGNALS, RULES, bounded, ruleNamed, sectionsOf, seenKey, seenKeyOf, staleSeenKeys } from '../../hooks/inbox-rules.ts'
@@ -511,4 +511,32 @@ test('the follow setting is people and projects, a list or a comma string, at mo
   ])
   expect(parseFollow(Array.from({ length: 30 }, (_, i) => `@u${i}`)).length).toBe(10)
   expect(parseFollow(undefined)).toEqual([])
+})
+
+test('the read of the user’s MRs also names the user and every MR of theirs merged, by card key, whoever merged it', () => {
+  const data = {
+    currentUser: {
+      username: 'alex',
+      opened: { nodes: [] },
+      merged: {
+        nodes: [
+          {
+            iid: '9',
+            state: 'merged' as const,
+            title: 'feat: [ABC-1] x',
+            webUrl: null,
+            draft: false,
+            createdAt: '',
+            author: null,
+            project: { fullPath: 'g/p' },
+            mergedAt: null,
+            mergeUser: null,
+          },
+          null,
+        ],
+      },
+    },
+  }
+  expect(ownMrs('gitlab.com', data)).toEqual({ user: 'alex', merged: [{ key: 'gitlab.com/g/p!9', iid: 9, title: 'feat: [ABC-1] x' }] })
+  expect(ownMrs('gitlab.com', null)).toEqual({ user: null, merged: [] })
 })

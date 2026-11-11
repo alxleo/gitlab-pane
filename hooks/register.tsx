@@ -7,6 +7,7 @@ import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
 import { hostsLine, namedHosts, parseHosts } from './hosts'
 import { briefCommand, setFollow } from './inbox'
+import { setMoveTargets } from './jira-mover'
 import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
@@ -31,6 +32,7 @@ export const register: Register = (on, options) => {
     const hosts = parseHosts(options.gitlabHosts)
     await Promise.all([
       startData($, options.jiraUrl, hosts),
+      setMoveTargets($, options.jiraInReview, options.jiraOnMerge),
       setFollow($, options.inboxFollow),
       rememberSettings(options.gitlabTokens, hosts, namedHosts(options.gitlabHosts)[0]),
       rememberLogs($, options.failureLogs),

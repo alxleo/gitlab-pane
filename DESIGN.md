@@ -142,6 +142,8 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 | 🚦 | the pipeline |
 | 💬 | the comment |
 
+A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
+
 ## Inbox
 
 Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`). The last two name no one.

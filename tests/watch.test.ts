@@ -66,6 +66,12 @@ type Fake = {
   lost?: string[]
   isJiraMissing?: boolean
   isPaneBroken?: boolean
+  /** The user's MRs the inbox reads as merged lately. */
+  mergedLately?: Mr[]
+  /** Statuses no workflow step leads to, which acli says it cannot move a ticket to. */
+  stepless?: string[]
+  /** acli failing on a move, as when Jira cannot be reached. */
+  isMoveDown?: boolean
   /** GitLab's failure message of the failed jobs, by the job's path. */
   reasons?: Record<string, string>
   /** The logs the REST API serves, by `<project path>#<job number>`. */
@@ -251,6 +257,8 @@ function engine(
   const reads: string[] = []
   const avatars: string[] = []
   const jiraReads: string[] = []
+  /** Each ticket acli was asked to move, as `<ticket> <status>`. */
+  const jiraMoves: string[] = []
   const shells: string[] = []
   const gitlab = fakeGitLab(
     on,
@@ -269,6 +277,25 @@ function engine(
             () => fake.strategies ?? [],
             merged
           ),
+          // The inbox's read of the user's own MRs: nothing open waiting on them, and the ones the test merged.
+          InboxAuthored: () => ({
+            data: {
+              currentUser: {
+                username: 'me',
+                opened: { nodes: [] },
+                merged: {
+                  nodes: (fake.mergedLately ?? []).map(mr => ({
+                    ...mr,
+                    state: 'merged' as const,
+                    createdAt: mr.updatedAt,
+                    author: user('me'),
+                    mergedAt: mr.updatedAt,
+                    mergeUser: user('me'),
+                  })),
+                },
+              },
+            },
+          }),
         },
         accepts: TOKEN,
         traces: fake.traces ?? {},
@@ -287,13 +314,33 @@ function engine(
   )
   on('session.repo', () => ({ value: world.remote !== undefined ? { root: '/r', remote: world.remote, internal: false, name: null } : null }))
   on('process.run', (_, e) => {
+    if (e.argv.includes('acli') && e.argv.includes('transition')) {
+      const ticket = e.argv[e.argv.indexOf('--key') + 1] ?? ''
+      const status = e.argv[e.argv.indexOf('--status') + 1] ?? ''
+      jiraMoves.push(`${ticket} ${status}`)
+      if (fake.isMoveDown === true) {
+        return ran('', 1, 'Error: dial tcp: i/o timeout')
+      }
+      // As acli answers, exiting 0 either way.
+      return ran(
+        JSON.stringify(
+          fake.stepless?.includes(status) === true
+            ? { results: [{ status: 'FAILURE', message: 'No allowed transitions found for given status', id: ticket }], totalCount: 1, successCount: 0 }
+            : { results: [{ status: 'SUCCESS', message: '', id: ticket }], totalCount: 1, successCount: 1 }
+        )
+      )
+    }
     if (e.argv.includes('acli')) {
       jiraReads.push(e.argv.at(-1) ?? '')
       shells.push(e.argv[0] ?? '')
       if (fake.isJiraMissing === true) {
         return ran('', 127, 'zsh: command not found: acli')
       }
-      return ran(JSON.stringify([{ key: 'ABC-1', fields: { issuetype: { name: 'Task' }, status: { name: 'In Progress' }, summary: 'Make the thing work' } }]))
+      return ran(
+        JSON.stringify([
+          { key: 'ABC-1', fields: { issuetype: { name: 'Task' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, summary: 'Make the thing work' } },
+        ])
+      )
     }
     if (e.argv.includes('avatar')) {
       avatars.push(e.argv.at(-1) ?? '')
@@ -317,7 +364,7 @@ function engine(
     return { value: undefined }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { woken, toasts, merged, reads, avatars, jiraReads, shells, opened, titles, gitlab, panes, store, writes }
+  return { woken, toasts, merged, reads, avatars, jiraReads, jiraMoves, shells, opened, titles, gitlab, panes, store, writes }
 }
 
 /** Runs `glab mr create` as the session would; the engine fake answers with the new MR's address. */
@@ -571,6 +618,173 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   expect(answer.text).toBe('GitLab pane open')
   await ui.unmount()
 })
+
+/** The user's MR 12 for ABC-1 (the made-up inbox says the user is `me`), with a person asked to review it from `at` on, or none. */
+const mine = (at: string | null) =>
+  rawMr(12, { ...SHOWN, author: { username: 'me' }, reviewers: { nodes: at !== null ? [reviewer('maya', 'UNREVIEWED')] : [] }, ...(at !== null ? { updatedAt: at } : {}) })
+
+test(
+  'with an in-review status set, the ticket of the user’s MR moves once when a person is asked to review it',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraInReview: ['In Review'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [mine(null)], isDown: false }
+    const { jiraMoves, toasts, store } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(2 * 60_000)
+    expect(jiraMoves).toEqual([])
+    fake.mrs = [mine(stamp(clock))]
+    await clock.advance(2 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review'])
+    expect(toasts).toContain('ABC-1 moved to In Review: !12 is in review.')
+    expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'moved', status: 'In Review' })
+    // The reads after it move nothing again, though the made-up Jira still says In Progress, as when a person moved it back.
+    await clock.advance(30 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review'])
+    await ui.unmount()
+  }
+)
+
+test(
+  'turning a move on moves nothing already in review: it starts from then',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraInReview: ['In Review'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [mine('2026-10-23T15:00:00Z')], isDown: false }
+    const { jiraMoves, store } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(5 * 60_000)
+    expect(jiraMoves).toEqual([])
+    expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'settled' })
+    await ui.unmount()
+  }
+)
+
+test(
+  'with an after-merge status set, the ticket of the user’s MR that merges moves to it',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraOnMerge: ['Done'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [], mergedLately: [], isDown: false }
+    const { jiraMoves, toasts } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(2 * 60_000)
+    fake.mergedLately = [rawMr(9, { author: { username: 'me' } })]
+    await clock.advance(2 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 Done'])
+    expect(toasts).toContain('ABC-1 moved to Done: !9 merged.')
+    await ui.unmount()
+  }
+)
+
+test(
+  'with a move to try in turn, the first status the workflow has a step to is the one moved to',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraInReview: ['In Review', 'Code Review'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [mine(null)], isDown: false, stepless: ['In Review'] }
+    const { jiraMoves, toasts, store } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(2 * 60_000)
+    fake.mrs = [mine(stamp(clock))]
+    await clock.advance(2 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review', 'ABC-1 Code Review'])
+    expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'moved', status: 'Code Review' })
+    expect(toasts).toContain('ABC-1 moved to Code Review: !12 is in review.')
+    await ui.unmount()
+  }
+)
+
+test(
+  'a move acli fails to make is said in /gitlab and asked again only after a while',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraInReview: ['In Review'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [mine(null)], isDown: false }
+    const { jiraMoves, store } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(2 * 60_000)
+    fake.isMoveDown = true
+    fake.mrs = [mine(stamp(clock))]
+    await clock.advance(2 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review'])
+    const failed = store.get('jira-move:ABC-1>review')
+    expect(failed).toMatchObject({ outcome: 'failed' })
+    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    expect(answer.text).toContain('jira-moves: ABC-1: Error: dial tcp: i/o timeout')
+    await clock.advance(10 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review'])
+    fake.isMoveDown = false
+    await clock.advance(10 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review', 'ABC-1 In Review'])
+    expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'moved' })
+    await ui.unmount()
+  }
+)
+
+test(
+  'with acli missing, a move is said in /gitlab and Jira is asked again only after a while',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraInReview: ['In Review'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [mine(null)], isDown: false }
+    const { jiraMoves, store } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(2 * 60_000)
+    fake.isJiraMissing = true
+    fake.mrs = [mine(stamp(clock))]
+    await clock.advance(2 * 60_000)
+    const failed = store.get('jira-move:ABC-1>review')
+    expect(failed).toMatchObject({ outcome: 'failed' })
+    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    expect(answer.text).toContain('jira-moves: acli is not installed')
+    // Not asked again on every read.
+    await clock.advance(10 * 60_000)
+    expect(store.get('jira-move:ABC-1>review')).toEqual(failed)
+    // Asked again once the wait is over, and made.
+    fake.isJiraMissing = false
+    await clock.advance(10 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review'])
+    await ui.unmount()
+  }
+)
+
+test(
+  'with no move status set nothing moves, and a move turned off forgets when it was turned on, to start afresh',
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [rawMr(12, { ...SHOWN, author: { username: 'me' }, reviewers: { nodes: [reviewer('maya', 'UNREVIEWED')] } })], isDown: false }
+    // Both moves were on once; their settings are empty now.
+    const { jiraMoves, store } = engine(on, fake, { 'jira-move-start:review': NOW - 60_000, 'jira-move-start:done': NOW - 60_000 })
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(5 * 60_000)
+    expect(jiraMoves).toEqual([])
+    expect([store.has('jira-move-start:review'), store.has('jira-move-start:done')]).toEqual([false, false])
+    await ui.unmount()
+  }
+)
 
 test('the pane opens on Mine; the Inbox tab draws the inbox alone, its label counting MRs with news', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
