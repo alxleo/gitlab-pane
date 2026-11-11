@@ -379,6 +379,31 @@ export type InboxHost = {
   failure: { kind: FailureKind; message: string } | null
 }
 
+/** The pipeline GitLab ran on the commit a merge put on its target branch: how it stands and where its page is. */
+export type LandedBuild = { status: CiStatus; url: string }
+
+/**
+ * One of the user's own MRs merged lately, as the Mine tab's `▸ N merged` lists it: the commit the merge put on the target
+ * branch and the build GitLab ran there, kept from one read to the next so what is settled is asked for once.
+ */
+export type Landed = {
+  host: string
+  /** `group/project` on that host. */
+  path: string
+  iid: number
+  title: string
+  url: string
+  /** When it merged, in epoch milliseconds. */
+  mergedAt: number
+  targetBranch: string
+  /** The commit the merge put on `targetBranch`; null while that cannot be told (a fast-forward merge whose squash commit was not read). */
+  sha: string | null
+  /** The newest pipeline of `sha` on `targetBranch` as last read; null while none was seen. */
+  build: LandedBuild | null
+  /** When `build` was last looked for, in epoch milliseconds; null before the first look. */
+  checkedAt: number | null
+}
+
 /**
  * What one read of the configured hosts found, before any rule is applied or any MR marked seen. It is what the reader's
  * leader keeps in the plugin store for the other sessions: at most 50 MRs of 10 signals, under 128 kB as JSON.
@@ -388,6 +413,8 @@ export type InboxSnapshot = {
   at: number
   hosts: Record<string, InboxHost>
   mrs: InboxMr[]
+  /** The user's own MRs merged lately, newest first, which the Mine tab folds as `▸ N merged`; no rule counts them. */
+  landed: Landed[]
 }
 
 /** A person (`user`, without the `@`) or a project (`project`, `group/project`) the `inboxFollow` setting names. */
@@ -416,7 +443,7 @@ export type Problems = { [Source in ProblemSource]?: { message: string; kind: Fa
 
 /** What the person chose in the pane: one value, so a drawing reads it once and a choice that touches two things redraws once. */
 export type Choices = {
-  /** `drafts` and `more` when those folds of the list are open. */
+  /** `drafts`, `more`, `parked`, `others` and `merged` when those folds of the list are open. */
   expanded: string[]
   /** By the card key of the MR read whole, the one person whose comments its page shows; empty for the whole MR. */
   person: Record<string, string>

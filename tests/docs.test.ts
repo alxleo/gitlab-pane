@@ -58,6 +58,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [USUAL_EVERY_MS],
     // the Inbox
     [INBOX_EVERY_MS],
+    // the build of each lately merged MR's commit, asked with the inbox until it ends
+    [INBOX_EVERY_MS],
     // why a job failed: once, when it fails
     [],
     // Jira

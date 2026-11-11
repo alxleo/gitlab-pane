@@ -13,6 +13,8 @@ import type {
   InboxQueueQuery,
   InboxTodosPlainQuery,
   InboxTodosQuery,
+  LandedQuery,
+  LandedQueryVariables,
 } from './gitlab.generated.ts'
 
 import type { HostFeatures } from '../types'
@@ -31,6 +33,13 @@ export const inboxAuthoredQuery = (since: string): Request<InboxAuthoredQuery> =
   operation: 'InboxAuthored',
   query: DOCUMENTS.InboxAuthored,
   variables: { since } satisfies InboxAuthoredQueryVariables,
+})
+
+/** The newest pipeline of the commit `sha` on the branch `ref`, where a merge put it (`COMPLEXITY.Landed`); one MR's, as `Pinned` is. */
+export const landedQuery = (path: string, sha: string, ref: string): Request<LandedQuery> => ({
+  operation: 'Landed',
+  query: DOCUMENTS.Landed,
+  variables: { path, sha, ref } satisfies LandedQueryVariables,
 })
 
 /** One MR with its description and threads, for `/mrs`. */

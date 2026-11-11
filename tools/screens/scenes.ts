@@ -13,7 +13,7 @@ import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.ge
 import { NOW, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
 import { fakeGitLab, fakeSession, ran } from '../../tests/gitlab_host'
-import { comment, emptyWorld, fields, inboxAnswers, system } from '../../tests/inbox_fixtures'
+import { comment, emptyWorld, fields, inboxAnswers, merged, system } from '../../tests/inbox_fixtures'
 import type { Person, World } from '../../tests/inbox_fixtures'
 
 const PANE = {
@@ -293,9 +293,27 @@ const inboxWorld = (): World => {
     ...fields(488, named(CAROL), { title: 'fix: [SHOP-220] Guard the empty cart at checkout', webUrl: url('acme-corp/storefront', 488), createdAt: minutesAgo(2_000) }),
     project: { fullPath: 'acme-corp/storefront' },
   }
+  // What the viewer merged lately, one by each way GitLab merges, and the build each left on its target branch: a squash that
+  // fast-forwarded (its commit is the squash commit, which only REST names), a merge commit whose build still runs, and one whose
+  // build passed. The branch's own pipelines carry the same commits and are not what the row shows.
+  const viewer: Person = { username: 'alex', name: 'Alex' }
+  const landed = (iid: number, title: string, repo: string, minutes: number, landing: Parameters<typeof merged>[2]) =>
+    merged(iid, minutes, landing, { title, webUrl: url(repo, iid), project: { fullPath: repo }, author: viewer, mergeUser: viewer })
   return {
     ...emptyWorld(),
     user: 'alex',
+    merged: [
+      landed(474, 'feat: [SHOP-198] Gift-card balances at checkout', 'acme-corp/storefront', 190, { mergeCommitSha: '9a1c4e7b2d3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b' }),
+      landed(129, 'fix: [BILL-84] Stop sending the reminder email twice', 'acme-corp/billing-api', 1_650, { diffHeadSha: '7d2e9f1a3b4c5d6e7f8091a2b3c4d5e6f7a8b9c0' }),
+      landed(470, 'fix: [SHOP-190] Keep the cart open after a failed payment', 'acme-corp/storefront', 38, { mergeCommitSha: '5b3c7a9d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b' }),
+    ],
+    squashed: { 'acme-corp/billing-api!129': '2c6e8a0b4d5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b' },
+    pipelines: [
+      { sha: '9a1c4e7b2d3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b', ref: 'main', id: 9501, status: 'SUCCESS' },
+      { sha: '2c6e8a0b4d5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b', ref: 'main', id: 9502, status: 'FAILED' },
+      { sha: '5b3c7a9d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b', ref: 'main', id: 9503, status: 'RUNNING' },
+      { sha: '7d2e9f1a3b4c5d6e7f8091a2b3c4d5e6f7a8b9c0', ref: 'fix/reminder-twice', id: 9600, status: 'SUCCESS' },
+    ],
     queue: [
       { ...infra, notes: { pageInfo: { hasPreviousPage: false }, nodes: [] }, approvedBy: { nodes: [] } },
       { ...storefront, notes: { pageInfo: { hasPreviousPage: false }, nodes: [system(8, CAROL, 95, 'commit', 'added 1 commit')] }, approvedBy: { nodes: [] } },
@@ -348,6 +366,7 @@ function engine(on: On, mrs: Mr[]) {
           },
           ...inboxAnswers(world),
         },
+        mergeRequests: (path, iid) => (`${path}!${iid}` in world.squashed ? { squash_commit_sha: world.squashed[`${path}!${iid}`] ?? null } : undefined),
         accepts: 'scene-token',
       },
     },
@@ -400,6 +419,12 @@ const SCENES: Scene[] = [
     name: 'mine-pinned',
     steps: async ui => {
       await press(ui, 'pin-479-')
+    },
+  },
+  {
+    name: 'mine-merged',
+    steps: async ui => {
+      await press(ui, 'merged')
     },
   },
   {

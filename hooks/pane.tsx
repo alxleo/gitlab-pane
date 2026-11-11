@@ -1,6 +1,6 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { drawPart } from './card'
+import { drawMerged, drawPart } from './card'
 import type { RowPart } from './card'
 import { filterRepo, toggle, toggleWake } from './choices'
 import { CHROME_SIZE, DRAWING_BUDGET, measure } from './drawing'
@@ -58,7 +58,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
-  const { isSyncing, ...news } = await inboxNews($)
+  const { isSyncing, landed, ...news } = await inboxNews($)
   const model = buildPane(
     {
       cards,
@@ -70,6 +70,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       repoFilter,
       view: isInbox ? 'inbox' : reading !== undefined ? 'reading' : 'mine',
       news,
+      landed,
       poll,
       isReading,
       isSyncing,
@@ -99,7 +100,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
-  const { mine, parked, drafts, others } = model
+  const { mine, parked, drafts, others, merged } = model
   const fold = (key: 'parked' | 'drafts', list: { label: string; rows: RowModel[] } | null) =>
     list !== null ? [<Button key={key} plain label={list.label} onPress={() => toggle($, key)} />, ...list.rows.map(draw)] : []
   // With this session's MRs on top, the rest is one line until it is opened.
@@ -146,6 +147,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     ...(others !== null ? [<Button key="others" plain label={others.label} onPress={() => toggle($, 'others')} />] : []),
     ...rest,
     ...(model.leftOut !== null ? [<Text dimColor>{model.leftOut}</Text>] : []),
+    // Last, and outside what folds under the others, so a failed build on the fold line is never out of sight.
+    ...(merged !== null ? [<Button key="merged" plain label={merged.label} onPress={() => toggle($, 'merged')} />, ...merged.rows.map(row => drawMerged(kit, row))] : []),
   ]
 
   // An MR read whole is a page over its tab, a way back at each end, so a long one needs no scrolling back up.
