@@ -585,13 +585,18 @@ test('↻ asks again for a failed build at once, and for a manual one, and not f
   await ui.unmount()
 })
 
-test('a read that asks nothing of GitLab about the merged MRs writes nothing to the store', async ($, on) => {
+test('a read that asks nothing of GitLab about the merged MRs writes nothing to the store, and shows the inbox once', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const world = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT }), merged(22, 31, { mergeCommitSha: SQUASH_COMMIT })] }
+  const world: World = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT }), merged(22, 31, { mergeCommitSha: SQUASH_COMMIT })] }
   world.pipelines = [
     { sha: MERGE_COMMIT, ref: 'main', id: 701, status: 'FAILED' },
     { sha: SQUASH_COMMIT, ref: 'main', id: 702, status: 'MANUAL' },
   ]
+  const written: string[] = []
+  on('state.set', (_, e, next) => {
+    written.push(String(e.key))
+    return next(e)
+  })
   const kit = engine(on, world)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -600,11 +605,16 @@ test('a read that asks nothing of GitLab about the merged MRs writes nothing to 
   // A write puts a new object in the store: the same one is no write.
   const shared = kit.store.get('inbox-snapshot')
   const asked = kit.requests.length
+  const reads = () => kit.requests.filter(request => request.endsWith(' InboxAuthored')).length
+  const before = reads()
+  written.length = 0
   // Four more minutes of reads: the inbox is read each minute, the two builds wait for the recheck period, and the snapshot is as it was.
   await clock.advance(4 * 60_000)
   expect(kit.requests.length).toBeGreaterThan(asked)
   expect(kit.requests.filter(request => request.endsWith(' Landed'))).toHaveLength(2)
   expect(kit.store.get('inbox-snapshot')).toBe(shared)
+  // Each read marks the inbox as syncing, shows its snapshot and marks it done; the lookups, which found nothing new, show nothing more.
+  expect(written.filter(key => key === 'inbox')).toHaveLength(3 * (reads() - before))
   await ui.unmount()
 })
 
