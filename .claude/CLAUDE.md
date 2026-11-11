@@ -43,6 +43,8 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 | A render hook may not write an atom | What it records (`health` in `register.tsx`, `drawn` in `in-flight.ts`) cannot be one. |
 | The desktop draws nothing for a tree past 100,000 characters | `DRAWING_BUDGET` in `drawing.ts` is 85,000. Measure with `measure`; drop rows rather than overshoot. |
 | Atoms and settings are keyed by plugin id | The id is `gitlab-pane`; renaming it loses installs' settings and store. |
+| The desktop draws a Button's `label`, not its children | A symbol (↻, 🔔, ☆) is a Button's `label`, alone. The pictures draw the children, so only `npm run shot` sees this. |
+| Atoms outlive a reload, and other sessions may run an older version | New code meets cards old code kept or shared: a field the code dereferences is checked in `isCard` (`snapshot.ts`), which kept and shared cards pass. |
 
 ## Words the model reads
 
