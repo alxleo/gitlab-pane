@@ -1937,6 +1937,19 @@ test('a leader on an older version shares cards without what GitLab says of merg
   await ui.unmount()
 })
 
+test('cards an older version kept in this session through a reload, without what GitLab says of merging, are not drawn', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  engine(on, { mrs: [], isDown: true })
+  // What the version before merges kept in the session's state stays through the reload.
+  const older = Object.fromEntries(Object.entries({ ...sharedCard(12), mergeStatus: gitlabSays() }).filter(([field]) => field !== 'merging'))
+  on('state.get', (_, e, next) => (e.key === 'rows' ? { value: { value: [older], version: 1 } } : next(e)))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBeUndefined()
+  await ui.unmount()
+})
+
 test('a session that leads draws the last snapshot at once, its ↻ dim, while its own slow read is out', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   let answer = () => {}
