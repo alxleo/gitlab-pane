@@ -366,7 +366,7 @@ export const COMPLEXITY = {
   InboxTodos: 39,
   InboxTodosPlain: 39,
   MergeStatus: 34,
-  MoveState: 17,
+  MoveState: 18,
   Pinned: 100,
   PinnedPlain: 98,
   Usual: 8,
