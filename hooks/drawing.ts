@@ -1,7 +1,7 @@
 import { shortHash } from './identity.ts'
 
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
-export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬' } as const
+export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬', commit: '📍' } as const
 
 /**
  * The desktop app draws nothing for a tree past 100,000 characters serialized (a 381,164-character one left the pane

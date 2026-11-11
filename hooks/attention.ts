@@ -27,7 +27,13 @@ export function rank(card: MrCard): number {
 /** Bots with an open thread or a request for changes, either of which holds the merge. */
 const botsHolding = (card: MrCard): Person[] => card.people.filter(person => person.isBot && (person.openThreads > 0 || person.state === 'requested_changes'))
 
-export const byAttention = (a: MrCard, b: MrCard): number => firstDifference(rank(a) - rank(b), b.updatedAt.localeCompare(a.updatedAt))
+/**
+ * The order of the MR list: what GitLab says can merge first, so finishing comes before starting more; then what needs you
+ * (`rank`), then the latest. Readiness is GitLab's own verdict, the green one the card says, not a rank: a project may let an
+ * MR with an open thread merge, and that MR is both.
+ */
+export const byAttention = (a: MrCard, b: MrCard): number =>
+  firstDifference(Number(isMergeable(b.mergeStatus)) - Number(isMergeable(a.mergeStatus)), rank(a) - rank(b), b.updatedAt.localeCompare(a.updatedAt))
 
 /**
  * An MR card's border colour, its review: red while someone asked for changes or it cannot merge as it is (conflicts,

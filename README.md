@@ -26,7 +26,7 @@ Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star 
 
 While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. While no session draws the pane, one session with a window still reads the inbox each minute, and no MR list, so the band keeps up.
 
-A card's move stands where GitLab's verdict is: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
+MRs GitLab says can merge come first, each with its links, approvers and the commit a merge takes. A card's move leads its second line, in the same place on every card: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
 
 ## Install
 

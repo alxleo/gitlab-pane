@@ -36,7 +36,7 @@ export const DESIGN = {
     ['✓', 'approved'],
     ['✕', 'requested changes'],
   ],
-  links: ['🔀', '🎫', '📁', '🚦', '💬'],
+  links: ['🔀', '🎫', '📁', '🚦', '💬', '📍'],
   inboxEvents: [
     ['✗', 'requested changes'],
     ['↺', 'withdrew approval'],

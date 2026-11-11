@@ -1,8 +1,9 @@
-// What an MR card says that depends on the card alone, not on the time: its badges, verdict, words and the one comment it
-// quotes. It is the costly part of a row, so `buildPane` works it out for the rows it draws and no others. Pure, on plain
+// What an MR card says that depends on the card alone, not on the time: its badges, verdict, words, the one comment it
+// quotes and the head a merge would take. It is the costly part of a row, so `buildPane` works it out for the rows it draws and no others. Pure, on plain
 // data.
-import { rank, reviewTone, rowBadges, trailingOf, verdictOf } from './attention.ts'
+import { isMergeable, rank, reviewTone, rowBadges, trailingOf, verdictOf } from './attention.ts'
 import type { Badge, Verdict } from './attention.ts'
+import { LINK } from './drawing.ts'
 import { faceFacts } from './face-model.ts'
 import type { FaceFacts } from './face-model.ts'
 import { excerpt, shortTitle, ticketOf } from './format.ts'
@@ -44,6 +45,17 @@ export type CardFacts = {
   said: Said | null
   people: PersonFacts[]
   hasPictures: boolean
+  /** On an MR GitLab says can merge, the commit a merge would take, linked: what a press merges, seen before it. */
+  head: { href: string; text: string } | null
+}
+
+/** Letters of a commit's id that name it, as GitLab shortens one. */
+const SHORT_SHA = 8
+
+/** The head a merge takes, where GitLab says the MR can merge and named the head its checks were made on. */
+const headOf = (card: MrCard): CardFacts['head'] => {
+  const head = card.merging?.head ?? ''
+  return isMergeable(card.mergeStatus) && head !== '' ? { href: `${card.repo.url}/-/commit/${head}`, text: `${LINK.commit} ${head.slice(0, SHORT_SHA)}` } : null
 }
 
 const calledBy = (person: Person): string => {
@@ -98,5 +110,6 @@ export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>
     said: saidOf(card.people),
     people,
     hasPictures: people.some(person => person.face.picture !== null),
+    head: headOf(card),
   }
 }
