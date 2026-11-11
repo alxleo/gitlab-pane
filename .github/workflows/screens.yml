@@ -59,6 +59,9 @@ jobs:
           node-version: 26
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: npm ci --ignore-scripts
-      - run: npm run screens -- setup --with-deps
+      # The browser alone, from Playwright's own download: GitHub's runner image already holds the libraries it needs, so the
+      # run asks Ubuntu's package mirrors for nothing and does not fail when they do not answer. The fonts `--with-deps`
+      # added are not needed either: a character no bundled font has fails the render as an empty box.
+      - run: npm run screens -- setup
       # Draws every scene twice, fails unless the two sets match byte for byte, and fails unless docs/screens holds them.
       - run: npm run screens -- render --verify --check
