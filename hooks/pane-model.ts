@@ -78,9 +78,9 @@ export type RowModel = {
   isQuiet: boolean
   /**
    * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
-   * would stop its wakes. The label names the press; the mark is what is drawn, a star filled on an MR pinned here.
+   * would stop its wakes. The mark is all that is drawn, a star filled on an MR pinned here; `press` is what it does.
    */
-  pin: { key: string; label: 'pin' | 'unpin'; mark: '☆' | '★'; mr: Pinned } | null
+  pin: { key: string; press: 'pin' | 'unpin'; mark: '☆' | '★'; mr: Pinned } | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -143,8 +143,8 @@ export type PaneModel = {
   isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
   footer: { text: string; isWarning: boolean }
-  /** Whether a raised MR wakes Claude: the label names the press, the mark is the bell drawn, struck through when off. */
-  wake: { label: 'wake Claude: on' | 'wake Claude: off'; mark: '🔔' | '🔕' }
+  /** Whether a raised MR wakes Claude: the bell drawn, struck through when off. */
+  wake: '🔔' | '🔕'
 }
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
@@ -201,10 +201,10 @@ function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowMod
   // The pin is made from the card's own host, project and number, so its key is the card's.
   const mr = { url: card.url, host: card.host, path: card.path, iid: card.iid }
   if (pinned === undefined) {
-    return { key: `pin-${suffix}`, label: 'pin', mark: '☆', mr }
+    return { key: `pin-${suffix}`, press: 'pin', mark: '☆', mr }
   }
   // A pin kept from before origins were recorded counts as raised, as it wakes.
-  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, label: 'unpin', mark: '★', mr } : null
+  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, press: 'unpin', mark: '★', mr } : null
 }
 
 /** A row as data; its faces take their pictures where the room allows. */
@@ -387,6 +387,6 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     status: statusOf(input.poll, now),
     isRefreshing: input.isReading || input.isSyncing,
     footer: footerOf(input.poll, now),
-    wake: input.isWaking ? { label: 'wake Claude: on', mark: '🔔' } : { label: 'wake Claude: off', mark: '🔕' },
+    wake: input.isWaking ? '🔔' : '🔕',
   }
 }

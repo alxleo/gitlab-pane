@@ -60,9 +60,9 @@ test('beside the tabs, the age of the cards, and ↻ dim while this session read
   const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
   expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })
   expect(modelOf([], { poll: failed }).footer).toMatchObject({ text: 'GitLab read failed: connection refused; showing 10m old data', isWarning: true })
-  // Whether a raised MR wakes Claude is a bell, named for the press: struck through once wakes are off.
-  expect(modelOf([]).wake).toEqual({ label: 'wake Claude: on', mark: '🔔' })
-  expect(modelOf([], { isWaking: false }).wake).toEqual({ label: 'wake Claude: off', mark: '🔕' })
+  // Whether a raised MR wakes Claude is a bell, struck through once wakes are off.
+  expect(modelOf([]).wake).toBe('🔔')
+  expect(modelOf([], { isWaking: false }).wake).toBe('🔕')
 })
 
 test('the band above the prompt says the inbox news only while the pane shows no tabs that say it, and gives way to a survey', () => {
@@ -221,8 +221,8 @@ test('while nothing has been read, one line per failing source says what to do, 
     jira: { message: 'acli is not installed', at: NOW, kind: 'not-installed' as const },
     inbox: { message: 'boom', at: NOW, kind: 'unknown' as const },
   }
-  expect(firstRunLines(failures, false)).toEqual(['GitLab: no access token: set one, or sign in, then press refresh', 'Inbox: boom'])
-  expect(firstRunLines({ gitlab: { message: 'x', at: NOW, kind: 'network' } }, false)).toEqual(['GitLab: cannot be reached: check the network or VPN, then press refresh'])
+  expect(firstRunLines(failures, false)).toEqual(['GitLab: no access token: set one, or sign in, then press ↻', 'Inbox: boom'])
+  expect(firstRunLines({ gitlab: { message: 'x', at: NOW, kind: 'network' } }, false)).toEqual(['GitLab: cannot be reached: check the network or VPN, then press ↻'])
   // Once something has been read the pane has cards to show and the footer says the rest.
   expect(firstRunLines(failures, true)).toEqual([])
   const unread = { fetchedAt: null, attemptedAt: NOW, error: 'x', hosts: {}, failures: 1, ticketsAt: null, usualAt: null }
@@ -351,8 +351,8 @@ test("this session's MRs keep the order they came in; one it raised has no unpin
   const model = modelOf(cards, { pinned })
   // The failing one would rank first; the person's order stands instead.
   expect(model.session.map(row => row.mr.text)).toEqual(['🔀 !41', '🔀 !43', '🔀 !42'])
-  expect(model.session.map(row => row.pin?.label ?? null)).toEqual([null, 'unpin', 'unpin'])
-  expect(modelOf(cards).mine.rows.map(row => row.pin?.label)).toEqual(['pin', 'pin', 'pin'])
+  expect(model.session.map(row => row.pin?.press ?? null)).toEqual([null, 'unpin', 'unpin'])
+  expect(modelOf(cards).mine.rows.map(row => row.pin?.press)).toEqual(['pin', 'pin', 'pin'])
   // The press is a star, as anywhere else: filled on an MR pinned here, hollow on one that is not.
   expect(model.session.map(row => row.pin?.mark ?? null)).toEqual([null, '★', '★'])
   expect(modelOf(cards).mine.rows.map(row => row.pin?.mark)).toEqual(['☆', '☆', '☆'])

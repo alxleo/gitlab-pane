@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine, FoundElement } from 'claude-code/testing'
 
-import { AVATAR_BASE64, HOST, NOW, heavyMr, SELF_MANAGED, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
+import { AVATAR_BASE64, HOST, NOW, heavyMr, SELF_MANAGED, checks, gitlabSays, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum, ReplyMutation, ReplyMutationVariables } from '../hooks/gitlab.generated'
 import type { RawResponse } from '../hooks/gitlab-documents'
@@ -844,32 +844,32 @@ test('pinning a card puts it in this session and folds the rest to one line; unp
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const pinOf = async (iid: number) => (await ui.findAll({ type: 'Button' })).find(keyed(`pin-${iid}-`))
-  expect((await pinOf(13))?.props.label).toBe('pin')
-  // Hollow and dim until pressed; filled and plain once the MR is pinned here.
-  expect((await pinOf(13))?.children).toEqual(['☆'])
+  // Hollow and dim until pressed; filled and plain once the MR is pinned here. The star is the label, with nothing beside
+  // it: the desktop app draws a Button's label, not its children, so a name in the label would be drawn in the star's place.
+  expect((await pinOf(13))?.props.label).toBe('☆')
+  expect((await pinOf(13))?.children ?? []).toEqual([])
   expect((await pinOf(13))?.props.dimColor).toBe(true)
   await ui.press({ key: (await pinOf(13))?.key ?? '' })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: 'This session' })).toBeDefined()
   expect((await ui.find({ type: 'Button', key: 'others' }))?.props.label).toBe('▸ 2 others')
   expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
-  expect((await pinOf(13))?.props.label).toBe('unpin')
-  // The label names the press; what is drawn is the star.
-  expect((await pinOf(13))?.children).toEqual(['★'])
+  expect((await pinOf(13))?.props.label).toBe('★')
+  expect((await pinOf(13))?.children ?? []).toEqual([])
   expect((await pinOf(13))?.props.dimColor).toBe(false)
   expect(await pinOf(12)).toBeUndefined()
   // The leader reads every session's pins from the store, so a pin from a card is published there.
   expect([...store.keys()].some(key => key.startsWith('pins'))).toBe(true)
   await ui.press({ key: 'others' })
-  expect((await pinOf(12))?.props.label).toBe('pin')
+  expect((await pinOf(12))?.props.label).toBe('☆')
   // A second pin goes after the first, and Claude watching the first again leaves the order the person made.
   await ui.press({ key: (await pinOf(12))?.key ?? '' })
   await clock.settle()
   const order = async () => (await ui.findAll({ type: 'Button' })).filter(keyed('pin-')).map(button => `${button.key?.split('-')[1] ?? ''} ${String(button.props.label)}`)
-  expect(await order()).toEqual(['13 unpin', '12 unpin', '14 pin'])
+  expect(await order()).toEqual(['13 ★', '12 ★', '14 ☆'])
   await $.tool.call({ tool: 'mcp__gitlab-pane__watch_mr', url: 'https://gitlab.com/g/p/-/merge_requests/13' })
   await clock.settle()
-  expect(await order()).toEqual(['13 unpin', '12 unpin', '14 pin'])
+  expect(await order()).toEqual(['13 ★', '12 ★', '14 ☆'])
   await ui.press({ key: (await pinOf(12))?.key ?? '' })
   await ui.press({ key: (await pinOf(13))?.key ?? '' })
   await clock.settle()
@@ -1601,7 +1601,7 @@ test('with nothing read yet, a failing GitLab is told in a line of its own; and 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press refresh')
+  expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press ↻')
 
   fake.isDown = false
   fake.mrs = [rawMr(12)]
@@ -1765,11 +1765,13 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-  // Refreshing and waking are symbols at the top right, so a long list keeps them in view.
-  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.children).toEqual(['↻'])
-  expect((await ui.find({ type: 'Button', key: 'wake' }))?.children).toEqual(['🔔'])
+  // Refreshing and waking are symbols at the top right, so a long list keeps them in view: each symbol is its Button's
+  // label, alone, as the desktop app draws the label and not the children.
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.props.label).toBe('↻')
+  expect((await ui.find({ type: 'Button', key: 'refresh' }))?.children ?? []).toEqual([])
+  expect((await ui.find({ type: 'Button', key: 'wake' }))?.props.label).toBe('🔔')
   await ui.press({ key: 'wake' })
-  expect((await ui.find({ type: 'Button', key: 'wake' }))?.props.label).toBe('wake Claude: off')
+  expect((await ui.find({ type: 'Button', key: 'wake' }))?.props.label).toBe('🔕')
   await ui.press({ key: 'wake' })
   // Unfolded, rows past the budget are left out and counted, the most pressing first in.
   await ui.press({ key: 'more' })
@@ -1921,7 +1923,21 @@ test('with another session leading, a session asks GitLab for nothing and draws 
   await ui.unmount()
 })
 
-test('a session that leads draws the last snapshot at once, with ↻ beside its age, while its own slow read is out', async ($, on) => {
+test('a leader on an older version shares cards without what GitLab says of merging, and the pane draws without them', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const { store } = engine(on, { mrs: [], isDown: false })
+  store.set('lease', { owner: 'other', renewedAt: NOW })
+  // The card as the version before merges read it, GitLab's checks and all: the same, less `merging`.
+  const older = Object.fromEntries(Object.entries({ ...sharedCard(12), mergeStatus: gitlabSays() }).filter(([field]) => field !== 'merging'))
+  store.set('snapshot', { ...snapshotOf([sharedCard(12)], 'other', NOW), rows: [older] })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  expect(titleOf(await ui.findAll({ type: 'Button' }), 12)).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a session that leads draws the last snapshot at once, its ↻ dim, while its own slow read is out', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   let answer = () => {}
   const answered = new Promise<void>(resolve => {
@@ -2107,7 +2123,7 @@ test("a session that reads nothing says what the leader's reads failed with, as 
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // Nothing has been read, so the pane says what to do about it, as it does in the session that tried.
-  expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press refresh')
+  expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press ↻')
   const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
   expect(answer.text).toContain('gitlab: gitlab.com failed: connection refused (')
   expect(answer.text).toContain(', reported by the session that reads GitLab)')

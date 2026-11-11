@@ -156,16 +156,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {model.status.text}
       </Text>
     ) : null
-  // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. The
-  // labels name the presses; the symbols are drawn. ↻ reads the MRs and the inbox alike, and is dim while either read is out.
+  // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. Each
+  // symbol is its Button's label, alone: the desktop app draws a label in place of the children. ↻ reads the MRs and the
+  // inbox alike, and is dim while either read is out.
   const controls = (
     <Box flexDirection="row" gap={2} flexShrink={0}>
-      <Button key="refresh" plain dimColor={model.isRefreshing} label="refresh" onPress={() => quietly($, refresh($))}>
-        ↻
-      </Button>
-      <Button key="wake" plain label={model.wake.label} onPress={() => toggleWake($)}>
-        {model.wake.mark}
-      </Button>
+      <Button key="refresh" plain dimColor={model.isRefreshing} label="↻" onPress={() => quietly($, refresh($))} />
+      <Button key="wake" plain label={model.wake} onPress={() => toggleWake($)} />
     </Box>
   )
   const topRow = (...left: RenderChildren[]) => (
