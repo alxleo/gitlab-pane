@@ -2,8 +2,7 @@
 // colours and links, and how much of each fits the drawing's room. The draw files only map this to elements. Pure: the
 // one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to, which it asks once for
 // each piece it needs and never for a piece it will not use.
-import { badges, hasLeft, rank } from './attention.ts'
-import { firstDifference } from './order.ts'
+import { badges, byAttention, hasLeft } from './attention.ts'
 import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
@@ -68,6 +67,8 @@ export type RowModel = {
   repo: Link | null
   strip: StripModel | null
   pipeline: Link | null
+  /** On an MR GitLab says can merge, the commit a merge takes: it leads the second line with the move. */
+  head: Link | null
   /** GitLab's verdict, and the MR's one move where there is one (`next-move.ts`), said in place of the verdict when it fixes the check the verdict names. */
   verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null; move: RowMove | null } | null
   blocker: { text: string; tone: Tone } | null
@@ -156,10 +157,6 @@ function statusOf(poll: PollState, now: number): PaneModel['status'] {
   return { text: age, isWarning: hasStale }
 }
 
-/** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
-const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
-  firstDifference((ranks.get(a.key) ?? 3) - (ranks.get(b.key) ?? 3), b.updatedAt.localeCompare(a.updatedAt))
-
 function footerOf(poll: PollState, now: number): PaneModel['footer'] {
   const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
   // A read that kept no status per host (nothing yet to say of any) speaks of GitLab as one.
@@ -184,15 +181,16 @@ const WAITING: readonly string[] = ['approvals', 'ready']
 
 /**
  * Whether a row has nothing to show past its title and verdict: its pipeline passed, nothing stands before a merge but
- * approvals (no thread, request for changes or bot holds it, whatever face speaks for it), GitLab's verdict is neither red
- * nor amber, and no person's open thread is quoted on it.
+ * approvals (no thread, request for changes or bot holds it, whatever face speaks for it), GitLab's verdict waits on others
+ * (grey), and no person's open thread is quoted on it. One GitLab says can merge (the green verdict) is a decision, not
+ * waiting, so it keeps its links, faces and head.
  */
 function isQuiet(card: MrCard, facts: CardFacts): boolean {
   return (
     card.pipeline?.status === 'success' &&
     facts.said === null &&
     badges(card).every(badge => WAITING.includes(badge.kind)) &&
-    (facts.verdict === null || facts.verdict.tone === 'success' || facts.verdict.tone === 'subtle')
+    (facts.verdict === null || facts.verdict.tone === 'subtle')
   )
 }
 
@@ -236,6 +234,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     repo: input.repoFilter === '' && card.project !== home ? { href: card.repo.url, text: `${LINK.repo} ${card.repo.name}` } : null,
     strip: pipeline !== undefined && pipeline.stages.length > 0 ? stripModel(pipeline.stages, now) : null,
     pipeline: pipeline !== undefined ? { href: pipeline.url, text: `${LINK.pipeline} ${time}` } : null,
+    head: facts.head,
     verdict:
       facts.verdict !== null
         ? {
@@ -282,7 +281,7 @@ export function inboxBand(input: { count: number; isPaneDrawn: boolean; isPageOp
 }
 
 /**
- * The pane's list as data. Rows come in order of what needs you, then pictures on faces where room is left. Rows that do
+ * The pane's list as data. Rows come in order (`byAttention`: what can merge, then what needs you), then pictures on faces where room is left. Rows that do
  * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
  * a row, once.
  */
@@ -296,9 +295,6 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   const pinnedKeys = new Set(input.pinned.map(pinKey))
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
-  // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
-  // worked out below for the rows that are drawn, once each.
-  const order = byRank(new Map(rows.map(row => [row.key, rank(row)])))
   // This session's MRs keep the order they came in, so what the person pinned stays where they put it.
   const pinOrder = new Map(input.pinned.map((pin, i) => [pinKey(pin), i]))
   const session = shown.filter(row => pinOrder.has(row.key)).toSorted((a, b) => (pinOrder.get(a.key) ?? 0) - (pinOrder.get(b.key) ?? 0))
@@ -309,9 +305,11 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   const lastMoved = (card: MrCard) =>
     Math.max(...[card.updatedAt, card.pipeline?.finishedAt ?? null, card.pipeline?.startedAt ?? null].flatMap(at => (at !== null ? [Date.parse(at)] : [])))
   const isParked = (card: MrCard) => !card.isDraft && now - lastMoved(card) >= PARKED_AFTER_MS && !news.has(card.key)
-  const mine = rest.filter(row => !row.isDraft && !isParked(row)).toSorted(order)
-  const parked = rest.filter(isParked).toSorted(order)
-  const drafts = rest.filter(row => row.isDraft).toSorted(order)
+  // Only what puts every MR in order (`byAttention`) is worked out for all of them; the rest of what a row says (its badges,
+  // words, faces) is worked out below for the rows that are drawn, once each.
+  const mine = rest.filter(row => !row.isDraft && !isParked(row)).toSorted(byAttention)
+  const parked = rest.filter(isParked).toSorted(byAttention)
+  const drafts = rest.filter(row => row.isDraft).toSorted(byAttention)
   // While this session holds MRs the rest fold to one line, but not under a picked repo, which is how to see its MRs.
   const isFolding = session.length > 0 && rest.length > 0 && input.repoFilter === ''
   const showOthers = !isFolding || input.expanded.includes('others')

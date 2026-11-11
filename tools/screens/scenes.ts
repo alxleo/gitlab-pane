@@ -214,6 +214,8 @@ const mine = (): Mr[] => [
     approvalsLeft: 0,
     approvalsRequired: 2,
     mergeabilityChecks: checks(),
+    // The commit a merge takes, which its card names beside the merge.
+    merging: { diffHeadSha: '3f9c2a7e1b4d5c6a8e0f2b3c4d5e6f7a8b9c0d1e' },
     diffStatsSummary: { additions: 240, deletions: 301, fileCount: 9 },
     approvedBy: { nodes: [approver(BOB), approver(ERIN)] },
     reviewers: { nodes: [who(BOB, 'APPROVED'), who(ERIN, 'APPROVED')] },

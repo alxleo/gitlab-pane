@@ -946,6 +946,14 @@ const moveOf = async (ui: { findAll: (query: { type: string }) => Promise<FoundE
   return button !== undefined ? { label: button.props.label, variant: button.props.variant, key: button.key ?? '' } : undefined
 }
 
+/** The first three things a row offers, in the order drawn: its move by its label, and links by their words. */
+const leadOf = async (ui: { findAll: (query: { type?: string }) => Promise<FoundElement[]> }, iid: number) =>
+  (await ui.findAll({}))
+    .flatMap(element =>
+      keyed(`move-${iid}-`)(element) ? [String(element.props['label'])] : element.type === 'Link' ? [element.children.filter(child => typeof child === 'string').join('')] : []
+    )
+    .slice(0, 3)
+
 test('a mergeable MR’s verdict is its merge: one press arms it, a second merges the head GitLab judged, and the card goes once GitLab says it merged', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [ready(12)], isDown: false }
@@ -953,9 +961,11 @@ test('a mergeable MR’s verdict is its merge: one press arms it, a second merge
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The quiet row's one line offers the merge in place of saying it can merge.
+  // The card offers the merge in place of saying it can merge, leading its second line so it is in one place on every
+  // card, with the head it merges beside it and then the MR's own links.
   expect(await moveOf(ui, 12)).toMatchObject({ label: '✓ merge', variant: 'secondary' })
   expect(await ui.find({ type: 'Text', text: '✓ mergeable' })).toBeUndefined()
+  expect(await leadOf(ui, 12)).toEqual(['✓ merge', '📍 head-12', '🔀 !12'])
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
   await clock.settle()
   expect(await moveOf(ui, 12)).toMatchObject({ label: '✓ merge !12? press again', variant: 'primary' })
