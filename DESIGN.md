@@ -61,7 +61,7 @@ A title opens the MR on a page of its own. Its open threads are a person's feedb
 | Ready | the open MRs, those GitLab says can merge first, then the most pressing, ten until `▸ more` | `MINE_SHOWN` |
 | Parked | a ready MR untouched for a week, its pipeline included, with no news in the inbox; a comment, a push, a pipeline run or news brings it back | `PARKED_AFTER_MS` |
 | Drafts | GitLab's drafts, folded | `buildPane` |
-| Merged | last, folded, as `▸ N merged`: your own MRs merged in the last three days, five at most, as the inbox's read left them (not cards, so nothing that counts or orders the list sees them). A row is the MR's link, how long ago it merged, and the build GitLab ran on the commit that landed on its target branch. Only a failed build is said on the folded line (`▸ 3 merged · 1 build ✗`); open, the rows say it. No wake, no toast | `mergedModel`, `LANDED_WITHIN_MS`, `LANDED_SHOWN` |
+| Merged | last, folded, as `▸ N merged`: your own MRs merged in the last three days, five at most, as the inbox's read left them (not cards, so nothing that counts or orders the list sees them). A row is the MR's link, how long ago it merged, and the build GitLab ran on the commit that landed on its target branch (never a pipeline a schedule started). Only a failed build is said on the folded line (`▸ 3 merged · 1 build ✗`); open, the rows say it. No wake, no toast | `mergedModel`, `LANDED_WITHIN_MS`, `LANDED_SHOWN` |
 
 ## Merge checks
 

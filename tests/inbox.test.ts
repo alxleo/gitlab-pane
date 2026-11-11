@@ -430,7 +430,8 @@ const HEAD_PLAIN = 'd'.repeat(40)
  * Three of your MRs merged lately, one by each method. !11 went in with a merge commit, onto a release branch; !12 was
  * fast-forwarded after a squash, so the commit on the branch is the squash commit, which GraphQL does not name; !13 was
  * fast-forwarded as it was. Each has the build GitLab ran on its commit on its target branch, and a pipeline of the same commit
- * on the branch it came from, which is newer and not the build on the target.
+ * on the branch it came from, which is newer and not the build on the target. !11's branch also had a nightly pipeline run on
+ * the same commit after the merge, newer than the build and a failure: no schedule's pipeline is the build of a merge.
  */
 const mergedWorld = (): World => ({
   ...emptyWorld(),
@@ -442,6 +443,7 @@ const mergedWorld = (): World => ({
   squashed: { 'g/p!12': SQUASH_COMMIT, 'g/p!13': null },
   pipelines: [
     { sha: MERGE_COMMIT, ref: 'release/2.1', id: 101, status: 'SUCCESS' },
+    { sha: MERGE_COMMIT, ref: 'release/2.1', id: 400, status: 'FAILED', source: 'schedule' },
     { sha: SQUASH_COMMIT, ref: 'main', id: 102, status: 'FAILED' },
     { sha: HEAD_PLAIN, ref: 'main', id: 103, status: 'RUNNING' },
     { sha: HEAD_PLAIN, ref: 'feat/plain', id: 300, status: 'FAILED' },

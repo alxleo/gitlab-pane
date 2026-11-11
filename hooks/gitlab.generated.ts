@@ -814,7 +814,12 @@ export type LandedQueryVariables = Exact<{
   ref: string
 }>
 
-export type LandedQuery = { project: { pipelines: { nodes: Array<{ id: string; status: PipelineStatusEnum; path: string | null } | null> | null } | null } | null }
+export type LandedQuery = {
+  project: {
+    pipelines: { nodes: Array<{ id: string; status: PipelineStatusEnum; path: string | null } | null> | null } | null
+    scheduled: { nodes: Array<{ id: string } | null> | null } | null
+  } | null
+}
 
 export type MergeStatusQueryVariables = Exact<{ [key: string]: never }>
 
