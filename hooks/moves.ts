@@ -58,7 +58,7 @@ async function freshOf($: EngineInterface, card: MrCard): Promise<Fresh> {
 async function send($: EngineInterface, card: MrCard, step: Extract<Step, { does: 'merge' | 'rebase' }>): Promise<Refusal | null> {
   try {
     if (step.does === 'merge') {
-      return mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, step.head, step.strategy)))
+      return mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, step.head, step.strategy, step.squash)))
     }
     return rebaseRefusal(
       await askRest($, card.host, rebasePath(card.path, card.iid), {
