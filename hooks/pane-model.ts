@@ -2,7 +2,7 @@
 // colours and links, and how much of each fits the drawing's room. The draw files only map this to elements. Pure: the
 // one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to, which it asks once for
 // each piece it needs and never for a piece it will not use.
-import { badges, byAttention, hasLeft } from './attention.ts'
+import { badges, byAttention, hasLeft, isMergeable } from './attention.ts'
 import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
@@ -47,7 +47,7 @@ export type PersonRow = {
 
 /**
  * The MR's one move as a row draws it: a press while `press` is set (armed, the press that confirms a merge), else words
- * saying what is under way. `isVerdict` when it stands in place of GitLab's verdict, whose check it fixes.
+ * saying what is under way. `isVerdict` when it fixes the check GitLab's verdict names, so the verdict is not said again.
  */
 type RowMove = Omit<Move, 'check'> & { key: string; isVerdict: boolean }
 
@@ -69,7 +69,7 @@ export type RowModel = {
   pipeline: Link | null
   /** On an MR GitLab says can merge, the commit a merge takes: it leads the second line with the move. */
   head: Link | null
-  /** GitLab's verdict, and the MR's one move where there is one (`next-move.ts`), said in place of the verdict when it fixes the check the verdict names. */
+  /** GitLab's verdict, and the MR's one move where there is one (`next-move.ts`), which leads the second line and says the verdict when it fixes the check it names. */
   verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null; move: RowMove | null } | null
   blocker: { text: string; tone: Tone } | null
   people: PersonRow[]
@@ -319,6 +319,8 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   const mineShown = !showOthers ? [] : showMore ? mine : mine.slice(0, MINE_SHOWN)
   const isInbox = input.view === 'inbox'
   const newOthers = rest.filter(card => news.has(card.key)).length
+  // What folds is counted by what can be finished there and what has news, so neither is out of sight unsaid.
+  const told = [[rest.filter(card => isMergeable(card.mergeStatus)).length, 'can merge'] as const, [newOthers, 'new'] as const].filter(([count]) => count > 0)
 
   const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showParked ? parked : []), ...(showDrafts ? drafts : [])] : []
   const built = wanted.map(card => {
@@ -365,7 +367,9 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     repos: repoFilterOf(rows, repos, input.repoFilter),
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
-    others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
+    others: isFolding
+      ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${told.map(([count, what]) => ` · ${count} ${what}`).join('')}`, isOpen: showOthers }
+      : null,
     mine: {
       // GitLab's word for an MR that is not a draft; the tab above already says Mine.
       heading: `Ready · ${mine.length}`,

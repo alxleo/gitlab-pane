@@ -275,7 +275,7 @@ test("the Mine tab and the repos count the same MRs, and this session's, the rea
 
 const pinOf = (card: MrCard, origin: 'raised' | 'watched' = 'watched') => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin })
 
-test('with this session holding MRs, the rest fold to one line counting them and their news; a picked repo shows its MRs', () => {
+test('with this session holding MRs, the rest fold to one line counting them, what can merge and their news; a picked repo shows its MRs', () => {
   const failing = (iid: number) => toCard(HOST, rawMr(iid, { headPipeline: pipe('FAILED') }))
   const [held, other, news] = [failing(21), failing(22), failing(23)]
   const cards = [held, other, news, toCard(HOST, rawMr(24, { headPipeline: pipe('FAILED'), project: project('g/q') }))]
@@ -284,6 +284,9 @@ test('with this session holding MRs, the rest fold to one line counting them and
   const folded = modelOf(cards, { pinned, news: { count: 2, keys: [news.key, 'gitlab.example.com/other/repo!9'] } })
   expect(folded.session.map(row => row.key)).toEqual([held.key])
   expect(folded.others).toEqual({ label: '▸ 3 others · 1 new', isOpen: false })
+  // One GitLab says can merge is work to finish, so the folded line says so, news or not.
+  const mergeable = { ...toCard(HOST, rawMr(25, { approvalsLeft: 0, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() }
+  expect(modelOf([...cards, mergeable], { pinned, news: { count: 1, keys: [news.key] } }).others?.label).toBe('▸ 4 others · 1 can merge · 1 new')
   expect(folded.mine.rows).toEqual([])
   const opened = modelOf(cards, { pinned, expanded: ['others'] })
   expect(opened.others?.label).toBe('▾ 3 others')

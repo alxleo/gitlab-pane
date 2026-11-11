@@ -27,10 +27,10 @@ function verdictWords(kit: Kit, verdict: Verdict): RenderChildren[] {
 
 /**
  * The MR's one move: a Button while it can be pressed (primary once armed, asking for the press that confirms), dim words
- * while it is under way. On a merge, the head it takes follows it; then why its last press failed, amber, so nothing before
- * it moves when a failure comes or goes.
+ * while it is under way. On a merge, the head it takes follows it; then `trailing`, the blockers that trail a verdict the
+ * move says; then why its last press failed, amber, so nothing before it moves when a failure comes or goes.
  */
-function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['move']): RenderChildren[] {
+function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['move'], trailing: string | null): RenderChildren[] {
   const { Text, Button, Link } = kit
   const press = move?.press ?? null
   return [
@@ -44,6 +44,7 @@ function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['m
           ),
         ]),
     ...(row.head !== null ? [<Link href={row.head.href}>{row.head.text}</Link>] : []),
+    ...(trailing !== null ? [<Text dimColor>{trailing}</Text>] : []),
     ...(move !== null && move.failed !== null ? [<Text color="warning">{move.failed}</Text>] : []),
   ]
 }
@@ -67,11 +68,11 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Box flexGrow={1} flexShrink={1}>
             <Button key={row.titleKey} plain label={row.title} onPress={() => openReading($, row.key)} />
           </Box>
-          {/* A quiet row is this line alone: what it waits on, or that it can merge, goes beside its title. */}
+          {/* A quiet row is this line alone: what it waits on goes beside its title, with GitLab's own merge once checks pass. */}
           {row.isQuiet && row.verdict !== null && (
             <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
               {verdictWords(kit, row.verdict)}
-              {moveParts($, kit, row, row.verdict.move)}
+              {moveParts($, kit, row, row.verdict.move, null)}
             </Box>
           )}
           {row.isQuiet && row.verdict === null && row.blocker !== null && (
@@ -90,8 +91,10 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
     case 'line2':
     case 'faces': {
       const withPictures = part === 'faces'
-      const lead = moveParts($, kit, row, row.verdict?.move ?? null)
       const said = row.verdict !== null ? verdictWords(kit, row.verdict) : []
+      // What trails the verdict follows its words; where the move says the verdict, it follows the move.
+      const trailing = row.verdict?.trailing ?? null
+      const lead = moveParts($, kit, row, row.verdict?.move ?? null, said.length > 0 ? null : trailing)
       return (
         <Box flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
           {/* The move leads the line, so it is in one place on every card and across reads, whatever the links and ages say. */}
@@ -109,10 +112,10 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           {row.strip !== null && strip(kit, row.strip)}
           {row.pipeline !== null ? <Link href={row.pipeline.href}>{row.pipeline.text}</Link> : <Text dimColor>no pipeline</Text>}
           {row.verdict !== null
-            ? (said.length > 0 || row.verdict.trailing !== null) && (
+            ? said.length > 0 && (
                 <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
                   {said}
-                  {row.verdict.trailing !== null && <Text dimColor>{row.verdict.trailing}</Text>}
+                  {trailing !== null && <Text dimColor>{trailing}</Text>}
                 </Box>
               )
             : row.blocker !== null && (
