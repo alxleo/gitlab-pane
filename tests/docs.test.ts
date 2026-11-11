@@ -8,6 +8,7 @@ import { VERB } from '../hooks/inbox-pane'
 import { RULES } from '../hooks/inbox-rules'
 import { FULL_EVERY_MS } from '../hooks/incremental'
 import { RETRY_MS } from '../hooks/jira-moves'
+import { RECHECK_MS } from '../hooks/landed'
 import { EXPIRY_MS, RENEW_MS, TICK_MS } from '../hooks/lease'
 import { FOLLOW_MS, FOLLOW_TRIES, MOVES } from '../hooks/next-move'
 import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
@@ -58,8 +59,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [USUAL_EVERY_MS],
     // the Inbox
     [INBOX_EVERY_MS],
-    // the build of each lately merged MR's commit, asked with the inbox until it ends
-    [INBOX_EVERY_MS],
+    // the build of each lately merged MR's commit, asked with the inbox while it runs, and again after the recheck period when it failed or waits on a person
+    [INBOX_EVERY_MS, RECHECK_MS],
     // why a job failed: once, when it fails
     [],
     // Jira

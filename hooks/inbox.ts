@@ -65,15 +65,20 @@ export function toggleHere($: EngineInterface): void {
  * drops the seen marks of MRs that are gone from a host that answered whole, so the store keeps one small value per MR that
  * is still listed. Whatever fails is in the snapshot, not thrown, so a host that is down leaves the rest.
  */
-async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
+async function readInbox($: EngineInterface, hosts: readonly string[], isAsked: boolean): Promise<InboxSnapshot> {
   const [now, follows, shown] = await Promise.all([$.clock.now(), read($, inboxFollowAtom), read($, inboxAtom)])
   // What the last read kept of the merged MRs is what spares asking again for a commit or a build that is settled.
   const before = keptLanded(shown.snapshot.landed)
-  const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows, before)) })))
+  const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows, before, isAsked)) })))
   const listed = reads.flatMap(one => one.found.mrs)
   // A merged MR's commit or build that could not be asked for leaves the inbox whole: it is a problem of its own for `/gitlab`.
+  // A read that asked nothing of an MR whose commit failed an hour ago does not say it works: the problem stands until it is asked again.
   const unasked = reads.flatMap(one => (one.landedFailure !== null ? [one.landedFailure] : []))
-  await (unasked.length > 0 ? record($, 'merged', together(unasked)) : clear($, 'merged'))
+  if (unasked.length > 0) {
+    await record($, 'merged', together(unasked))
+  } else if (!reads.some(one => one.isLandedHeld)) {
+    await clear($, 'merged')
+  }
   const snapshot: InboxSnapshot = {
     at: now,
     hosts: Object.fromEntries(reads.map(one => [one.host, { user: one.found.user, failure: one.failure }])),
@@ -114,8 +119,12 @@ async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): Promise<
 /** Where the leader keeps the inbox for the sessions that only draw it: a key of its own, so a mark written beside it is never lost. */
 const INBOX_STORE = 'inbox-snapshot'
 
-/** The leader's inbox: reads every host once, keeps the snapshot in the store when it changed, and shows it. A call mid-read joins it. */
-export function leadInbox($: EngineInterface, hosts: readonly string[]): Promise<void> {
+/**
+ * The leader's inbox: reads every host once, keeps the snapshot in the store when it changed, and shows it. A call mid-read
+ * joins it, so a ↻ pressed during one asks nothing more than that read did. `isAsked`: a person pressed ↻, which asks again
+ * for the builds that could still change.
+ */
+export function leadInbox($: EngineInterface, hosts: readonly string[], isAsked: boolean): Promise<void> {
   return joined('inbox-sync', async () => {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
     try {
@@ -124,7 +133,7 @@ export function leadInbox($: EngineInterface, hosts: readonly string[]): Promise
       if (stored !== null) {
         await applyInbox($, stored)
       }
-      const snapshot = await readInbox($, hosts)
+      const snapshot = await readInbox($, hosts, isAsked)
       const shared = readSnapshot(await $.store.get(INBOX_STORE))
       // The store is rewritten whole for any write, so a read that found what is there already writes nothing.
       if (shared === null || !isEqual({ ...shared, at: 0 }, { ...snapshot, at: 0 })) {

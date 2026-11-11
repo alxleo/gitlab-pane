@@ -28,7 +28,7 @@ export function dataOf<Data>(answer: RawResponse<Data>): Data {
  * failed: the last read's stand) with why asking for their commits or builds failed, which is no failure of the inbox and so is
  * told apart from `failure`: the inbox is whole without it.
  */
-type HostRead = { found: Found; failure: InboxHost['failure']; landed: Landed[] | null; landedFailure: Failure | null }
+type HostRead = { found: Found; failure: InboxHost['failure']; landed: Landed[] | null; landedFailure: Failure | null; isLandedHeld: boolean }
 
 type Tried = { label: string; found: Found } | { label: string; error: unknown }
 
@@ -43,14 +43,15 @@ async function tried(label: string, work: Promise<Found>): Promise<Tried> {
 /**
  * One host's documents (three, and one more per followed person or project), asked at once: a host that times one out loses only that one. What came is kept; why the
  * rest did not is the failure, with the document named unless every one failed the same way. The user's own answer also tells the
- * MRs they merged lately, whose commits and builds are asked for beside the documents (`previous` is what the last read kept of them).
+ * MRs they merged lately, whose commits and builds are asked for beside the documents (`previous` is what the last read kept of
+ * them, and `isAsked` that a person pressed ↻).
  */
-export async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[], previous: readonly Landed[]): Promise<HostRead> {
+export async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[], previous: readonly Landed[], isAsked: boolean): Promise<HostRead> {
   const since = new Date(now - HORIZON_MS).toISOString()
   // The same answer tells the Jira moves who the user is here and which of their MRs merged, and the merged section what landed.
   const authored = ask($, host, inboxAuthoredQuery(since)).then(dataOf)
   const landing = authored.then(
-    data => readLanded($, host, data, previous, now),
+    data => readLanded($, host, data, previous, now, isAsked),
     () => null
   )
   const results = await Promise.all([
@@ -92,5 +93,6 @@ export async function readHost($: EngineInterface, host: string, now: number, fo
       first === undefined ? null : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : failed.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
     landed: merged !== null ? merged.landed : null,
     landedFailure: merged !== null ? merged.failure : null,
+    isLandedHeld: merged !== null && merged.isHeld,
   }
 }

@@ -5,7 +5,7 @@ import type { Failure } from './failure'
 import type { InboxAuthoredQuery } from './gitlab.generated'
 import { ask, askRest } from './graphql'
 import { landedQuery } from './inbox-requests'
-import { buildOf, isBuildDue, keptFor, landedOf, landingOf, mergeRequestPath, mergedLately, squashShaOf } from './landed'
+import { buildOf, isDue, keptFor, landedOf, landingOf, mergeRequestPath, mergedLately, squashShaOf } from './landed'
 import type { Merged } from './landed'
 
 import type { Landed } from '../types'
@@ -39,30 +39,45 @@ async function attempt<T>(merged: Merged, failures: Failure[], work: () => Promi
   }
 }
 
-/** One MR's entry after this pass: what was settled before kept, what is due asked now. An ask that fails leaves the entry as it was. */
-async function landedFor($: EngineInterface, merged: Merged, kept: Landed | undefined, now: number, failures: Failure[]): Promise<Landed> {
+/**
+ * One MR's entry after this pass: what is not due kept as it was, what is due asked now, with `checkedAt` the time it was. A
+ * squash commit that could not be read leaves the entry with none and the time of the try, so it waits `RECHECK_MS` (or ↻)
+ * for the next, as REST is no cheaper to a project that refuses it. A build's ask that fails leaves the entry as it was, and is
+ * made again at the next read, as the inbox's own are.
+ */
+async function landedFor($: EngineInterface, merged: Merged, kept: Landed | undefined, now: number, isAsked: boolean, failures: Failure[]): Promise<Landed> {
+  if (kept !== undefined && !isDue(kept, merged.mergedAt, now, isAsked)) {
+    return landedOf(merged, kept.sha, kept.build, kept.checkedAt)
+  }
   const sha = kept?.sha ?? (await attempt(merged, failures, () => shaOf($, merged)))
   if (sha === null) {
-    return landedOf(merged, null, null, null)
+    return landedOf(merged, null, null, now)
   }
-  const looked = isBuildDue(kept, merged.mergedAt)
-    ? await attempt(merged, failures, async () => ({ build: buildOf(merged.host, merged.url, await ask($, merged.host, landedQuery(merged.path, sha, merged.targetBranch))) }))
-    : null
+  const looked = await attempt(merged, failures, async () => ({
+    build: buildOf(merged.host, merged.url, await ask($, merged.host, landedQuery(merged.path, sha, merged.targetBranch))),
+  }))
   return looked !== null ? landedOf(merged, sha, looked.build, now) : landedOf(merged, sha, kept?.build ?? null, kept?.checkedAt ?? null)
 }
 
 /**
  * The user's MRs merged lately on a host, from the inbox's answer, each with its commit and build as far as GitLab has said
- * them; `previous` is what the last read kept. A failure comes beside the entries, which are then as they were.
+ * them; `previous` is what the last read kept, and `isAsked` that a person pressed ↻. A failure comes beside the entries, which
+ * are then as they were, and `isHeld` says an earlier failure still stands: the MR it was of is not asked again yet.
  */
 export async function readLanded(
   $: EngineInterface,
   host: string,
   data: InboxAuthoredQuery | null,
   previous: readonly Landed[],
-  now: number
-): Promise<{ landed: Landed[]; failure: Failure | null }> {
+  now: number,
+  isAsked: boolean
+): Promise<{ landed: Landed[]; failure: Failure | null; isHeld: boolean }> {
   const failures: Failure[] = []
-  const landed = await Promise.all(mergedLately(host, data, now).map(merged => landedFor($, merged, keptFor(previous, merged), now, failures)))
-  return { landed, failure: failures.length > 0 ? together(failures) : null }
+  const lately = mergedLately(host, data, now)
+  const landed = await Promise.all(lately.map(merged => landedFor($, merged, keptFor(previous, merged), now, isAsked, failures)))
+  const isHeld = lately.some(merged => {
+    const kept = keptFor(previous, merged)
+    return kept !== undefined && kept.sha === null && !isDue(kept, merged.mergedAt, now, isAsked)
+  })
+  return { landed, failure: failures.length > 0 ? together(failures) : null, isHeld }
 }

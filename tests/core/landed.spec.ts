@@ -2,7 +2,19 @@ import { expect, test } from 'vitest'
 
 import { Failure } from '../../hooks/failure.ts'
 import type { LandedQuery } from '../../hooks/gitlab.generated.ts'
-import { BUILD_APPEARS_MS, LANDED_SHOWN, LANDED_WITHIN_MS, buildOf, isBuildDue, keptLanded, landingOf, mergeRequestPath, mergedLately, squashShaOf } from '../../hooks/landed.ts'
+import {
+  BUILD_APPEARS_MS,
+  LANDED_SHOWN,
+  LANDED_WITHIN_MS,
+  RECHECK_MS,
+  buildOf,
+  isDue,
+  keptLanded,
+  landingOf,
+  mergeRequestPath,
+  mergedLately,
+  squashShaOf,
+} from '../../hooks/landed.ts'
 import { NOW } from '../fixtures.ts'
 
 import type { Landed } from '../../types'
@@ -146,22 +158,48 @@ const entry = (over: Partial<Landed> = {}): Landed => ({
 
 const built = (status: 'success' | 'failed' | 'canceled' | 'skipped' | 'running' | 'pending' | 'manual' | 'unknown') => ({ status, url: 'https://gitlab.com/g/p/-/pipelines/9' })
 
-test('a build that ended is not looked for again, one that has not or waits on a person is', () => {
-  for (const status of ['success', 'failed', 'canceled', 'skipped'] as const) {
-    expect(isBuildDue(entry({ build: built(status), checkedAt: NOW }), NOW - 60 * 60_000)).toBe(false)
-  }
-  for (const status of ['running', 'pending', 'manual', 'unknown'] as const) {
-    expect(isBuildDue(entry({ build: built(status), checkedAt: NOW }), NOW - 60 * 60_000)).toBe(true)
+const MERGED_AT = NOW - 60 * 60_000
+
+test('a build that passed, was canceled or was skipped is never asked for again, whatever ↻', () => {
+  for (const status of ['success', 'canceled', 'skipped'] as const) {
+    expect(isDue(entry({ build: built(status), checkedAt: NOW - 3 * RECHECK_MS }), MERGED_AT, NOW, false)).toBe(false)
+    expect(isDue(entry({ build: built(status), checkedAt: NOW - 3 * RECHECK_MS }), MERGED_AT, NOW, true)).toBe(false)
   }
 })
 
+test('a build still running is asked for at every read', () => {
+  for (const status of ['running', 'pending', 'unknown'] as const) {
+    expect(isDue(entry({ build: built(status), checkedAt: NOW }), MERGED_AT, NOW, false)).toBe(true)
+  }
+})
+
+test('a build that failed or waits on a person is asked for again after the recheck period, or at once on ↻, and not before', () => {
+  for (const status of ['failed', 'manual'] as const) {
+    const asked = (ago: number, isAsked: boolean) => isDue(entry({ build: built(status), checkedAt: NOW - ago }), MERGED_AT, NOW, isAsked)
+    expect(asked(0, false)).toBe(false)
+    expect(asked(RECHECK_MS - 1, false)).toBe(false)
+    expect(asked(RECHECK_MS, false)).toBe(true)
+    expect(asked(0, true)).toBe(true)
+  }
+})
+
+test('a squash commit GitLab would not name is asked for again after the recheck period, or at once on ↻, and not before', () => {
+  const asked = (ago: number, isAsked: boolean) => isDue(entry({ sha: null, checkedAt: NOW - ago }), MERGED_AT, NOW, isAsked)
+  expect(asked(RECHECK_MS - 1, false)).toBe(false)
+  expect(asked(RECHECK_MS, false)).toBe(true)
+  expect(asked(0, true)).toBe(true)
+  // One never asked for is asked for at the first read.
+  expect(isDue(entry({ sha: null, checkedAt: null }), MERGED_AT, NOW, false)).toBe(true)
+  expect(isDue(undefined, MERGED_AT, NOW, false)).toBe(true)
+})
+
 test('with no build seen yet, it is looked for until a look made after GitLab could have started one finds none', () => {
-  const mergedAt = NOW - 60 * 60_000
-  expect(isBuildDue(undefined, mergedAt)).toBe(true)
-  expect(isBuildDue(entry({ sha: null }), mergedAt)).toBe(true)
-  expect(isBuildDue(entry({ checkedAt: null }), mergedAt)).toBe(true)
-  expect(isBuildDue(entry({ checkedAt: mergedAt + BUILD_APPEARS_MS - 1 }), mergedAt)).toBe(true)
-  expect(isBuildDue(entry({ checkedAt: mergedAt + BUILD_APPEARS_MS }), mergedAt)).toBe(false)
+  const due = (over: Partial<Landed>, isAsked = false) => isDue(entry(over), MERGED_AT, NOW, isAsked)
+  expect(due({ checkedAt: null })).toBe(true)
+  expect(due({ checkedAt: MERGED_AT + BUILD_APPEARS_MS - 1 })).toBe(true)
+  expect(due({ checkedAt: MERGED_AT + BUILD_APPEARS_MS })).toBe(false)
+  // ↻ asks once more even for that.
+  expect(due({ checkedAt: MERGED_AT + BUILD_APPEARS_MS }, true)).toBe(true)
 })
 
 // ---- what a stored list holds --------------------------------------------------------------------------------------------
