@@ -436,9 +436,9 @@ const HEAD_PLAIN = 'd'.repeat(40)
 const mergedWorld = (): World => ({
   ...emptyWorld(),
   merged: [
-    merged(11, 30, { mergeCommitSha: MERGE_COMMIT, diffHeadSha: 'e'.repeat(40) }, { targetBranch: 'release/2.1' }),
-    merged(12, 90, { diffHeadSha: HEAD_SQUASHED }),
-    merged(13, 150, { diffHeadSha: HEAD_PLAIN }),
+    merged(11, 10, { mergeCommitSha: MERGE_COMMIT, diffHeadSha: 'e'.repeat(40) }, { targetBranch: 'release/2.1' }),
+    merged(12, 25, { diffHeadSha: HEAD_SQUASHED }),
+    merged(13, 50, { diffHeadSha: HEAD_PLAIN }),
   ],
   squashed: { 'g/p!12': SQUASH_COMMIT, 'g/p!13': null },
   pipelines: [
@@ -497,7 +497,7 @@ test('the MRs you merged lately fold at the foot of Mine, a failed build on the 
     ['✗', 'error'],
     ['●', 'suggestion'],
   ])
-  expect((await ui.findAll({ type: 'Text' })).map(text => text.text)).toEqual(expect.arrayContaining(['30m', '1h', '2h']))
+  expect((await ui.findAll({ type: 'Text' })).map(text => text.text)).toEqual(expect.arrayContaining(['10m', '25m', '50m']))
   // The squash commit is asked of REST once per MR that had no merge commit, and not at all for the merge commit's MR.
   expect(gitlab.requests.filter(request => request.includes('merge-request'))).toEqual(['gitlab.com merge-request g/p!12', 'gitlab.com merge-request g/p!13'])
   expect(woken).toEqual([])
@@ -584,6 +584,79 @@ test('↻ asks again for a failed build at once, and for a manual one, and not f
   await ui.press({ key: 'refresh' })
   expect(asked()).toBe(5)
   expect(await foldOf(ui)).toBe('▸ 3 merged')
+  await ui.unmount()
+})
+
+test('a build GitLab can no longer name, as its ten newest pipelines are all a schedule’s, is the build it was, mark and link', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  // Ten nights run on the commit since: they are the ten newest, and none is the merge's build.
+  world.pipelines = [
+    ...world.pipelines,
+    ...[701, 702, 703, 704, 705, 706, 707, 708, 709, 710].map(id => ({ sha: MERGE_COMMIT, ref: 'main', id, status: 'SUCCESS' as const, source: 'schedule' as const })),
+  ]
+  await clock.advance(RECHECK_MS + 60_000)
+  expect(asked()).toBe(2)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/700')
+  await ui.unmount()
+})
+
+test('a build that cannot be asked for is asked for again after the recheck period, not at every read, while /gitlab names it, and the pane has the build once GitLab answers', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // Past the doubt of whether a pipeline will start, where a look that failed must not read as the answer that none ran.
+  const world: World = { ...emptyWorld(), merged: [merged(21, 20, { mergeCommitSha: MERGE_COMMIT })], landedErrors: 'Timeout on validation of query' }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+  const gitlabSays = async () => (await $.command.run({ ...typed(''), command: 'gitlab' })).text
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(asked()).toBe(1)
+  // Five minutes of reads, every answer an error: nothing more is asked.
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(1)
+  // The problem stands meanwhile, though no read made it again. (`/gitlab` also asks for a fresh read: ↻, which asks once more.)
+  expect(await gitlabSays()).toContain('merged: g/p!21: Timeout on validation of query')
+  await clock.advance(1_000)
+  expect(asked()).toBe(2)
+  // GitLab recovers; the next ask is after the recheck period, not at the next read.
+  world.landedErrors = undefined
+  world.pipelines = [{ sha: MERGE_COMMIT, ref: 'main', id: 800, status: 'SUCCESS' }]
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(2)
+  await clock.advance(RECHECK_MS)
+  expect(asked()).toBe(3)
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/800')
+  expect(await gitlabSays()).not.toContain('merged:')
+  await ui.unmount()
+})
+
+test('a build still unfinished long after the merge is asked for at the recheck period, not at every read', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // Merged two hours ago and still pending: a pipeline waiting for a runner that never comes.
+  const world: World = { ...emptyWorld(), merged: [merged(21, 120, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 900, status: 'PENDING' }] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(asked()).toBe(1)
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(1)
+  await clock.advance(RECHECK_MS)
+  expect(asked()).toBe(2)
   await ui.unmount()
 })
 
@@ -753,6 +826,7 @@ test('a session that only draws shows the merged MRs the leader shared and asks 
     sha: MERGE_COMMIT,
     build: { status, url: `https://gitlab.com/g/p/-/pipelines/${iid}` },
     checkedAt: NOW,
+    hasFailed: false,
   })
   kit.store.set('inbox-snapshot', { ...sharedInbox(NOW), landed: [entry(1, 10, 'success'), entry(2, 20, 'failed')] })
 

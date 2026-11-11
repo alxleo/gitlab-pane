@@ -47,6 +47,10 @@ export type World = {
   isDown: boolean
   /** The host is older than GitLab 17.4: it has no `Todo.targetEntity`, and answers the plain document with `target`. */
   isOlder?: boolean
+  /** GitLab answers the review queue with these errors and no data, as it does when it times a document out. */
+  queueErrors?: string
+  /** GitLab answers the `Landed` document with these errors and no data. */
+  landedErrors?: string
 }
 
 export const ALICE: Person = { username: 'alice', name: 'Alice' }
@@ -157,7 +161,10 @@ export const inboxAnswers = (
   InboxTodosPlain: () => ({
     data: { currentUser: { username: world.user, todos: { nodes: world.todos.map(({ targetEntity: target, ...rest }) => ({ ...rest, target })) } } },
   }),
-  InboxQueue: () => ({ data: { currentUser: { username: world.user, reviewRequestedMergeRequests: { nodes: world.queue } } } }),
+  InboxQueue: () =>
+    world.queueErrors !== undefined
+      ? { errors: [{ message: world.queueErrors }] }
+      : { data: { currentUser: { username: world.user, reviewRequestedMergeRequests: { nodes: world.queue } } } },
   InboxAuthored: () => ({ data: { currentUser: { username: world.user, opened: { nodes: world.opened }, merged: { nodes: world.merged } } } }),
   InboxFollowUser: variables => ({ data: { currentUser: { username: world.user }, user: world.followed[`@${variables.username}`] ?? null } }),
   InboxFollowProject: variables => ({ data: { currentUser: { username: world.user }, project: world.followed[variables.path] ?? null } }),
@@ -165,6 +172,9 @@ export const inboxAnswers = (
   // The ten newest pipelines of the commit on that branch alone (a commit also has the pipelines of the branches it was on), and
   // the ten newest of those a schedule started.
   Landed: ({ path, sha, ref }) => {
+    if (world.landedErrors !== undefined) {
+      return { errors: [{ message: world.landedErrors }] }
+    }
     const ofCommit = world.pipelines.filter(each => each.sha === sha && each.ref === ref).toSorted((a, b) => b.id - a.id)
     const gid = (each: { id: number }) => `gid://gitlab/Ci::Pipeline/${each.id}`
     return {

@@ -404,11 +404,14 @@ export type Landed = {
   /** The newest pipeline of `sha` on `targetBranch` that no schedule started, as last read; null while none was seen. */
   build: LandedBuild | null
   /**
-   * When GitLab was last asked of this MR, in epoch milliseconds, and so when a failed or manual build, or a squash commit it
-   * would not name (`sha` null), is asked again; null before the first ask. It moves only when the pane asked, so a read that
-   * asks nothing leaves the entry, and the snapshot, as they were.
+   * When GitLab was last asked of this MR, answered or not, in epoch milliseconds, and so when a build that failed, was canceled,
+   * waits on a person or has not ended an hour on, a squash commit it would not name (`sha` null), or an ask that failed, is
+   * asked again; null before the first ask. It moves only when the pane asked, so a read that asks nothing leaves the entry,
+   * and the snapshot, as they were.
    */
   checkedAt: number | null
+  /** Whether the last ask got no answer (GitLab erred, or could not be reached): `sha` and `build` are then as they were before it, and the `/gitlab` problem stands until an ask is answered. */
+  hasFailed: boolean
 }
 
 /**
