@@ -1,13 +1,15 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
-import { closePage, readPage, readTab, setPage, setTab } from './choices'
+import { closePage, readPage, readTab, setPage, setTab, showInbox } from './choices'
 import { readRows } from './data'
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
+import { inboxNews } from './inbox'
 import { nextDraw, rowDrawn } from './in-flight'
 import { putAwayReply } from './replies'
 import { titleKey } from './drawing'
+import { inboxBand } from './pane-model'
 
 import type { Scrolling } from '../types'
 
@@ -45,13 +47,38 @@ export async function openPane($: EngineInterface) {
   return $.ui.open({ id: PANE_ID, title: await paneTitle($) })
 }
 
+// Whether a surface drew the pane at the last tick. The engine says nothing when the person closes a pane, so the tick asks
+// and keeps the answer here, written only when it changes, for the band above the prompt to redraw by.
+const paneDrawnAtom = atom({ plugin: 'gitlab-pane', key: 'paneDrawn' } as const, false)
+
 /**
- * Whether a surface draws the pane now. The engine keeps the record (`$.ui.panes()`), so a pane that sits open and quiet,
- * and so is never asked to draw again, still counts; one the person closed, or that waits undrawn on a terminal too
- * narrow for it, does not.
+ * Whether a surface draws the pane now, kept for the band. The engine keeps the record (`$.ui.panes()`), so a pane that
+ * sits open and quiet, and so is never asked to draw again, still counts; one the person closed, or that waits undrawn
+ * on a terminal too narrow for it, does not.
  */
-export async function isPaneDrawn($: EngineInterface): Promise<boolean> {
-  return (await $.ui.panes()).some(pane => pane.id === PANE_ID && pane.isPlaced && pane.isShown)
+export async function notePaneDrawn($: EngineInterface): Promise<boolean> {
+  const isDrawn = (await $.ui.panes()).some(pane => pane.id === PANE_ID && pane.isPlaced && pane.isShown)
+  if ((await read($, paneDrawnAtom)) !== isDrawn) {
+    await update($, paneDrawnAtom, () => isDrawn)
+  }
+  return isDrawn
+}
+
+/** The band above the prompt's words, or null to leave it to a survey or whatever else draws there (`inboxBand`). */
+export async function bandOf($: EngineInterface, hasSurvey: boolean): Promise<string | null> {
+  const [isPaneDrawn, page, news] = await Promise.all([read($, paneDrawnAtom), readPage($), inboxNews($)])
+  return inboxBand({ count: news.count, isPaneDrawn, isPageOpen: page !== '', hasSurvey })
+}
+
+/**
+ * The band's press: the pane, open on the Inbox tab, which says the count from then on in the band's place. The band goes
+ * at once; the caller then runs a tick, after any tick already out, so a tick that asked the engine before the pane
+ * opened cannot leave the band beside the tab.
+ */
+export async function openInbox($: EngineInterface): Promise<void> {
+  await showInbox($)
+  await openPane($)
+  await notePaneDrawn($)
 }
 
 /** Shows the MR list (`mine`) or the inbox; only the open tab is drawn. */

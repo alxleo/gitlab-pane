@@ -9,6 +9,8 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
 | **☆: the MRs you work on today, the rest one line** | **↩ reply: answer a thread beside its diff, once you confirm** |
 | ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | ![A reply under a thread, waiting to be confirmed](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-reply.png) |
+| **Pane closed: the inbox's news above the prompt** | |
+| ![The band above the prompt](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band.png) | |
 
 <sub>Made-up data.</sub>
 
@@ -21,6 +23,8 @@ flowchart LR
 ```
 
 Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
+
+While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. While no session draws the pane, one session with a window still reads the inbox each minute, and no MR list, so the band keeps up.
 
 A card's move stands where GitLab's verdict is: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
 
@@ -84,13 +88,13 @@ Queries, as you. GitLab is written to only when you press a merge or a rebase, o
 | GraphQL `createNote`, in the session whose page it is | once per press of `post as you`, never sent again on its own | your reply under a thread; then the MR is read whole again, so the thread shows it | — |
 | GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
 | GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
-| GraphQL, per host, by the leader | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |
+| GraphQL, per host, by the leader; while no session draws the pane, by one session with a window | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |
 | GraphQL; with `failureLogs`, `GET …/jobs/<job>/trace` (last 64 KiB, up to 3 jobs), by the leader, or by the raising session if it draws no pane | once, when a raised MR's pipeline fails | why each job failed | in the snapshot |
 | `acli jira workitem search`, in each session that draws | 15 min, and for a new key | ticket status | — |
 | `acli jira workitem search`, then `acli jira workitem transition --key <ticket> --status <status>`, by the leader | after a read, only when a ticket is due a move (a failed ask is tried again after 15 min) | moving a ticket: its key and the status name, nothing else | each step done, as `jira-move:<ticket>><step>` |
 | `curl` via `/bin/sh`, https only, no token, by the leader | once per new face | avatars, at the addresses GitLab gives | the pictures |
 | `glab config get token --host <host>` | once per host per session, again after `/gitlab` or a 401 | a token | — |
-| the lease, in the store | 2 s; the leader renews it every 15 s, and another takes over after 45 s without | electing one leader among the sessions that draw the pane | who leads, each session's pins |
+| the lease, in the store | 2 s; the leader renews it every 15 s, and another takes over after 45 s without | electing one leader among the sessions that draw the pane; while none does, a second record elects the inbox's reader among the sessions with a window | who leads, who reads the inbox, each session's pins |
 | GraphQL `mergeRequestAccept`, REST `PUT …/merge_requests/<iid>/rebase`, by the session pressed in | when you press a merge or a rebase; then that MR every 3 s until GitLab is done, 2 min at most | the move, on the head GitLab's verdict was read on | — |
 
 - **Several sessions** share one reader: the leader reads GitLab and writes a snapshot, the others draw it. Each session decides its own wakes.

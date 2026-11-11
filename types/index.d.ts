@@ -290,7 +290,7 @@ export type ReadClock = {
   inboxSeen: number | null
 }
 
-/** What a session does with GitLab: `leader` reads for all, `follower` draws what the leader read, `wake-only` reads only its raised MRs, `idle` nothing. */
+/** What a session does with GitLab: `leader` reads for all, `follower` draws what the leader read, `wake-only` reads only its raised MRs, `idle` no MR; with no pane drawn anywhere, one of the last two may read the inbox for the band. */
 export type Role = 'leader' | 'follower' | 'wake-only' | 'idle'
 
 /** One event a rule counted on an MR, as the pane draws it. */
@@ -480,6 +480,8 @@ declare module 'claude-code' {
       /** Avatar URLs that failed to fetch, not asked for again until the session loads the mod again. */
       unreachable: string[]
       scrolling: Scrolling
+      /** Whether a surface drew the pane at the last tick, for the band above the prompt, which says the inbox news only while it does not. */
+      paneDrawn: boolean
       problems: Problems
       /** What the session that reads GitLab last failed with, as its snapshot says. */
       reported: Problems

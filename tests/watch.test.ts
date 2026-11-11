@@ -1952,7 +1952,7 @@ test("a leader that closes its pane hands over: the session that draws takes the
   await ui.unmount()
 })
 
-test('with no pane drawn anywhere, a session that raised an MR still wakes, reading that MR alone and slowly', async ($, on) => {
+test('with no pane drawn anywhere, a session that raised an MR still wakes, reading that MR alone and slowly, and the inbox for its band', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false, isPaneBroken: true }
   const { woken, gitlab, store } = engine(on, fake)
@@ -1964,8 +1964,10 @@ test('with no pane drawn anywhere, a session that raised an MR still wakes, read
   expect(woken).toEqual([])
   await clock.advance(2 * 60_000)
   expect(woken).toEqual(['!12 pipeline failed in 10m: lint · https://gitlab.com/g/p/-/pipelines/99'])
-  // Only the one MR was asked for, never the list, and no lease or snapshot was taken.
+  // Only the one MR was asked for, never the list, and no lease or snapshot was taken. The inbox was read too, once a
+  // minute from the first tick, as no pane's leader reads it for the band above the prompt.
   expect(new Set(operations(gitlab.requests))).toEqual(new Set(['Pinned', 'Failures']))
+  expect(gitlab.requests.filter(request => request === 'gitlab.com InboxQueue')).toHaveLength(7)
   expect(store.get('lease')).toBeUndefined()
   expect(store.get('snapshot')).toBeUndefined()
 })
