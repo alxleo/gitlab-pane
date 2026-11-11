@@ -480,6 +480,8 @@ declare module 'claude-code' {
       /** Avatar URLs that failed to fetch, not asked for again until the session loads the mod again. */
       unreachable: string[]
       scrolling: Scrolling
+      /** The key of the pane's button holding the focus ring, `''` for none: where the next arrow moves it on from. No drawing reads it. */
+      ring: string
       /** Whether a surface drew the pane at the last tick, for the band above the prompt, which says the inbox news only while it does not. */
       paneDrawn: boolean
       problems: Problems

@@ -61,6 +61,10 @@ For a team, in the project's `.claude/settings.json`:
 | `/mrs <repo!iid or URL …>`, `/mrs --rule <tab>` | Briefs up to 10 MRs, description and threads, into the conversation. |
 | `watch_mr` | Claude's tool: pins an MR and answers its pipeline and blockers. Never wakes. |
 
+## Keys
+
+In the terminal, once the pane has the keyboard (ctrl+x tab, or a click on it), the Inbox works without the mouse: ↑ and ↓ move from card to card, Enter opens the card to what each person did, ✓ on it moves on to the next card, and `s` marks the open tab seen. A card with nothing to open is stopped at on its ✓, so Enter there marks it seen. While everything fits in the pane, the arrows walk every button, as Tab does, since the engine keeps them for that. In the desktop app and VS Code the pane is worked with the mouse, as before.
+
 ## Settings
 
 `/plugin configure gitlab-pane`, or `claude plugin configure gitlab-pane@gitlab-pane --values-stdin`.

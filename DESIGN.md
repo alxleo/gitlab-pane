@@ -179,6 +179,7 @@ The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's na
 - The band above the prompt says the Inbox tab's words in amber, `Inbox · N new`, only while there is news and the tabs are out of sight: the pane closed or undrawn, or an MR's page in their place. It never repeats the tab beside it, gives way to a survey, and opens the Inbox tab when pressed (`inboxBand`, `hooks/pane-model.ts`).
 - `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.
 - ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project.
+- In the terminal, while the inbox is taller than the pane, ↑ and ↓ move the focus ring a card at a time, onto its title (its ✓ when it has nothing to open), and Enter opens it; past the first or last card drawn they scroll again, and from the footer ↑ comes back to the last card drawn (`hooks/inbox-ring.ts`). ✓ on the card holding the ring hands the ring to the next. `s` presses `✓ mark all seen (s)`. The engine draws the ring, so moving it draws nothing again; while the inbox fits, the engine's arrows walk every button instead.
 - An empty tab says why when it can: no token for a host, no repo for `here`, nobody followed.
 
 ## Text

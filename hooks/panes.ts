@@ -5,8 +5,11 @@ import { closePage, readPage, readTab, setPage, setTab, showInbox } from './choi
 import { readRows } from './data'
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
-import { inboxNews } from './inbox'
-import { nextDraw, rowDrawn } from './in-flight'
+import { inboxNews, inboxView, markSeen } from './inbox'
+import { arrowSteps, cardButtons, handOver, ringAfterSeen, ringStep } from './inbox-ring'
+import type { RingScroll } from './inbox-ring'
+import { ownedSections } from './inbox-rules'
+import { cardsDrawn, nextDraw, rowDrawn } from './in-flight'
 import { putAwayReply } from './replies'
 import { titleKey } from './drawing'
 import { inboxBand } from './pane-model'
@@ -18,6 +21,81 @@ export const PANE_ID = 'gitlab-pane'
 
 // Why the pane's last scroll did not move, and how far going back from a page got; /gitlab reports both.
 const scrollingAtom = atom({ plugin: 'gitlab-pane', key: 'scrolling' } as const, { refused: '', goingBack: '' } satisfies Scrolling)
+
+// The key of the button holding the pane's focus ring, `''` for none. No drawing reads it, so moving the ring draws nothing
+// again: the engine draws the ring itself.
+const ringAtom = atom({ plugin: 'gitlab-pane', key: 'ring' } as const, '')
+
+/** Keeps which of the pane's buttons holds the focus ring, where the next arrow moves it on from. */
+export async function noteRing($: EngineInterface, element: string): Promise<void> {
+  await update($, ringAtom, () => element)
+}
+
+/** The open rule and its cards as the inbox last drew them: the ones the ring may go to. */
+async function drawnCards($: EngineInterface) {
+  const { sections, open } = await inboxView($)
+  const rule = open[0] ?? ''
+  const items = ownedSections(sections).find(section => section.rule === rule)?.items ?? []
+  const drawn = cardsDrawn(rule)
+  return { rule, cards: drawn === undefined ? items : items.filter(item => drawn.includes(item.key)) }
+}
+
+/** Puts the ring on one of the pane's buttons; whether it went. */
+async function ringTo($: EngineInterface, key: string): Promise<boolean> {
+  const moved = await $.ui.focus({ requestId: PANE_ID, key }).catch((error: unknown) => ({ deny: String(error) }))
+  return moved.deny === undefined
+}
+
+/**
+ * A scroll the engine asks of the pane: when it is the person's arrows on the inbox's cards, moves the focus ring that
+ * many cards instead and says it did. Anything else, Mine, an MR's page, past the first and last card, scrolls as asked.
+ */
+export async function stepRing($: EngineInterface, scroll: Omit<RingScroll, 'isInboxList'>): Promise<boolean> {
+  const [tab, page] = await Promise.all([readTab($), readPage($)])
+  const steps = arrowSteps({ ...scroll, isInboxList: tab === 'inbox' && page === '' })
+  if (steps === 0) {
+    return false
+  }
+  const [{ rule, cards }, at] = await Promise.all([drawnCards($), read($, ringAtom)])
+  const key = ringStep(cards, rule, at, steps)
+  return key !== null && ringTo($, key)
+}
+
+/**
+ * ✓ on one inbox card: marks it seen and, when the ring was on that card, hands the ring to the card that takes its
+ * place, so read, ✓, read goes on from the keyboard.
+ */
+export async function seenOne($: EngineInterface, key: string): Promise<void> {
+  const [{ rule, cards }, at] = await Promise.all([drawnCards($), read($, ringAtom)])
+  const next = Object.values(cardButtons(key)).includes(at) ? ringAfterSeen(cards, rule, key) : null
+  const before = cardsDrawn(rule)
+  await markSeen($, { key })
+  if (next === null) {
+    return
+  }
+  // The drawn cards as the mark leaves them: those still listed, in their new order.
+  const marked = (await drawnCards($)).cards.map(card => card.key)
+  const until = (await $.clock.now()) + 2000
+  const now = async () => ({ at, ringNow: await read($, ringAtom), before, drawn: cardsDrawn(rule), marked, isTimeUp: (await $.clock.now()) >= until })
+  for (;;) {
+    // Asked for before looking, so a drawing that ends in between is not missed.
+    const drew = nextDraw()
+    const state = await now()
+    const step = handOver(state)
+    if (step === 'leave') {
+      return
+    }
+    if (step === 'move') {
+      break
+    }
+    await Promise.race([drew, $.clock.sleep(Math.max(0, until - (await $.clock.now())))])
+  }
+  // The drawing leaves only after this resumes, as going back from a page finds.
+  await $.clock.sleep(50)
+  if (handOver({ ...(await now()), isTimeUp: true }) === 'move') {
+    await ringTo($, next)
+  }
+}
 
 export function readScrolling($: EngineInterface): Promise<Scrolling> {
   return read($, scrollingAtom)

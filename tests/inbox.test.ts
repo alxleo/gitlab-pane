@@ -120,6 +120,10 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
     await ui.press(opens)
     await ui.press({ key: `inbox-less-${hashOf('gitlab.com/g/p!1')}` })
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
+    // s marks the open tab seen while the pane holds the keyboard; the terminal, where that is proven, says so on the button.
+    const allSeen = await ui.find({ type: 'Button', key: 'inbox-seen-rule-on-my-mrs' })
+    expect(allSeen?.props['hotkey']).toBe('s')
+    expect(allSeen?.props['label']).toBe(surface === 'terminal' ? '✓ mark all seen (s)' : '✓ mark all seen')
     await ui.press({ key: 'inbox-rule-on-my-mrs' })
     await ui.press({ key: 'tab-mine' })
     await ui.unmount()

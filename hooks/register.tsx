@@ -12,7 +12,7 @@ import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
-import { bandOf, forgetScrolling, openInbox, openPane, readScrolling } from './panes'
+import { bandOf, forgetScrolling, noteRing, openInbox, openPane, readScrolling, stepRing } from './panes'
 import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
@@ -132,6 +132,22 @@ export const register: Register = (on, options) => {
       .catch(() => undefined)
     return ran
   }).catch(($, e, next) => next(e))
+
+  // On the inbox an arrow moves the focus ring a card at a time instead of scrolling a row; Enter presses the card's title.
+  // Which scrolls are arrows is `arrowSteps` in inbox-ring.ts.
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    const scroll = { isPerson: e.origin.kind === 'person', hasPointer: e.pointer !== undefined, by: e.by, bodyRows: e.bodyRows }
+    return (await stepRing($, scroll)) ? {} : next(e)
+  }).catch(($, e, next) => next(e))
+  // Where the ring lands, the person's move or the mod's, so the next arrow knows where it is. Failing to note it costs
+  // only that the next arrow starts from where the ring was before.
+  on('ui.focus', { requestId: PANE }, async ($, e, next) => {
+    const moved = await next(e)
+    if (moved.deny === undefined) {
+      await noteRing($, e.element ?? '').catch(() => undefined)
+    }
+    return moved
+  })
 
   // The band above the prompt, in every session: the inbox news while the pane's tabs do not say it. Otherwise the band is
   // passed on, so a survey or another mod has it. Pressed, it opens the pane on the Inbox tab.
