@@ -8,9 +8,13 @@ import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
+import { MERGED_ROW_SIZE, mergedModel } from './landed-model.ts'
+import type { MergedModel } from './landed-model.ts'
 import { pinKey } from './mr-url.ts'
 import { nextMove } from './next-move.ts'
 import type { Move } from './next-move.ts'
+import { footerOf, statusOf } from './pane-status.ts'
+import type { PaneLine } from './pane-status.ts'
 import { keptRepo, repoFilterOf } from './repo-filter.ts'
 import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
@@ -20,7 +24,7 @@ import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
+import type { Landed, MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
@@ -99,13 +103,15 @@ export type PaneInput = {
   pinned: readonly Pinned[]
   usual: Readonly<Record<string, Usual>>
   browse: string
-  /** `drafts`, `more`, `parked` and `others` while those folds are open. */
+  /** `drafts`, `more`, `parked`, `others` and `merged` while those folds are open. */
   expanded: readonly string[]
   repoFilter: string
   /** Which view is drawn: only the MR list builds rows. */
   view: 'mine' | 'inbox' | 'reading'
   /** MRs with news: how many the inbox shows, and the keys of all of them, in every repo, Mine's or not. */
   news: { count: number; keys: readonly string[] }
+  /** The user's MRs merged lately, as the inbox's read kept them: not cards, so nothing that orders or counts the list sees them. */
+  landed: readonly Landed[]
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
@@ -135,45 +141,19 @@ export type PaneModel = {
   firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
+  /** Last in Mine, folded: the user's MRs merged lately with the builds on their target branch; none when there are none to show. */
+  merged: MergedModel | null
   /** Beside the tabs, quietly: how old the cards are. */
-  status: { text: string; isWarning: boolean }
+  status: PaneLine
   /**
    * Whether this session is reading GitLab or the inbox now: ↻ is drawn dim meanwhile, as the pane has no spinner. ↻ is only
    * ever the press, so the age beside it carries no mark of its own.
    */
   isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
-  footer: { text: string; isWarning: boolean }
+  footer: PaneLine
   /** Whether a raised MR wakes Claude: the bell drawn, struck through when off. */
   wake: '🔔' | '🔕'
-}
-
-const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
-
-function statusOf(poll: PollState, now: number): PaneModel['status'] {
-  const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
-  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's.
-  const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : hasStale ? '' : 'reading GitLab…'
-  return { text: age, isWarning: hasStale }
-}
-
-function footerOf(poll: PollState, now: number): PaneModel['footer'] {
-  const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
-  // A read that kept no status per host (nothing yet to say of any) speaks of GitLab as one.
-  const statuses = Object.entries(Object.keys(poll.hosts).length > 0 ? poll.hosts : { '': { fetchedAt: poll.fetchedAt, error: poll.error } })
-  const stale = statuses.filter(([, status]) => status.error !== null)
-  const fresh = statuses.filter(([, status]) => status.error === null && status.fetchedAt !== null)
-  const named = (host: string, text: string) => (statuses.length > 1 ? `${host}: ${text}` : text)
-  const keptNote = (poll.kept ?? 0) > 0 ? `${plural(poll.kept ?? 0, 'MR')} kept from the last read` : ''
-  const failed = stale.map(([host, status]) => {
-    const old = age(status.fetchedAt)
-    return `${named(host, status.error ?? '')}${old !== null ? `; showing ${old} old data` : ''}`
-  })
-  // With several hosts a stale one is told with the age of its own data, and the fresh ones beside it.
-  const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
-  // How old the cards are is said beside the tabs; down here only what went wrong, or what the read left out.
-  const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : keptNote
-  return { text, isWarning: stale.length > 0 }
 }
 
 /** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
@@ -328,8 +308,14 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     return { card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }
   })
 
-  // Each piece is measured at most once, and a row not tried is never drawn.
-  let room = budget.room
+  const merged =
+    input.view === 'mine'
+      ? mergedModel(input.landed, { cardKeys: new Set(rows.map(row => row.key)), repoFilter: input.repoFilter, isOpen: input.expanded.includes('merged'), now })
+      : null
+
+  // Each piece is measured at most once, and a row not tried is never drawn. An open merged section is drawn after the list,
+  // so the list leaves it the room its rows may take.
+  let room = budget.room - (merged?.rows.length ?? 0) * MERGED_ROW_SIZE
   const fits = (size: number, instead = 0): boolean => {
     const need = size - instead
     if (need > room) {
@@ -386,6 +372,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
       built.length - finished.size > 0
         ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 && input.repoFilter === '' ? '; pick a repo above to see them' : ''}.`
         : null,
+    merged,
     status: statusOf(input.poll, now),
     isRefreshing: input.isReading || input.isSyncing,
     footer: footerOf(input.poll, now),

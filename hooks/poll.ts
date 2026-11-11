@@ -168,7 +168,7 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
       now: startedAt,
     })
   )
-  const [reads] = await Promise.all([readGitLab($, inputs), inboxPass($, hosts, isInboxRead, startedAt)])
+  const [reads] = await Promise.all([readGitLab($, inputs), inboxPass($, hosts, isInboxRead, startedAt, isFresh)])
   // With several hosts, each failure says whose it is.
   const labelled = (host: string, one: Failure) => new Failure(one.kind, hosts.length > 1 ? `${host}: ${one.message}` : one.message)
   const failures = reads.flatMap(read => ('failure' in read ? [labelled(read.host, read.failure)] : []))
@@ -272,7 +272,7 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   } else {
     quietly($, refreshDetails($))
   }
-  await inboxPass($, await readHosts($), isInboxRead, now)
+  await inboxPass($, await readHosts($), isInboxRead, now, false)
 }
 
 /** A follower's turn: draws the snapshot when it has a version it has not drawn, and the leader's inbox (`followInboxTick`). */

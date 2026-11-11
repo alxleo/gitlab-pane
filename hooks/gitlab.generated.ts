@@ -531,6 +531,8 @@ export type InboxNoteActionFieldsFragment = { systemNoteMetadata: { action: stri
 
 export type InboxMergedByFieldsFragment = { mergedAt: string | null; mergeUser: { username: string; name: string } | null }
 
+export type InboxLandedFieldsFragment = { targetBranch: string; mergeCommitSha: string | null; diffHeadSha: string | null }
+
 export type InboxTodosQueryVariables = Exact<{ [key: string]: never }>
 
 export type InboxTodosQuery = {
@@ -669,6 +671,9 @@ export type InboxAuthoredQuery = {
         draft: boolean
         createdAt: string
         mergedAt: string | null
+        targetBranch: string
+        mergeCommitSha: string | null
+        diffHeadSha: string | null
         author: { username: string; name: string } | null
         project: { fullPath: string }
         mergeUser: { username: string; name: string } | null
@@ -800,6 +805,19 @@ export type InboxBriefQuery = {
       author: { username: string; name: string } | null
       project: { fullPath: string }
     } | null
+  } | null
+}
+
+export type LandedQueryVariables = Exact<{
+  path: string
+  sha: string
+  ref: string
+}>
+
+export type LandedQuery = {
+  project: {
+    pipelines: { nodes: Array<{ id: string; status: PipelineStatusEnum; path: string | null } | null> | null } | null
+    scheduled: { nodes: Array<{ id: string } | null> | null } | null
   } | null
 }
 

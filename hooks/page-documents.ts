@@ -1,7 +1,7 @@
 // The GraphQL documents only an MR's page sends, the requests built from them, and what their answers make of a card:
 // what the page needs to answer a thread, and the reply itself. gitlab-documents.ts lists them in DOCUMENTS with the
 // rest, and graphql-codegen reads them here for the types in gitlab.generated.ts.
-import { isFilled, isSome } from './decode.ts'
+import { isFilled, isSome, present } from './decode.ts'
 import type { ReplyMutation, ReplyMutationVariables, ThreadsPlainQuery, ThreadsQuery, ThreadsQueryVariables } from './gitlab.generated.ts'
 import type { RawResponse, Request } from './gitlab-documents.ts'
 import { hunkOf } from './reply-model.ts'
@@ -75,8 +75,6 @@ export const replyMutation = (mr: string, thread: string, body: string): Request
   query: PAGE_DOCUMENTS.Reply,
   variables: { mr, thread, body } satisfies ReplyMutationVariables,
 })
-
-const present = <T>(nodes: readonly (T | null)[] | null | undefined): T[] => (nodes ?? []).filter(node => node !== null)
 
 /** A thread's diff lines; a host asked without them (`ThreadsPlain`) sends none. */
 const linesOf = (thread: { replyId: string; truncatedDiffLines?: readonly DiffLine[] | null }): readonly DiffLine[] => thread.truncatedDiffLines ?? []

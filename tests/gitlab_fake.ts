@@ -17,6 +17,7 @@ const NOTHING = {
   InboxTodos: { data: { currentUser: { username: 'me', todos: { nodes: [] } } } },
   InboxQueue: { data: { currentUser: { username: 'me', reviewRequestedMergeRequests: { nodes: [] } } } },
   InboxAuthored: { data: { currentUser: { username: 'me', opened: { nodes: [] }, merged: { nodes: [] } } } },
+  Landed: { data: { project: { pipelines: { nodes: [] } } } },
 } as const
 
 /** What `$.http.fetch` resolves with. */
@@ -116,6 +117,22 @@ export function rebased(url: string, init: { method?: string; headers?: Record<s
   return { host: match[1], path: decodeURIComponent(match[2]), iid: match[3], token: header?.replace(/^Bearer /u, '') }
 }
 
+/** An MR read on the REST API: the host, and the project path and MR number it names. */
+export type Read = { host: string; path: string; iid: string; token: string | undefined }
+
+/** The request `$.http.fetch(url, init)` is given, read as a GET of one MR's REST entity, or none when it is something else. */
+export function mergeRequestRead(url: string, init: { method?: string; headers?: Record<string, string> } | undefined): Read | null {
+  const match = /^https:\/\/([^/]+)\/api\/v4\/projects\/([^/]+)\/merge_requests\/(\d+)$/u.exec(url)
+  if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+    return null
+  }
+  if (init?.method !== 'GET') {
+    throw new Error(`the pane read a merge request with ${init?.method ?? 'no method'}`)
+  }
+  const header = Object.entries(init.headers ?? {}).find(([name]) => name.toLowerCase() === 'authorization')?.[1]
+  return { host: match[1], path: decodeURIComponent(match[2]), iid: match[3], token: header?.replace(/^Bearer /u, '') }
+}
+
 /**
  * What a GitLab host answers a request: 401 unless the bearer is the token that host accepts, else the test's answer to the
  * operation.
@@ -154,6 +171,8 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, answers.InboxQueue !== undefined ? answers.InboxQueue({}) : NOTHING.InboxQueue)
     case 'InboxAuthored':
       return reply(200, answers.InboxAuthored !== undefined ? answers.InboxAuthored({ since: need(variables, 'since') }) : NOTHING.InboxAuthored)
+    case 'Landed':
+      return reply(200, answers.Landed !== undefined ? answers.Landed({ path: need(variables, 'path'), sha: need(variables, 'sha'), ref: need(variables, 'ref') }) : NOTHING.Landed)
     case 'InboxFollowUser':
       return reply(
         200,
