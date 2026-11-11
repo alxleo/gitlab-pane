@@ -2,17 +2,17 @@ import type { EngineInterface } from 'claude-code'
 
 import { asFailure, together } from './failure'
 import type { Failure } from './failure'
-import type { InboxAuthoredQuery } from './gitlab.generated'
 import { ask, askRest } from './graphql'
 import { landedQuery } from './inbox-requests'
-import { buildOf, isDue, keptFor, landedOf, landingOf, mergeRequestPath, mergedLately, squashShaOf } from './landed'
+import { buildOf, isDue, keptFor, landedOf, landingOf, mergeRequestPath, squashShaOf } from './landed'
 import type { Merged } from './landed'
 
 import type { Landed } from '../types'
 
-// What the leader asks GitLab of the user's MRs merged lately, beside the inbox's own documents: the squash commit of a merge
-// that has no merge commit (REST, once, kept for good) and the build of the commit that landed (one small query an MR, until it
-// finishes). What each answer means, and what is still due, is landed.ts's to decide; this file sends and keeps what it decides.
+// What the leader asks GitLab of the user's MRs merged lately, after the inbox's own documents are in and shown: the squash
+// commit of a merge that has no merge commit (REST, once, kept for good) and the build of the commit that landed (one small
+// query an MR, until it ends). What each answer means, and what is still due, is landed.ts's to decide; this file sends and
+// keeps what it decides.
 
 /** The commit a merge put on its target branch: told by the inbox's answer, or asked of REST when that has no merge commit. */
 async function shaOf($: EngineInterface, merged: Merged): Promise<string | null> {
@@ -60,20 +60,18 @@ async function landedFor($: EngineInterface, merged: Merged, kept: Landed | unde
 }
 
 /**
- * The user's MRs merged lately on a host, from the inbox's answer, each with its commit and build as far as GitLab has said
- * them; `previous` is what the last read kept, and `isAsked` that a person pressed ↻. A failure comes beside the entries, which
- * are then as they were, and `isHeld` says an earlier failure still stands: the MR it was of is not asked again yet.
+ * The user's MRs merged lately, each with its commit and build as far as GitLab has said them; `previous` is what the last read
+ * kept, and `isAsked` that a person pressed ↻. A failure comes beside the entries, which are then as they were, and `isHeld`
+ * says an earlier failure still stands: the MR it was of is not asked again yet.
  */
 export async function readLanded(
   $: EngineInterface,
-  host: string,
-  data: InboxAuthoredQuery | null,
+  lately: readonly Merged[],
   previous: readonly Landed[],
   now: number,
   isAsked: boolean
 ): Promise<{ landed: Landed[]; failure: Failure | null; isHeld: boolean }> {
   const failures: Failure[] = []
-  const lately = mergedLately(host, data, now)
   const landed = await Promise.all(lately.map(merged => landedFor($, merged, keptFor(previous, merged), now, isAsked, failures)))
   const isHeld = lately.some(merged => {
     const kept = keptFor(previous, merged)

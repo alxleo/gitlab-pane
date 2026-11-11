@@ -214,3 +214,23 @@ export const keptLanded = (value: unknown): Landed[] => (Array.isArray(value) ? 
 /** The entry kept for an MR, by its host, project and number. */
 export const keptFor = (kept: readonly Landed[], merged: Pick<Merged, 'host' | 'path' | 'iid'>): Landed | undefined =>
   kept.find(one => one.host === merged.host && one.path === merged.path && one.iid === merged.iid)
+
+/** What one host's inbox answer said of the MRs merged lately: none when the document that tells it failed. */
+export type Lately = { host: string; merged: readonly Merged[] | null }
+
+/**
+ * The entries for what the inbox says merged lately, before GitLab is asked of any: each as far as `kept` knows its commit and
+ * build, so that the list is there at once and the asking fills it in. A host whose document failed keeps the entries it had.
+ */
+export const knownLanded = (lately: readonly Lately[], kept: readonly Landed[]): Landed[] =>
+  lately.flatMap(one =>
+    one.merged === null
+      ? kept.filter(each => each.host === one.host)
+      : one.merged.map(merged => {
+          const was = keptFor(kept, merged)
+          return landedOf(merged, was?.sha ?? null, was?.build ?? null, was?.checkedAt ?? null)
+        })
+  )
+
+/** `kept` with each entry `found` has one for put in its place; an MR that is no longer on the list is not brought back by a late answer. */
+export const withLanded = (kept: readonly Landed[], found: readonly Landed[]): Landed[] => kept.map(each => keptFor(found, each) ?? each)

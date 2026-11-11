@@ -36,7 +36,7 @@ const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
 /** The host with `world` behind it, and `mine` as your open MRs on Mine; every call is in `requests`. The token comes from the environment. */
-function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>, mine: Mr[] = []) {
+function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: (operation: string) => Promise<void>, mine: Mr[] = []) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
   const { store, panes, surfaces, unreadable } = fakeSession(on)
   const gitlab = fakeGitLab(
@@ -778,6 +778,42 @@ test('the leader keeps the merged MRs and their builds in the snapshot it shares
     [12, SQUASH_COMMIT, 'failed'],
     [13, HEAD_PLAIN, 'running'],
   ])
+  await ui.unmount()
+})
+
+test('a build GitLab is slow to answer holds back no to-do and no card, the merged list is there without it, and the answer fills it in', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = {
+    ...emptyWorld(),
+    opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])],
+    merged: [merged(11, 30, { mergeCommitSha: MERGE_COMMIT })],
+    pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 101, status: 'FAILED' }],
+  }
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const kit = engine(on, world, true, REMOTE, operation => (operation === 'Landed' ? answered : Promise.resolve()), [rawMr(5, { headPipeline: pipe('RUNNING') })])
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // The build was asked for and is not answered; the to-do, your own MR and the merged one are all there.
+  expect(kit.requests.filter(request => request.endsWith(' Landed'))).toHaveLength(1)
+  expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 1 new"')
+  expect((await ui.findAll({ type: 'Button' })).some(button => button.key?.startsWith('open-5-') === true)).toBe(true)
+  expect(await foldOf(ui)).toBe('▸ 1 merged')
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Text', text: 'build unknown' }))?.text).toBe('build unknown')
+  // What the inbox is, is shared at once, with what was known of the merged MR.
+  expect(readSnapshot(kit.store.get('inbox-snapshot'))?.landed.map(each => [each.iid, each.build])).toEqual([[11, null]])
+  // The answer comes, and the same list has its build, drawn and shared.
+  answer()
+  await clock.advance(1_000)
+  expect(await foldOf(ui)).toBe('▾ 1 merged')
+  await ui.press({ key: 'merged' })
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  expect(readSnapshot(kit.store.get('inbox-snapshot'))?.landed.map(each => [each.iid, each.build?.status])).toEqual([[11, 'failed']])
   await ui.unmount()
 })
 

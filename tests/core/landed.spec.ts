@@ -10,10 +10,12 @@ import {
   buildOf,
   isDue,
   keptLanded,
+  knownLanded,
   landingOf,
   mergeRequestPath,
   mergedLately,
   squashShaOf,
+  withLanded,
 } from '../../hooks/landed.ts'
 import { NOW } from '../fixtures.ts'
 
@@ -220,4 +222,37 @@ test('a stored list keeps the entries that are one, and an older snapshot with n
       { ...good, sha: 7 },
     ])
   ).toEqual([])
+})
+
+// ---- the list before GitLab is asked, and the answer put into it ---------------------------------------------------------
+
+const lately = (iid: number, minutes: number) => mergedLately('gitlab.com', answer(raw(iid, minutes, { mergeCommitSha: MERGE })), NOW)
+
+test('the list the inbox gives is there before GitLab is asked, each MR with what was kept of its commit and build and none with what was not', () => {
+  const kept = [entry({ iid: 1, build: built('failed'), checkedAt: NOW - 5 * 60_000 })]
+  const known = knownLanded([{ host: 'gitlab.com', merged: [...lately(1, 30), ...lately(2, 20)] }], kept)
+  expect(known.map(each => [each.iid, each.sha, each.build?.status ?? null, each.checkedAt])).toEqual([
+    [1, MERGE, 'failed', NOW - 5 * 60_000],
+    [2, null, null, null],
+  ])
+  // What the inbox says now of an MR is what is listed, not what was kept of it.
+  expect(known[0]?.title).toBe('feat: [ABC-1] thing 1')
+})
+
+test('a host whose inbox answer failed keeps the entries it had, and the others are as their answers say', () => {
+  const kept = [entry({ iid: 1 }), entry({ host: 'git.example.com', iid: 9, url: 'https://git.example.com/g/p/-/merge_requests/9' })]
+  const known = knownLanded(
+    [
+      { host: 'gitlab.com', merged: [] },
+      { host: 'git.example.com', merged: null },
+    ],
+    kept
+  )
+  expect(known.map(each => [each.host, each.iid])).toEqual([['git.example.com', 9]])
+})
+
+test('an answer is put in the place of the entry kept for its MR, and an MR the list has dropped meanwhile is not brought back', () => {
+  const kept = [entry({ iid: 1 }), entry({ iid: 2, build: built('running') })]
+  const found = [entry({ iid: 2, build: built('failed'), checkedAt: NOW }), entry({ iid: 3, build: built('success') })]
+  expect(withLanded(kept, found)).toEqual([entry({ iid: 1 }), entry({ iid: 2, build: built('failed'), checkedAt: NOW })])
 })
