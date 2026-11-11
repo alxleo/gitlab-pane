@@ -1,4 +1,4 @@
-import type { MergeRequestState, TodoActionEnum } from '../hooks/gitlab.generated'
+import type { MergeRequestState, PipelineStatusEnum, TodoActionEnum } from '../hooks/gitlab.generated'
 import { NOW } from './fixtures'
 import type { Answers } from './gitlab_fake'
 
@@ -19,7 +19,9 @@ export type Fields = {
 export type Note = { id: string; body: string; system: boolean; createdAt: string; author: Person & { bot: boolean }; systemNoteMetadata: { action: string } | null }
 export type OpenMr = Fields & { notes: { pageInfo: { hasPreviousPage: boolean }; nodes: Note[] } }
 export type QueueMr = OpenMr & { approvedBy: { nodes: { username: string }[] } }
-type MergedMr = Fields & { mergedAt: string; mergeUser: Person }
+export type MergedMr = Fields & { mergedAt: string; mergeUser: Person; targetBranch: string; mergeCommitSha: string | null; diffHeadSha: string | null }
+/** A pipeline GitLab has run, on a commit of a branch. */
+type PipelineRun = { sha: string; ref: string; id: number; status: PipelineStatusEnum }
 export type Todo = { action: TodoActionEnum; createdAt: string; body: string; targetUrl: string | null; author: Person; targetEntity: Fields }
 export type BriefMr = Fields & {
   description: string | null
@@ -35,6 +37,10 @@ export type World = {
   queue: QueueMr[]
   opened: OpenMr[]
   merged: MergedMr[]
+  /** The pipelines GitLab has run: the `Landed` document answers with the newest of the commit on the branch it names, as GitLab does. */
+  pipelines: PipelineRun[]
+  /** The squash commit each MR's REST entity names, by `<project path>!<iid>`; an MR not listed is not found. */
+  squashed: Record<string, string | null>
   /** What each followed person ('@name') or project holds; one not listed is one the host does not know. */
   followed: Record<string, { opened: { nodes: OpenMr[] }; merged: { nodes: MergedMr[] } }>
   briefs: Record<string, BriefMr | null>
@@ -91,7 +97,22 @@ export const todo = (action: TodoActionEnum, mr: Fields, who: string, minutes: n
   targetEntity: mr,
 })
 
-export const emptyWorld = (): World => ({ user: 'me', todos: [], queue: [], opened: [], merged: [], followed: {}, briefs: {}, isDown: false })
+export const emptyWorld = (): World => ({ user: 'me', todos: [], queue: [], opened: [], merged: [], pipelines: [], squashed: {}, followed: {}, briefs: {}, isDown: false })
+
+/**
+ * An MR of the user's merged `minutes` ago onto `main`. `landing` is how GitLab merged it: with a merge commit, or (none) as a
+ * fast-forward, which has the head the MR had.
+ */
+export const merged = (iid: number, minutes: number, landing: { mergeCommitSha?: string | null; diffHeadSha?: string | null } = {}, over: Partial<MergedMr> = {}): MergedMr => ({
+  ...fields(iid, ME, { state: 'merged' }),
+  mergedAt: MINUTES_AGO(minutes),
+  mergeUser: ME,
+  targetBranch: 'main',
+  mergeCommitSha: null,
+  diffHeadSha: null,
+  ...landing,
+  ...over,
+})
 
 /** A review request on p!2, three things said on your p!1: the inbox the first tests read. */
 export const busyWorld = (): World => ({
@@ -128,7 +149,7 @@ export const brief = (iid: number, over: Partial<BriefMr> = {}): BriefMr => ({
 /** GitLab's answers to the inbox documents (and the brief) as `world` holds them; `isDown` is the network's, set on the fake host. */
 export const inboxAnswers = (
   world: World
-): Pick<Answers, 'InboxTodos' | 'InboxTodosPlain' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject'> => ({
+): Pick<Answers, 'InboxTodos' | 'InboxTodosPlain' | 'InboxQueue' | 'InboxAuthored' | 'InboxBrief' | 'InboxFollowUser' | 'InboxFollowProject' | 'Landed'> => ({
   InboxTodos: () =>
     world.isOlder !== true
       ? { data: { currentUser: { username: world.user, todos: { nodes: world.todos } } } }
@@ -141,4 +162,18 @@ export const inboxAnswers = (
   InboxFollowUser: variables => ({ data: { currentUser: { username: world.user }, user: world.followed[`@${variables.username}`] ?? null } }),
   InboxFollowProject: variables => ({ data: { currentUser: { username: world.user }, project: world.followed[variables.path] ?? null } }),
   InboxBrief: variables => ({ data: { project: { mergeRequest: world.briefs[`${variables.path}!${variables.iid}`] ?? null } } }),
+  // The newest pipeline of the commit on that branch alone: a commit also has the pipelines of the branches it was on.
+  Landed: ({ path, sha, ref }) => ({
+    data: {
+      project: {
+        pipelines: {
+          nodes: world.pipelines
+            .filter(each => each.sha === sha && each.ref === ref)
+            .toSorted((a, b) => b.id - a.id)
+            .slice(0, 1)
+            .map(each => ({ id: `gid://gitlab/Ci::Pipeline/${each.id}`, status: each.status, path: `/${path}/-/pipelines/${each.id}` })),
+        },
+      },
+    },
+  }),
 })

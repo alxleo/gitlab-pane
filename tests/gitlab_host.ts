@@ -1,7 +1,7 @@
 import { parseJson } from '../hooks/decode.ts'
 import type { On, RenderSurface } from 'claude-code'
 
-import { rebased, sent, serve, traced } from './gitlab_fake'
+import { mergeRequestRead, rebased, sent, serve, traced } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 
 /** What `$.process.run` resolves with. */
@@ -84,6 +84,8 @@ export type FakeHost = {
   onRebase?: (path: string, iid: string) => void
   /** Refuses every rebase with HTTP 403, as GitLab does a token or a person that may not push to the branch. */
   refusesRebase?: boolean
+  /** The REST entity of an MR: what its squash commit is, or null when it was not squashed; none for an MR that is not found. */
+  mergeRequests?: (path: string, iid: string) => { squash_commit_sha: string | null } | undefined
 }
 
 export type FakeWorld = {
@@ -136,6 +138,21 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
       }
       return {
         value: { status: isAccepted ? 202 : 401, ok: isAccepted, headers: {}, text: JSON.stringify(isAccepted ? { rebase_in_progress: true } : { message: '401 Unauthorized' }) },
+      }
+    }
+    const entity = mergeRequestRead(e.url, e.init)
+    if (entity !== null) {
+      requests.push(`${entity.host} merge-request ${entity.path}!${entity.iid}`)
+      tokens.push(`${entity.host} ${entity.token ?? ''}`)
+      const isAccepted = entity.token !== undefined && entity.token === hosts[entity.host]?.accepts
+      const found = hosts[entity.host]?.mergeRequests?.(entity.path, entity.iid)
+      return {
+        value: {
+          status: !isAccepted ? 401 : found === undefined ? 404 : 200,
+          ok: isAccepted && found !== undefined,
+          headers: {},
+          text: JSON.stringify(!isAccepted ? { message: '401 Unauthorized' } : (found ?? { message: '404 Not found' })),
+        },
       }
     }
     const request = sent(e.url, e.init)

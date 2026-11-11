@@ -47,6 +47,8 @@ test('what the outside tools print is checked, not cast', async () => {
         signals: [{ kind: 'merged', actor: '', at: 5, note: null, excerpt: '' }],
       },
     ],
+    // One kept before merged MRs were listed has none, which reads as none merged.
+    landed: [],
   })
   expect(readSnapshot({ at: 'soon', hosts: {}, mrs: [] })).toBeNull()
   expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })

@@ -65,8 +65,8 @@ const ROOT = join(import.meta.dirname, '..')
 const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
 const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
-/** The files graphql-codegen reads documents from: DOCUMENTS's, and those on merging an MR, kept apart. */
-const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-gitlab.ts'), join(ROOT, 'hooks', 'page-documents.ts')]
+/** The files graphql-codegen reads documents from: DOCUMENTS's, and those on merging an MR, an MR's page and the inbox, kept apart. */
+const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-gitlab.ts'), join(ROOT, 'hooks', 'page-documents.ts'), join(ROOT, 'hooks', 'inbox-documents.ts')]
 const ENDPOINT = 'https://gitlab.com/api/graphql'
 /**
  * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has
@@ -219,6 +219,8 @@ const SAMPLE_VARIABLES: Readonly<Record<string, string>> = {
   after: '2026-01-01T00:00:00Z',
   state: 'opened',
   username: 'root',
+  sha: '0000000000000000000000000000000000000000',
+  ref: 'main',
 }
 
 /** GitLab refuses a burst of requests with 429; the schedule is weekly, so waiting out a few is cheap. */

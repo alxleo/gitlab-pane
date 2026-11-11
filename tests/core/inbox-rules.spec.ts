@@ -42,7 +42,10 @@ const mr = (iid: number, signals: InboxSignal[], over: Partial<InboxMr> = {}): I
   ...over,
 })
 
-const snapshot = (mrs: InboxMr[], hosts: InboxSnapshot['hosts'] = { 'gitlab.com': { user: 'me', failure: null } }): InboxSnapshot => ({ at: NOW, hosts, mrs })
+const snapshot = (mrs: InboxMr[], hosts: InboxSnapshot['hosts'] = { 'gitlab.com': { user: 'me', failure: null } }): InboxSnapshot => ({ at: NOW, hosts, mrs, landed: [] })
+
+/** What the user's own merged MRs carry beside who merged them, which the inbox's rules do not read. */
+const LANDING = { targetBranch: 'main', mergeCommitSha: null, diffHeadSha: null }
 
 const itemsOf = (sections: ReturnType<typeof sectionsOf>, rule: string) => sections.find(section => section.rule === rule)?.items.map(item => item.key)
 
@@ -121,10 +124,10 @@ test('a host that did not answer keeps what it last said, with the reason; one t
     'b.com': { user: 'me', failure: null },
   })
   const down = { user: null, failure: { kind: 'network' as const, message: 'b.com failed' } }
-  const now = carryOver(was, { at: NOW + 1, hosts: { 'a.com': { user: 'me', failure: null }, 'b.com': down }, mrs: [] })
+  const now = carryOver(was, { at: NOW + 1, hosts: { 'a.com': { user: 'me', failure: null }, 'b.com': down }, mrs: [], landed: [] })
   expect(now.mrs.map(one => one.host)).toEqual(['b.com'])
   expect(now.hosts['b.com']).toEqual({ user: 'me', failure: down.failure })
-  const partly = { at: NOW + 1, hosts: { 'a.com': { user: 'me', failure: null }, 'b.com': { user: 'me', failure: down.failure } }, mrs: [] }
+  const partly = { at: NOW + 1, hosts: { 'a.com': { user: 'me', failure: null }, 'b.com': { user: 'me', failure: down.failure } }, mrs: [], landed: [] }
   expect(carryOver(was, partly)).toEqual(partly)
   expect(problemOf(now)).toBe('b.com: b.com failed')
   expect(problemOf(snapshot([]))).toBeNull()
@@ -190,8 +193,8 @@ test('the notes on your MR become approvals, reviews, pushes and comments by oth
         },
         merged: {
           nodes: [
-            { ...fields(2, 'me'), mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } },
-            { ...fields(3, 'me'), mergedAt: ISO(6), mergeUser: { username: 'me', name: 'Me' } },
+            { ...fields(2, 'me'), ...LANDING, mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } },
+            { ...fields(3, 'me'), ...LANDING, mergedAt: ISO(6), mergeUser: { username: 'me', name: 'Me' } },
           ],
         },
       },
@@ -319,6 +322,28 @@ test('the snapshot the leader stores is bounded: fifty MRs of ten events stay un
   expect(readSnapshot(null)).toBeNull()
 })
 
+test('a snapshot kept before merged MRs were listed reads as none merged, and a list keeps the entries that are entries', () => {
+  const entry = {
+    host: 'gitlab.com',
+    path: 'g/p',
+    iid: 3,
+    title: 'thing',
+    url: 'https://gitlab.com/g/p/-/merge_requests/3',
+    mergedAt: NOW,
+    targetBranch: 'main',
+    sha: 'a'.repeat(40),
+    build: { status: 'failed' as const, url: 'https://gitlab.com/g/p/-/pipelines/9' },
+    checkedAt: NOW,
+  }
+  const { landed: _none, ...older } = snapshot([])
+  expect(readSnapshot(parseJson(JSON.stringify(older)))).toEqual(snapshot([]))
+  expect(readSnapshot(parseJson(JSON.stringify({ ...older, landed: [entry, { ...entry, iid: 'four' }] })))?.landed).toEqual([entry])
+  // The silent host's merged MRs are the read's to keep (`readInbox` carries them), so carrying over leaves them as they are.
+  const was = snapshot([], { 'a.com': { user: 'me', failure: null } })
+  const down = { at: NOW + 1, hosts: { 'a.com': { user: null, failure: { kind: 'network' as const, message: 'a.com failed' } } }, mrs: [], landed: [entry] }
+  expect(carryOver(was, down).landed).toEqual([entry])
+})
+
 // ---- /mrs ----------------------------------------------------------------------------------------------------------------
 
 test("references name an MR by its path from the end, and a git remote names the session's repo", () => {
@@ -426,7 +451,7 @@ test("an actor's name is cut between characters, in a note and in a merge", () =
       currentUser: {
         username: 'me',
         opened: { nodes: [{ ...fields(1, 'me'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 10, name, 'hello')] } }] },
-        merged: { nodes: [{ ...fields(2, 'me'), mergedAt: ISO(5), mergeUser: { username: name, name: 'Una' } }] },
+        merged: { nodes: [{ ...fields(2, 'me'), ...LANDING, mergedAt: ISO(5), mergeUser: { username: name, name: 'Una' } }] },
       },
     },
     NOW
@@ -536,6 +561,7 @@ test('the read of the user’s MRs also names the user and every MR of theirs me
             createdAt: '',
             author: null,
             project: { fullPath: 'g/p' },
+            ...LANDING,
             mergedAt: null,
             mergeUser: null,
           },
