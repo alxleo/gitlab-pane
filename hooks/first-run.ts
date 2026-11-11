@@ -9,6 +9,7 @@ const NAMES: Record<ProblemSource, string> = {
   usual: 'Pipeline times',
   avatars: 'Pictures',
   inbox: 'Inbox',
+  merged: 'Merged builds',
   pane: 'Pane',
   store: 'Shared store',
 }

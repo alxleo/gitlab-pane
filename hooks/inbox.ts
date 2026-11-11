@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { readHosts } from './data'
 import { isEqual } from './equal'
-import { Failure, kindOf, messageOf } from './failure'
+import { Failure, kindOf, messageOf, together } from './failure'
 import { clear, quietly, record, reported } from './failures'
 import { ask } from './graphql'
 import { inboxBriefQuery } from './inbox-requests'
@@ -71,6 +71,9 @@ async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<
   const before = keptLanded(shown.snapshot.landed)
   const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows, before)) })))
   const listed = reads.flatMap(one => one.found.mrs)
+  // A merged MR's commit or build that could not be asked for leaves the inbox whole: it is a problem of its own for `/gitlab`.
+  const unasked = reads.flatMap(one => (one.landedFailure !== null ? [one.landedFailure] : []))
+  await (unasked.length > 0 ? record($, 'merged', together(unasked)) : clear($, 'merged'))
   const snapshot: InboxSnapshot = {
     at: now,
     hosts: Object.fromEntries(reads.map(one => [one.host, { user: one.found.user, failure: one.failure }])),
