@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/alxleo/gitlab-pane/compare/v0.4.3...v0.4.4) (2026-11-11)
+
+
+### Bug Fixes
+
+* **merge:** squash as GitLab will, so a project that always squashes merges from the pane ([#107](https://github.com/alxleo/gitlab-pane/issues/107)) ([c242c3c](https://github.com/alxleo/gitlab-pane/commit/c242c3ccee57dd5db0d84051f18b5b52b5dee4f1))
+
 ## [0.4.3](https://github.com/alxleo/gitlab-pane/compare/v0.4.2...v0.4.3) (2026-11-11)
 
 
