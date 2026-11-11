@@ -26,15 +26,17 @@ export const MERGE_STATUS = /* GraphQL */ `
 // What a move needs just before it is made, and after a rebase until it is done: one MR, read fresh.
 export const MOVE_STATE = /* GraphQL */ `
   query MoveState($path: ID!, $iid: String!) {
-    project(fullPath: $path) { mergeRequest(iid: $iid) { state detailedMergeStatus diffHeadSha rebaseCommitSha rebaseInProgress autoMergeEnabled mergeError availableAutoMergeStrategies } }
+    project(fullPath: $path) { mergeRequest(iid: $iid) { state detailedMergeStatus diffHeadSha rebaseCommitSha rebaseInProgress autoMergeEnabled mergeError availableAutoMergeStrategies squashOnMerge } }
   }
 `
 
 // A write: never scored, since scoring sends the document. The head is the one the verdict was read on, and GitLab
-// refuses the merge if the branch has moved since. Squashing and removing the source branch are the MR's own settings.
+// refuses the merge if the branch has moved since. `squash` is always sent: left out, GitLab takes it as false and writes
+// that onto the MR, so a project that always squashes refuses the merge, and an MR whose own flag is on merges unsquashed.
+// Removing the source branch, left out, is the MR's own setting.
 export const MERGE = /* GraphQL */ `
-  mutation Merge($path: ID!, $iid: String!, $sha: String!, $strategy: MergeStrategyEnum) {
-    mergeRequestAccept(input: { projectPath: $path, iid: $iid, sha: $sha, strategy: $strategy }) { errors mergeRequest { state mergeError } }
+  mutation Merge($path: ID!, $iid: String!, $sha: String!, $strategy: MergeStrategyEnum, $squash: Boolean!) {
+    mergeRequestAccept(input: { projectPath: $path, iid: $iid, sha: $sha, strategy: $strategy, squash: $squash }) { errors mergeRequest { state mergeError } }
   }
 `
 
@@ -61,11 +63,14 @@ export const moveStateQuery = (path: string, iid: number): Request<MoveStateQuer
   variables: { path, iid: String(iid) } satisfies MoveStateQueryVariables,
 })
 
-/** Merges the MR at `sha`, the head its verdict was read on, by `strategy` where GitLab gives one (a merge train, or once its checks pass). */
-export const mergeWrite = (path: string, iid: number, sha: string, strategy: MergeStrategyEnum | null): Request<MergeMutation> => ({
+/**
+ * Merges the MR at `sha`, the head its verdict was read on, by `strategy` where GitLab gives one (a merge train, or once its
+ * checks pass), squashed when GitLab said it would squash it.
+ */
+export const mergeWrite = (path: string, iid: number, sha: string, strategy: MergeStrategyEnum | null, squash: boolean): Request<MergeMutation> => ({
   operation: 'Merge',
   query: MERGE,
-  variables: { path, iid: String(iid), sha, ...(strategy !== null ? { strategy } : {}) } satisfies MergeMutationVariables,
+  variables: { path, iid: String(iid), sha, squash, ...(strategy !== null ? { strategy } : {}) } satisfies MergeMutationVariables,
 })
 
 /** The REST path that starts a rebase of the MR; GitLab answers `202 {"rebase_in_progress": true}` when it takes it. */
@@ -84,6 +89,7 @@ export function readMoveState(response: RawResponse<MoveStateQuery>): Fresh | nu
         isAutoMerging: raw.autoMergeEnabled,
         mergeError: raw.mergeError,
         strategies: raw.availableAutoMergeStrategies ?? [],
+        squash: raw.squashOnMerge,
       }
     : null
 }

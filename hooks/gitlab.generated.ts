@@ -102,6 +102,8 @@ export type TodoActionEnum =
   | 'merge_train_removed'
   | 'okr_checkin_requested'
   | 'orbit_access_granted'
+  | 'review_approved'
+  | 'review_changes_requested'
   | 'review_requested'
   | 'review_submitted'
   | 'ssh_key_expired'
@@ -835,6 +837,7 @@ export type MoveStateQuery = {
       autoMergeEnabled: boolean
       mergeError: string | null
       availableAutoMergeStrategies: Array<string> | null
+      squashOnMerge: boolean
     } | null
   } | null
 }
@@ -844,6 +847,7 @@ export type MergeMutationVariables = Exact<{
   iid: string
   sha: string
   strategy?: MergeStrategyEnum | null | undefined
+  squash: boolean
 }>
 
 export type MergeMutation = { mergeRequestAccept: { errors: Array<string>; mergeRequest: { state: MergeRequestState; mergeError: string | null } | null } | null }

@@ -112,6 +112,8 @@ export type Mr = MrFieldsFragment & {
     /** What a fresh read of one MR (`MoveState`) says beside: the last rebase's commit and the last merge error. */
     rebaseCommitSha: string | null
     mergeError: string | null
+    /** Whether GitLab will squash it on merging (`squashOnMerge`): the project's rule where it has one, else the MR's own flag. */
+    squashOnMerge: boolean
   }>
 }
 
