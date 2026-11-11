@@ -1,6 +1,21 @@
 import { expect, test } from 'vitest'
 
-import { readTickets, readTransition, searchArgs, ticketQuery, transitionArgs } from '../../hooks/jira.ts'
+import { readTickets, readTransition, reviewedArgs, searchArgs, ticketQuery, transitionArgs } from '../../hooks/jira.ts'
+
+test('Jira is asked which tickets have ever been in a review status, each name quoted as JQL reads it', () => {
+  expect(reviewedArgs(['ABC-1', 'x) or 1=1'], ['In Review', 'Code "Review" \\ 2'])).toEqual([
+    'jira',
+    'workitem',
+    'search',
+    '--json',
+    '--fields',
+    'key,issuetype,status,summary',
+    '--limit',
+    '1',
+    '--jql',
+    'key in (ABC-1) AND status WAS IN ("In Review", "Code \\"Review\\" \\\\ 2")',
+  ])
+})
 
 test('acli’s answer to a move says for each ticket whether it moved, though acli exits 0 either way', () => {
   const answer = (status: string, message: string) => ({ results: [{ status, message, id: 'ABC-1' }], totalCount: 1 })

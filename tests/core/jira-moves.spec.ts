@@ -3,7 +3,22 @@ import { expect, test } from 'vitest'
 import { HOST, NOW, SELF_MANAGED, project, rawMr, reviewer } from '../fixtures.ts'
 
 import { toCard } from '../../hooks/gitlab.ts'
-import { MOVE_PREFIX, RETRY_MS, STEPS, afterSearch, endOf, endPass, failedAsks, isStillOpen, liveTargets, moveTargets, noStep, plan, readMemory } from '../../hooks/jira-moves.ts'
+import {
+  MOVE_PREFIX,
+  RETRY_MS,
+  STEPS,
+  afterSearch,
+  endOf,
+  endPass,
+  failedAsks,
+  isStillOpen,
+  liveTargets,
+  moveTargets,
+  noStep,
+  plan,
+  readMemory,
+  reviewing,
+} from '../../hooks/jira-moves.ts'
 import type { MoveMemory, MoveRecord, MoveStep, Wanted } from '../../hooks/jira-moves.ts'
 import { slimCard } from '../../hooks/slim.ts'
 
@@ -34,6 +49,9 @@ const step = (over: Partial<Wanted> = {}): Wanted => ({ ticket: 'ABC-1', step: '
 const record = (outcome: MoveRecord['outcome'], at = NOW): MoveRecord => ({ at, outcome, mr: `${HOST}/g/p!12`, status: '' })
 
 const outcomes = (endings: readonly { record: MoveRecord }[]) => endings.map(one => one.record.outcome)
+
+/** No ticket has been in review before. */
+const NEVER: ReadonlySet<string> = new Set()
 
 test('the settings give each step its statuses in order, each once, and nothing that is not a name', () => {
   expect(moveTargets([' In Review ', 'in review', 'Code Review', '', 'bad\u0007name', 7], []).review).toEqual(['In Review', 'Code Review'])
@@ -122,8 +140,8 @@ test('a pass with nothing to take and nothing to try again clears what /gitlab s
 })
 
 test('a ticket that is done, may be done, or is already where the step leads or past it, is left as it is', () => {
-  const ends = (one: Ticket) => outcomes(afterSearch([step()], { 'ABC-1': one }, TARGETS, {}, NOW).endings)
-  expect(afterSearch([step()], { 'ABC-1': ticket('Backlog') }, TARGETS, {}, NOW)).toEqual({ moves: [{ ...step(), from: 'Backlog' }], endings: [], problem: null })
+  const ends = (one: Ticket) => outcomes(afterSearch([step()], { 'ABC-1': one }, TARGETS, {}, NOW, NEVER).endings)
+  expect(afterSearch([step()], { 'ABC-1': ticket('Backlog') }, TARGETS, {}, NOW, NEVER)).toEqual({ moves: [{ ...step(), from: 'Backlog' }], endings: [], problem: null })
   expect(ends(ticket('Closed', true))).toEqual(['settled'])
   // Jira did not say whether it is done: it is not moved.
   expect(ends(ticket('Shipped', null))).toEqual(['settled'])
@@ -132,15 +150,29 @@ test('a ticket that is done, may be done, or is already where the step leads or 
   expect(ends(ticket('Done', false))).toEqual(['settled'])
 })
 
+test('a ticket that has been in review is never brought back to it, from QA or wherever the team moved it since', () => {
+  const qa = { 'ABC-1': ticket('QA'), 'ABC-2': ticket('In Progress') }
+  const both = [step(), step({ ticket: 'ABC-2' })]
+  const after = afterSearch(both, qa, TARGETS, {}, NOW, new Set(['ABC-1']))
+  expect(outcomes(after.endings)).toEqual(['settled'])
+  expect(after.endings[0]?.toast).toBeNull()
+  expect(after.moves).toEqual([{ ...step({ ticket: 'ABC-2' }), from: 'In Progress' }])
+  // The tickets Jira is asked about: those of review steps, each once; a done step needs no history.
+  expect(reviewing([...both, step(), step({ ticket: 'ABC-3', step: 'done', names: ['Done'] })])).toEqual(['ABC-1', 'ABC-2'])
+  // Its done step is not held back by having been in review.
+  const done = step({ step: 'done', names: ['Done'] })
+  expect(afterSearch([done], qa, TARGETS, {}, NOW, new Set(['ABC-1'])).moves).toEqual([{ ...done, from: 'QA' }])
+})
+
 test('a ticket the search leaves out is refused, unless the search found none, which is tried again once', () => {
   const two = [step(), step({ ticket: 'ABC-2' })]
-  const some = afterSearch(two, { 'ABC-2': ticket('Backlog') }, TARGETS, {}, NOW)
+  const some = afterSearch(two, { 'ABC-2': ticket('Backlog') }, TARGETS, {}, NOW, NEVER)
   expect(outcomes(some.endings)).toEqual(['refused'])
   expect(some.endings[0]?.toast).toBe('ABC-1 was not moved to In Review or Code Review: Jira does not show it to you')
-  const none = afterSearch(two, {}, TARGETS, {}, NOW)
+  const none = afterSearch(two, {}, TARGETS, {}, NOW, NEVER)
   expect([outcomes(none.endings), none.problem]).toEqual([['failed', 'failed'], 'Jira returned none of the tickets asked for'])
   // Left out again after a failed ask: a key Jira does not show, not a passing fault.
-  expect(outcomes(afterSearch(two, {}, TARGETS, { 'ABC-1>review': record('failed', NOW - RETRY_MS) }, NOW).endings)).toEqual(['refused', 'failed'])
+  expect(outcomes(afterSearch(two, {}, TARGETS, { 'ABC-1>review': record('failed', NOW - RETRY_MS) }, NOW, NEVER).endings)).toEqual(['refused', 'failed'])
   // A search that could not be made at all: every step is a failed ask.
   expect(outcomes(failedAsks(two, NOW))).toEqual(['failed', 'failed'])
 })

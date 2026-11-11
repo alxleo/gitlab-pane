@@ -6,7 +6,7 @@ import { isEqual } from './equal'
 import { Failure } from './failure'
 import { clear, record } from './failures'
 import { joined } from './in-flight'
-import { readTickets, readTransition, searchArgs, transitionArgs } from './jira'
+import { readTickets, readTransition, reviewedArgs, searchArgs, transitionArgs } from './jira'
 import {
   MOVE_PREFIX,
   NO_TARGETS,
@@ -22,13 +22,15 @@ import {
   noStep,
   plan,
   readMemory,
+  reviewing,
   startKey,
   storeKey,
 } from './jira-moves'
 import type { Ending, Kept, MoveMemory, MoveStep, TicketMove } from './jira-moves'
 import { runJson } from './tools'
+import type { Outcome } from './tools'
 
-import type { MoveTargets, MrCard, OwnMrs } from '../types'
+import type { FailureKind, MoveTargets, MrCard, OwnMrs, Ticket } from '../types'
 
 // Moves the user's tickets in Jira as their MRs go into review and merge, with acli, signed in as them. Only the leader
 // moves, after its read. This file reads the store, runs acli and does what jira-moves.ts decides; it decides nothing.
@@ -37,6 +39,9 @@ const targetsAtom = atom({ plugin: 'gitlab-pane', key: 'moveTargets' } as const,
 const ownAtom = atom({ plugin: 'gitlab-pane', key: 'ownMrs' } as const, {})
 
 const TIMEOUT_MS = 60_000
+
+/** The history a pass with no review step to take needs: none. */
+const NO_HISTORY: Outcome<Record<string, Ticket>> = { ok: true, value: {} }
 
 /**
  * A mod loading takes the `jiraInReview` and `jiraOnMerge` settings, and forgets who the user is on each host, which the
@@ -119,13 +124,24 @@ export function moveTickets($: EngineInterface, rows: readonly MrCard[]): Promis
     if (memory === null || steps.take.length === 0) {
       return
     }
-    const searched = await runJson($, 'acli', searchArgs([...new Set(steps.take.map(one => one.ticket))]), readTickets, { timeoutMs: TIMEOUT_MS })
-    if (!searched.ok) {
-      await record($, 'jira-moves', new Failure(searched.kind, searched.reason))
+    // Where the tickets are, and which of those a review step would move have been in review before.
+    const inReview = reviewing(steps.take)
+    const [searched, history] = await Promise.all([
+      runJson($, 'acli', searchArgs([...new Set(steps.take.map(one => one.ticket))]), readTickets, { timeoutMs: TIMEOUT_MS }),
+      inReview.length > 0 ? runJson($, 'acli', reviewedArgs(inReview, targets.review), readTickets, { timeoutMs: TIMEOUT_MS }) : NO_HISTORY,
+    ])
+    // A search that could not be made leaves every step to try again later.
+    const unasked = async (failed: { kind: FailureKind; reason: string }) => {
+      await record($, 'jira-moves', new Failure(failed.kind, failed.reason))
       await keep($, failedAsks(steps.take, now))
-      return
     }
-    const { moves, endings, problem } = afterSearch(steps.take, searched.value, targets, memory, now)
+    if (!searched.ok) {
+      return unasked(searched)
+    }
+    if (!history.ok) {
+      return unasked(history)
+    }
+    const { moves, endings, problem } = afterSearch(steps.take, searched.value, targets, memory, now, new Set(Object.keys(history.value)))
     if (problem !== null) {
       await record($, 'jira-moves', new Failure('bad-answer', problem))
     }
