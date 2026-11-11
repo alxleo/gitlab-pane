@@ -5,8 +5,8 @@
 //
 // gitleaks, actionlint and zizmor are not Node tools, so npm cannot install them. CI runs all three with their official
 // actions (check.yml), over the whole history for gitleaks, and that is the gate. Here they are a convenience: install
-// them (brew install gitleaks actionlint zizmor) and a leak or a bad workflow is caught before the push; leave them out and
-// each one is named below as skipped, with the way CI covers it.
+// them (`mise install`, at the versions mise.toml pins) and a leak or a bad workflow is caught before the push; leave them
+// out and each one is named below as skipped, with the way CI covers it.
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -37,7 +37,7 @@ function main(): number {
   let failed = 0
   for (const scanner of scanners(values.staged)) {
     if (!installed(scanner.name)) {
-      console.log(`scan: ${scanner.name} SKIPPED, it is not installed here, so it did not scan: ${scanner.note}. CI runs it too (check.yml).`)
+      console.log(`scan: ${scanner.name} SKIPPED, it is not installed here (\`mise install\` installs it), so it did not scan: ${scanner.note}. CI runs it too (check.yml).`)
       continue
     }
     const ran = spawnSync(scanner.name, scanner.args, { cwd: ROOT, stdio: 'inherit' })
