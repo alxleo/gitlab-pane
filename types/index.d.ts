@@ -396,9 +396,12 @@ export type Landed = {
   /** When it merged, in epoch milliseconds. */
   mergedAt: number
   targetBranch: string
-  /** The commit the merge put on `targetBranch`; null while that cannot be told (a fast-forward merge whose squash commit was not read). */
+  /**
+   * The commit the merge put on `targetBranch`; null while that cannot be told: a fast-forward merge whose squash commit was
+   * not read, or an MR the lookups have not reached yet (the inbox's list is shown first, and they fill it in).
+   */
   sha: string | null
-  /** The newest pipeline of `sha` on `targetBranch` as last read; null while none was seen. */
+  /** The newest pipeline of `sha` on `targetBranch` that no schedule started, as last read; null while none was seen. */
   build: LandedBuild | null
   /**
    * When GitLab was last asked of this MR, in epoch milliseconds, and so when a failed or manual build, or a squash commit it
