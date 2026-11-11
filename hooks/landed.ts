@@ -2,13 +2,15 @@
 // commit each put on its target branch, and what is left to ask GitLab of each (the squash commit, the build). Pure, on plain
 // data; landed-read.ts asks. The inbox carries the list (its snapshot is the one every session already shares), so a session
 // that only draws has it without asking GitLab for anything.
-import { dataOf, isFilled, isRecord, parseJson } from './decode.ts'
+import { dataOf, isFilled, isRecord, parseJson, present, timeOf } from './decode.ts'
 import { Failure } from './failure.ts'
 import type { InboxAuthoredQuery, LandedQuery } from './gitlab.generated.ts'
 import { CI_STATUSES, ciStatusOf } from './gitlab-status.ts'
 import type { RawResponse } from './gitlab-documents.ts'
-import { shorten } from './graphemes.ts'
+import { cut } from './graphemes.ts'
 import { siteOf } from './hosts.ts'
+import { mergedNodes } from './inbox-gitlab.ts'
+import { TITLE_ROOM } from './inbox-rules.ts'
 import { isSettled } from './status.ts'
 
 import type { CiStatus, Landed, LandedBuild } from '../types'
@@ -37,9 +39,6 @@ export const BUILD_APPEARS_MS = 10 * 60_000
  */
 export const RECHECK_MS = 10 * 60_000
 
-/** Letters of a title the snapshot keeps, as it keeps the inbox's own: the snapshot is stored, and what a row says of a title is shorter still. */
-const TITLE_ROOM = 100
-
 /** An MR merged lately as the inbox's answer gives it, before the commit that landed is known. */
 export type Merged = Pick<Landed, 'host' | 'path' | 'iid' | 'title' | 'url' | 'mergedAt' | 'targetBranch'> & {
   /** The merge commit; a fast-forward merge has none. */
@@ -47,10 +46,6 @@ export type Merged = Pick<Landed, 'host' | 'path' | 'iid' | 'title' | 'url' | 'm
   /** The head the MR had. */
   diffHeadSha: string | null
 }
-
-type Raw = NonNullable<NonNullable<NonNullable<InboxAuthoredQuery['currentUser']>['merged']>['nodes']>[number]
-
-const present = <T>(list: readonly (T | null)[] | null | undefined): T[] => (list ?? []).flatMap(one => (one === null ? [] : [one]))
 
 /**
  * What of some MRs is shown: those merged within `LANDED_WITHIN_MS` of `now`, newest first, at most `LANDED_SHOWN`. The read
@@ -67,9 +62,9 @@ export const recentOf = <T extends { mergedAt: number }>(entries: readonly T[], 
  * leaves out those the user merged themselves, which this one is for.
  */
 export function mergedLately(host: string, data: InboxAuthoredQuery | null, now: number): Merged[] {
-  const merged = (raw: NonNullable<Raw>): Merged[] => {
-    const at = raw.mergedAt === null ? Number.NaN : Date.parse(raw.mergedAt)
-    if (Number.isNaN(at)) {
+  const merged = (raw: ReturnType<typeof mergedNodes>[number]): Merged[] => {
+    const at = timeOf(raw.mergedAt)
+    if (at === null) {
       return []
     }
     const path = raw.project.fullPath
@@ -78,7 +73,7 @@ export function mergedLately(host: string, data: InboxAuthoredQuery | null, now:
         host,
         path,
         iid: Number(raw.iid),
-        title: shorten(raw.title, TITLE_ROOM),
+        title: cut(raw.title, TITLE_ROOM, TITLE_ROOM),
         url: raw.webUrl ?? `${siteOf(host)}/${path}/-/merge_requests/${raw.iid}`,
         mergedAt: at,
         targetBranch: raw.targetBranch,
@@ -87,7 +82,7 @@ export function mergedLately(host: string, data: InboxAuthoredQuery | null, now:
       },
     ]
   }
-  return recentOf(present(data?.currentUser?.merged?.nodes).flatMap(merged), now)
+  return recentOf(mergedNodes(data).flatMap(merged), now)
 }
 
 /** Which commit a merge put on its target branch, or what is still to ask for it. */

@@ -23,6 +23,15 @@ export const dataOf = <Data>(response: RawResponse<Data>): Data => {
   return data
 }
 
+/** The nodes of a GraphQL list without the nulls GitLab leaves where it could not read one; none for a list it did not send. */
+export const present = <T>(nodes: readonly (T | null)[] | null | undefined): T[] => (nodes ?? []).filter(node => node !== null)
+
+/** An ISO time as epoch milliseconds; null for none, and for a text that is no time. */
+export const timeOf = (iso: string | null): number | null => {
+  const at = iso === null ? Number.NaN : Date.parse(iso)
+  return Number.isNaN(at) ? null : at
+}
+
 /** A string with something in it; null, undefined and the empty string are none. */
 export const isFilled = (value: string | null | undefined): value is string => typeof value === 'string' && value !== ''
 

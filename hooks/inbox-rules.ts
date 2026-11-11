@@ -64,7 +64,7 @@ export const MAX_SIGNALS = 10
 /** Characters of what someone wrote, of a username and of a title that the inbox keeps. */
 export const EXCERPT_ROOM = 80
 export const ACTOR_ROOM = 40
-const TITLE_ROOM = 100
+export const TITLE_ROOM = 100
 const ACTIVITY_SHOWN = 3
 
 const seenPrefix = (host: string, user: string): string => `seen:${shortHash(`${host}/${user}`)}:`

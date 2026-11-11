@@ -17,6 +17,7 @@ import {
   squashShaOf,
   withLanded,
 } from '../../hooks/landed.ts'
+import { TITLE_ROOM } from '../../hooks/inbox-rules.ts'
 import { NOW } from '../fixtures.ts'
 
 import type { Landed } from '../../types'
@@ -96,6 +97,11 @@ test('the user’s MRs merged within three days are listed newest first, whoever
   expect(found.length).toBe(LANDED_SHOWN)
   // The inbox's own list leaves out what the user merged themselves: this one does not.
   expect(mergedLately('gitlab.com', answer(raw(3, 5)), NOW).map(one => one.iid)).toEqual([3])
+})
+
+test('a title is kept to the room the inbox keeps of one, cut the way the inbox cuts it', () => {
+  const [listed] = mergedLately('gitlab.com', answer(raw(1, 10, { title: 'x'.repeat(TITLE_ROOM + 50) })), NOW)
+  expect(listed?.title).toBe('x'.repeat(TITLE_ROOM))
 })
 
 test('a merge older than three days is left out, and one at the edge is not', () => {

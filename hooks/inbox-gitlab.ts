@@ -1,5 +1,6 @@
 // What GitLab's answers to the inbox documents mean: the MRs they name, and the signals on them. Plain data in, plain data
 // out, typed by the generated types of the documents; inbox.ts sends the documents and keeps the result.
+import { present, timeOf } from './decode.ts'
 import { cut } from './graphemes.ts'
 import { cardKey } from './hosts.ts'
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
@@ -74,11 +75,6 @@ const noteIdOf = (id: string): string | null => /(\d+)$/u.exec(id)?.[1] ?? null
 /** The note a to-do's link points at: `…#note_123`. */
 const noteOfUrl = (url: string | null): string | null => /#note_(\d+)$/u.exec(url ?? '')?.[1] ?? null
 
-const timeOf = (iso: string | null): number | null => {
-  const at = iso === null ? Number.NaN : Date.parse(iso)
-  return Number.isNaN(at) ? null : at
-}
-
 /** The kinds the rules count on an MR of this sort: a note of another kind is not kept. */
 const wantedKinds = (isMine: boolean, isFollowed: boolean): ReadonlySet<InboxKind> =>
   new Set(RULES.filter(rule => (rule.scope === 'any' || (rule.scope === 'mine') === isMine) && (!rule.isFollowing || isFollowed)).flatMap(rule => rule.kinds))
@@ -130,8 +126,6 @@ function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: 
 
 /** The notes GitLab sent of an MR, and whether it kept older ones back. */
 type Notes = { pageInfo: { hasPreviousPage: boolean }; nodes: readonly (NoteFields | null)[] | null }
-
-const present = <T>(list: readonly (T | null)[] | null | undefined): T[] => (list ?? []).flatMap(one => (one === null ? [] : [one]))
 
 /** When the oldest note sent was written, if GitLab kept older ones back: nothing before it is counted, so counts are lower bounds. */
 function cutoffOf(notes: Notes): number | null {
@@ -190,11 +184,20 @@ export function queueMrs(host: string, data: InboxQueueQuery | null, now: number
   return { user: me, mrs }
 }
 
+/**
+ * The user's MRs merged since the horizon, as the answer to `InboxAuthored` lists them: the one place that says where in it
+ * they are. Three readers take what each needs of them: the Jira moves (`ownMrs`), the rules (`authoredMrs`) and the merged
+ * section (`mergedLately`, in landed.ts). They need different parts and keep different MRs of the nodes (the moves every one,
+ * the rules those merged by someone else, the section the newest few with a branch and commits), so the nodes are shared and
+ * not what is made of them.
+ */
+export const mergedNodes = (data: InboxAuthoredQuery | null) => present(data?.currentUser?.merged?.nodes)
+
 /** From the same answer, for the Jira moves: who the user is on the host, and every MR of theirs merged since the horizon, by card key. */
 export function ownMrs(host: string, data: InboxAuthoredQuery | null): OwnMrs {
   return {
     user: data?.currentUser?.username ?? null,
-    merged: present(data?.currentUser?.merged?.nodes).map(mr => ({ key: cardKey(host, mr.project.fullPath, mr.iid), iid: Number(mr.iid), title: mr.title })),
+    merged: mergedNodes(data).map(mr => ({ key: cardKey(host, mr.project.fullPath, mr.iid), iid: Number(mr.iid), title: mr.title })),
   }
 }
 
@@ -207,7 +210,7 @@ export function authoredMrs(host: string, data: InboxAuthoredQuery | null, now: 
   const opened = present(data?.currentUser?.opened?.nodes).map(fields =>
     mrOf(host, me, fields, noteSignals(present(fields.notes.nodes), me, true, false, now), { ...PLAIN, cutoff: cutoffOf(fields.notes) })
   )
-  const merged = present(data?.currentUser?.merged?.nodes).flatMap((fields): InboxMr[] => {
+  const merged = mergedNodes(data).flatMap((fields): InboxMr[] => {
     const at = timeOf(fields.mergedAt)
     const by = fields.mergeUser?.username
     return at === null || by === undefined || by === me ? [] : [mrOf(host, me, fields, [{ kind: 'merged', actor: actorOf(by), at, note: null, excerpt: '' }], PLAIN)]
