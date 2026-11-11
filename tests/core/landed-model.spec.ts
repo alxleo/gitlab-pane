@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 
+import { LANDED_SHOWN, LANDED_WITHIN_MS } from '../../hooks/landed.ts'
 import { mergedModel } from '../../hooks/landed-model.ts'
 import { NOW } from '../fixtures.ts'
 
@@ -74,6 +75,21 @@ test('an MR the list still draws as a card is not said twice', () => {
   const cardKeys = new Set(['gitlab.com/g/p!2'])
   expect(mergedModel([landed(1), landed(2)], shown({ cardKeys, isOpen: true }))?.rows.map(row => row.key)).toEqual(['gitlab.com/g/p!1'])
   expect(mergedModel([landed(2)], shown({ cardKeys }))).toBeNull()
+})
+
+test('what the snapshot kept past three days is not drawn, nor counted, nor its failed build said; one at the edge is', () => {
+  const old = landed(1, { mergedAt: NOW - LANDED_WITHIN_MS - 1, build: { status: 'failed', url: 'https://gitlab.com/g/p/-/pipelines/10' } })
+  const edge = landed(2, { mergedAt: NOW - LANDED_WITHIN_MS })
+  expect(mergedModel([old, edge], shown())?.label).toBe('▸ 1 merged')
+  expect(mergedModel([old], shown())).toBeNull()
+  expect(mergedModel([old, edge], shown({ isOpen: true }))?.rows.map(row => row.key)).toEqual(['gitlab.com/g/p!2'])
+})
+
+test('more than five kept, from several hosts, draw the five newest, newest first', () => {
+  const entries = [1, 2, 3, 4, 5, 6, 7].map(iid => landed(iid, { mergedAt: NOW - iid * 3_600_000, host: iid % 2 === 0 ? 'git.example.com' : 'gitlab.com' }))
+  const model = mergedModel(entries.toReversed(), shown({ isOpen: true }))
+  expect(model?.label).toBe(`▾ ${LANDED_SHOWN} merged`)
+  expect(model?.rows.map(row => row.mr.text.slice(3, 6))).toEqual(['!1 ', '!2 ', '!3 ', '!4 ', '!5 '])
 })
 
 test('a repo picked narrows the section to its own MRs, and none left draws no section', () => {
