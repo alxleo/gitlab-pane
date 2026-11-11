@@ -2,12 +2,42 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 
 import { face } from './faces'
 import type { Kit } from './kit'
+import { pressMove } from './moves'
 import { openReading } from './panes'
+import { togglePin } from './shared'
 import type { RowModel } from './pane-model'
 import { strip } from './strip'
 
 /** The parts of a row the pane fits to its room. */
 export type RowPart = 'line1' | 'line2' | 'faces' | 'said'
+
+/**
+ * GitLab's verdict and the MR's one move: the move in place of the verdict when it fixes what the verdict names, else
+ * beside it. A move is a Button while it can be pressed (primary once armed, asking for the press that confirms), and dim
+ * words while it is under way; why its last press failed follows it, amber.
+ */
+function verdictParts($: EngineInterface, kit: Kit, row: RowModel, verdict: NonNullable<RowModel['verdict']>): RenderChildren {
+  const { Text, Button } = kit
+  const { move } = verdict
+  const words = (
+    <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
+      {verdict.words}
+    </Text>
+  )
+  if (move === null) {
+    return words
+  }
+  const { press } = move
+  return [
+    ...(move.isVerdict ? [] : [words]),
+    press !== null ? (
+      <Button key={move.key} variant={move.isArmed ? 'primary' : 'secondary'} label={move.label} onPress={() => pressMove($, row.key, press)} />
+    ) : (
+      <Text dimColor>{move.label}</Text>
+    ),
+    ...(move.failed !== null ? [<Text color="warning">{move.failed}</Text>] : []),
+  ]
+}
 
 /**
  * One part of a row's card from the row model: its title line, its second line with or without pictures on the faces, and
@@ -21,7 +51,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
   // a Link's text and a Button's label, never styled Text inside them. The title opens the MR's page, so it is a plain
   // Button, not a link-blue title that reads as leaving for GitLab (🔀 !iid does that).
   switch (part) {
-    case 'line1':
+    case 'line1': {
+      const { pin } = row
       return (
         <Box flexDirection="row" gap={1} alignItems="center">
           <Box flexGrow={1} flexShrink={1}>
@@ -29,10 +60,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           </Box>
           {/* A quiet row is this line alone: what it waits on, or that it can merge, goes beside its title. */}
           {row.isQuiet && row.verdict !== null && (
-            <Box flexShrink={0}>
-              <Text weight={row.verdict.bold ? 'semibold' : undefined} color={row.verdict.tone}>
-                {row.verdict.words}
-              </Text>
+            <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+              {verdictParts($, kit, row, row.verdict)}
             </Box>
           )}
           {row.isQuiet && row.verdict === null && row.blocker !== null && (
@@ -43,8 +72,11 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
+          {/* The star at the top right, as anywhere else, dim while hollow: the label alone, which the desktop app draws. */}
+          {pin !== null && <Button key={pin.key} plain dimColor={pin.mark === '☆'} label={pin.mark} onPress={() => togglePin($, pin.press, pin.mr)} />}
         </Box>
       )
+    }
     case 'line2':
     case 'faces': {
       const withPictures = part === 'faces'
@@ -59,10 +91,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           {row.strip !== null && strip(kit, row.strip)}
           {row.pipeline !== null ? <Link href={row.pipeline.href}>{row.pipeline.text}</Link> : <Text dimColor>no pipeline</Text>}
           {row.verdict !== null ? (
-            <Box flexDirection="row" gap={1} flexShrink={0}>
-              <Text weight={row.verdict.bold ? 'semibold' : undefined} color={row.verdict.tone}>
-                {row.verdict.words}
-              </Text>
+            <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+              {verdictParts($, kit, row, row.verdict)}
               {row.verdict.trailing !== null && <Text dimColor>{row.verdict.trailing}</Text>}
             </Box>
           ) : (

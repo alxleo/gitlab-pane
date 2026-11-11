@@ -49,7 +49,7 @@ export function joined(name: string, work: () => Promise<void>): Promise<void> {
 const lacking = new Map<string, HostFeatures>()
 
 /** What a host has of the fields older GitLab versions lack: all of them until it has said it lacks one. */
-export const featuresOf = (host: string): HostFeatures => lacking.get(host) ?? { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true }
+export const featuresOf = (host: string): HostFeatures => lacking.get(host) ?? { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true }
 
 /** Remembers, until the mod reloads, that `host` lacks `feature`; gives what the host has now. */
 export function learnLack(host: string, feature: keyof HostFeatures): HostFeatures {
@@ -98,6 +98,18 @@ export const nextDraw = (): Promise<void> =>
 
 /** Where the window sat at the last drawing. */
 export const rowDrawn = (): number => drawnAtRow
+
+// The cards the inbox last drew under each rule, by MR key: the drawing stops short of the list when its budget runs out,
+// and the focus ring may go only to a card that is drawn.
+const inboxCardsDrawn = new Map<string, string[]>()
+
+/** The inbox drew these cards of `rule`: its drawing calls this. */
+export function inboxDrawn(rule: string, keys: string[]): void {
+  inboxCardsDrawn.set(rule, keys)
+}
+
+/** The cards of `rule` the inbox last drew, or none if it has not drawn that rule. */
+export const cardsDrawn = (rule: string): string[] | undefined => inboxCardsDrawn.get(rule)
 
 /** A session starting finds out again what each host lacks, and finds each token again where a session before it left one. */
 export function forgetProbed(): void {

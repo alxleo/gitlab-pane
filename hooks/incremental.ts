@@ -5,10 +5,11 @@
 // way: a running pipeline's MR is read on its own, the merge verdicts are read for all MRs every time, and a whole read
 // comes round every `FULL_EVERY_MS` for the rest. Pure, on plain data.
 import type { AuthoredScope } from './authored-request.ts'
+import type { GitLabVerdict } from './gitlab.ts'
 import type { Cursor } from './snapshot.ts'
 import { isSettled } from './status.ts'
 
-import type { MergeStatus, MrCard } from '../types'
+import type { MrCard } from '../types'
 
 /**
  * How long between whole reads. A merge or close is seen at once (the delta asks for every state) and a pipeline is read
@@ -50,7 +51,7 @@ export type HostFound = {
   /** Keys pinned by any session, whose closed MRs are kept so each session can unpin its own. */
   pinned: ReadonlySet<string>
   /** GitLab's verdicts by card key, or null when the host has none or could not be asked. */
-  verdicts: ReadonlyMap<string, MergeStatus> | null
+  verdicts: ReadonlyMap<string, GitLabVerdict> | null
 }
 
 /**
@@ -68,8 +69,10 @@ export function mergeReads({ scope, base, fetched, singles, pinned, verdicts }: 
       rows.delete(card.key)
     }
   }
-  return [...rows.values()].map(row => ({
-    ...row,
-    mergeStatus: verdicts?.get(row.key) ?? (scope === 'since' && row.isOpen ? (before.get(row.key)?.mergeStatus ?? null) : null),
-  }))
+  return [...rows.values()].map(row => {
+    // The checks and what GitLab says of merging come from one answer, so they are kept or replaced together.
+    const fresh = verdicts?.get(row.key)
+    const kept = scope === 'since' && row.isOpen ? before.get(row.key) : undefined
+    return fresh !== undefined ? { ...row, mergeStatus: fresh.checks, merging: fresh.merging } : { ...row, mergeStatus: kept?.mergeStatus ?? null, merging: kept?.merging ?? null }
+  })
 }

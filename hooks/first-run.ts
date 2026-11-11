@@ -5,6 +5,7 @@ import type { FailureKind, Problems, ProblemSource } from '../types'
 const NAMES: Record<ProblemSource, string> = {
   gitlab: 'GitLab',
   jira: 'Jira',
+  'jira-moves': 'Jira moves',
   usual: 'Pipeline times',
   avatars: 'Pictures',
   inbox: 'Inbox',
@@ -17,13 +18,13 @@ const FIRST: readonly ProblemSource[] = ['gitlab', 'jira', 'inbox']
 
 // A failure that is only `failed` or `unknown` has no fix to name, so it says its own words.
 const FIX: Partial<Record<FailureKind, string>> = {
-  'not-installed': 'its command-line tool is not installed: install it, then press refresh',
-  'no-token': 'no access token: set one, or sign in, then press refresh',
-  unauthorized: 'the token was refused: sign in again, or use one that can read merge requests, then press refresh',
-  network: 'cannot be reached: check the network or VPN, then press refresh',
-  timeout: 'took too long to answer: it is tried again, or press refresh',
-  'bad-answer': 'answered something the pane could not read: press refresh, and see /gitlab',
-  server: 'the server answered with an error: it is tried again, or press refresh',
+  'not-installed': 'its command-line tool is not installed: install it, then press ↻',
+  'no-token': 'no access token: set one, or sign in, then press ↻',
+  unauthorized: 'the token was refused: sign in again, or use one that can read merge requests, then press ↻',
+  network: 'cannot be reached: check the network or VPN, then press ↻',
+  timeout: 'took too long to answer: it is tried again, or press ↻',
+  'bad-answer': 'answered something the pane could not read: press ↻, and see /gitlab',
+  server: 'the server answered with an error: it is tried again, or press ↻',
 }
 
 /**

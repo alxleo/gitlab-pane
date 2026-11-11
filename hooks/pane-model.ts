@@ -10,6 +10,10 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { nextMove } from './next-move.ts'
+import type { Move } from './next-move.ts'
+import { keptRepo, repoFilterOf } from './repo-filter.ts'
+import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -17,10 +21,13 @@ import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { MrCard, Pinned, PollState, Problems, Usual } from '../types'
+import type { MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
+
+/** A ready MR untouched for this long, with no news in the inbox, folds under Parked until something moves on it. */
+const PARKED_AFTER_MS = 7 * 86_400_000
 
 /** The least a row can draw to; with less room than this, no row is tried. */
 const ROW_FLOOR = 300
@@ -39,6 +46,12 @@ export type PersonRow = {
   picture: SvgSource | null
 }
 
+/**
+ * The MR's one move as a row draws it: a press while `press` is set (armed, the press that confirms a merge), else words
+ * saying what is under way. `isVerdict` when it stands in place of GitLab's verdict, whose check it fixes.
+ */
+type RowMove = Omit<Move, 'check'> & { key: string; isVerdict: boolean }
+
 export type RowModel = {
   key: string
   /** Short and unique among the rows; the key of the row's box. */
@@ -55,13 +68,19 @@ export type RowModel = {
   repo: Link | null
   strip: StripModel | null
   pipeline: Link | null
-  verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null } | null
+  /** GitLab's verdict, and the MR's one move where there is one (`next-move.ts`), said in place of the verdict when it fixes the check the verdict names. */
+  verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null; move: RowMove | null } | null
   blocker: { text: string; tone: Tone } | null
   people: PersonRow[]
   /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
   said: { label: string; username: string } | null
   /** Nothing to show past the title and verdict, so the row is one line: its title, its verdict and its age. */
   isQuiet: boolean
+  /**
+   * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
+   * would stop its wakes. The mark is all that is drawn, a star filled on an MR pinned here; `press` is what it does.
+   */
+  pin: { key: string; press: 'pin' | 'unpin'; mark: '☆' | '★'; mr: Pinned } | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -79,54 +98,69 @@ export type PaneInput = {
   pinned: readonly Pinned[]
   usual: Readonly<Record<string, Usual>>
   browse: string
-  /** `drafts` and `more` while those folds are open. */
+  /** `drafts`, `more`, `parked` and `others` while those folds are open. */
   expanded: readonly string[]
   repoFilter: string
   /** Which view is drawn: only the MR list builds rows. */
   view: 'mine' | 'inbox' | 'reading'
-  /** MRs with news in the inbox. */
-  news: number
+  /** MRs with news: how many the inbox shows, and the keys of all of them, in every repo, Mine's or not. */
+  news: { count: number; keys: readonly string[] }
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
+  /** Whether this session is reading the inbox from GitLab now. */
+  isSyncing: boolean
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
+  /** This session's presses on moves, by card key, each as it holds now (`liveOf`). */
+  pressed: Readonly<Record<string, Pressed>>
+  /** The project (`host/group/project`) this session works in, where Claude can take an MR's conflicts; null when none. */
+  here: string | null
 }
 
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
-  repos: { all: { label: string; isActive: boolean }; each: { project: string; label: string; isActive: boolean }[] }
+  /** None with fewer than two repos to pick between. */
+  repos: RepoFilter | null
+  /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
+  /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
+  others: { label: string; isOpen: boolean } | null
   mine: { heading: string; isEmpty: boolean; rows: RowModel[]; more: string | null; isMoreOpen: boolean }
+  parked: { label: string; isOpen: boolean; rows: RowModel[] } | null
   drafts: { label: string; isOpen: boolean; rows: RowModel[] } | null
   /** While nothing has been read and a source has failed: one line each, with what to do about it. */
   firstRun: string[]
   /** Said when rows are left out to stay within the room. */
   leftOut: string | null
-  /** Beside the tabs, quietly: how old the cards are, and ↻ while a read is out. */
+  /** Beside the tabs, quietly: how old the cards are. */
   status: { text: string; isWarning: boolean }
+  /**
+   * Whether this session is reading GitLab or the inbox now: ↻ is drawn dim meanwhile, as the pane has no spinner. ↻ is only
+   * ever the press, so the age beside it carries no mark of its own.
+   */
+  isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
-  footer: { text: string; isWarning: boolean; wake: string }
+  footer: { text: string; isWarning: boolean }
+  /** Whether a raised MR wakes Claude: the bell drawn, struck through when off. */
+  wake: '🔔' | '🔕'
 }
 
 const updatedLine = (age: string): string => (age === 'now' ? 'updated just now' : `updated ${age} ago`)
 
-/** The mark beside the age while this session reads GitLab: the pane has no spinner, and a glyph draws on every surface. */
-export const READING_MARK = '↻'
-
-function statusOf(poll: PollState, isReading: boolean, now: number): PaneModel['status'] {
+function statusOf(poll: PollState, now: number): PaneModel['status'] {
   const hasStale = poll.error !== null || Object.values(poll.hosts).some(status => status.error !== null)
-  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's, which only it can mark.
+  // Nothing read yet and nothing failed: a read is out, whether this session's or the leader's.
   const age = poll.fetchedAt !== null ? updatedLine(ago(new Date(poll.fetchedAt).toISOString(), now)) : hasStale ? '' : 'reading GitLab…'
-  return { text: isReading ? `${READING_MARK} ${age}`.trim() : age, isWarning: hasStale }
+  return { text: age, isWarning: hasStale }
 }
 
 /** The first of these comparisons that tells two MRs apart: what needs you now, then the latest. */
 const byRank = (ranks: ReadonlyMap<string, number>) => (a: MrCard, b: MrCard) =>
   firstDifference((ranks.get(a.key) ?? 3) - (ranks.get(b.key) ?? 3), b.updatedAt.localeCompare(a.updatedAt))
 
-function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['footer'] {
+function footerOf(poll: PollState, now: number): PaneModel['footer'] {
   const age = (at: number | null): string | null => (at !== null ? ago(new Date(at).toISOString(), now) : null)
   // A read that kept no status per host (nothing yet to say of any) speaks of GitLab as one.
   const statuses = Object.entries(Object.keys(poll.hosts).length > 0 ? poll.hosts : { '': { fetchedAt: poll.fetchedAt, error: poll.error } })
@@ -142,7 +176,7 @@ function footerOf(poll: PollState, isWaking: boolean, now: number): PaneModel['f
   const beside = statuses.length > 1 && fresh.length > 0 ? ` · ${fresh.map(([host, status]) => `${host} ${updatedLine(age(status.fetchedAt) ?? 'now')}`).join(', ')}` : ''
   // How old the cards are is said beside the tabs; down here only what went wrong, or what the read left out.
   const text = stale.length > 0 ? `GitLab read failed: ${failed.join('; ')}${beside}` : keptNote
-  return { text, isWarning: stale.length > 0, wake: isWaking ? 'wake Claude: on' : 'wake Claude: off' }
+  return { text, isWarning: stale.length > 0 }
 }
 
 /** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
@@ -162,13 +196,29 @@ function isQuiet(card: MrCard, facts: CardFacts): boolean {
   )
 }
 
+/** What a row's pin press does: pin an MR not in this session, unpin one only watched there, nothing to one it raised. */
+function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowModel['pin'] {
+  // The pin is made from the card's own host, project and number, so its key is the card's.
+  const mr = { url: card.url, host: card.host, path: card.path, iid: card.iid }
+  if (pinned === undefined) {
+    return { key: `pin-${suffix}`, press: 'pin', mark: '☆', mr }
+  }
+  // A pin kept from before origins were recorded counts as raised, as it wakes.
+  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, press: 'unpin', mark: '★', mr } : null
+}
+
 /** A row as data; its faces take their pictures where the room allows. */
 function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string | undefined, hasSvg: boolean, now: number): RowModel {
   const suffix = `${card.iid}-${shortHash(card.project)}`
   const pipeline = card.pipeline
   const ticketLink = facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null
   const [blocker] = facts.row
-  const [firstTrailing] = facts.trailing
+  const move = nextMove(card, input.pressed[card.key], input.here === card.project)
+  // A move needs GitLab's checks, so a row with a move has a verdict to say it in or beside.
+  const isVerdict = move !== null && move.check === facts.verdict?.check
+  // A move said beside the verdict speaks for its own check, which then trails no more.
+  const trailing = move !== null && !isVerdict ? facts.trailing.filter(badge => badge.check !== move.check) : facts.trailing
+  const [firstTrailing] = trailing
   const names = facts.people.map(person => (hasSvg ? person.call : person.initials))
   // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
   const callOf = (person: PersonFacts, i: number): string => (hasSvg && names.filter(name => name === names[i]).length > 1 ? person.initials : (names[i] ?? person.initials))
@@ -192,7 +242,8 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
             words: facts.verdict.words,
             tone: facts.verdict.tone,
             bold: facts.verdict.tone === 'success',
-            trailing: firstTrailing !== undefined ? `· ${firstTrailing.words}${facts.trailing.length > 1 ? ` +${facts.trailing.length - 1}` : ''}` : null,
+            trailing: firstTrailing !== undefined ? `· ${firstTrailing.words}${trailing.length > 1 ? ` +${trailing.length - 1}` : ''}` : null,
+            move: move !== null ? { key: `move-${suffix}`, label: move.label, press: move.press, isArmed: move.isArmed, failed: move.failed, isVerdict } : null,
           }
         : null,
     blocker: blocker !== undefined ? { text: `${blocker.glyph} ${blocker.words}${facts.row.length > 1 ? ` +${facts.row.length - 1}` : ''}`, tone: blocker.tone } : null,
@@ -207,9 +258,27 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     })),
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
     isQuiet: isQuiet(card, facts),
+    pin: pinOf(
+      card,
+      input.pinned.find(one => pinKey(one) === card.key),
+      suffix
+    ),
     hasPictures: facts.hasPictures,
     fit: { isDrawn: false, hasFaces: false },
   }
+}
+
+/** The Inbox tab's words: how many MRs have news, when any do. */
+const inboxLabel = (count: number): string => (count > 0 ? `Inbox · ${count} new` : 'Inbox')
+
+/**
+ * The band above the prompt: the Inbox tab's words, while there is news and the pane shows no tabs that say it (it is not
+ * drawn, or an MR's page holds the place of its tabs). Otherwise nothing, and the band is left to the survey or whatever
+ * else draws there; a survey always has it.
+ */
+export function inboxBand(input: { count: number; isPaneDrawn: boolean; isPageOpen: boolean; hasSurvey: boolean }): string | null {
+  const isTabShown = input.isPaneDrawn && !input.isPageOpen
+  return input.count > 0 && !isTabShown && !input.hasSurvey ? inboxLabel(input.count) : null
 }
 
 /**
@@ -217,27 +286,43 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
  * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
  * a row, once.
  */
-export function buildPane(input: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
+export function buildPane(given: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
   // GitLab says an MR is no longer open before the authored list drops it.
-  const rows = input.cards.filter(row => !hasLeft(row))
-  const pinnedKeys = new Set(input.pinned.map(pinKey))
+  const rows = given.cards.filter(row => !hasLeft(row))
   const counts = rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())
   const repos = [...counts].toSorted((a, b) => b[1] - a[1])
+  // The next read forgets a pick that no longer narrows (`forgetGone`); until then the list is whole.
+  const input = { ...given, repoFilter: keptRepo(given.repoFilter, new Set(counts.keys())) }
+  const pinnedKeys = new Set(input.pinned.map(pinKey))
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
-  const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
   // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
   // worked out below for the rows that are drawn, once each.
   const order = byRank(new Map(rows.map(row => [row.key, rank(row)])))
-  const session = shown.filter(row => pinnedKeys.has(row.key)).toSorted(order)
-  const mine = shown.filter(row => !pinnedKeys.has(row.key) && !row.isDraft).toSorted(order)
-  const drafts = shown.filter(row => !pinnedKeys.has(row.key) && row.isDraft).toSorted(order)
-  const showDrafts = input.expanded.includes('drafts')
+  // This session's MRs keep the order they came in, so what the person pinned stays where they put it.
+  const pinOrder = new Map(input.pinned.map((pin, i) => [pinKey(pin), i]))
+  const session = shown.filter(row => pinOrder.has(row.key)).toSorted((a, b) => (pinOrder.get(a.key) ?? 0) - (pinOrder.get(b.key) ?? 0))
+  const news = new Set(input.news.keys)
+  const rest = shown.filter(row => !pinOrder.has(row.key))
+  // GitLab leaves an MR's updated time alone when its pipeline runs, so the pipeline's own times count as a move too; news
+  // in the inbox brings a parked MR back whatever the times say.
+  const lastMoved = (card: MrCard) =>
+    Math.max(...[card.updatedAt, card.pipeline?.finishedAt ?? null, card.pipeline?.startedAt ?? null].flatMap(at => (at !== null ? [Date.parse(at)] : [])))
+  const isParked = (card: MrCard) => !card.isDraft && now - lastMoved(card) >= PARKED_AFTER_MS && !news.has(card.key)
+  const mine = rest.filter(row => !row.isDraft && !isParked(row)).toSorted(order)
+  const parked = rest.filter(isParked).toSorted(order)
+  const drafts = rest.filter(row => row.isDraft).toSorted(order)
+  // While this session holds MRs the rest fold to one line, but not under a picked repo, which is how to see its MRs.
+  const isFolding = session.length > 0 && rest.length > 0 && input.repoFilter === ''
+  const showOthers = !isFolding || input.expanded.includes('others')
+  const showDrafts = showOthers && input.expanded.includes('drafts')
+  const showParked = showOthers && input.expanded.includes('parked')
   const showMore = input.expanded.includes('more')
-  const mineShown = showMore ? mine : mine.slice(0, MINE_SHOWN)
+  const mineShown = !showOthers ? [] : showMore ? mine : mine.slice(0, MINE_SHOWN)
   const isInbox = input.view === 'inbox'
+  const newOthers = rest.filter(card => news.has(card.key)).length
 
-  const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showDrafts ? drafts : [])] : []
+  const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showParked ? parked : []), ...(showDrafts ? drafts : [])] : []
   const built = wanted.map(card => {
     const facts = cardFacts(card, input.avatars)
     return { card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }
@@ -274,29 +359,34 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
 
   return {
     tabs: {
-      // Every MR the tab holds, as `All` counts them: this session's, the ready ones and the drafts add up to it.
+      // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
       mine: `Mine · ${rows.length}`,
-      inbox: input.news > 0 ? `Inbox · ${input.news} new` : 'Inbox',
+      inbox: inboxLabel(input.news.count),
       isInbox,
     },
-    repos: {
-      all: { label: `All ${rows.length}`, isActive: input.repoFilter === '' },
-      each: repos.map(([project, count]) => ({ project, label: `${repoName(project)} ${count}`, isActive: input.repoFilter === project })),
-    },
+    repos: repoFilterOf(rows, repos, input.repoFilter),
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
+    others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
     mine: {
       // GitLab's word for an MR that is not a draft; the tab above already says Mine.
       heading: `Ready · ${mine.length}`,
-      isEmpty: mine.length === 0,
+      // Parked MRs are open too, so Ready says nothing is open only when none is parked.
+      isEmpty: mine.length === 0 && parked.length === 0,
       rows: rowsOf(mineShown),
       more: mine.length > MINE_SHOWN ? (showMore ? '▾ Show fewer' : `▸ ${mine.length - MINE_SHOWN} more`) : null,
       isMoreOpen: showMore,
     },
+    parked:
+      parked.length > 0 ? { label: `${showParked ? '▾' : '▸'} Parked, untouched for a week · ${parked.length}`, isOpen: showParked, rows: showParked ? rowsOf(parked) : [] } : null,
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
-      built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
-    status: statusOf(input.poll, input.isReading, now),
-    footer: footerOf(input.poll, input.isWaking, now),
+      built.length - finished.size > 0
+        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 && input.repoFilter === '' ? '; pick a repo above to see them' : ''}.`
+        : null,
+    status: statusOf(input.poll, now),
+    isRefreshing: input.isReading || input.isSyncing,
+    footer: footerOf(input.poll, now),
+    wake: input.isWaking ? '🔔' : '🔕',
   }
 }

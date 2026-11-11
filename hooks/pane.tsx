@@ -14,12 +14,16 @@ import { pageHead } from './page-lines'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
+import { pickedRepo } from './repo-filter'
+import { drawnReply } from './replies'
+import { drawnWrites } from './writes'
 import { withDetail } from './slim'
 import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, now } = await view($)
+  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, pressed, here, now } =
+    await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
@@ -54,6 +58,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
+  const { isSyncing, ...news } = await inboxNews($)
   const model = buildPane(
     {
       cards,
@@ -64,11 +69,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       expanded,
       repoFilter,
       view: isInbox ? 'inbox' : reading !== undefined ? 'reading' : 'mine',
-      news: await inboxNews($),
+      news,
       poll,
       isReading,
+      isSyncing,
       isWaking,
       failures,
+      pressed,
+      here,
     },
     now,
     { hasSvg: kit.Svg !== undefined },
@@ -91,26 +99,52 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
-  const { mine, drafts } = model
+  const { mine, parked, drafts, others } = model
+  const fold = (key: 'parked' | 'drafts', list: { label: string; rows: RowModel[] } | null) =>
+    list !== null ? [<Button key={key} plain label={list.label} onPress={() => toggle($, key)} />, ...list.rows.map(draw)] : []
+  // With this session's MRs on top, the rest is one line until it is opened.
+  const rest =
+    others === null || others.isOpen
+      ? [
+          <Text weight="semibold">{mine.heading}</Text>,
+          ...(mine.isEmpty ? [<Text dimColor>Nothing open here.</Text>] : []),
+          ...mine.rows.map(draw),
+          ...(mine.more !== null ? [<Button key="more" plain label={mine.more} onPress={() => toggle($, 'more')} />] : []),
+          ...fold('parked', parked),
+          ...fold('drafts', drafts),
+        ]
+      : []
+  // The repos are one picker, a row however many there are; a phone, which may not draw one, has a button for each.
+  const { repos } = model
+  const { Select } = kit
+  const filterRow =
+    repos === null
+      ? []
+      : Select !== undefined
+        ? [<Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />]
+        : [
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+              <Text>{repos.mark}</Text>
+              {repos.choices.map(choice => (
+                <Button
+                  key={`repo-${choice.value}`}
+                  label={choice.label}
+                  variant={choice.value === repos.value ? 'primary' : 'secondary'}
+                  onPress={() => filterRepo($, pickedRepo(choice.value))}
+                />
+              ))}
+            </Box>,
+          ]
   const mineTab = [
-    <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-      <Button key="repo-all" label={model.repos.all.label} variant={model.repos.all.isActive ? 'primary' : 'secondary'} onPress={() => filterRepo($, repoFilter)} />
-      {model.repos.each.map(repo => (
-        <Button key={`repo-${repo.project}`} label={repo.label} variant={repo.isActive ? 'primary' : 'secondary'} onPress={() => filterRepo($, repo.project)} />
-      ))}
-    </Box>,
+    ...filterRow,
     ...model.firstRun.map(line => (
       <Text color="warning" size="footnote">
         {line}
       </Text>
     )),
     ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),
-    <Text weight="semibold">{mine.heading}</Text>,
-    ...(mine.isEmpty ? [<Text dimColor>Nothing open here.</Text>] : []),
-    ...mine.rows.map(draw),
-    ...(mine.more !== null ? [<Button key="more" plain label={mine.more} onPress={() => toggle($, 'more')} />] : []),
-    ...(drafts !== null ? [<Button key="drafts" plain label={drafts.label} onPress={() => toggle($, 'drafts')} />] : []),
-    ...(drafts !== null ? drafts.rows.map(draw) : []),
+    ...(others !== null ? [<Button key="others" plain label={others.label} onPress={() => toggle($, 'others')} />] : []),
+    ...rest,
     ...(model.leftOut !== null ? [<Text dimColor>{model.leftOut}</Text>] : []),
   ]
 
@@ -122,42 +156,57 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {model.status.text}
       </Text>
     ) : null
+  // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. Each
+  // symbol is its Button's label, alone: the desktop app draws a label in place of the children. ↻ reads the MRs and the
+  // inbox alike, and is dim while either read is out.
+  const controls = (
+    <Box flexDirection="row" gap={2} flexShrink={0}>
+      <Button key="refresh" plain dimColor={model.isRefreshing} label="↻" onPress={() => quietly($, refresh($))} />
+      <Button key="wake" plain label={model.wake} onPress={() => toggleWake($)} />
+    </Box>
+  )
+  const topRow = (...left: RenderChildren[]) => (
+    <Box flexDirection="row" columnGap={2} alignItems="center">
+      <Box flexDirection="row" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1}>
+        {left}
+      </Box>
+      {controls}
+    </Box>
+  )
   const body =
     reading !== undefined
       ? [
-          back('back-top'),
+          // An MR read whole has no tabs row: the age goes beside its way back.
+          topRow(back('back-top'), status),
           ...drawReading($, e, reading, {
             folds,
             focus: chosen[reading.key] ?? '',
             head: pageHead(reading, { tickets, browse, failures }),
             now,
+            reply: await drawnReply($),
+            writes: await drawnWrites($),
           }),
           back('back-bottom'),
         ]
       : [
-          <Box flexDirection="row" columnGap={1} alignItems="center">
-            <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />
-            <Button key="tab-inbox" label={model.tabs.inbox} variant={isInbox ? 'primary' : 'secondary'} onPress={() => openTab($, 'inbox')} />
-            {/* The inbox says its own age on the row below its tabs. */}
-            {!isInbox && status}
-          </Box>,
+          topRow(
+            <Button key="tab-mine" label={model.tabs.mine} variant={isInbox ? 'secondary' : 'primary'} onPress={() => openTab($, 'mine')} />,
+            <Button key="tab-inbox" label={model.tabs.inbox} variant={isInbox ? 'primary' : 'secondary'} onPress={() => openTab($, 'inbox')} />,
+            // The inbox says its own age on the row below its tabs.
+            !isInbox && status
+          ),
           ...(isInbox ? [await drawInbox($, e)] : mineTab),
         ]
 
   return (
     <Box flexDirection="column" gap={1}>
       {body}
-      <Box flexDirection="row" gap={2}>
-        {/* An MR read whole has no tabs row: the age goes beside its refresh. */}
-        {reading !== undefined && status}
-        {model.footer.text !== '' && (
-          <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
-            {model.footer.text}
-          </Text>
-        )}
-        <Button key="refresh" plain label="refresh" onPress={() => quietly($, refresh($))} />
-        <Button key="wake" plain label={model.footer.wake} onPress={() => toggleWake($)} />
-      </Box>
+      {/* The footer is only what went wrong with the last read, or what it left out. */}
+      {model.footer.text !== '' && (
+        <Text color={model.footer.isWarning ? 'warning' : undefined} dimColor={!model.footer.isWarning} size="footnote">
+          {model.footer.text}
+        </Text>
+      )}
     </Box>
   )
 }

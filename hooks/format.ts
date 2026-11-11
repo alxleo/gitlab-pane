@@ -1,5 +1,6 @@
 import { shorten } from './graphemes.ts'
 import { flatOf } from './markdown.ts'
+import { replaceLinks } from './closers.ts'
 import { line, type ModelLine } from './model-text.ts'
 import { isSettled } from './status.ts'
 
@@ -15,7 +16,13 @@ function proseLines(body: GitLabMarkdown): string[] {
     if (/^\s*(```|~~~)/u.test(text)) {
       isCode = !isCode
     } else if (!isCode) {
-      kept.push(text.replace(/!\[[^\]]*\]\([^)]*\)/gu, '').replace(/\[([^\]]*)\]\([^)]*\)/gu, '$1'))
+      kept.push(
+        replaceLinks(
+          replaceLinks(text, 'must', () => ''),
+          'none',
+          words => words
+        )
+      )
     }
   }
   return kept
@@ -39,11 +46,11 @@ export function lead(body: GitLabMarkdown, room = 240): string {
       .split(/\n\s*\n/u)
       .map(text => text.trim())
       .find(Boolean) ?? ''
-  const plain = paragraph
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, '$1')
+  const plain = replaceLinks(paragraph, 'may', words => words)
     .replace(/^[>\-*\s]+/gmu, '')
     .replace(/[*_`]/gu, '')
-    .replace(/\s*\n\s*/gu, ' ')
+    // From the start of a run of space only, so a run with no line break in it is read once, not once from each space.
+    .replace(/(?<!\s)\s*\n\s*/gu, ' ')
   return shorten(plain, room)
 }
 

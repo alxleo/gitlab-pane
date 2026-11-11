@@ -38,7 +38,8 @@ export const slimChecks = (checks: MergeStatus | null): MergeStatus | null => {
  * The card without its heavy words: no description (its first line stays as `lead`), each person's latest note as an
  * excerpt (`noteCount` still says how many), the first few open threads as excerpts with no replies and the first few failed
  * jobs, the rest counted; of the stages' jobs only those the card lists, and when each ran only where a row shows it. The
- * store every session rewrites whole holds fifty of these in a few hundred kilobytes.
+ * first person other than the author asked to review stays of the reviewers, each of whom is on the card as a person: whether one is asked is
+ * what moves a ticket in Jira. The store every session rewrites whole holds fifty of these in a few hundred kilobytes.
  */
 export function slimCard(card: MrCard): MrCard {
   const { pipeline } = card
@@ -58,8 +59,7 @@ export function slimCard(card: MrCard): MrCard {
       held: card.threadsLeft.held + left.filter(note => held.has(note.author)).length,
     },
     mergeStatus: slimChecks(card.mergeStatus),
-    // Each reviewer is a person on the card, with their state; the list of them alone is read by no row.
-    reviewers: [],
+    reviewers: card.reviewers.filter(reviewer => !reviewer.isBot && reviewer.username !== card.author).slice(0, 1),
     ...(pipeline !== undefined
       ? {
           pipeline: {
@@ -82,11 +82,12 @@ export function slimCard(card: MrCard): MrCard {
 }
 
 /**
- * A shared card with the words of the same card read whole. A read of a card that has changed since says nothing of this
- * one's threads, so then the shared card stands as it is.
+ * A shared card with the words of the same card read whole. A whole read older than the shared card says nothing of how
+ * its threads stand now, so then the shared card stands as it is; one newer (read again after a reply posted from its page,
+ * before the shared cards catch up) has the latest words.
  */
 export function withDetail(shared: MrCard, whole: MrCard | undefined): MrCard {
-  if (whole === undefined || whole.updatedAt !== shared.updatedAt) {
+  if (whole === undefined || Date.parse(whole.updatedAt) < Date.parse(shared.updatedAt)) {
     return shared
   }
   return {
@@ -95,6 +96,7 @@ export function withDetail(shared: MrCard, whole: MrCard | undefined): MrCard {
     people: shared.people.map(person => ({ ...person, notes: whole.people.find(each => each.username === person.username)?.notes ?? person.notes })),
     openThreads: whole.openThreads,
     threadsLeft: whole.threadsLeft,
+    ...(whole.repliesOff !== undefined ? { repliesOff: whole.repliesOff } : {}),
     // The jobs, too, if it is the same pipeline in the same state; one that moved since is the shared card's to say.
     ...(shared.pipeline !== undefined && whole.pipeline !== undefined && shared.pipeline.id === whole.pipeline.id && shared.pipeline.status === whole.pipeline.status
       ? { pipeline: { ...shared.pipeline, failed: whole.pipeline.failed, moreFailed: whole.pipeline.moreFailed, amber: whole.pipeline.amber, moreAmber: whole.pipeline.moreAmber } }

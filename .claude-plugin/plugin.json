@@ -1,6 +1,6 @@
 {
   "name": "gitlab-pane",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": {
     "name": "Alexander Leonov"
   },
@@ -45,6 +45,20 @@
       "title": "Jira site",
       "description": "Your Jira address, such as https://example.atlassian.net. Ticket keys in MR titles link there, and their details are read with Atlassian's acli when it is installed and signed in. Empty leaves Jira out.",
       "default": ""
+    },
+    "jiraInReview": {
+      "type": "string",
+      "multiple": true,
+      "title": "Jira: status when in review",
+      "description": "Moves the ticket of your MR to this status, as you in Jira with acli, once the MR is out of draft and someone other than you is asked to review it: the first of these its workflow allows, such as In Review or Code Review. Each ticket moves once, never out of done, and only for MRs that go into review after this is set. Empty never moves.",
+      "default": []
+    },
+    "jiraOnMerge": {
+      "type": "string",
+      "multiple": true,
+      "title": "Jira: status after merge",
+      "description": "Moves the ticket of your MR to this status, as you in Jira with acli, once the MR has merged and no open MR in the pane names the ticket: the first of these its workflow allows, such as Done. Each ticket moves once, and only for MRs that merge after this is set. Empty never moves.",
+      "default": []
     }
   }
 }

@@ -1,5 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
+import { pinMr, readPinned, unpinKeys } from './data'
+import { quietly } from './failures'
+import { pinKey } from './mr-url'
 import { isPublished, PINS_PREFIX, readPinsRecord, readSnapshot, REFRESH_KEY, SNAPSHOT_KEY, unionPins } from './snapshot.ts'
 import type { PinsRecord, Snapshot } from './snapshot.ts'
 
@@ -19,6 +22,26 @@ export async function saveSnapshot($: EngineInterface, snapshot: Snapshot): Prom
 }
 
 const pinsKey = (session: string): string => `${PINS_PREFIX}${session}`
+
+/**
+ * The person's pin from a card: `pin` puts the MR in this session, last, and `unpin` takes it out again. It does what the
+ * press said, against the pins as they are by then: an unpin leaves a pin this session raised meanwhile, so its wakes stay.
+ * It wakes nothing, as `watch_mr` does not, and is published for the leader as every pin is.
+ */
+export function togglePin($: EngineInterface, press: 'pin' | 'unpin', mr: Pinned): void {
+  quietly(
+    $,
+    (async () => {
+      const key = pinKey(mr)
+      if (press === 'pin') {
+        await pinMr($, mr, 'watched')
+      } else if ((await readPinned($)).some(one => pinKey(one) === key && one.origin === 'watched')) {
+        await unpinKeys($, [key])
+      }
+      await publishPins($, await readPinned($))
+    })()
+  )
+}
 
 /**
  * Says what this session has pinned, when that is not what the store holds or its beat is due. A session with no pins

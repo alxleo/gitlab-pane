@@ -1,11 +1,12 @@
 // What GitLab's answers to the inbox documents mean: the MRs they name, and the signals on them. Plain data in, plain data
 // out, typed by the generated types of the documents; inbox.ts sends the documents and keeps the result.
 import { cut } from './graphemes.ts'
+import { cardKey } from './hosts.ts'
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
 import { foreign } from './model-text.ts'
 
 import type { InboxAuthoredQuery, InboxFollowProjectQuery, InboxFollowUserQuery, InboxQueueQuery, InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
-import type { InboxKind, InboxMr, InboxSignal } from '../types'
+import type { InboxKind, InboxMr, InboxSignal, OwnMrs } from '../types'
 
 /** What a document gave of the inbox: who is signed in, and the MRs it named. */
 export type Found = { user: string | null; mrs: InboxMr[] }
@@ -183,6 +184,14 @@ export function queueMrs(host: string, data: InboxQueueQuery | null, now: number
     return [mrOf(host, me, fields, [request, ...noteSignals(present(fields.notes.nodes), me, false, false, now)], { ...PLAIN, inQueue: true, cutoff: cutoffOf(fields.notes) })]
   })
   return { user: me, mrs }
+}
+
+/** From the same answer, for the Jira moves: who the user is on the host, and every MR of theirs merged since the horizon, by card key. */
+export function ownMrs(host: string, data: InboxAuthoredQuery | null): OwnMrs {
+  return {
+    user: data?.currentUser?.username ?? null,
+    merged: present(data?.currentUser?.merged?.nodes).map(mr => ({ key: cardKey(host, mr.project.fullPath, mr.iid), iid: Number(mr.iid), title: mr.title })),
+  }
 }
 
 /** The user's open MRs with what others did on them lately, and the ones merged since the horizon by someone else. */

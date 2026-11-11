@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import { isEqual } from './equal.ts'
 import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { keptCards, keptCardsByKey } from './snapshot.ts'
 
 import type { MrCard, Pinned, PollState, ReadClock, Role, Ticket, Usual } from '../types'
 
@@ -48,7 +49,8 @@ export async function drawnData($: EngineInterface) {
     read($, readingAtom),
     read($, jiraAtom),
   ])
-  return { pinned, rows, details, avatars, tickets, usual, poll, isReading, browse }
+  // The cards outlive a reload, so new code meets cards an older version kept: those in another shape are left out.
+  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, tickets, usual, poll, isReading, browse }
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
@@ -58,11 +60,11 @@ export function readPinned($: EngineInterface): Promise<Pinned[]> {
 export function readHosts($: EngineInterface): Promise<string[]> {
   return read($, hostsAtom)
 }
-export function readRows($: EngineInterface): Promise<MrCard[]> {
-  return read($, rowsAtom)
+export async function readRows($: EngineInterface): Promise<MrCard[]> {
+  return keptCards(await read($, rowsAtom))
 }
-export function readDetails($: EngineInterface): Promise<Record<string, MrCard>> {
-  return read($, detailsAtom)
+export async function readDetails($: EngineInterface): Promise<Record<string, MrCard>> {
+  return keptCardsByKey(await read($, detailsAtom))
 }
 export function readTicketsKnown($: EngineInterface): Promise<Record<string, Ticket>> {
   return read($, ticketsAtom)
@@ -102,11 +104,15 @@ export async function startData($: EngineInterface, jiraSite: unknown, hosts: re
   await update($, readingAtom, () => false)
 }
 
-/** Pins an MR; watching one this session raised keeps it raised, so it still wakes. */
+/**
+ * Pins an MR, last; one pinned already keeps its place, the order the person sees. Watching one this session raised keeps
+ * it raised, so it still wakes.
+ */
 export async function pinMr($: EngineInterface, parsed: Pinned, origin: 'raised' | 'watched'): Promise<void> {
   await update($, pinnedAtom, list => {
     const was = list.find(one => pinKey(one) === pinKey(parsed))
-    return [...list.filter(one => one !== was), { ...parsed, origin: was?.origin === 'raised' ? 'raised' : origin }]
+    const pin: Pinned = { ...parsed, origin: was?.origin === 'raised' ? 'raised' : origin }
+    return was !== undefined ? list.map(one => (one === was ? pin : one)) : [...list, pin]
   })
 }
 
@@ -157,11 +163,16 @@ export async function markUnreachable($: EngineInterface, urls: readonly string[
 
 /** Adds what Jira said about tickets, and when it was asked. */
 export async function mergeTickets($: EngineInterface, found: Record<string, Ticket>, at: number): Promise<void> {
+  await knowTickets($, found)
+  await changeReads($, reads => ({ ...reads, ticketsAt: at }))
+}
+
+/** Adds what Jira said of some tickets, leaving when the whole list is next read as it was. */
+export async function knowTickets($: EngineInterface, found: Record<string, Ticket>): Promise<void> {
   const known = await read($, ticketsAtom)
   if (!isEqual(known, { ...known, ...found })) {
     await update($, ticketsAtom, previous => ({ ...previous, ...found }))
   }
-  await changeReads($, reads => ({ ...reads, ticketsAt: at }))
 }
 
 /** Adds the pipeline run times read for projects, by `host/group/project`. */
