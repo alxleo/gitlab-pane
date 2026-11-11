@@ -718,6 +718,47 @@ async function fontsBorrowed(context: BrowserContext, page: Page): Promise<Set<s
   return borrowed
 }
 
+/**
+ * Run in the page: each character the frame draws, painted alone in its element's own font and compared with what that
+ * font paints for U+10FFFD, which no font has. Where no font has a glyph, Chromium paints the first font's empty box and
+ * credits that font, so `fontsBorrowed` cannot see it; a character that paints the same as U+10FFFD has no glyph.
+ */
+const NO_GLYPH_SCRIPT = `(() => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 64
+  const paint = canvas.getContext('2d', { willReadFrequently: true })
+  const painted = (font, text) => {
+    paint.clearRect(0, 0, 64, 64)
+    paint.font = font
+    paint.fillText(text, 8, 44)
+    return paint.getImageData(0, 0, 64, 64).data.join()
+  }
+  const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' })
+  const seen = new Map()
+  const none = new Set()
+  const walk = document.createTreeWalker(document.querySelector('${FRAME}'), NodeFilter.SHOW_TEXT)
+  for (let node = walk.nextNode(); node !== null; node = walk.nextNode()) {
+    const style = getComputedStyle(node.parentElement)
+    const font = style.fontStyle + ' ' + style.fontWeight + ' 32px ' + style.fontFamily
+    if (!seen.has(font)) {
+      seen.set(font, painted(font, '\\u{10FFFD}'))
+    }
+    for (const { segment } of graphemes.segment(node.data)) {
+      if (!/^[\\s\\p{Cc}\\p{Cf}]+$/u.test(segment) && painted(font, segment) === seen.get(font)) {
+        none.add(segment)
+      }
+    }
+  }
+  return [...none]
+})()`
+
+/** Characters the page draws with no glyph from any font: an empty box, here and on every other machine without one. */
+async function glyphsMissing(page: Page): Promise<string[]> {
+  const found: unknown = await page.evaluate(NO_GLYPH_SCRIPT)
+  return Array.isArray(found) ? found.filter((one): one is string => typeof one === 'string') : []
+}
+
 async function photograph(pages: ReadonlyMap<string, string>, out: string, scale: number): Promise<void> {
   mkdirSync(out, { recursive: true })
   const browser = await chromium.launch({ args: ['--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb'] }).catch((error: unknown) => {
@@ -740,6 +781,12 @@ async function photograph(pages: ReadonlyMap<string, string>, out: string, scale
       if (borrowed.size > 0) {
         throw new ScreensError(
           `scene ${name} drew with fonts of this machine, not the bundled ones: ${[...borrowed].toSorted().join(', ')}. Add the missing glyph to tools/screens/fonts (see SOURCES.md), or the shot changes from machine to machine.`
+        )
+      }
+      const missing = await glyphsMissing(page)
+      if (missing.length > 0) {
+        throw new ScreensError(
+          `scene ${name} draws ${missing.map(one => JSON.stringify(one)).join(', ')} as an empty box: no bundled font has a glyph for it. Add it to a subset in tools/screens/fonts (see SOURCES.md).`
         )
       }
       await page.locator(FRAME).screenshot({ path: join(out, `${name}.png`), animations: 'disabled', omitBackground: false })
