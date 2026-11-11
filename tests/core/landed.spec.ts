@@ -4,9 +4,11 @@ import { Failure } from '../../hooks/failure.ts'
 import type { LandedQuery } from '../../hooks/gitlab.generated.ts'
 import {
   BUILD_APPEARS_MS,
+  BUILD_RUNS_MS,
   LANDED_SHOWN,
   LANDED_WITHIN_MS,
   RECHECK_MS,
+  answeredBuild,
   buildOf,
   isDue,
   keptLanded,
@@ -15,12 +17,14 @@ import {
   mergeRequestPath,
   mergedLately,
   squashShaOf,
+  unanswered,
   withLanded,
 } from '../../hooks/landed.ts'
+import type { Merged } from '../../hooks/landed.ts'
 import { TITLE_ROOM } from '../../hooks/inbox-rules.ts'
 import { NOW } from '../fixtures.ts'
 
-import type { Landed } from '../../types'
+import type { CiStatus, Landed } from '../../types'
 
 const MERGE = 'a'.repeat(40)
 const SQUASH = 'b'.repeat(40)
@@ -176,34 +180,59 @@ const entry = (over: Partial<Landed> = {}): Landed => ({
   sha: MERGE,
   build: null,
   checkedAt: null,
+  hasFailed: false,
   ...over,
 })
 
-const built = (status: 'success' | 'failed' | 'canceled' | 'skipped' | 'running' | 'pending' | 'manual' | 'unknown') => ({ status, url: 'https://gitlab.com/g/p/-/pipelines/9' })
+const built = (status: CiStatus) => ({ status, url: 'https://gitlab.com/g/p/-/pipelines/9' })
 
 const MERGED_AT = NOW - 60 * 60_000
 
-test('a build that passed, was canceled or was skipped is never asked for again, whatever ↻', () => {
-  for (const status of ['success', 'canceled', 'skipped'] as const) {
+test('a build that passed or was skipped is never asked for again, whatever ↻', () => {
+  for (const status of ['success', 'skipped'] as const) {
     expect(isDue(entry({ build: built(status), checkedAt: NOW - 3 * RECHECK_MS }), MERGED_AT, NOW, false)).toBe(false)
     expect(isDue(entry({ build: built(status), checkedAt: NOW - 3 * RECHECK_MS }), MERGED_AT, NOW, true)).toBe(false)
   }
 })
 
-test('a build still running is asked for at every read', () => {
-  for (const status of ['running', 'pending', 'unknown'] as const) {
-    expect(isDue(entry({ build: built(status), checkedAt: NOW }), MERGED_AT, NOW, false)).toBe(true)
+test('a build that has not ended is asked for at every read in the hour after the merge, and after it at the recheck period, or at once on ↻', () => {
+  const unended = ['created', 'waiting_for_resource', 'preparing', 'waiting_for_callback', 'pending', 'running', 'canceling', 'scheduled', 'unknown'] as const
+  for (const status of unended) {
+    const due = (since: number, ago: number, isAsked = false) => isDue(entry({ build: built(status), checkedAt: NOW - ago }), NOW - since, NOW, isAsked)
+    // In the hour: every read, however lately it was asked.
+    expect(due(BUILD_RUNS_MS - 1, 0)).toBe(true)
+    // Past it, a build stuck for a day is not asked every minute.
+    expect(due(BUILD_RUNS_MS, 0)).toBe(false)
+    expect(due(24 * 3_600_000, RECHECK_MS - 1)).toBe(false)
+    expect(due(24 * 3_600_000, RECHECK_MS)).toBe(true)
+    expect(due(24 * 3_600_000, 0, true)).toBe(true)
   }
 })
 
-test('a build that failed or waits on a person is asked for again after the recheck period, or at once on ↻, and not before', () => {
-  for (const status of ['failed', 'manual'] as const) {
+test('a build that failed, was canceled or waits on a person is asked for again after the recheck period, or at once on ↻, and not before', () => {
+  for (const status of ['failed', 'canceled', 'manual'] as const) {
     const asked = (ago: number, isAsked: boolean) => isDue(entry({ build: built(status), checkedAt: NOW - ago }), MERGED_AT, NOW, isAsked)
     expect(asked(0, false)).toBe(false)
     expect(asked(RECHECK_MS - 1, false)).toBe(false)
     expect(asked(RECHECK_MS, false)).toBe(true)
     expect(asked(0, true)).toBe(true)
   }
+})
+
+test('an ask that got no answer waits the recheck period, or ↻, whatever was known and wherever the build window stands', () => {
+  for (const known of [null, built('failed'), built('running')]) {
+    const asked = (ago: number, isAsked: boolean) => isDue(entry({ build: known, hasFailed: true, checkedAt: NOW - ago }), NOW - 5 * 60_000, NOW, isAsked)
+    expect(asked(0, false)).toBe(false)
+    expect(asked(RECHECK_MS - 1, false)).toBe(false)
+    expect(asked(RECHECK_MS, false)).toBe(true)
+    expect(asked(0, true)).toBe(true)
+  }
+})
+
+test('a look past the doubt that failed is not the answer that GitLab ran none, and one that was answered is', () => {
+  const past = NOW - 2 * 3_600_000
+  expect(isDue(entry({ build: null, hasFailed: true, checkedAt: past + BUILD_APPEARS_MS + 1 }), past, NOW, false)).toBe(true)
+  expect(isDue(entry({ build: null, hasFailed: false, checkedAt: past + BUILD_APPEARS_MS + 1 }), past, NOW, false)).toBe(false)
 })
 
 test('a squash commit GitLab would not name is asked for again after the recheck period, or at once on ↻, and not before', () => {
@@ -225,6 +254,31 @@ test('with no build seen yet, it is looked for until a look made after GitLab co
   expect(due({ checkedAt: MERGED_AT + BUILD_APPEARS_MS }, true)).toBe(true)
 })
 
+// ---- what an ask leaves in the entry -------------------------------------------------------------------------------------
+
+const mergedOne = (): Merged => {
+  const [one] = mergedLately('gitlab.com', answer(raw(1, 60, { mergeCommitSha: MERGE })), NOW)
+  if (one === undefined) {
+    throw new Error('the MR was not listed as merged lately')
+  }
+  return one
+}
+
+test('an answer that names no build leaves the one already known, as a commit’s merge pipeline does not go away, and notes the ask', () => {
+  const failed = entry({ build: built('failed'), checkedAt: NOW - RECHECK_MS })
+  expect(answeredBuild(mergedOne(), MERGE, failed, null, NOW)).toMatchObject({ sha: MERGE, build: built('failed'), checkedAt: NOW, hasFailed: false })
+  // A build it names is the build, whatever was known.
+  expect(answeredBuild(mergedOne(), MERGE, failed, built('success'), NOW)).toMatchObject({ build: built('success'), checkedAt: NOW })
+  // With none known and none named, there is none.
+  expect(answeredBuild(mergedOne(), MERGE, undefined, null, NOW)).toMatchObject({ build: null, hasFailed: false })
+})
+
+test('an ask that got no answer leaves what was known, the time of the try, and the mark that it failed', () => {
+  const kept = entry({ build: built('failed'), checkedAt: NOW - 3 * RECHECK_MS })
+  expect(unanswered(mergedOne(), MERGE, kept, NOW)).toMatchObject({ sha: MERGE, build: built('failed'), checkedAt: NOW, hasFailed: true })
+  expect(unanswered(mergedOne(), null, undefined, NOW)).toMatchObject({ sha: null, build: null, checkedAt: NOW, hasFailed: true })
+})
+
 // ---- what a stored list holds --------------------------------------------------------------------------------------------
 
 test('a stored list keeps the entries that are one, and an older snapshot with no list, or a list of anything else, keeps none', () => {
@@ -232,6 +286,10 @@ test('a stored list keeps the entries that are one, and an older snapshot with n
   expect(keptLanded([good, entry({ iid: 2, sha: null })])).toEqual([good, entry({ iid: 2, sha: null })])
   expect(keptLanded(undefined)).toEqual([])
   expect(keptLanded({})).toEqual([])
+  // An entry a version kept before the mark of a failed ask existed is one whose last ask did not fail.
+  const { hasFailed: _mark, ...before } = good
+  expect(keptLanded([before])).toEqual([good])
+  expect(keptLanded([{ ...good, hasFailed: 'yes' }])).toEqual([])
   expect(
     keptLanded([
       null,

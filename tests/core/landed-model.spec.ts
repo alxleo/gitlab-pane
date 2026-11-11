@@ -19,6 +19,7 @@ const landed = (iid: number, over: Partial<Landed> = {}): Landed => ({
   sha: SHA,
   build: { status: 'success', url: `https://gitlab.com/g/p/-/pipelines/${iid}0` },
   checkedAt: NOW,
+  hasFailed: false,
   ...over,
 })
 

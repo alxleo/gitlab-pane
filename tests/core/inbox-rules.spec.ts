@@ -334,6 +334,7 @@ test('a snapshot kept before merged MRs were listed reads as none merged, and a 
     sha: 'a'.repeat(40),
     build: { status: 'failed' as const, url: 'https://gitlab.com/g/p/-/pipelines/9' },
     checkedAt: NOW,
+    hasFailed: false,
   }
   const { landed: _none, ...older } = snapshot([])
   expect(readSnapshot(parseJson(JSON.stringify(older)))).toEqual(snapshot([]))

@@ -310,6 +310,7 @@ const landedOf = (iid: number, over: Partial<Landed> = {}): Landed => ({
   sha: 'a'.repeat(40),
   build: { status: 'success', url: `https://${HOST}/g/p/-/pipelines/${iid}0` },
   checkedAt: NOW,
+  hasFailed: false,
   ...over,
 })
 
