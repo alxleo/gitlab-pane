@@ -168,7 +168,14 @@ test('the notes on your MR become approvals, reviews, pushes and comments by oth
                   note(1, 10, 'bob', 'approved this merge request', 'approved'),
                   note(2, 20, 'bob', 'requested changes', 'requested_changes'),
                   note(3, 30, 'bob', 'left review comments', 'reviewed'),
-                  note(4, 40, 'bob', 'added 2 commits\n\n* abc - fix', 'commit'),
+                  // GitLab's own push note: the count, its commits as HTML, then a link to compare.
+                  note(
+                    4,
+                    40,
+                    'bob',
+                    'added 2 commits\n\n<ul><li>0a1b2c3d4e5f60718293a4b5c6d7e8f901234567 - fix: name the <code>main</code> branch</li><li>89abcdef0123456789abcdef0123456789abcdef - fix the lint</li></ul>\n\n[Compare with previous version](/group/app/-/merge_requests/1/diffs?diff_id=2&start_sha=3)',
+                    'commit'
+                  ),
                   note(5, 50, 'bob', 'unapproved this merge request', 'unapproved'),
                   note(6, 60, 'carol', 'please\n  rename   this'),
                   note(7, 70, 'bot', 'pipeline ran', null, true),
@@ -198,7 +205,7 @@ test('the notes on your MR become approvals, reviews, pushes and comments by oth
     'approved:bob:',
     'changes_requested:bob:',
     'review:bob:',
-    'pushed:bob:added 2 commits * abc - fix',
+    'pushed:bob:added 2 commits',
     'unapproved:bob:',
     'comment:carol:please rename this',
   ])

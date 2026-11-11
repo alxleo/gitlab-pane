@@ -63,6 +63,8 @@ function todoKind(action: string): InboxKind | null {
 
 /** The first words of what someone wrote, on one line. */
 const excerptOf = (body: string): string => foreign(body, EXCERPT_ROOM)
+/** What a push says: GitLab's note is "added 2 commits", then the commits as HTML and a link, each its own paragraph. */
+const pushOf = (body: string): string => excerptOf(body.split(/\n\s*\n/u, 1)[0] ?? '')
 /** A username as the snapshot keeps it: cut between characters at the room it has. */
 const actorOf = (username: string): string => cut(username, ACTOR_ROOM, ACTOR_ROOM)
 
@@ -120,7 +122,9 @@ function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: 
     if (kind === undefined || !wanted.has(kind)) {
       return []
     }
-    return [{ kind, actor: actorOf(note.author.username), at, note: noteIdOf(note.id), excerpt: kind === 'comment' || kind === 'pushed' ? excerptOf(note.body) : '' }]
+    return [
+      { kind, actor: actorOf(note.author.username), at, note: noteIdOf(note.id), excerpt: kind === 'comment' ? excerptOf(note.body) : kind === 'pushed' ? pushOf(note.body) : '' },
+    ]
   })
 }
 
