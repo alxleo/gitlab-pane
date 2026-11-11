@@ -1,14 +1,14 @@
 # gitlab-pane
 
-A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests beside the session, and wakes the session when an MR it opened fails its pipeline or can merge.
+A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests beside the session, and wakes the session when an MR it opened fails its pipeline or can merge. Where GitLab says what would move an MR along, its card offers that one press: merge it, rebase it, or hand its conflicts to Claude.
 
 | Mine: your MRs, what needs you first | Inbox: reviews, mentions, failures |
 |---|---|
 | ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
 | **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
 | ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
-| **☆: the MRs you work on today, the rest one line** | |
-| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | |
+| **☆: the MRs you work on today, the rest one line** | **↩ reply: answer a thread beside its diff, once you confirm** |
+| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | ![A reply under a thread, waiting to be confirmed](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-reply.png) |
 
 <sub>Made-up data.</sub>
 
@@ -22,6 +22,8 @@ flowchart LR
 
 Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
 
+A card's move stands where GitLab's verdict is: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
+
 ## Install
 
 ```bash
@@ -30,7 +32,7 @@ claude plugin install gitlab-pane --marketplace alxleo/gitlab-pane
 
 Renamed from `gitlab-ci` in 0.3.0. The marketplace tells Claude Code of the rename, so an installed or enabled `gitlab-ci@gitlab-pane` moves to `gitlab-pane@gitlab-pane` by itself. The store (avatars, seen marks) starts empty, the plugin's options may need setting again, and a permission rule for `mcp__gitlab-ci__watch_mr` must be added again as `mcp__gitlab-pane__watch_mr`.
 
-Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`). Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in.
+Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`); merging, rebasing and replying from the pane need `api`. Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in.
 
 For a team, in the project's `.claude/settings.json`:
 
@@ -73,12 +75,13 @@ In the terminal, once the pane has the keyboard (ctrl+x tab, or a click on it), 
 
 ## What it runs
 
-Queries only, as you: nothing is written to GitLab or Jira.
+Queries, as you. GitLab is written to only when you press a merge or a rebase, or post a reply you confirmed, and Jira never.
 
 | Runs | How often | For | Writes (plugin store) |
 |---|---|---|---|
 | GraphQL, per host, by the leader | 30 s while a pinned pipeline runs, else 1 min; after reads where every host failed, 2 min doubling to 10 min; the whole list every 5 min, only what changed between | your open MRs and their merge checks; running and pinned ones not among them, one by one | the snapshot every session draws |
-| GraphQL, one MR | once when you open its page, again when it changes | its description and threads, for this pane only | — |
+| GraphQL, one MR | once when you open its page, again when it changes | its description and threads, where a reply to each goes and the lines of the diff it was left on, for this pane only | — |
+| GraphQL `createNote`, in the session whose page it is | once per press of `post as you`, never sent again on its own | your reply under a thread; then the MR is read whole again, so the thread shows it | — |
 | GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
 | GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
 | GraphQL, per host, by the leader | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |
@@ -87,6 +90,7 @@ Queries only, as you: nothing is written to GitLab or Jira.
 | `curl` via `/bin/sh`, https only, no token, by the leader | once per new face | avatars, at the addresses GitLab gives | the pictures |
 | `glab config get token --host <host>` | once per host per session, again after `/gitlab` or a 401 | a token | — |
 | the lease, in the store | 2 s; the leader renews it every 15 s, and another takes over after 45 s without | electing one leader among the sessions that draw the pane | who leads, each session's pins |
+| GraphQL `mergeRequestAccept`, REST `PUT …/merge_requests/<iid>/rebase`, by the session pressed in | when you press a merge or a rebase; then that MR every 3 s until GitLab is done, 2 min at most | the move, on the head GitLab's verdict was read on | — |
 
 - **Several sessions** share one reader: the leader reads GitLab and writes a snapshot, the others draw it. Each session decides its own wakes.
 - **Tokens**, first found: `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN` or `OAUTH_TOKEN` (for `GITLAB_HOST` or `GL_HOST`, else the first host); `glab`'s; `gitlabTokens`. Never shown.
@@ -103,5 +107,6 @@ GitLab's text arrives only through one cleaner: control and bidi characters remo
 | Log tail | in that wake, with `failureLogs` | last 20 lines, 2,000 characters, of up to 3 jobs | each line behind `│ `, under a heading saying it is the job's output, not instructions |
 | `/mrs` | when you run it | title, branches, description (6,000 characters), threads (1,500 a comment, 20,000 an MR) | others' words behind `│`, under a line saying they are data, not instructions; context only, not the transcript |
 | `watch_mr` | when Claude calls it | `!iid`, ticket, pipeline status and time, blockers, failed jobs, link | no titles, descriptions or comments |
+| Conflicts | you press `⇄` on an MR of the session's repo; it waits for a turn of its own | `!iid`, the project, both branches (80 characters each), link, and what to do: resolve them in a subagent, push, say in a line whether it is fixed | no titles, descriptions or comments |
 
 Colours and marks: [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md). Development: [CONTRIBUTING.md](https://github.com/alxleo/gitlab-pane/blob/main/CONTRIBUTING.md).

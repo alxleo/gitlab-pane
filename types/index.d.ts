@@ -35,6 +35,34 @@ export type MergeCheck = { id: string; status: CheckStatus }
 /** Every merge check GitLab runs on an MR, in its own order, which is the order of its precedence. */
 export type MergeStatus = MergeCheck[]
 
+/** What GitLab says of merging an MR, read in the same answer as its merge checks. */
+export type Merging = {
+  /** The head commit the checks were made on, which a merge names so GitLab merges nothing newer; empty where GitLab gave none. */
+  head: string
+  isRebasing: boolean
+  /** GitLab will merge it once its checks pass. */
+  isAutoMerging: boolean
+  /** The signed-in user may merge it, and push to its source branch (which a rebase does). */
+  canMerge: boolean
+  canPush: boolean
+}
+
+/** A move the pane can make for an MR, when GitLab's verdict names it: the one thing that moves the MR along. */
+export type MoveKind = 'merge' | 'rebase' | 'rebase-merge' | 'conflicts'
+
+/**
+ * Something this session set out to write to GitLab, by its id in the ledger (`writes.ts`): armed, waiting for the press
+ * that confirms it; sent, while GitLab carries it out; handed on (to Claude), which takes as long as it takes; or failed,
+ * with why in a line, said beside it until it is tried again. `on` is what it was confirmed for (a merge's head, a
+ * reply's text), so a confirm holds for what the person saw and nothing newer.
+ */
+export type Write<Kind extends string = string> =
+  | { kind: Kind; state: 'armed' | 'sent' | 'handed'; on: string; at: number }
+  | { kind: Kind; state: 'failed'; on: string; at: number; say: string }
+
+/** A press this session made on a move, by card key, kept until the MR's head moves (`on`). */
+export type Pressed = Write<MoveKind>
+
 /** What happened to an MR that an inbox rule counts; each has its own glyph and word in the pane. */
 export type InboxKind =
   | 'changes_requested'
@@ -82,7 +110,21 @@ export type Note = {
   isOpen: boolean
   /** The answers under an open thread's opening note, oldest first. */
   replies?: Note[]
+  /**
+   * Where a reply to the thread this note opens is posted: the MR's and the thread's GitLab IDs. Read with its MR's page
+   * alone, so a card the sessions share never has it.
+   */
+  answer?: { mr: string; thread: string }
+  /** The lines of the diff the thread was left on, ending at the commented line, as a unified-diff hunk; read with the page. */
+  excerpt?: { path: string; hunk: string }
 }
+
+/**
+ * The one reply box open on an MR's page: the thread it answers (by its first note's address; empty while none is open)
+ * and the text it opened with; `say` is why Enter took nothing, or empty. How far the reply got is its entry in the ledger
+ * of writes (`Write`).
+ */
+export type ReplyBox = { thread: string; text: string; say: string }
 
 /** Someone other than the author, a bot included, who reviewed or commented. */
 export type Person = {
@@ -140,6 +182,8 @@ export type MrCard = {
   approvalsRequired: number
   /** GitLab's own merge checks, under the project's merge rules; null while they were not read. */
   mergeStatus: MergeStatus | null
+  /** What GitLab says of merging it, from the same read as `mergeStatus`; null while that was not read. */
+  merging: Merging | null
   approvers: string[]
   reviewers: { username: string; isBot: boolean; state: ReviewState }[]
   people: Person[]
@@ -168,6 +212,8 @@ export type MrCard = {
   openThreads: Note[]
   /** Open threads a shared card leaves out of `openThreads`, which keeps the first few: those no person's icon holds, and the rest. */
   threadsLeft: { loose: number; held: number }
+  /** Why the MR's page, read whole, could not read where replies go; absent when it could, and on every shared card. */
+  repliesOff?: string
 }
 
 /** How long a successful MR pipeline in a project runs, the middle half of the recent ones, in seconds. */
@@ -194,6 +240,8 @@ export type HostFeatures = {
   hasReviewStates: boolean
   /** `Todo.targetEntity` (GitLab 17.4): without it the inbox asks for `target`, which GitLab 17.4 deprecated. */
   hasTodoEntity: boolean
+  /** `Discussion.truncatedDiffLines`: without it an MR's page draws its threads with no lines of the diff. */
+  hasDiffLines: boolean
 }
 
 export type Ticket = { type: string; status: string; summary: string }
@@ -428,6 +476,12 @@ declare module 'claude-code' {
       reported: Problems
       /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
       logs: boolean
+      /** What this session set out to write to GitLab, by id: merges, rebases and hand-offs (`move:<card key>`), replies (`reply:<thread>`). */
+      writes: Record<string, Write>
+      /** The reply being written on an MR's page, if any. */
+      reply: ReplyBox
+      /** What was last typed in the reply box of each thread, by its first note's address; no drawing reads it. */
+      typed: Record<string, string>
     }
   }
 }

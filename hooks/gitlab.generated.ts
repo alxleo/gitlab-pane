@@ -17,9 +17,37 @@ export type CiJobStatus =
   | 'WAITING_FOR_CALLBACK'
   | 'WAITING_FOR_RESOURCE'
 
+export type DetailedMergeStatus =
+  | 'APPROVALS_SYNCING'
+  | 'BLOCKED_STATUS'
+  | 'CHECKING'
+  | 'CI_MUST_PASS'
+  | 'CI_STILL_RUNNING'
+  | 'COMMITS_STATUS'
+  | 'CONFLICT'
+  | 'DISCUSSIONS_NOT_RESOLVED'
+  | 'DRAFT_STATUS'
+  | 'EXTERNAL_STATUS_CHECKS'
+  | 'JIRA_ASSOCIATION'
+  | 'LOCKED_LFS_FILES'
+  | 'LOCKED_PATHS'
+  | 'MERGEABLE'
+  | 'MERGE_TIME'
+  | 'NEED_REBASE'
+  | 'NOT_APPROVED'
+  | 'NOT_OPEN'
+  | 'PREPARING'
+  | 'REQUESTED_CHANGES'
+  | 'SECURITY_POLICIES_VIOLATIONS'
+  | 'SECURITY_POLICY_PIPELINE_CHECK'
+  | 'TITLE_NOT_MATCHING'
+  | 'UNCHECKED'
+
 export type MergeRequestReviewState = 'APPROVED' | 'REQUESTED_CHANGES' | 'REVIEWED' | 'REVIEW_STARTED' | 'UNAPPROVED' | 'UNREVIEWED'
 
 export type MergeRequestState = 'all' | 'closed' | 'locked' | 'merged' | 'opened'
+
+export type MergeStrategyEnum = 'ADD_TO_MERGE_TRAIN_WHEN_CHECKS_PASS' | 'MERGE_TRAIN' | 'MERGE_WHEN_CHECKS_PASS'
 
 export type MergeabilityCheckIdentifier =
   | 'CI_MUST_PASS'
@@ -307,20 +335,6 @@ export type AuthoredPlainQuery = {
             }
           } | null> | null
         }
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type MergeStatusQueryVariables = Exact<{ [key: string]: never }>
-
-export type MergeStatusQuery = {
-  currentUser: {
-    authoredMergeRequests: {
-      nodes: Array<{
-        iid: string
-        project: { fullPath: string }
-        mergeabilityChecks: Array<{ identifier: MergeabilityCheckIdentifier; status: MergeabilityCheckStatus }>
       } | null> | null
     } | null
   } | null
@@ -785,4 +799,94 @@ export type InboxBriefQuery = {
       project: { fullPath: string }
     } | null
   } | null
+}
+
+export type MergeStatusQueryVariables = Exact<{ [key: string]: never }>
+
+export type MergeStatusQuery = {
+  currentUser: {
+    authoredMergeRequests: {
+      nodes: Array<{
+        iid: string
+        diffHeadSha: string | null
+        rebaseInProgress: boolean
+        autoMergeEnabled: boolean
+        project: { fullPath: string }
+        mergeabilityChecks: Array<{ identifier: MergeabilityCheckIdentifier; status: MergeabilityCheckStatus }>
+        userPermissions: { canMerge: boolean; pushToSourceBranch: boolean }
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type MoveStateQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type MoveStateQuery = {
+  project: {
+    mergeRequest: {
+      state: MergeRequestState
+      detailedMergeStatus: DetailedMergeStatus | null
+      diffHeadSha: string | null
+      rebaseCommitSha: string | null
+      rebaseInProgress: boolean
+      autoMergeEnabled: boolean
+      mergeError: string | null
+      availableAutoMergeStrategies: Array<string> | null
+    } | null
+  } | null
+}
+
+export type MergeMutationVariables = Exact<{
+  path: string
+  iid: string
+  sha: string
+  strategy?: MergeStrategyEnum | null | undefined
+}>
+
+export type MergeMutation = { mergeRequestAccept: { errors: Array<string>; mergeRequest: { state: MergeRequestState; mergeError: string | null } | null } | null }
+
+export type ThreadsQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type ThreadsQuery = {
+  project: {
+    mergeRequest: {
+      id: string
+      discussions: {
+        nodes: Array<{
+          replyId: string
+          notes: { nodes: Array<{ url: string | null } | null> | null }
+          truncatedDiffLines: Array<{ oldLine: number | null; newLine: number | null; type: string | null; text: string | null }> | null
+        } | null> | null
+      }
+    } | null
+  } | null
+}
+
+export type ThreadsPlainQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type ThreadsPlainQuery = {
+  project: {
+    mergeRequest: { id: string; discussions: { nodes: Array<{ replyId: string; notes: { nodes: Array<{ url: string | null } | null> | null } } | null> | null } } | null
+  } | null
+}
+
+export type ThreadLinesFragment = { truncatedDiffLines: Array<{ oldLine: number | null; newLine: number | null; type: string | null; text: string | null }> | null }
+
+export type ReplyMutationVariables = Exact<{
+  mr: string
+  thread: string
+  body: string
+}>
+
+export type ReplyMutation = {
+  createNote: { errors: Array<string>; note: { id: string } | null; quickActionsStatus: { commandsOnly: boolean | null; errorMessages: Array<string> | null } | null } | null
 }

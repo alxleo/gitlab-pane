@@ -10,6 +10,8 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
+import { nextMove } from './next-move.ts'
+import type { Move } from './next-move.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -17,7 +19,7 @@ import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { MrCard, Pinned, PollState, Problems, Usual } from '../types'
+import type { MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
@@ -42,6 +44,12 @@ export type PersonRow = {
   picture: SvgSource | null
 }
 
+/**
+ * The MR's one move as a row draws it: a press while `press` is set (armed, the press that confirms a merge), else words
+ * saying what is under way. `isVerdict` when it stands in place of GitLab's verdict, whose check it fixes.
+ */
+type RowMove = Omit<Move, 'check'> & { key: string; isVerdict: boolean }
+
 export type RowModel = {
   key: string
   /** Short and unique among the rows; the key of the row's box. */
@@ -58,7 +66,8 @@ export type RowModel = {
   repo: Link | null
   strip: StripModel | null
   pipeline: Link | null
-  verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null } | null
+  /** GitLab's verdict, and the MR's one move where there is one (`next-move.ts`), said in place of the verdict when it fixes the check the verdict names. */
+  verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null; move: RowMove | null } | null
   blocker: { text: string; tone: Tone } | null
   people: PersonRow[]
   /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
@@ -102,6 +111,10 @@ export type PaneInput = {
   isWaking: boolean
   /** What each source last failed with. */
   failures: Problems
+  /** This session's presses on moves, by card key, each as it holds now (`liveOf`). */
+  pressed: Readonly<Record<string, Pressed>>
+  /** The project (`host/group/project`) this session works in, where Claude can take an MR's conflicts; null when none. */
+  here: string | null
 }
 
 export type PaneModel = {
@@ -197,7 +210,12 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   const pipeline = card.pipeline
   const ticketLink = facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null
   const [blocker] = facts.row
-  const [firstTrailing] = facts.trailing
+  const move = nextMove(card, input.pressed[card.key], input.here === card.project)
+  // A move needs GitLab's checks, so a row with a move has a verdict to say it in or beside.
+  const isVerdict = move !== null && move.check === facts.verdict?.check
+  // A move said beside the verdict speaks for its own check, which then trails no more.
+  const trailing = move !== null && !isVerdict ? facts.trailing.filter(badge => badge.check !== move.check) : facts.trailing
+  const [firstTrailing] = trailing
   const names = facts.people.map(person => (hasSvg ? person.call : person.initials))
   // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
   const callOf = (person: PersonFacts, i: number): string => (hasSvg && names.filter(name => name === names[i]).length > 1 ? person.initials : (names[i] ?? person.initials))
@@ -221,7 +239,8 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
             words: facts.verdict.words,
             tone: facts.verdict.tone,
             bold: facts.verdict.tone === 'success',
-            trailing: firstTrailing !== undefined ? `· ${firstTrailing.words}${facts.trailing.length > 1 ? ` +${facts.trailing.length - 1}` : ''}` : null,
+            trailing: firstTrailing !== undefined ? `· ${firstTrailing.words}${trailing.length > 1 ? ` +${trailing.length - 1}` : ''}` : null,
+            move: move !== null ? { key: `move-${suffix}`, label: move.label, press: move.press, isArmed: move.isArmed, failed: move.failed, isVerdict } : null,
           }
         : null,
     blocker: blocker !== undefined ? { text: `${blocker.glyph} ${blocker.words}${facts.row.length > 1 ? ` +${facts.row.length - 1}` : ''}`, tone: blocker.tone } : null,

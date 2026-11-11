@@ -10,6 +10,7 @@ import { arrowSteps, cardButtons, ringAfterSeen, ringStep } from './inbox-ring'
 import type { RingScroll } from './inbox-ring'
 import { ownedSections } from './inbox-rules'
 import { cardsDrawn, nextDraw, rowDrawn } from './in-flight'
+import { putAwayReply } from './replies'
 import { titleKey } from './drawing'
 
 import type { Scrolling } from '../types'
@@ -156,6 +157,8 @@ export function leaveReading($: EngineInterface): void {
       const key = await readPage($)
       const row = (await readRows($)).find(each => each.key === key)
       const listed = nextDraw()
+      // A reply box being written goes with its page, what was typed in it there when it opens again; one out stays.
+      putAwayReply($)
       await closePage($, key)
       await openPane($)
       await setGoingBack($, 'waiting for the list to draw')

@@ -74,6 +74,30 @@ const withThread = (body: string, author: string, repo: string, iid: number, fil
   }
 }
 
+/** A line of the diff as GitLab sends it under a thread: context, removed or added, its sign first. */
+const diffLine = (old: number | null, now: number | null, text: string) => ({
+  oldLine: old,
+  newLine: now,
+  type: old === null ? 'new' : now === null ? 'old' : null,
+  text: `${old === null ? '+' : now === null ? '-' : ' '}${text}`,
+})
+
+/** The lines of the diff above each commented line, by file: GitLab sends them with a thread, ending at the line. */
+const DIFF_LINES: Record<string, ReturnType<typeof diffLine>[]> = {
+  'src/cart/total.ts': [
+    diffLine(85, 85, '  const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0)'),
+    diffLine(86, 86, '  const tax = subtotal * rate'),
+    diffLine(87, null, '  return Math.round((subtotal + tax) * 100) / 100'),
+    diffLine(null, 87, '  const total = subtotal + tax'),
+    diffLine(null, 88, '  return Math.round(total * 100) / 100'),
+  ],
+  'src/checkout/cards.ts': [
+    diffLine(40, 40, '  const card = form.read()'),
+    diffLine(41, 41, '  if (!card.isValid) return showError(card)'),
+    diffLine(null, 42, "  cart.cookie.set('card', card.number)"),
+  ],
+}
+
 /** The merge requests Dana has open, with every state the pane has a word or a colour for. */
 const mine = (): Mr[] => [
   rawMr(482, {
@@ -151,6 +175,28 @@ const mine = (): Mr[] => [
       nodes: [withThread('Half-cents should round to even here, per the finance spec. Is `Math.round` what we want?', ALICE, 'acme-corp/storefront', 479, 'src/cart/total.ts', 88)],
     },
   }),
+  // In the repo the session works in, so its conflicts can go to Claude here.
+  rawMr(485, {
+    title: 'feat: [SHOP-217] Keep the coupon when the cart reloads',
+    webUrl: url('acme-corp/storefront', 485),
+    project: STOREFRONT,
+    sourceBranch: 'feat/sticky-coupon',
+    description: '## What\n\nThe coupon is kept in the cart, not the page, so a reload keeps it.',
+    updatedAt: minutesAgo(95),
+    conflicts: true,
+    approvalsLeft: 1,
+    approvalsRequired: 1,
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED', CONFLICT: 'FAILED' }),
+    diffStatsSummary: { additions: 44, deletions: 17, fileCount: 4 },
+    reviewers: { nodes: [who(CAROL, 'UNREVIEWED')] },
+    headPipeline: pipe('SUCCESS', {
+      id: 'gid://gitlab/Ci::Pipeline/9485',
+      path: '/acme-corp/storefront/-/pipelines/9485',
+      startedAt: minutesAgo(110),
+      finishedAt: minutesAgo(102),
+      duration: 470,
+    }),
+  }),
   rawMr(133, {
     title: 'refactor: [BILL-88] Extract the invoice renderer',
     webUrl: url('acme-corp/billing-api', 133),
@@ -181,7 +227,9 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(190),
     approvalsLeft: 1,
     approvalsRequired: 1,
-    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
+    // Behind its target in a repo that merges only by fast-forward: a rebase, beside the approval it still waits on.
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED', NEED_REBASE: 'FAILED' }),
+    shouldBeRebased: true,
     diffStatsSummary: { additions: 96, deletions: 12, fileCount: 5 },
     reviewers: { nodes: [who(CAROL, 'REVIEW_STARTED'), who(DAVE, 'UNREVIEWED')] },
     headPipeline: pipe('SUCCESS', {
@@ -276,6 +324,19 @@ function engine(on: On, mrs: Mr[]) {
           Pinned: ({ path, iid }) => ({
             data: { project: { mergeRequest: mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } },
           }),
+          // And beside it, where a reply to each thread goes and the lines of the diff it was left on.
+          Threads: ({ path, iid }) => {
+            const mr = mrs.find(each => each.iid === iid && each.project.fullPath === path)
+            const nodes = (mr?.discussions.nodes ?? []).map((discussion, at) => {
+              const first = discussion?.notes.nodes?.[0]
+              return {
+                replyId: `gid://gitlab/Discussion/${iid}${at}`,
+                truncatedDiffLines: DIFF_LINES[first?.position?.filePath ?? ''] ?? null,
+                notes: { nodes: [{ url: first?.url ?? null }] },
+              }
+            })
+            return { data: { project: { mergeRequest: mr === undefined ? null : { id: `gid://gitlab/MergeRequest/${iid}`, discussions: { nodes } } } } }
+          },
           ...inboxAnswers(world),
         },
         accepts: 'scene-token',
@@ -333,6 +394,14 @@ const SCENES: Scene[] = [
     name: 'reading',
     steps: async ui => {
       await press(ui, 'open-479-')
+    },
+  },
+  {
+    name: 'reading-reply',
+    steps: async ui => {
+      await press(ui, 'open-479-')
+      await press(ui, 'reply-open-')
+      await ui.input({ key: 'reply-box', text: 'Good catch: it rounds half to even now, and a test pins 0.125 to 0.12.' })
     },
   },
   {
