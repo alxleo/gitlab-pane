@@ -229,18 +229,24 @@ function toastOf(move: Wanted & { from?: string }, outcome: MoveOutcome, status:
 
 const isIn = (status: string, names: readonly string[]): boolean => names.some(name => name.toLowerCase() === status.toLowerCase())
 
+/** The tickets of the review steps to take, each once: Jira is asked which of them have been in review before. */
+export const reviewing = (take: readonly Wanted[]): string[] => [...new Set(take.filter(one => one.step === 'review').map(one => one.ticket))]
+
 /**
  * Which steps to take, given what Jira says of the tickets now; the rest end here. A ticket the search did not return is
  * refused, unless it returned none, which is a failed ask the first time and a refusal the next. A ticket never moves
  * when Jira counts it done or did not say, nor when it is already in a status the step names, nor back to review from a
- * status done names. `problem` is what /gitlab should say, or null.
+ * status done names. Nor is it brought to review once it has been there (`reviewed`, from the ticket's history): where it
+ * went since, QA or back to work, the team moved it, and Jira's statuses have no order to say which is further along.
+ * `problem` is what /gitlab should say, or null.
  */
 export function afterSearch(
   take: readonly Wanted[],
   tickets: Readonly<Record<string, Ticket>>,
   targets: MoveTargets,
   memory: MoveMemory,
-  now: number
+  now: number,
+  reviewed: ReadonlySet<string>
 ): { moves: TicketMove[]; endings: Ending[]; problem: string | null } {
   const isAnswered = Object.keys(tickets).length > 0
   const moves: TicketMove[] = []
@@ -251,7 +257,7 @@ export function afterSearch(
       const hasFailed = memory[keyOf(one.ticket, one.step)]?.outcome === 'failed'
       const outcome = isAnswered || hasFailed ? 'refused' : 'failed'
       endings.push({ ...kept(one, outcome, now), toast: toastOf(one, outcome, '', NOT_SHOWN) })
-    } else if (ticket.isDone !== false || isIn(ticket.status, one.names) || (one.step === 'review' && isIn(ticket.status, targets.done))) {
+    } else if (ticket.isDone !== false || isIn(ticket.status, one.names) || (one.step === 'review' && (isIn(ticket.status, targets.done) || reviewed.has(one.ticket)))) {
       endings.push({ ...kept(one, 'settled', now), toast: null })
     } else {
       moves.push({ ...one, from: ticket.status })

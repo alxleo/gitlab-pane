@@ -19,19 +19,23 @@ export const ticketQuery = (keys: readonly string[]): string => `key in (${keys.
 /** The fields an MR's page shows of its ticket, as `acli` names them; the status carries its category. */
 const TICKET_FIELDS = 'key,issuetype,status,summary'
 
+/** The argv after `acli` that reads the tickets a JQL query finds, at most `limit`, as JSON. */
+const queryArgs = (limit: number, jql: string): string[] => ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(limit), '--jql', jql]
+
 /** The argv after `acli` that reads these tickets as JSON. */
-export const searchArgs = (keys: readonly string[]): string[] => [
-  'jira',
-  'workitem',
-  'search',
-  '--json',
-  '--fields',
-  TICKET_FIELDS,
-  '--limit',
-  String(keys.length),
-  '--jql',
-  ticketQuery(keys),
-]
+export const searchArgs = (keys: readonly string[]): string[] => queryArgs(keys.length, ticketQuery(keys))
+
+/** A status name as a JQL string: in double quotes, its quotes and backslashes escaped. */
+const jqlString = (name: string): string => `"${name.replace(/["\\]/gu, '\\$&')}"`
+
+/**
+ * The argv after `acli` that reads which of these tickets have ever been in one of these statuses, as JSON. JQL takes a
+ * status no workflow has without complaint, so the names of every project's workflow can be asked at once.
+ */
+export const reviewedArgs = (keys: readonly string[], names: readonly string[]): string[] => {
+  const asked = keys.filter(isTicketKey)
+  return queryArgs(asked.length, `${ticketQuery(asked)} AND status WAS IN (${names.map(jqlString).join(', ')})`)
+}
 
 /** The argv after `acli` that moves a ticket to a status; it asks no question and answers JSON. */
 export const transitionArgs = (ticket: string, status: string): string[] => ['jira', 'workitem', 'transition', '--key', ticket, '--status', status, '--yes', '--json']
