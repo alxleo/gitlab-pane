@@ -74,6 +74,8 @@ type Fake = {
   isMoveDown?: boolean
   /** Tickets whose history has a status the in-review move names: they have been in review. */
   reviewedBefore?: string[]
+  /** acli failing on the search of tickets' history alone. */
+  isHistoryDown?: boolean
   /** GitLab's failure message of the failed jobs, by the job's path. */
   reasons?: Record<string, string>
   /** The logs the REST API serves, by `<project path>#<job number>`. */
@@ -344,7 +346,7 @@ function engine(
       })
       // Asked which tickets have been in review: those the test says have.
       if ((e.argv.at(-1) ?? '').includes(' WAS IN ')) {
-        return ran(JSON.stringify((fake.reviewedBefore ?? []).map(row)))
+        return fake.isHistoryDown === true ? ran('', 1, 'Error: dial tcp: i/o timeout') : ran(JSON.stringify((fake.reviewedBefore ?? []).map(row)))
       }
       return ran(JSON.stringify([row('ABC-1')]))
     }
@@ -704,6 +706,32 @@ test(
     expect(jiraMoves).toEqual([])
     expect(toasts.filter(toast => toast.startsWith('ABC-1'))).toEqual([])
     expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'settled' })
+    await ui.unmount()
+  }
+)
+
+test(
+  'when Jira cannot say whether a ticket has been in review, it is not moved, and the move is asked again after a while',
+  { options: { jiraUrl: 'https://jira.example.com/', jiraInReview: ['In Review'] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [mine(null)], isDown: false, isHistoryDown: true }
+    const { jiraMoves, store } = engine(on, fake)
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    await clock.advance(2 * 60_000)
+    fake.mrs = [mine(stamp(clock))]
+    await clock.advance(2 * 60_000)
+    expect(jiraMoves).toEqual([])
+    expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'failed' })
+    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    expect(answer.text).toContain('jira-moves: Error: dial tcp: i/o timeout')
+    // Once Jira answers again, after the wait a failed ask has, the ticket, never in review, moves.
+    fake.isHistoryDown = false
+    await clock.advance(20 * 60_000)
+    expect(jiraMoves).toEqual(['ABC-1 In Review'])
     await ui.unmount()
   }
 )
