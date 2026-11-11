@@ -53,13 +53,23 @@ type Raw = NonNullable<NonNullable<NonNullable<InboxAuthoredQuery['currentUser']
 const present = <T>(list: readonly (T | null)[] | null | undefined): T[] => (list ?? []).flatMap(one => (one === null ? [] : [one]))
 
 /**
- * The user's own MRs merged within `LANDED_WITHIN_MS`, newest first, at most `LANDED_SHOWN`; whoever merged them. The inbox's
- * own list leaves out those the user merged themselves, which this one is for.
+ * What of some MRs is shown: those merged within `LANDED_WITHIN_MS` of `now`, newest first, at most `LANDED_SHOWN`. The read
+ * keeps to it and so does the drawing, as what the snapshot kept (an entry a failing host left in it, or another host's) may be older or more.
+ */
+export const recentOf = <T extends { mergedAt: number }>(entries: readonly T[], now: number): T[] =>
+  entries
+    .filter(each => now - each.mergedAt <= LANDED_WITHIN_MS)
+    .toSorted((a, b) => b.mergedAt - a.mergedAt)
+    .slice(0, LANDED_SHOWN)
+
+/**
+ * The user's own MRs merged lately (`recentOf`) as the inbox's answer lists them, whoever merged them. The inbox's own list
+ * leaves out those the user merged themselves, which this one is for.
  */
 export function mergedLately(host: string, data: InboxAuthoredQuery | null, now: number): Merged[] {
   const merged = (raw: NonNullable<Raw>): Merged[] => {
     const at = raw.mergedAt === null ? Number.NaN : Date.parse(raw.mergedAt)
-    if (Number.isNaN(at) || now - at > LANDED_WITHIN_MS) {
+    if (Number.isNaN(at)) {
       return []
     }
     const path = raw.project.fullPath
@@ -77,10 +87,7 @@ export function mergedLately(host: string, data: InboxAuthoredQuery | null, now:
       },
     ]
   }
-  return present(data?.currentUser?.merged?.nodes)
-    .flatMap(merged)
-    .toSorted((a, b) => b.mergedAt - a.mergedAt)
-    .slice(0, LANDED_SHOWN)
+  return recentOf(present(data?.currentUser?.merged?.nodes).flatMap(merged), now)
 }
 
 /** Which commit a merge put on its target branch, or what is still to ask for it. */

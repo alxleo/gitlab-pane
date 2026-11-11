@@ -5,6 +5,7 @@ import { ago, plural, shortTitle } from './format.ts'
 import { shorten } from './graphemes.ts'
 import { cardKey, projectOf } from './hosts.ts'
 import { shortHash } from './identity.ts'
+import { recentOf } from './landed.ts'
 import { statusMark } from './status.ts'
 import type { Glyph, Tone } from './status.ts'
 
@@ -59,12 +60,14 @@ function buildOf(each: Landed): BuildFacts {
 
 /**
  * The merged section: the user's MRs merged lately that the list does not draw as cards (`cardKeys`), narrowed to the repo
- * picked, newest first. Only a failed build is said while it is folded: a healthy or running one stays in the rows, quiet. None
- * when there are none to show.
+ * picked, newest first. The snapshot is what the leader kept, which may hold older entries than the three days (a host that
+ * failed to answer keeps its own) and more than five (hosts keep five each), so what is drawn is cut here, as the read cuts. Only
+ * a failed build is said while it is folded: a healthy or running one stays in the rows, quiet. None when there are none to show.
  */
 export function mergedModel(landed: readonly Landed[], shown: { cardKeys: ReadonlySet<string>; repoFilter: string; isOpen: boolean; now: number }): MergedModel | null {
-  const listed = landed.filter(
-    each => !shown.cardKeys.has(cardKey(each.host, each.path, each.iid)) && (shown.repoFilter === '' || projectOf(each.host, each.path) === shown.repoFilter)
+  const listed = recentOf(
+    landed.filter(each => !shown.cardKeys.has(cardKey(each.host, each.path, each.iid)) && (shown.repoFilter === '' || projectOf(each.host, each.path) === shown.repoFilter)),
+    shown.now
   )
   if (listed.length === 0) {
     return null
