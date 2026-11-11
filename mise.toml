@@ -1,0 +1,8 @@
+# What a clone needs beside npm, pinned: `mise install` puts each on the PATH inside this folder.
+# Node runs everything; the three scanners are the ones `npm run scan` runs only when installed, which CI runs by their
+# own actions in check.yml (actionlint at the version its image is pinned to there). Renovate raises these.
+[tools]
+node = "26"
+gitleaks = "8.30.1"
+actionlint = "1.7.12"
+zizmor = "1.30.1"
