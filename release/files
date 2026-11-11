@@ -47,6 +47,7 @@ hooks/moves.ts
 hooks/mr-url.ts
 hooks/next-move.ts
 hooks/order.ts
+hooks/page-documents.ts
 hooks/pane.tsx
 hooks/panes.ts
 hooks/picture.ts
@@ -55,6 +56,8 @@ hooks/problems.ts
 hooks/reading.tsx
 hooks/reconcile.ts
 hooks/register.tsx
+hooks/replies.ts
+hooks/reply-model.ts
 hooks/status.ts
 hooks/strip.tsx
 hooks/svg.ts
@@ -62,6 +65,8 @@ hooks/tokens.ts
 hooks/tools.ts
 hooks/view.ts
 hooks/wake.ts
+hooks/write-model.ts
+hooks/writes.ts
 hooks/equal.ts
 hooks/face-model.ts
 hooks/job-failures.ts

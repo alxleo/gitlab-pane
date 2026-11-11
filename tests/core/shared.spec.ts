@@ -80,14 +80,21 @@ test('fifty heavy MRs share a snapshot well under the store, and a slim card say
   expect(failedCount(shared.pipeline)).toBe(failedCount(one.pipeline))
 })
 
-test('the MR read whole has its description and threads put back, unless it changed since they were read', () => {
+test('the MR read whole has its description and threads put back, unless the shared card is newer than that read', () => {
   const whole = heavy(1)
   const shared = slimCard(whole)
   expect(shared.description).toBe('')
   expect(withDetail(shared, whole).description).toBe(whole.description)
   expect(withDetail(shared, whole).openThreads).toEqual(whole.openThreads)
   expect(withDetail(shared, whole).people.map(person => person.notes)).toEqual(whole.people.map(person => person.notes))
-  expect(withDetail(shared, { ...whole, updatedAt: '2026-10-24T00:00:00Z' })).toBe(shared)
+  // The MR changed after its words were read: the shared card says what the read cannot.
+  expect(withDetail(shared, { ...whole, updatedAt: '2026-10-22T00:00:00Z' })).toBe(shared)
+  // Read whole after it changed (a reply just posted from the page), ahead of the shared card: the newer words are drawn.
+  const newer = { ...whole, updatedAt: '2026-10-24T00:00:00Z', openThreads: whole.openThreads.slice(0, 1) }
+  expect(withDetail(shared, newer).openThreads).toEqual(newer.openThreads)
+  // Why its page could not offer replies comes with the read that found it.
+  expect(withDetail(shared, { ...whole, repliesOff: 'gitlab.com answered HTTP 400' }).repliesOff).toBe('gitlab.com answered HTTP 400')
+  expect(withDetail(shared, whole).repliesOff).toBeUndefined()
   expect(withDetail(shared, undefined)).toBe(shared)
 })
 
@@ -183,7 +190,10 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
 })
 
 test('a pinned MR is asked for by its path and number, one query each, and a project of its own host', () => {
-  expect(pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true }).variables).toEqual({ path: 'g/q', iid: '7' })
+  expect(pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true }).variables).toEqual({
+    path: 'g/q',
+    iid: '7',
+  })
   expect(project('g/q').fullPath).toBe('g/q')
 })
 

@@ -74,6 +74,30 @@ const withThread = (body: string, author: string, repo: string, iid: number, fil
   }
 }
 
+/** A line of the diff as GitLab sends it under a thread: context, removed or added, its sign first. */
+const diffLine = (old: number | null, now: number | null, text: string) => ({
+  oldLine: old,
+  newLine: now,
+  type: old === null ? 'new' : now === null ? 'old' : null,
+  text: `${old === null ? '+' : now === null ? '-' : ' '}${text}`,
+})
+
+/** The lines of the diff above each commented line, by file: GitLab sends them with a thread, ending at the line. */
+const DIFF_LINES: Record<string, ReturnType<typeof diffLine>[]> = {
+  'src/cart/total.ts': [
+    diffLine(85, 85, '  const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0)'),
+    diffLine(86, 86, '  const tax = subtotal * rate'),
+    diffLine(87, null, '  return Math.round((subtotal + tax) * 100) / 100'),
+    diffLine(null, 87, '  const total = subtotal + tax'),
+    diffLine(null, 88, '  return Math.round(total * 100) / 100'),
+  ],
+  'src/checkout/cards.ts': [
+    diffLine(40, 40, '  const card = form.read()'),
+    diffLine(41, 41, '  if (!card.isValid) return showError(card)'),
+    diffLine(null, 42, "  cart.cookie.set('card', card.number)"),
+  ],
+}
+
 /** The merge requests Dana has open, with every state the pane has a word or a colour for. */
 const mine = (): Mr[] => [
   rawMr(482, {
@@ -300,6 +324,19 @@ function engine(on: On, mrs: Mr[]) {
           Pinned: ({ path, iid }) => ({
             data: { project: { mergeRequest: mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } },
           }),
+          // And beside it, where a reply to each thread goes and the lines of the diff it was left on.
+          Threads: ({ path, iid }) => {
+            const mr = mrs.find(each => each.iid === iid && each.project.fullPath === path)
+            const nodes = (mr?.discussions.nodes ?? []).map((discussion, at) => {
+              const first = discussion?.notes.nodes?.[0]
+              return {
+                replyId: `gid://gitlab/Discussion/${iid}${at}`,
+                truncatedDiffLines: DIFF_LINES[first?.position?.filePath ?? ''] ?? null,
+                notes: { nodes: [{ url: first?.url ?? null }] },
+              }
+            })
+            return { data: { project: { mergeRequest: mr === undefined ? null : { id: `gid://gitlab/MergeRequest/${iid}`, discussions: { nodes } } } } }
+          },
           ...inboxAnswers(world),
         },
         accepts: 'scene-token',
@@ -357,6 +394,14 @@ const SCENES: Scene[] = [
     name: 'reading',
     steps: async ui => {
       await press(ui, 'open-479-')
+    },
+  },
+  {
+    name: 'reading-reply',
+    steps: async ui => {
+      await press(ui, 'open-479-')
+      await press(ui, 'reply-open-')
+      await ui.input({ key: 'reply-box', text: 'Good catch: it rounds half to even now, and a test pins 0.125 to 0.12.' })
     },
   },
   {

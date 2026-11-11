@@ -49,6 +49,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [pollEvery(0, true), pollEvery(0, false), pollEvery(1, false), BACKOFF_MAX_MS, FULL_EVERY_MS],
     // an MR's page, read whole once
     [],
+    // a reply posted from it, once per press
+    [],
     // a raised MR in a session that draws no pane
     [WAKE_ONLY_EVERY_MS],
     // the usual pipeline times

@@ -17,7 +17,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 | --- | --- |
 | The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed. |
 | Imports | A core file imports core files by their `.ts` path, and `../types`. Other files import without extensions. `tools/*.ts` import `gitlab-documents.ts` and `decode.ts` under plain Node. |
-| New logic | On plain data goes in the core, with a test on plain data. Engine-facing files stay thin: `pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `register.tsx`. |
+| New logic | On plain data goes in the core, with a test on plain data. Engine-facing files stay thin: `pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `replies.ts`, `register.tsx`. |
 | `fromGitLab` (`markdown.ts`) | Turns text into GitLab's Markdown to draw; only `gitlab.ts` imports it (`local/only-importers`). Anything else gets such text from `cleanBody`. |
 | Module state | None: no module `let` or mutated `const`. State lives in atoms. `in-flight.ts` alone holds promises and callbacks. |
 | Size | No file in `hooks/` over 400 lines. |
@@ -28,7 +28,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 - No `x as T` (`as const` is fine). The only assertions: `decodeGraphql` in `decode.ts` (GitLab checked the answer against the schema the types came from), and the private `brand` in `markdown.ts`, `model-text.ts` and `svg.ts`.
 - Narrow with a type guard. An annotated `x is T` must test `x` in its body (`typeof`, `in`, `instanceof`, `Array.isArray`, or a call of another guard); a null check is left unannotated for the compiler to infer. An overload implementation returns no more than its signatures.
 - No `any`, no `!`. No `JSON.parse`: use `parseJson`.
-- GitLab's types: documents are static strings in `gitlab-documents.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types`. Never edit it; a stale one fails `npm run check`. `schema -- snapshot` refreshes the snapshot from gitlab.com.
+- GitLab's types: documents are static strings in `gitlab-documents.ts`, and those only an MR's page sends (the reply, the one write) in `page-documents.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types`. Never edit it; a stale one fails `npm run check`. `schema -- snapshot` refreshes the snapshot from gitlab.com.
 - `types/index.d.ts` stays one self-contained file (`claude plugin validate --strict`): domain types cannot move out, and every atom key is declared there.
 - The engine's declarations are not committed: `npm run setup` unpacks them into git-ignored `.claude-plugin/types/`. `tsconfig.core.json` has none, which keeps the core off the engine.
 - The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all together.
@@ -38,7 +38,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 | Constraint | Consequence |
 | --- | --- |
 | A hook's matcher is read from literals and consts in `register.tsx` only | `PANE` lives there, beside `PANE_ID` in `panes.ts`; `tests/register.test.ts` keeps them equal. |
-| An atom is read and written only in the file that declares it (`claude plugin validate` fails otherwise) | Go through that file's functions: `data.ts`, `choices.ts`, `panes.ts`, `failures.ts`, `inbox.ts`, `job-failures.ts`. |
+| An atom is read and written only in the file that declares it (`claude plugin validate` fails otherwise) | Go through that file's functions: `data.ts`, `choices.ts`, `panes.ts`, `failures.ts`, `inbox.ts`, `job-failures.ts`, `replies.ts`, `writes.ts` (every write to GitLab: what was confirmed, sent, and how it ended). |
 | `$` goes in no object, and is passed on only into function declarations (`function quietly($, …)`), not arrow consts | The draw kit (`kit.tsx`) holds no `$`; `buildCard($, kit, …)` takes both. |
 | A render hook may not write an atom | What it records (`health` in `register.tsx`, `drawn` in `in-flight.ts`) cannot be one. |
 | The desktop draws nothing for a tree past 100,000 characters | `DRAWING_BUDGET` in `drawing.ts` is 85,000. Measure with `measure`; drop rows rather than overshoot. |

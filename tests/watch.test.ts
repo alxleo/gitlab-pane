@@ -4,13 +4,16 @@ import type { Engine, FoundElement } from 'claude-code/testing'
 
 import { AVATAR_BASE64, HOST, NOW, heavyMr, SELF_MANAGED, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread, user } from './fixtures'
 import type { Mr } from './fixtures'
-import type { CiJobStatus, PipelineStatusEnum } from '../hooks/gitlab.generated'
+import type { CiJobStatus, PipelineStatusEnum, ReplyMutation, ReplyMutationVariables } from '../hooks/gitlab.generated'
+import type { RawResponse } from '../hooks/gitlab-documents'
 import { undefinedField } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
 import { toCard } from '../hooks/gitlab'
+import { REPLY_MOST } from '../hooks/reply-model'
+import { LOST, SENT_HOLDS_MS } from '../hooks/write-model'
 import { slimCard } from '../hooks/slim'
 import { nextSnapshot, readSnapshot } from '../hooks/snapshot'
 import type { ReadResult } from '../hooks/snapshot'
@@ -69,6 +72,8 @@ type Fake = {
   traces?: Record<string, string>
   /** How GitLab offers to merge an MR later (`merge_when_checks_pass`); none unless set. */
   strategies?: string[]
+  /** What GitLab answers a reply; it refuses one unless a test sets this. */
+  reply?: (variables: ReplyMutationVariables) => RawResponse<ReplyMutation>
 }
 
 /** Whether every check GitLab holds for the MR has passed or is off. */
@@ -118,8 +123,58 @@ function moveAnswers(fake: () => Mr[], strategies: () => string[], merged: strin
   }
 }
 
+/** The lines of the diff GitLab sends for every thread left on it in these tests, ending at the commented line. */
+const DIFF_LINES = [
+  { oldLine: 7, newLine: 7, type: null, text: ' const total = sum(items)' },
+  { oldLine: 8, newLine: null, type: 'old', text: '-const tmp = total * 2' },
+  { oldLine: null, newLine: 8, type: 'new', text: '+const doubled = total * 2' },
+]
+
+/** The global IDs GitLab gives an MR and a thread, here made from its number and place. */
+const mrId = (iid: string) => `gid://gitlab/MergeRequest/9${iid}`
+const threadId = (at: number) => `gid://gitlab/Discussion/d${at}`
+
+/** What a GitLab answers a reply when the test set none: it refuses the write, as it does a read_api token. */
+const NO_REPLY = (): RawResponse<ReplyMutation> => ({
+  data: { createNote: null },
+  errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }],
+})
+
 /** What a current GitLab answers for the MRs `fake` holds; `reads` hears of each operation but the run times. */
-function answersFor(fake: () => Mr[], lost: () => string[], reads: string[], reasons: () => Record<string, string>): Answers {
+function answersFor(
+  fake: () => Mr[],
+  lost: () => string[],
+  reads: string[],
+  reasons: () => Record<string, string>,
+  reply: (variables: ReplyMutationVariables) => RawResponse<ReplyMutation> = NO_REPLY
+): Answers {
+  /** An MR's threads as the page asks for them: its ID, and each thread's, its diff lines and its first note's address. */
+  const threads = ({ path, iid }: { path: string; iid: string }) => {
+    reads.push(`Threads ${path}!${iid}`)
+    const mr = fake().find(each => each.iid === iid && each.project.fullPath === path)
+    return {
+      data: {
+        project: {
+          mergeRequest:
+            mr === undefined
+              ? null
+              : {
+                  id: mrId(iid),
+                  discussions: {
+                    nodes: (mr.discussions.nodes ?? []).map((discussion, at) => {
+                      const first = discussion?.notes.nodes?.[0]
+                      return {
+                        replyId: threadId(at),
+                        truncatedDiffLines: first?.position !== null && first?.position !== undefined ? DIFF_LINES : null,
+                        notes: { nodes: [{ url: first?.url ?? null }] },
+                      }
+                    }),
+                  },
+                },
+        },
+      },
+    }
+  }
   const authored = ({ after }: { after?: string | null } = {}) => {
     reads.push(after === undefined || after === null ? 'Authored' : 'Authored since')
     // As GitLab answers: the open MRs, or those of any state updated after a moment (a pipeline moving does not update an MR).
@@ -154,6 +209,11 @@ function answersFor(fake: () => Mr[], lost: () => string[], reads: string[], rea
       return { data: { currentUser: { authoredMergeRequests: { nodes: data.currentUser.authoredMergeRequests.nodes.map(plain) } } }, ...(errors !== undefined ? { errors } : {}) }
     },
     PinnedPlain: variables => ({ data: { project: { mergeRequest: plain(pinned(variables).data.project.mergeRequest) } } }),
+    Threads: threads,
+    Reply: variables => {
+      reads.push('Reply')
+      return reply(variables)
+    },
   }
 }
 
@@ -174,7 +234,7 @@ function engine(
   world: {
     glab?: Record<string, string>
     session?: string
-    held?: () => Promise<void>
+    held?: (operation: string) => Promise<void>
     remote?: string
     onRebase?: (path: string, iid: string) => void
     refusesRebase?: boolean
@@ -201,7 +261,8 @@ function engine(
             () => fake.mrs,
             () => fake.lost ?? [],
             reads,
-            () => fake.reasons ?? {}
+            () => fake.reasons ?? {},
+            variables => (fake.reply ?? NO_REPLY)(variables)
           ),
           ...moveAnswers(
             () => fake.mrs,
@@ -914,6 +975,224 @@ test('an MR too long for its page shows what fits of the description, then links
   expect(text).not.toContain('The end.')
   expect(text).toContain('Still whole.')
   expect((await ui.findAll({ type: 'Link' })).some(link => link.text.includes('The rest of the description is on GitLab'))).toBe(true)
+  await ui.unmount()
+})
+
+test('a reply under a thread is sent only once confirmed and then shows in the thread; one GitLab refuses says why and keeps its text', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const asked = thread('Rename tmp to something that says what it holds.', 'reviewer')
+  const fake: Fake = { mrs: [rawMr(12, { discussions: { nodes: [asked] } })], isDown: false }
+  const { reads } = engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+
+  // The thread shows the lines of the diff it was left on, ending at the commented line, numbered as in the file.
+  const code = await ui.find({ type: 'Code' })
+  expect([code?.props.format, code?.props.path]).toEqual(['diff', 'src/a.ts'])
+  expect(code?.props.source).toBe('@@ -7,2 +7,2 @@\n const total = sum(items)\n-const tmp = total * 2\n+const doubled = total * 2')
+  // No box until one is asked for, and then one, under its thread.
+  expect(await ui.find({ type: 'Input' })).toBeUndefined()
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-open-'))?.key ?? '' })
+  expect((await ui.findAll({ type: 'Input' })).length).toBe(1)
+  await ui.input({ key: 'reply-box', text: 'Renamed', kind: 'change' })
+  await ui.input({ key: 'reply-box', text: 'Renamed it to doubled.' })
+
+  // Enter shows the text to confirm, and sends nothing.
+  expect(reads).not.toContain('Reply')
+  expect(await ui.find({ type: 'Input' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Renamed it to doubled.' })).toBeDefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post as you')
+
+  // GitLab refuses it: the pane says why, and the text stays to post again.
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
+  expect(reads.filter(read => read === 'Reply')).toHaveLength(1)
+  expect((await ui.find({ type: 'Text', text: /refused the reply: .* replying needs api\.$/u }))?.props.color).toBe('warning')
+  expect(await ui.find({ type: 'Text', text: 'Renamed it to doubled.' })).toBeDefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post again')
+
+  // GitLab takes it: the MR is read again at once, and the reply is in the thread.
+  const posted: ReplyMutationVariables[] = []
+  fake.reply = variables => {
+    posted.push(variables)
+    const answered = { ...asked, notes: { nodes: [...asked.notes.nodes, note(variables.body, 'me', { url: 'https://gitlab.com/g/p/-/merge_requests/12#note_999' })] } }
+    fake.mrs = [rawMr(12, { updatedAt: stamp(clock), discussions: { nodes: [answered] } })]
+    return { data: { createNote: { errors: [], note: { id: 'gid://gitlab/Note/999' }, quickActionsStatus: null } } }
+  }
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
+  expect(posted).toEqual([{ mr: mrId('12'), thread: threadId(0), body: 'Renamed it to doubled.' }])
+  expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('Renamed it to doubled.')
+  expect(await ui.find({ type: 'Text', text: 'Renamed it to doubled.' })).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))).toBeUndefined()
+  await ui.unmount()
+
+  // A phone may not have been sent a text field: the thread links to GitLab, and offers no reply.
+  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect((await phone.findAll({ type: 'Button' })).some(keyed('reply-open-'))).toBe(false)
+  expect((await phone.findAll({ type: 'Link' })).some(link => link.props.href === asked.notes.nodes[0]?.url)).toBe(true)
+  await phone.unmount()
+})
+
+test('a reply whose answer GitLab’s edge lost is sent once, says it may have posted, and still says so after leaving the page', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer')] } })], isDown: false }
+  // The edge times every reply out with 524, after GitLab may have kept it.
+  const { gitlab } = engine(on, fake, {}, {}, { glitch: operation => (operation === 'Reply' ? 524 : undefined) })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const open = async () => ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  await open()
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-open-'))?.key ?? '' })
+  await ui.input({ key: 'reply-box', text: 'Renamed.' })
+  const reads = gitlab.requests.filter(request => request === 'gitlab.com Pinned').length
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
+  // A write is never sent twice, and the MR is read again in case it was kept.
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Reply')).toHaveLength(1)
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Pinned').length).toBe(reads + 1)
+  const maybe = /HTTP 524\. It may have reached GitLab: look in the thread before posting again\.$/u
+  expect((await ui.find({ type: 'Text', text: maybe }))?.props.color).toBe('warning')
+  // Away and back: the box still says what happened, rather than offering the text as if nothing had.
+  await ui.press({ key: 'back-bottom' })
+  await open()
+  expect(await ui.find({ type: 'Text', text: maybe })).toBeDefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.props.label).toBe('post again')
+  await ui.unmount()
+})
+
+test('a reply out stays out until its answer comes: no move elsewhere drops it, nothing takes it back, and a lost answer says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const fake: Fake = { mrs: [ready(12), rawMr(13, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer')] } })], isDown: false }
+  const { gitlab } = engine(on, fake, {}, {}, { held: operation => (operation === 'Reply' ? answered : Promise.resolve()) })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const open = async () => ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-13-'))?.key ?? '' })
+  const button = async (prefix: string) => (await ui.findAll({ type: 'Button' })).find(keyed(prefix))
+  await open()
+  await ui.press({ key: (await button('reply-open-'))?.key ?? '' })
+  await ui.input({ key: 'reply-box', text: 'Renamed.' })
+  // A merge of another MR, meanwhile, keeps its own record and leaves the reply's alone.
+  await ui.press({ key: 'back-bottom' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(gitlab.requests).toContain('gitlab.com Merge')
+  await open()
+  expect((await button('reply-post-'))?.props.label).toBe('post as you')
+
+  // Out, and GitLab slow to answer: nothing to post, edit or cancel until it answers.
+  await ui.press({ key: (await button('reply-post-'))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'posting…' })).toBeDefined()
+  expect((await ui.findAll({ type: 'Button' })).some(keyed('reply-'))).toBe(false)
+  expect(await ui.find({ type: 'Input' })).toBeUndefined()
+
+  // No answer by the longest any write is followed: the reply says its answer was lost, and nothing was sent again.
+  await clock.advance(SENT_HOLDS_MS + 1_000)
+  await ui.press({ key: 'back-bottom' })
+  await open()
+  expect((await ui.find({ type: 'Text', text: LOST }))?.props.color).toBe('warning')
+  expect((await button('reply-post-'))?.props.label).toBe('post again')
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Reply')).toHaveLength(1)
+  answer()
+  await clock.settle()
+  await ui.unmount()
+})
+
+test('a merge whose answer never comes is offered again past the longest follow, saying its answer was lost, and is not sent again', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const { gitlab } = engine(on, { mrs: [ready(12)], isDown: false }, {}, {}, { held: operation => (operation === 'Merge' ? answered : Promise.resolve()) })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: '✓ merging…' })).toBeDefined()
+  await clock.advance(SENT_HOLDS_MS + 60_000)
+  expect((await moveOf(ui, 12))?.label).toBe('✓ merge')
+  expect((await ui.find({ type: 'Text', text: new RegExp(LOST, 'u') }))?.props.color).toBe('warning')
+  expect(gitlab.requests.filter(request => request === 'gitlab.com Merge')).toHaveLength(1)
+  answer()
+  await clock.settle()
+  await ui.unmount()
+})
+
+test('a reply longer than the pane takes is not armed: the box says why, and every thread keeps its reply', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer'), thread('And the test, please.', 'reviewer')] } })], isDown: false }
+  engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-open-'))?.key ?? '' })
+  await ui.input({ key: 'reply-box', text: 'x'.repeat(90_000) })
+  expect((await ui.find({ type: 'Text', text: `90,000 characters: the pane takes ${REPLY_MOST.toLocaleString('en')}; post a longer reply on GitLab` }))?.props.color).toBe(
+    'warning'
+  )
+  const buttons = await ui.findAll({ type: 'Button' })
+  expect(buttons.some(keyed('reply-post-'))).toBe(false)
+  expect(buttons.some(keyed('reply-cancel-'))).toBe(true)
+  expect(buttons.filter(keyed('reply-open-'))).toHaveLength(1)
+  await ui.unmount()
+})
+
+test('a page that could not read where replies go says why, offers none, and reads it again at the next poll', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer')] } })], isDown: false }
+  let isBroken = true
+  const { gitlab } = engine(on, fake, {}, {}, { glitch: operation => (isBroken && operation === 'Threads' ? 400 : undefined) })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  // The thread's words are there; replying is not, and the page says why.
+  expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('Rename tmp, please.')
+  expect((await ui.findAll({ type: 'Button' })).some(keyed('reply-open-'))).toBe(false)
+  expect((await ui.find({ type: 'Text', text: /^↩ Replies are off here: gitlab\.com answered HTTP 400/u }))?.props.color).toBe('warning')
+  isBroken = false
+  const before = gitlab.requests.length
+  await clock.advance(60_000)
+  await clock.settle()
+  // The list's read found nothing new; the page is read again all the same.
+  expect(gitlab.requests.slice(before)).toContain('gitlab.com Threads')
+  expect((await ui.findAll({ type: 'Button' })).some(keyed('reply-open-'))).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /^↩ Replies are off here/u })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a reply GitLab kept closes its box even when the MR cannot be read again at once', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [rawMr(12, { discussions: { nodes: [thread('Rename tmp, please.', 'reviewer')] } })], isDown: false }
+  engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-open-'))?.key ?? '' })
+  await ui.input({ key: 'reply-box', text: 'Renamed.' })
+  // GitLab keeps the reply, and the network goes before the MR is read again.
+  fake.reply = () => {
+    fake.isDown = true
+    return { data: { createNote: { errors: [], note: { id: 'gid://gitlab/Note/7' }, quickActionsStatus: null } } }
+  }
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))?.key ?? '' })
+  expect(await ui.find({ type: 'Text', text: 'posting…' })).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).find(keyed('reply-post-'))).toBeUndefined()
+  expect((await ui.findAll({ type: 'Button' })).some(keyed('reply-open-'))).toBe(true)
   await ui.unmount()
 })
 

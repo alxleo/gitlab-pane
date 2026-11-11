@@ -239,6 +239,8 @@ async function lead($: EngineInterface, previous: Snapshot | null, pins: readonl
   await changeReads($, state => ({ ...state, failures: 0 }))
   if (snapshot.version !== (await readReads($)).adopted) {
     await adopt($, snapshot, true)
+  } else {
+    quietly($, refreshDetails($))
   }
   quietly(
     $,
@@ -286,6 +288,8 @@ async function leadTick($: EngineInterface, own: readonly Pinned[]): Promise<voi
   }
   if (snapshot.version !== reads.adopted) {
     await adopt($, snapshot, true)
+  } else {
+    quietly($, refreshDetails($))
   }
   await inboxPass($, await readHosts($), isInboxDue, now)
 }

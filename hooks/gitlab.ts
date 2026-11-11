@@ -37,7 +37,9 @@ export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeat
         ? ['hasMergeVerdict' as const]
         : typeName === 'Todo' && fieldName === 'targetEntity'
           ? ['hasTodoEntity' as const]
-          : []
+          : typeName === 'Discussion' && fieldName === 'truncatedDiffLines'
+            ? ['hasDiffLines' as const]
+            : []
   })
 }
 
