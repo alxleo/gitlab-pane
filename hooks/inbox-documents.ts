@@ -204,12 +204,20 @@ const INBOX_BRIEF = /* GraphQL */ `
   }
 `
 
-// What the commit a merge put on its target branch ran there: the newest pipeline of that commit on that branch, one MR at a
-// time as `Pinned` reads one. `ref` is what makes it the build on the target: without it GitLab answers every pipeline of the
-// commit, and a fast-forward merge's commit is the source branch's own, which has its own pipeline.
+// What the commit a merge put on its target branch ran there: the newest pipeline of that commit on that branch that no schedule
+// started, one MR at a time as `Pinned` reads one. `ref` is what makes it the build on the target: without it GitLab answers every
+// pipeline of the commit, and a fast-forward merge's commit is the source branch's own, which has its own pipeline.
+// A schedule runs on the branch's head, so a nightly pipeline is newer than the merge's own and says nothing of the merge; GitLab's
+// own `merge_pipeline` leaves schedules out. The argument `source` filters for one value only, so the ten newest are asked for
+// beside the ten newest scheduled ones, and `buildOf` takes the first of the first list that is not in the second. (The field
+// `Pipeline.source` would do it in one, but a self-managed GitLab older than it would refuse the whole document.) A commit with ten
+// newer schedule pipelines reads as having none.
 const LANDED = /* GraphQL */ `
   query Landed($path: ID!, $sha: String!, $ref: String!) {
-    project(fullPath: $path) { pipelines(sha: $sha, ref: $ref, first: 1) { nodes { id status path } } }
+    project(fullPath: $path) {
+      pipelines(sha: $sha, ref: $ref, first: 10) { nodes { id status path } }
+      scheduled: pipelines(sha: $sha, ref: $ref, source: "schedule", first: 10) { nodes { id } }
+    }
   }
 `
 
@@ -246,5 +254,5 @@ export const INBOX_COMPLEXITY = {
   InboxQueue: 50,
   InboxTodos: 39,
   InboxTodosPlain: 39,
-  Landed: 14,
+  Landed: 23,
 } as const

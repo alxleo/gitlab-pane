@@ -128,9 +128,16 @@ export function squashShaOf(answer: { status: number; text: string }): string | 
   return typeof sha === 'string' && sha !== '' ? sha : null
 }
 
-/** The newest pipeline GitLab ran on a commit on the target branch, or null when it ran none (or the project is out of reach). */
+/**
+ * The newest pipeline GitLab ran on a commit on the target branch that no schedule started, or null when it ran none (or the
+ * project is out of reach). The document asks for the newest pipelines and, beside them, for the scheduled ones among the newest:
+ * a nightly pipeline runs on the branch's head, is newer than the merge's own, and says nothing of the merge (GitLab's own
+ * `merge_pipeline` leaves schedules out).
+ */
 export function buildOf(host: string, fallback: string, response: RawResponse<LandedQuery>): LandedBuild | null {
-  const [pipeline] = present(dataOf(response).project?.pipelines?.nodes)
+  const project = dataOf(response).project
+  const scheduled = new Set(present(project?.scheduled?.nodes).map(one => one.id))
+  const pipeline = present(project?.pipelines?.nodes).find(one => !scheduled.has(one.id))
   return pipeline !== undefined ? { status: ciStatusOf(pipeline.status), url: isFilled(pipeline.path) ? `${siteOf(host)}${pipeline.path}` : fallback } : null
 }
 

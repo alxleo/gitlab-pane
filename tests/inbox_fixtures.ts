@@ -20,8 +20,8 @@ export type Note = { id: string; body: string; system: boolean; createdAt: strin
 export type OpenMr = Fields & { notes: { pageInfo: { hasPreviousPage: boolean }; nodes: Note[] } }
 export type QueueMr = OpenMr & { approvedBy: { nodes: { username: string }[] } }
 export type MergedMr = Fields & { mergedAt: string; mergeUser: Person; targetBranch: string; mergeCommitSha: string | null; diffHeadSha: string | null }
-/** A pipeline GitLab has run, on a commit of a branch. */
-type PipelineRun = { sha: string; ref: string; id: number; status: PipelineStatusEnum }
+/** A pipeline GitLab has run, on a commit of a branch; `source` is what started it, a push unless it says `schedule`. */
+type PipelineRun = { sha: string; ref: string; id: number; status: PipelineStatusEnum; source?: 'push' | 'schedule' | 'web' }
 export type Todo = { action: TodoActionEnum; createdAt: string; body: string; targetUrl: string | null; author: Person; targetEntity: Fields }
 export type BriefMr = Fields & {
   description: string | null
@@ -37,7 +37,7 @@ export type World = {
   queue: QueueMr[]
   opened: OpenMr[]
   merged: MergedMr[]
-  /** The pipelines GitLab has run: the `Landed` document answers with the newest of the commit on the branch it names, as GitLab does. */
+  /** The pipelines GitLab has run: the `Landed` document answers with the ten newest of the commit on the branch it names, as GitLab does, and the ten newest scheduled among them. */
   pipelines: PipelineRun[]
   /** The squash commit each MR's REST entity names, by `<project path>!<iid>`; an MR not listed is not found. */
   squashed: Record<string, string | null>
@@ -162,18 +162,23 @@ export const inboxAnswers = (
   InboxFollowUser: variables => ({ data: { currentUser: { username: world.user }, user: world.followed[`@${variables.username}`] ?? null } }),
   InboxFollowProject: variables => ({ data: { currentUser: { username: world.user }, project: world.followed[variables.path] ?? null } }),
   InboxBrief: variables => ({ data: { project: { mergeRequest: world.briefs[`${variables.path}!${variables.iid}`] ?? null } } }),
-  // The newest pipeline of the commit on that branch alone: a commit also has the pipelines of the branches it was on.
-  Landed: ({ path, sha, ref }) => ({
-    data: {
-      project: {
-        pipelines: {
-          nodes: world.pipelines
-            .filter(each => each.sha === sha && each.ref === ref)
-            .toSorted((a, b) => b.id - a.id)
-            .slice(0, 1)
-            .map(each => ({ id: `gid://gitlab/Ci::Pipeline/${each.id}`, status: each.status, path: `/${path}/-/pipelines/${each.id}` })),
+  // The ten newest pipelines of the commit on that branch alone (a commit also has the pipelines of the branches it was on), and
+  // the ten newest of those a schedule started.
+  Landed: ({ path, sha, ref }) => {
+    const ofCommit = world.pipelines.filter(each => each.sha === sha && each.ref === ref).toSorted((a, b) => b.id - a.id)
+    const gid = (each: { id: number }) => `gid://gitlab/Ci::Pipeline/${each.id}`
+    return {
+      data: {
+        project: {
+          pipelines: { nodes: ofCommit.slice(0, 10).map(each => ({ id: gid(each), status: each.status, path: `/${path}/-/pipelines/${each.id}` })) },
+          scheduled: {
+            nodes: ofCommit
+              .filter(each => each.source === 'schedule')
+              .slice(0, 10)
+              .map(each => ({ id: gid(each) })),
+          },
         },
       },
-    },
-  }),
+    }
+  },
 })
