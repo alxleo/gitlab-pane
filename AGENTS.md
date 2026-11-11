@@ -21,3 +21,13 @@ A pull request's description is written for someone who has not seen the work, i
    - Put the pictures on the `pr-screens` branch in a folder named for the change, and link them by that branch's commit SHA. A link to `main` shows the new picture once this merges, and one to the pull request's branch breaks when the branch is deleted.
 
 No names of people, no mention of who or what wrote the change, no branch names in links. The title is the squash commit on main: conventional, at most 100 characters.
+
+## Checking the pane in the desktop app
+
+`npm run shot` (CONTRIBUTING says when to use it instead of the rig) is expected to behave like this, and anything else is a bug to report:
+- It runs only when the person says the pane is showing. A run that clicks, scrolls or moves the pointer needs the Claude window in front, so ask before one. Without the window in front, it refuses and names the app that is.
+- `capture` writes the pane alone, its header at the top. When the window was behind another, the JSON says the pointer was not parked.
+- `press` lands on the button whose words it was given. The pane's title then names the new view ("GitLab · Inbox").
+- The pointer ends where it started, and focus stays where the person left it.
+- The session's name in the window's header can read with a trailing "V" or "v". That still counts as the same session; a name with a different letter or digit does not.
+- Pictures go where `-o` says, outside the checkout, because they show real MR titles and people. Show them to the person before deleting them. The tool deletes its own whole-window frames when it exits.
