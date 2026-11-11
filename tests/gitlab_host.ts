@@ -1,7 +1,7 @@
 import { parseJson } from '../hooks/decode.ts'
-import type { On } from 'claude-code'
+import type { On, RenderSurface } from 'claude-code'
 
-import { sent, serve, traced } from './gitlab_fake'
+import { rebased, sent, serve, traced } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 
 /** What `$.process.run` resolves with. */
@@ -10,8 +10,9 @@ export const ran = (stdout: string, exitCode = 0, stderr = '') => ({
 })
 
 /**
- * A session that draws on the desktop, as the engine holds it: its id, the surface, and the panes it opened, which
- * `$.ui.panes()` lists (that is how a session knows its pane is drawn), and the plugin's store, holding `store` to start with.
+ * A session that draws on the desktop, as the engine holds it: its id, the surfaces it has (a test may empty them, as a
+ * session run without a window has none), and the panes it opened, which `$.ui.panes()` lists (that is how a session knows
+ * its pane is drawn), and the plugin's store, holding `store` to start with.
  * The store is the one `$.store` is in the engine: JSON in, JSON out, a file of 4 MiB at most. It is returned as a map, so a test
  * can play another session by writing it. `isBroken` makes opening a pane fail.
  */
@@ -24,7 +25,14 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
     writes.bytes += JSON.stringify(Object.fromEntries(store)).length
   }
   const json = (value: unknown): unknown => (value === undefined ? undefined : parseJson(JSON.stringify(value)))
-  on('store.get', (_, e) => ({ value: json(store.get(e.key)) }))
+  // Keys a test makes unreadable, as a store file another process holds locked or left half written.
+  const unreadable = new Set<string>()
+  on('store.get', (_, e) => {
+    if (unreadable.has(e.key)) {
+      throw new Error(`the store could not be read for ${e.key}`)
+    }
+    return { value: json(store.get(e.key)) }
+  })
   on('store.set', (_, e) => {
     const next = new Map(store).set(e.key, json(e.value))
     if (JSON.stringify(Object.fromEntries(next)).length > STORE_BYTES) {
@@ -44,7 +52,8 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
   const titles: string[] = []
   const panes = new Set<string>()
   on('session.id', () => ({ value: options.id ?? 'session-a' }))
-  on('session.surfaces', () => ({ value: ['desktop'] }))
+  const surfaces: RenderSurface[] = ['desktop']
+  on('session.surfaces', () => ({ value: [...surfaces] }))
   on('ui.open', (_, e) => {
     if (options.isBroken?.() === true) {
       throw new Error('no window to open in')
@@ -59,7 +68,7 @@ export function fakeSession(on: On, options: { id?: string; isBroken?: () => boo
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: [...panes].map(id => ({ id, title: 'GitLab', isShown: true, isFocused: false, isPlaced: true })) }))
-  return { opened, titles, panes, store, writes }
+  return { opened, titles, panes, surfaces, store, unreadable, writes }
 }
 
 /** The most the engine's store holds, in characters of JSON. */
@@ -71,6 +80,10 @@ export type FakeHost = {
   accepts?: string
   /** The log of each job the REST API serves, by `<project path>#<job number>`; any other job is not found. */
   traces?: Record<string, string>
+  /** Hears a rebase the REST API was asked for, which it accepts (HTTP 202). */
+  onRebase?: (path: string, iid: string) => void
+  /** Refuses every rebase with HTTP 403, as GitLab does a token or a person that may not push to the branch. */
+  refusesRebase?: boolean
 }
 
 export type FakeWorld = {
@@ -78,12 +91,12 @@ export type FakeWorld = {
   env?: Record<string, string>
   /** The token glab stored, which `glab config get token --host <host>` prints when its environment holds none; a host not listed prints nothing. */
   glab?: Record<string, string>
-  /** An HTTP status to answer the next request with instead of GitLab's own, once; an edge that fails now and then. */
-  glitch?: () => number | undefined
+  /** An HTTP status to answer a request of `operation` with instead of GitLab's own: an edge that fails now and then. */
+  glitch?: (operation: string) => number | undefined
   /** True while the network is down: every request fails as a dropped connection does. */
   isDown?: () => boolean
-  /** What each GraphQL answer waits on before it is given: a GitLab that is slow to answer. */
-  held?: () => Promise<void>
+  /** What each GraphQL answer, by its operation, waits on before it is given: a GitLab that is slow to answer. */
+  held?: (operation: string) => Promise<void>
 }
 
 /**
@@ -111,14 +124,28 @@ export function fakeGitLab(on: On, hosts: Record<string, FakeHost>, world: FakeW
         },
       }
     }
+    const rebase = rebased(e.url, e.init)
+    if (rebase !== null) {
+      requests.push(`${rebase.host} rebase ${rebase.path}!${rebase.iid}`)
+      const isAccepted = rebase.token !== undefined && rebase.token === hosts[rebase.host]?.accepts
+      if (isAccepted && hosts[rebase.host]?.refusesRebase === true) {
+        return { value: { status: 403, ok: false, headers: {}, text: JSON.stringify({ message: '403 Forbidden' }) } }
+      }
+      if (isAccepted) {
+        hosts[rebase.host]?.onRebase?.(rebase.path, rebase.iid)
+      }
+      return {
+        value: { status: isAccepted ? 202 : 401, ok: isAccepted, headers: {}, text: JSON.stringify(isAccepted ? { rebase_in_progress: true } : { message: '401 Unauthorized' }) },
+      }
+    }
     const request = sent(e.url, e.init)
     requests.push(`${request.host} ${request.operation}`)
     tokens.push(`${request.host} ${request.token ?? ''}`)
-    await world.held?.()
+    await world.held?.(request.operation)
     if (world.isDown?.() === true) {
       return { deny: `$.http.fetch(${e.url}) failed: connection refused` }
     }
-    const glitch = world.glitch?.()
+    const glitch = world.glitch?.(request.operation)
     if (glitch !== undefined) {
       return { value: { status: glitch, ok: false, headers: {}, text: '<html>Gateway</html>' } }
     }

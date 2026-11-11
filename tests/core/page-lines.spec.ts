@@ -11,7 +11,7 @@ test('a ticket Jira cannot be read for says so on its page, instead of waiting f
   expect(pageHead(card, JIRA).ticket).toEqual({ text: '🎫 ABC-1: not read from Jira yet', href: 'https://jira.example.com/browse/ABC-1' })
   const gone = { jira: { message: 'acli is not installed', at: 0, kind: 'not-installed' as const } }
   expect(pageHead(card, { ...JIRA, failures: gone }).ticket?.text).toBe('🎫 ABC-1: Jira is not available here')
-  const read = { 'ABC-1': { type: 'Task', status: 'In Progress', summary: 'Make the thing work' } }
+  const read = { 'ABC-1': { type: 'Task', status: 'In Progress', isDone: false, summary: 'Make the thing work' } }
   expect(pageHead(card, { ...JIRA, tickets: read }).ticket?.text).toBe('🎫 ABC-1 · Task · In Progress: Make the thing work')
   // With no Jira site set, a ticket has nowhere to lead.
   expect(pageHead(card, { ...JIRA, browse: '' }).ticket).toBeNull()

@@ -48,6 +48,11 @@ body { padding: 16px; font-family: var(--font); font-size: 13px; line-height: 1.
 #pane > header .close { color: var(--faint); font-weight: 400; font-size: 16px; line-height: 1; }
 #pane > main { padding: 12px 14px 14px; }
 
+/* The band above the prompt: its tree on the transcript's column, and the empty prompt box under it. */
+#band { width: var(--pane-width); }
+#band > main { padding: 0 14px 8px; }
+#band > .prompt { height: 44px; background: var(--surface); border: 1px solid var(--edge); border-radius: 12px; }
+
 /* Ink's Box: a flex row that may shrink, in the surface's own spacing. */
 .box { display: flex; flex-direction: row; flex-shrink: 1; flex-grow: 0; min-width: 0; position: relative; }
 .box[data-hidden] { display: none; }
@@ -105,6 +110,15 @@ button.btn.primary:not(.plain) { background: var(--ink); border-color: var(--ink
 .md th, .md td { border: 1px solid var(--edge); padding: 3px 8px; text-align: left; }
 .md hr { border: 0; border-top: 1px solid var(--edge); }
 .md.dim { opacity: 0.6; }
+
+/* Code: a dim gutter of line numbers (a diff's old and new), then the line; added lines green, removed red. */
+.code { min-width: 0; font: 12px/1.45 var(--mono); background: var(--chip); border-radius: 6px; padding: 4px 0; overflow: hidden; }
+.code-row { display: flex; padding: 0 8px 0 0; }
+.code-row .gutter { flex: 0 0 auto; min-width: 3ch; padding: 0 6px; text-align: right; color: var(--faint); opacity: 0.8; }
+.code-row .src { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.code.cut .code-row .src { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.code-row.add { background: #2c7a3922; }
+.code-row.del { background: #ab2b3f1f; }
 
 /* An element this renderer has no look for: said out loud, so it is never mistaken for part of the pane. */
 .unknown { border: 1px dashed #c0392b; color: #c0392b; padding: 2px 6px; font: 11px/1.3 var(--mono); }

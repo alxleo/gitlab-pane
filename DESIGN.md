@@ -34,9 +34,21 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 | Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
 | Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
 | Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
-| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict with other blockers trailing dimly, then the people; a name opens the page on what that person wrote | `row-facts.ts` |
-| Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is neither red nor amber and that quotes no one; its links and faces are on its page | `isQuiet` |
+| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict or the move in its place (below) with other blockers trailing dimly, then the people; a name opens the page on what that person wrote | `row-facts.ts` |
+| Quiet row | one line, the title, GitLab's verdict (or its merge) and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is neither red nor amber and that quotes no one; its links and faces are on its page | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
+
+## An MR's page
+
+A title opens the MR on a page of its own. Its open threads are a person's feedback, so each can be answered there briefly; a review stays on GitLab.
+
+| On the page | Shows | Code |
+|---|---|---|
+| A thread on the diff | the last five lines of the diff it was left on, ending at the commented line, numbered as in the file; then the comment and its replies | `hunkOf`, `hooks/reply-model.ts` |
+| `↩ reply` | dim, under each open thread a person started; it opens one reply box at a time, starting from what was last typed there. None on a phone (it may have no text field): the thread's `💬` opens it on GitLab. Where GitLab did not say where replies go, an amber `↩ Replies are off here` says why, until the next read gets it | `reading.tsx` |
+| Confirming | Enter shows the text with `post as you`, `edit` and `cancel`: nothing is sent before `post as you`, which posts under your name. A reply past 5,000 characters stays in the box, which says in amber to post it on GitLab | `decideArm`, `decidePost` |
+| Posted | the MR is read again at once, and the reply sits in the thread like any other | `ensureDetail` |
+| Not posted | the text stays, with GitLab's reason in amber and `post again`, there when you come back to the page; a refusal says a `read_api` token is refused so. A dropped connection, a 5xx or a reload while it was out may have posted it: the MR is read again and the reason says to look first | `postedOf`, `sayOf` |
 
 ## The list
 
@@ -72,6 +84,24 @@ A failing check's tone is what it asks of you (`CHECK_TONE` in `hooks/attention.
 - `NOT_APPROVED` says `needs 2 approvals` where the pane knows the count.
 - The pane's own markers cover only what the checks do not say: failed, amber and manual jobs (with the strip and run time), who asked for changes, threads, approvals and bots. A marker that details a check (failed jobs for `CI_MUST_PASS`, the count for `NOT_APPROVED`) stands in its place.
 - A GitLab without `mergeabilityChecks` gets the pane's own `⇄ conflicts` and `↻ needs rebase`, and no verdict.
+
+## Moves
+
+The one press that moves an MR along, where GitLab's checks name it and you may make it (`nextMove` in `hooks/next-move.ts`). It stands in place of the verdict when it fixes the check the verdict names, else beside the verdict, and that check trails no more. Every other MR has none: waiting on people, on a pipeline or on a fix stays as it was.
+
+| Move | Offered when | A press |
+|---|---|---|
+| `✓ merge` | GitLab says it can merge, and you may merge | arms it, `✓ merge !12? press again`, for 10 s; the second press merges the head the verdict was read on, through the merge train where the project has one |
+| `↻ rebase` | `NEED_REBASE` fails with other checks, none of them a draft, a failed pipeline or a request for changes (which come first), and you may push | asks GitLab to rebase it |
+| `↻ rebase and merge` | `NEED_REBASE` is the only check that fails, and you may push and merge | armed as a merge is, on the head shown; rebases it, then sets GitLab's own rebase of it to merge once its checks pass, never a push that came meanwhile |
+| `⇄ hand conflicts to Claude` | `CONFLICT` fails, you may push, and this session works in the MR's repo | pins the MR to this session and asks Claude to resolve them in a subagent and push; comes before a rebase, which conflicts stop |
+
+- A move is a button; armed, it is the primary one. Under way it is dim words with nothing to press: `✓ merging…`, `↻ rebasing…`, `✓ merges when checks pass` (GitLab's auto-merge, whoever set it, while what holds the MR is others or time; a check to fix keeps its words and its move) and `⇄ conflicts · with Claude`.
+- A merge or rebase is sent once. One whose answer is lost may still have reached GitLab, so the pane follows it as one that went through, and GitLab's own state says how it ended.
+- Merges, rebases and replies keep one record of what was confirmed, sent and how it ended (`hooks/writes.ts`; `hooks/write-model.ts` says what each entry means), so each says the same when an answer is lost, and none is sent twice. One sent by a session closed or reloaded mid-way is offered again with `no answer came back` in amber, since it may have gone through.
+- What was pressed holds until the MR's head moves, so a push offers the move afresh, and a hand-off to Claude ends when its push lands.
+- A press that did not take says why beside the move, amber, until it is pressed again; a toast says how each move ended.
+- Merging and rebasing write to GitLab, so they need a token with the `api` scope; the pane reads with `read_api`.
 
 ## Pipeline marks
 
@@ -112,6 +142,8 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 | 🚦 | the pipeline |
 | 💬 | the comment |
 
+A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
+
 ## Inbox
 
 Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`). The last two name no one.
@@ -143,6 +175,7 @@ The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's na
 
 - A card with news has an amber border and says `N new`; one without is grey.
 - An MR can show under several tabs; the Inbox tab's count counts it once.
+- The band above the prompt says the Inbox tab's words in amber, `Inbox · N new`, only while there is news and the tabs are out of sight: the pane closed or undrawn, or an MR's page in their place. It never repeats the tab beside it, gives way to a survey, and opens the Inbox tab when pressed (`inboxBand`, `hooks/pane-model.ts`).
 - `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.
 - ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project.
 - An empty tab says why when it can: no token for a host, no repo for `here`, nobody followed.

@@ -15,7 +15,7 @@ import type { Failures } from './wake.ts'
 import type { FailureKind, HostStatus, MrCard, Pinned } from '../types'
 
 /** The shape of the snapshot; a snapshot of another is ignored, as the store keeps whatever any version of the mod wrote. */
-const FORMAT = 3
+const FORMAT = 4
 export const SNAPSHOT_KEY = 'snapshot'
 /** A session's pins are under `pins:<session id>`. */
 export const PINS_PREFIX = 'pins:'
@@ -42,6 +42,10 @@ export const QUIET_EVERY_MS = 60_000
 export const BACKOFF_MAX_MS = 600_000
 /** The inbox is read, by the leader, no more often than this, and a session that draws what the leader shared looks at its marks as often. */
 export const INBOX_EVERY_MS = 60_000
+/** Whether the session that reads the inbox reads it now: never read yet, a person asked for a read, or INBOX_EVERY_MS since the last. */
+export function isInboxDue(inboxAt: number | null, now: number, isAsked: boolean): boolean {
+  return isAsked || inboxAt === null || now - inboxAt >= INBOX_EVERY_MS
+}
 /** A session that draws no pane but raised an MR looks at it this often, so its wakes still fire. */
 export const WAKE_ONLY_EVERY_MS = 300_000
 

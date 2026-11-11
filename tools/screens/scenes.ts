@@ -23,6 +23,13 @@ const PANE = {
   props: { title: 'GitLab', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
+/** The band above the prompt, with no survey in it, as wide as the pane's picture. */
+const BAND = {
+  plugin: 'gitlab-pane',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 60, scroll: { offset: 0, bodyRows: 11 }, view: {} },
+} as const
+
 const FIRST_SYNC_MS = 2_000
 
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
@@ -72,6 +79,30 @@ const withThread = (body: string, author: string, repo: string, iid: number, fil
       ],
     },
   }
+}
+
+/** A line of the diff as GitLab sends it under a thread: context, removed or added, its sign first. */
+const diffLine = (old: number | null, now: number | null, text: string) => ({
+  oldLine: old,
+  newLine: now,
+  type: old === null ? 'new' : now === null ? 'old' : null,
+  text: `${old === null ? '+' : now === null ? '-' : ' '}${text}`,
+})
+
+/** The lines of the diff above each commented line, by file: GitLab sends them with a thread, ending at the line. */
+const DIFF_LINES: Record<string, ReturnType<typeof diffLine>[]> = {
+  'src/cart/total.ts': [
+    diffLine(85, 85, '  const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0)'),
+    diffLine(86, 86, '  const tax = subtotal * rate'),
+    diffLine(87, null, '  return Math.round((subtotal + tax) * 100) / 100'),
+    diffLine(null, 87, '  const total = subtotal + tax'),
+    diffLine(null, 88, '  return Math.round(total * 100) / 100'),
+  ],
+  'src/checkout/cards.ts': [
+    diffLine(40, 40, '  const card = form.read()'),
+    diffLine(41, 41, '  if (!card.isValid) return showError(card)'),
+    diffLine(null, 42, "  cart.cookie.set('card', card.number)"),
+  ],
 }
 
 /** The merge requests Dana has open, with every state the pane has a word or a colour for. */
@@ -151,6 +182,28 @@ const mine = (): Mr[] => [
       nodes: [withThread('Half-cents should round to even here, per the finance spec. Is `Math.round` what we want?', ALICE, 'acme-corp/storefront', 479, 'src/cart/total.ts', 88)],
     },
   }),
+  // In the repo the session works in, so its conflicts can go to Claude here.
+  rawMr(485, {
+    title: 'feat: [SHOP-217] Keep the coupon when the cart reloads',
+    webUrl: url('acme-corp/storefront', 485),
+    project: STOREFRONT,
+    sourceBranch: 'feat/sticky-coupon',
+    description: '## What\n\nThe coupon is kept in the cart, not the page, so a reload keeps it.',
+    updatedAt: minutesAgo(95),
+    conflicts: true,
+    approvalsLeft: 1,
+    approvalsRequired: 1,
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED', CONFLICT: 'FAILED' }),
+    diffStatsSummary: { additions: 44, deletions: 17, fileCount: 4 },
+    reviewers: { nodes: [who(CAROL, 'UNREVIEWED')] },
+    headPipeline: pipe('SUCCESS', {
+      id: 'gid://gitlab/Ci::Pipeline/9485',
+      path: '/acme-corp/storefront/-/pipelines/9485',
+      startedAt: minutesAgo(110),
+      finishedAt: minutesAgo(102),
+      duration: 470,
+    }),
+  }),
   rawMr(133, {
     title: 'refactor: [BILL-88] Extract the invoice renderer',
     webUrl: url('acme-corp/billing-api', 133),
@@ -181,7 +234,9 @@ const mine = (): Mr[] => [
     updatedAt: minutesAgo(190),
     approvalsLeft: 1,
     approvalsRequired: 1,
-    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
+    // Behind its target in a repo that merges only by fast-forward: a rebase, beside the approval it still waits on.
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED', NEED_REBASE: 'FAILED' }),
+    shouldBeRebased: true,
     diffStatsSummary: { additions: 96, deletions: 12, fileCount: 5 },
     reviewers: { nodes: [who(CAROL, 'REVIEW_STARTED'), who(DAVE, 'UNREVIEWED')] },
     headPipeline: pipe('SUCCESS', {
@@ -262,7 +317,7 @@ const inboxWorld = (): World => {
 /** GitLab as the scenes set it; every command not listed here fails, so nothing real is ever asked. */
 function engine(on: On, mrs: Mr[]) {
   // The same session the tests use: an id, a store shared as the engine shares it, and the panes the pane asks after.
-  const { titles } = fakeSession(on, { id: 'scene' })
+  const { titles, panes } = fakeSession(on, { id: 'scene' })
   const world = inboxWorld()
   fakeGitLab(
     on,
@@ -276,6 +331,19 @@ function engine(on: On, mrs: Mr[]) {
           Pinned: ({ path, iid }) => ({
             data: { project: { mergeRequest: mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } },
           }),
+          // And beside it, where a reply to each thread goes and the lines of the diff it was left on.
+          Threads: ({ path, iid }) => {
+            const mr = mrs.find(each => each.iid === iid && each.project.fullPath === path)
+            const nodes = (mr?.discussions.nodes ?? []).map((discussion, at) => {
+              const first = discussion?.notes.nodes?.[0]
+              return {
+                replyId: `gid://gitlab/Discussion/${iid}${at}`,
+                truncatedDiffLines: DIFF_LINES[first?.position?.filePath ?? ''] ?? null,
+                notes: { nodes: [{ url: first?.url ?? null }] },
+              }
+            })
+            return { data: { project: { mergeRequest: mr === undefined ? null : { id: `gid://gitlab/MergeRequest/${iid}`, discussions: { nodes } } } } }
+          },
           ...inboxAnswers(world),
         },
         accepts: 'scene-token',
@@ -289,7 +357,7 @@ function engine(on: On, mrs: Mr[]) {
   on('ui.toast', () => ({ value: undefined }))
   on('session.repo', () => ({ value: { root: '/r', remote: 'git@gitlab.com:acme-corp/storefront.git', internal: false, name: null } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { titles }
+  return { titles, panes }
 }
 
 type Ui = Mounted<'desktop', 'Pane'>
@@ -318,8 +386,11 @@ const isNode = (value: unknown): value is Node =>
   (value.hover === undefined || (isRecord(value.hover) && (value.hover.scope === undefined || typeof value.hover.scope === 'string'))) &&
   (value.children === undefined || (Array.isArray(value.children) && value.children.every(child => typeof child === 'string' || isNode(child))))
 
-/** A scene is the pane after its steps, drawn with no pointer on it: nothing on the pane waits for one. */
-type Scene = { name: string; steps: (ui: Ui) => Promise<void> }
+/**
+ * A scene is the pane after its steps, drawn with no pointer on it: nothing on the pane waits for one. A scene at the
+ * band is the band above the prompt once the steps are done and the pane is closed.
+ */
+type Scene = { name: string; site?: 'band'; steps: (ui: Ui) => Promise<void> }
 
 const SCENES: Scene[] = [
   { name: 'mine', steps: async () => {} },
@@ -336,6 +407,14 @@ const SCENES: Scene[] = [
     },
   },
   {
+    name: 'reading-reply',
+    steps: async ui => {
+      await press(ui, 'open-479-')
+      await press(ui, 'reply-open-')
+      await ui.input({ key: 'reply-box', text: 'Good catch: it rounds half to even now, and a test pins 0.125 to 0.12.' })
+    },
+  },
+  {
     name: 'reading-person',
     steps: async ui => {
       await press(ui, 'person-bob.baker-482-')
@@ -349,6 +428,7 @@ const SCENES: Scene[] = [
       await press(ui, 'inbox-open-')
     },
   },
+  { name: 'band', site: 'band', steps: async () => {} },
 ]
 
 // Said before any scene draws, so the caller knows which trees to expect and can tell a scene that was lost from one
@@ -358,18 +438,26 @@ console.log(`PANE-SCENES ${JSON.stringify(SCENES.map(scene => scene.name))}`)
 for (const scene of SCENES) {
   test(`scene ${scene.name}`, async ($, on) => {
     const clock = mock.clock(on, { now: NOW })
-    const { titles } = engine(on, mine())
+    const { titles, panes } = engine(on, mine())
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
     await clock.advance(FIRST_SYNC_MS)
     await scene.steps(ui)
-    const tree = await ui.drawn()
-    if (!isNode(tree)) {
-      throw new Error(`scene ${scene.name}: the pane did not draw a tree of elements`)
-    }
-    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: [], hoverKeys: [], tree }
-    console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
+    let tree = await ui.drawn()
     await ui.unmount()
+    if (scene.site === 'band') {
+      // The person closes the pane; at the next tick the band takes up what its tab said.
+      panes.clear()
+      await clock.advance(FIRST_SYNC_MS)
+      const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+      tree = await band.drawn()
+      await band.unmount()
+    }
+    if (!isNode(tree)) {
+      throw new Error(`scene ${scene.name}: the ${scene.site ?? 'pane'} did not draw a tree of elements`)
+    }
+    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', site: scene.site ?? 'pane', hover: [], hoverKeys: [], tree }
+    console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
   })
 }

@@ -1,5 +1,8 @@
-// Every GraphQL document the pane sends, and the requests built from them. tools/gitlab_queries.ts prints DOCUMENTS for
-// tools/gitlab_schema.py, and graphql-codegen reads the documents in this file for the types in gitlab.generated.ts.
+// Every GraphQL document the pane sends (those on merging an MR are in merge-gitlab.ts, an MR page's own in
+// page-documents.ts), and the requests built from them. tools/gitlab_schema.ts checks DOCUMENTS against GitLab;
+// graphql-codegen reads all three files for gitlab.generated.ts.
+import { MERGE, MERGE_STATUS, MOVE_STATE } from './merge-gitlab.ts'
+import type { WRITES } from './merge-gitlab.ts'
 import type {
   AuthoredPlainQuery,
   AuthoredPlainQueryVariables,
@@ -18,13 +21,19 @@ import type {
   InboxQueueQuery,
   InboxTodosPlainQuery,
   InboxTodosQuery,
+  MergeMutation,
+  MergeMutationVariables,
   MergeStatusQuery,
+  MoveStateQuery,
+  MoveStateQueryVariables,
   PinnedPlainQuery,
   PinnedQuery,
   PinnedQueryVariables,
   UsualQuery,
   UsualQueryVariables,
 } from './gitlab.generated.ts'
+import { PAGE_COMPLEXITY, PAGE_DOCUMENTS } from './page-documents.ts'
+import type { PageOperations } from './page-documents.ts'
 
 import type { HostFeatures, Pinned } from '../types'
 
@@ -80,12 +89,6 @@ const AUTHORED = /* GraphQL */ `
 const AUTHORED_PLAIN = /* GraphQL */ `
   query AuthoredPlain($state: MergeRequestState, $after: Time) {
     currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerPlain } } } } }
-  }
-`
-
-const MERGE_STATUS = /* GraphQL */ `
-  query MergeStatus {
-    currentUser { authoredMergeRequests(state: opened, first: 50, sort: UPDATED_DESC) { nodes { iid project { fullPath } mergeabilityChecks { identifier status } } } }
   }
 `
 
@@ -303,7 +306,7 @@ export type Request<Data> = { operation: keyof Operations; query: string; variab
 export type RawResponse<Data> = { data?: Data | null; errors?: { message: string; extensions?: { code?: string; typeName?: string; fieldName?: string } }[] }
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
-export type Operations = {
+export type Operations = PageOperations & {
   Authored: { variables: AuthoredQueryVariables; data: AuthoredQuery }
   AuthoredPlain: { variables: AuthoredPlainQueryVariables; data: AuthoredPlainQuery }
   MergeStatus: { variables: Record<string, never>; data: MergeStatusQuery }
@@ -318,7 +321,11 @@ export type Operations = {
   InboxBrief: { variables: InboxBriefQueryVariables; data: InboxBriefQuery }
   InboxFollowUser: { variables: InboxFollowUserQueryVariables; data: InboxFollowUserQuery }
   InboxFollowProject: { variables: InboxFollowProjectQueryVariables; data: InboxFollowProjectQuery }
+  MoveState: { variables: MoveStateQueryVariables; data: MoveStateQuery }
+  Merge: { variables: MergeMutationVariables; data: MergeMutation }
 }
+
+type Reads = Exclude<keyof Operations, (typeof WRITES)[number]>
 
 /** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
 export const DOCUMENTS = {
@@ -329,6 +336,7 @@ export const DOCUMENTS = {
   Pinned: PINNED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
   PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
   Usual: USUAL,
+  ...PAGE_DOCUMENTS,
   InboxTodos: INBOX_TODOS + INBOX_MR_FRAGMENT,
   InboxTodosPlain: INBOX_TODOS_PLAIN + INBOX_MR_FRAGMENT,
   InboxQueue: INBOX_QUEUE + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT,
@@ -336,12 +344,15 @@ export const DOCUMENTS = {
   InboxBrief: INBOX_BRIEF + INBOX_MR_FRAGMENT,
   InboxFollowUser: INBOX_FOLLOW_USER + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
   InboxFollowProject: INBOX_FOLLOW_PROJECT + INBOX_MR_FRAGMENT + INBOX_NOTE_FRAGMENT + INBOX_NOTE_ACTION_FRAGMENT + INBOX_MERGED_BY_FRAGMENT,
+  MoveState: MOVE_STATE,
+  Merge: MERGE,
 } as const satisfies Record<keyof Operations, string>
 
 /**
  * What GitLab's `queryComplexity` scores each document, which `node tools/gitlab_schema.ts check` measures against
  * gitlab.com, with no sign-in. A query may cost no more than the limit, and the check also fails any document that scores
- * other than this, or more than COMPLEXITY_SHARE of the limit it reports, so a change to a document states its cost.
+ * other than this, or more than COMPLEXITY_SHARE of the limit it reports, so a change to a document states its cost. A
+ * write is not here: scoring a document sends it.
  */
 export const COMPLEXITY = {
   Authored: 151,
@@ -354,21 +365,16 @@ export const COMPLEXITY = {
   InboxQueue: 50,
   InboxTodos: 39,
   InboxTodosPlain: 39,
-  MergeStatus: 19,
+  MergeStatus: 34,
+  MoveState: 17,
   Pinned: 100,
   PinnedPlain: 98,
   Usual: 8,
-} as const satisfies Record<keyof Operations, number>
+  ...PAGE_COMPLEXITY,
+} as const satisfies Record<Reads, number>
 
 /** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */
 export const COMPLEXITY_SHARE = 0.8
-
-/**
- * GitLab's own merge checks for the same MRs, or none for a host that lacks them. Asked on its own: its single verdict (`detailedMergeStatus`) answered
- * CONFLICT, twice in a row, inside the authored query for MRs that this query and each MR's own lookup called MERGEABLE.
- */
-export const mergeStatusQuery = (features: HostFeatures): Request<MergeStatusQuery> | null =>
-  features.hasMergeVerdict ? { operation: 'MergeStatus', query: DOCUMENTS.MergeStatus, variables: {} } : null
 
 /**
  * A pinned MR the authored list lacks (someone else's, or merged), one query each (`COMPLEXITY.Pinned`): that needs no

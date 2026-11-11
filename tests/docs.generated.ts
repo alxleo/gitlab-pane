@@ -4,7 +4,7 @@
 export const README = {
   commands: ['gitlab', 'mrs'],
   tools: ['watch_mr'],
-  runs: [[30000, 60000, 120000, 600000, 300000], [], [300000], [1800000], [60000], [], [900000], [], [], [2000, 15000, 45000]],
+  runs: [[30000, 60000, 120000, 600000, 300000], [], [], [300000], [1800000], [60000], [], [900000], [900000], [], [], [2000, 15000, 45000], [3000, 120000]],
 } as const
 
 export const DESIGN = {
@@ -58,4 +58,5 @@ export const DESIGN = {
     ['On my MRs', 'on-my-mrs'],
     ['Following', 'following'],
   ],
+  moves: ['✓ merge', '↻ rebase', '↻ rebase and merge', '⇄ hand conflicts to Claude'],
 } as const

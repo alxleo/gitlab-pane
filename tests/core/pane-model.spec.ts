@@ -4,15 +4,20 @@ import fc from 'fast-check'
 import { hasLeft } from '../../hooks/attention.ts'
 import { firstRunLines } from '../../hooks/first-run.ts'
 import { cardKey } from '../../hooks/hosts.ts'
+import { shortHash } from '../../hooks/identity.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 import { toCard } from '../../hooks/gitlab.ts'
-import { buildPane, MINE_SHOWN } from '../../hooks/pane-model.ts'
+import { buildPane, inboxBand, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { slimCard } from '../../hooks/slim.ts'
 import { STAGE_COLOURS } from '../../hooks/status.ts'
 import { readCardArb } from './arbitrary.ts'
 import { HOST, NOW, gitlabSays, pipe, rawMr, thread } from '../fixtures.ts'
-import type { MrCard } from '../../types'
+import type { Mr } from '../fixtures.ts'
+import type { CheckStatus, Merging, MrCard, Pressed } from '../../types'
+
+/** GitLab says the person may merge and push, on this head. */
+const CAN: Merging = { head: 'abc123', isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true }
 
 /** The pane's model over these cards, every piece of a row costing `cost(piece)` characters. */
 const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: Piece, row: RowModel) => number = () => 1_000, room = 79_000) =>
@@ -32,6 +37,8 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       isSyncing: false,
       isWaking: true,
       failures: {},
+      pressed: {},
+      here: null,
       ...over,
     },
     NOW,
@@ -57,6 +64,24 @@ test('beside the tabs, the age of the cards, and ↻ dim while this session read
   expect(modelOf([], { isWaking: false }).wake).toEqual({ label: 'wake Claude: off', mark: '🔕' })
 })
 
+test('the band above the prompt says the inbox news only while the pane shows no tabs that say it, and gives way to a survey', () => {
+  const band = (over: Partial<Parameters<typeof inboxBand>[0]> = {}) => inboxBand({ count: 2, isPaneDrawn: false, isPageOpen: false, hasSurvey: false, ...over })
+  expect(band()).toBe('Inbox · 2 new')
+  // Nothing new is no news: the band is left to whatever else draws there.
+  expect(band({ count: 0 })).toBeNull()
+  // The pane's Inbox tab says the same words, so the band does not repeat them beside it.
+  expect(band({ isPaneDrawn: true })).toBeNull()
+  // An MR read whole has its way back where the tabs were, so the count is nowhere in the pane and the band says it.
+  expect(band({ isPaneDrawn: true, isPageOpen: true })).toBe('Inbox · 2 new')
+  expect(band({ hasSurvey: true })).toBeNull()
+  // The band and the tab are one fact in one form of words.
+  fc.assert(
+    fc.property(fc.integer({ min: 1, max: 500 }), count => {
+      expect(band({ count })).toBe(modelOf([], { news: { count, keys: [] } }).tabs.inbox)
+    })
+  )
+})
+
 test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const botThread = { nodes: [thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)] }
@@ -79,7 +104,8 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   expect(tabs.mine).toBe('Mine · 4')
   const byLink = Object.fromEntries(mine.rows.map(row => [row.mr.text, row]))
   // GitLab's verdict is the one word on whether it can merge, said once; a bot's open thread is on its face, so nothing trails it.
-  expect(byLink['🔀 !14']?.verdict).toEqual({ words: '✓ mergeable', tone: 'success', bold: true, trailing: null })
+  // GitLab said nothing of who may merge it, so the verdict offers no merge.
+  expect(byLink['🔀 !14']?.verdict).toEqual({ words: '✓ mergeable', tone: 'success', bold: true, trailing: null, move: null })
   expect(byLink['🔀 !15']?.verdict?.words).toBe('CI must pass (checking)')
   // With no verdict read, the pane's own marker shows in words.
   expect(byLink['🔀 !13']?.verdict).toBeNull()
@@ -102,6 +128,43 @@ test('a row that passed and waits on nothing of yours folds to one line; one tha
   expect(quiet).toEqual({ waiting: true, mergeable: true, running: false, failed: false, conflict: false, asked: false })
   // Its one line still says what it waits on, or that it can merge.
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.verdict?.words).toBe('✓ mergeable')
+  // Where the person may merge it, that line offers the merge in place of saying it can, and stays one line.
+  const mayMerge = { ...rows.mergeable, merging: CAN }
+  const offered = modelOf([mayMerge]).mine.rows[0]
+  expect(offered?.isQuiet).toBe(true)
+  expect(offered?.verdict?.move).toEqual({
+    key: `move-2-${shortHash(mayMerge.project)}`,
+    label: '✓ merge',
+    press: { kind: 'merge', does: 'arm' },
+    isArmed: false,
+    failed: null,
+    isVerdict: true,
+  })
+})
+
+test('an MR’s one move stands where GitLab’s verdict says what it fixes, and the line does not say that check again', () => {
+  const card = (iid: number, checks: Partial<Record<string, CheckStatus>>, over: Partial<Mr> = {}): MrCard => ({
+    ...toCard(HOST, rawMr(iid, { headPipeline: pipe('SUCCESS'), ...over })),
+    mergeStatus: gitlabSays(checks),
+    merging: CAN,
+  })
+  const behind = card(1, { NEED_REBASE: 'failed' }, { approvalsLeft: 0, approvalsRequired: 0 })
+  const conflicted = card(2, { NOT_APPROVED: 'failed', CONFLICT: 'failed' })
+  const here = conflicted.project
+  const rowOf = (model: ReturnType<typeof modelOf>, of: MrCard) => model.mine.rows.find(row => row.key === of.key)
+  const model = modelOf([behind, conflicted], { here })
+  // The verdict is the rebase GitLab asks for, so the move is said in its place.
+  expect(rowOf(model, behind)?.verdict).toMatchObject({ trailing: null, move: { label: '↻ rebase and merge', isVerdict: true } })
+  // GitLab's verdict is the approval still needed; the conflicts are the move, beside it, and trail it no more.
+  expect(rowOf(model, conflicted)?.verdict).toMatchObject({ words: 'needs 1 approval', trailing: null, move: { label: '⇄ hand conflicts to Claude', isVerdict: false } })
+  // From a session in another repo, the conflicts trail the verdict as they did, with nothing to press.
+  expect(rowOf(modelOf([conflicted], { here: null }), conflicted)?.verdict).toMatchObject({ words: 'needs 1 approval', trailing: '· conflict', move: null })
+  // A press this session made shows until the head moves.
+  const handed: Pressed = { kind: 'conflicts', state: 'handed', on: CAN.head, at: NOW }
+  expect(rowOf(modelOf([conflicted], { here, pressed: { [conflicted.key]: handed } }), conflicted)?.verdict?.move).toMatchObject({
+    label: '⇄ conflicts · with Claude',
+    press: null,
+  })
 })
 
 test('a render works out the facts of the rows drawn alone, and measures each piece of a row at most once', async () => {

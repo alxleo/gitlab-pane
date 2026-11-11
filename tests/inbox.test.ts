@@ -4,7 +4,8 @@ import type { On } from 'claude-code'
 import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
-import { NOW, mergeStatuses } from './fixtures'
+import { NOW, mergeStatuses, pipe, rawMr } from './fixtures'
+import type { Mr } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
@@ -23,19 +24,31 @@ const PANE = {
   },
 } as const
 
+/** The band above the prompt, with no survey in it. */
+const BAND = {
+  plugin: 'gitlab-pane',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 11 }, view: {} },
+} as const
+
 const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
-/** The host with `world` behind it; every call is in `requests`. The token comes from the environment. */
-function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>) {
+/** The host with `world` behind it, and `mine` as your open MRs on Mine; every call is in `requests`. The token comes from the environment. */
+function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>, mine: Mr[] = []) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
-  const { store } = fakeSession(on)
+  const { store, panes, surfaces, unreadable } = fakeSession(on)
   const gitlab = fakeGitLab(
     on,
     {
       'gitlab.com': {
         accepts: TOKEN,
-        answers: { ...inboxAnswers(world), Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: [] } } } }), MergeStatus: () => mergeStatuses([]) },
+        answers: {
+          ...inboxAnswers(world),
+          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mine } } } }),
+          MergeStatus: () => mergeStatuses(mine),
+          Pinned: ({ path, iid }) => ({ data: { project: { mergeRequest: mine.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } } }),
+        },
       },
     },
     { env: hasToken ? { GITLAB_TOKEN: TOKEN } : {}, isDown: () => world.isDown, ...(held !== undefined ? { held } : {}) }
@@ -45,7 +58,9 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
   on('command.register', () => ({ value: { command: 'gitlab' } }))
   on('tool.register', () => ({ value: { tool: 'mcp__gitlab-pane__watch_mr' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { ...gitlab, store, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
+  // The engine's own band, which the mod passes the band on to when it has nothing to say: empty, as with no survey.
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'Box', props: {}, children: [] }))
+  return { ...gitlab, store, panes, surfaces, unreadable, marks: () => [...store].filter(([key]) => key.startsWith('seen:')) }
 }
 
 /** The inbox's first read waits this long after the session starts. */
@@ -188,6 +203,119 @@ test('✓ marks one MR seen on this machine only, and GitLab is not asked again'
   expect(gitlab.marks().map(([, at]) => at)).toEqual([NOW + FIRST_SYNC_MS])
   expect(gitlab.requests.every(request => request.startsWith('gitlab.com '))).toBe(true)
   await ui.unmount()
+})
+
+test('the band above the prompt says the inbox news while the pane is not shown, opens the Inbox tab, and clears once all is seen', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = { ...emptyWorld(), opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])] }
+  const gitlab = engine(on, world, true, REMOTE, undefined, [rawMr(5, { headPipeline: pipe('RUNNING') })])
+  const bandOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }) =>
+    (await ui.find({ type: 'Button', key: 'inbox-band' }))?.props?.label
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(JSON.stringify(await pane.drawn())).toContain('"Inbox · 1 new"')
+  // The pane's tab says it already, so the band leaves the place to anything else that draws there.
+  const shown = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await bandOf(shown)).toBeUndefined()
+  // An MR read whole puts its way back where the tabs were, so the band says the count meanwhile; its press leaves the
+  // page for the Inbox tab, which says it again.
+  await pane.press({ key: (await pane.findAll({ type: 'Button' })).find(button => button.key?.startsWith('open-5-') === true)?.key ?? '' })
+  expect(await pane.find({ type: 'Button', key: 'back-top' })).toBeDefined()
+  expect(await bandOf(shown)).toBe('Inbox · 1 new')
+  await shown.press({ key: 'inbox-band' })
+  expect(await pane.find({ type: 'Button', key: 'back-top' })).toBeUndefined()
+  expect((await pane.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
+  expect(await bandOf(shown)).toBeUndefined()
+  await shown.unmount()
+  await pane.unmount()
+
+  // Closed, the pane says nothing; within a tick the band does, on each surface it draws on.
+  gitlab.panes.delete('gitlab-pane')
+  await clock.advance(FIRST_SYNC_MS)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const band = await $.ui.mount({ ...BAND, surface })
+    expect(await bandOf(band)).toBe('Inbox · 1 new')
+    await band.unmount()
+  }
+  // A survey holds the band, and the mod gives way to it.
+  const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'desktop' })
+  expect(await bandOf(survey)).toBeUndefined()
+  await survey.unmount()
+
+  // Pressing it opens the pane on the Inbox tab, whose tab now says the count, so the band goes.
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await band.press({ key: 'inbox-band' })
+  expect(gitlab.panes.has('gitlab-pane')).toBe(true)
+  expect(await bandOf(band)).toBeUndefined()
+  const opened = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await opened.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
+
+  // Everything marked seen, there is no news, and the band stays away with the pane closed again.
+  await opened.press({ key: 'inbox-rule-on-my-mrs' })
+  await opened.press({ key: `inbox-seen-${hashOf('gitlab.com/g/p!1')}` })
+  await opened.unmount()
+  gitlab.panes.delete('gitlab-pane')
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await bandOf(band)).toBeUndefined()
+  await band.unmount()
+})
+
+test('with no pane drawn anywhere, a session with a window still reads the inbox each minute, alone, so the band keeps up', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = { ...emptyWorld(), opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])] }
+  const gitlab = engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  gitlab.panes.clear()
+  await clock.advance(FIRST_SYNC_MS)
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ type: 'Button', key: 'inbox-band' }))?.props.label).toBe('Inbox · 1 new')
+  const before = gitlab.requests.length
+  // A review asked of you a minute later reaches the band with no pane open: the inbox is read, and nothing else is.
+  world.queue = [queued(2)]
+  await clock.advance(60_000)
+  expect((await band.find({ type: 'Button', key: 'inbox-band' }))?.props.label).toBe('Inbox · 2 new')
+  // A minute more is one read more: the pace holds with no pane open.
+  await clock.advance(60_000)
+  const since = gitlab.requests.slice(before)
+  expect(since).toEqual(expect.arrayContaining(['gitlab.com InboxTodos', 'gitlab.com InboxQueue', 'gitlab.com InboxAuthored']))
+  expect(since.every(request => request.startsWith('gitlab.com Inbox'))).toBe(true)
+  expect(since.filter(request => request === 'gitlab.com InboxQueue')).toHaveLength(2)
+  await band.unmount()
+})
+
+test('with no pane drawn, a session reads no inbox while another reads it, nor while the store cannot say who does, nor with no window for a band', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const gitlab = engine(on, busyWorld())
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  gitlab.panes.clear()
+  // Another session holds the inbox's own lease, renewing it: this one shows that session's read and asks GitLab nothing.
+  // Its read has one MR with news where this session's own, made while its pane was open, had two.
+  const renew = () => gitlab.store.set('inbox-lease', { owner: 'session-b', renewedAt: clock.now() })
+  renew()
+  await clock.advance(FIRST_SYNC_MS)
+  const before = gitlab.requests.length
+  gitlab.store.set('inbox-snapshot', sharedInbox(clock.now()))
+  for (let minute = 0; minute < 3; minute += 1) {
+    renew()
+    await clock.advance(30_000)
+  }
+  expect(gitlab.requests.slice(before)).toEqual([])
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ type: 'Button', key: 'inbox-band' }))?.props.label).toBe('Inbox · 1 new')
+  await band.unmount()
+  // That lease lapses, but the store cannot be read to say so: every session with a window would elect itself, so none reads.
+  gitlab.unreadable.add('inbox-lease')
+  await clock.advance(120_000)
+  expect(gitlab.requests.slice(before)).toEqual([])
+  gitlab.unreadable.clear()
+  // A session without a window reads nothing either: it has no band to say it in.
+  gitlab.surfaces.length = 0
+  await clock.advance(120_000)
+  expect(gitlab.requests.slice(before)).toEqual([])
 })
 
 test('the mark outlives the pane, and an MR that has left the inbox loses its mark', async ($, on) => {

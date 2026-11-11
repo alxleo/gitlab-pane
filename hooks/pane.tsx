@@ -14,12 +14,15 @@ import { pageHead } from './page-lines'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
+import { drawnReply } from './replies'
+import { drawnWrites } from './writes'
 import { withDetail } from './slim'
 import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, now } = await view($)
+  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, pressed, here, now } =
+    await view($)
   const kit = kitOf($, e, now)
   const { Box, Text, Button } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
@@ -71,6 +74,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       isSyncing,
       isWaking,
       failures,
+      pressed,
+      here,
     },
     now,
     { hasSvg: kit.Svg !== undefined },
@@ -164,6 +169,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             focus: chosen[reading.key] ?? '',
             head: pageHead(reading, { tickets, browse, failures }),
             now,
+            reply: await drawnReply($),
+            writes: await drawnWrites($),
           }),
           back('back-bottom'),
         ]
