@@ -1002,6 +1002,26 @@ test('a failed read says why and keeps the rules it last applied', async ($, on)
   await ui.unmount()
 })
 
+test('an inbox document GitLab answers with errors and no data is the server’s failure: the Inbox tab says its words, and a pane that has read nothing says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), queueErrors: 'Timeout on validation of query' }
+  // Mine's own read is out, so the pane has read nothing and tells what is wrong with the inbox.
+  let release = () => {}
+  const answered = new Promise<void>(resolve => {
+    release = resolve
+  })
+  engine(on, world, true, REMOTE, operation => (operation === 'Authored' ? answered : Promise.resolve()))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect((await ui.find({ type: 'Text', text: /^Inbox: /u }))?.text).toBe('Inbox: the server answered with an error: it is tried again, or press ↻')
+  await ui.press({ key: 'tab-inbox' })
+  expect((await ui.find({ type: 'Text', text: /sync failed/u }))?.text).toBe('sync failed: review queue: Timeout on validation of query')
+  release()
+  await ui.unmount()
+})
+
 test('a host without GitLab 17.4 is asked for the older to-do field once it says so, and its to-dos still come', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = busyWorld()
