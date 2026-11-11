@@ -10,7 +10,7 @@ import { ask, askVariant } from './graphql'
 import { inboxAuthoredQuery, inboxBriefQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './inbox-requests'
 import { briefing, readBrief } from './inbox-brief'
 import type { Brief } from './inbox-brief'
-import { authoredMrs, combine, followedProjectMrs, followedUserMrs, queueMrs, todoMrs } from './inbox-gitlab'
+import { authoredMrs, combine, followedProjectMrs, followedUserMrs, ownMrs, queueMrs, todoMrs } from './inbox-gitlab'
 import type { Found } from './inbox-gitlab'
 import { parseFollow } from './inbox-follow'
 import { isRefTo, parseRef, parseRemote } from './inbox-refs'
@@ -19,6 +19,7 @@ import type { Context } from './inbox-rules'
 import { NO_SNAPSHOT, carryOver, problemOf, readSnapshot } from './inbox-snapshot'
 import { cardKey } from './hosts'
 import { joined } from './in-flight'
+import { noteOwn } from './jira-mover'
 import { parseMrUrl } from './mr-url'
 
 import type { InboxFollow, InboxHost, InboxMr, InboxSnapshot, InboxState } from '../types'
@@ -99,7 +100,12 @@ async function readHost($: EngineInterface, host: string, now: number, follows: 
     ),
     tried(
       'your MRs',
-      ask($, host, inboxAuthoredQuery(since)).then(answer => authoredMrs(host, dataOf(answer), now))
+      // The same answer tells the Jira moves who the user is here and which of their MRs merged.
+      ask($, host, inboxAuthoredQuery(since)).then(async answer => {
+        const data = dataOf(answer)
+        await noteOwn($, host, ownMrs(host, data))
+        return authoredMrs(host, data, now)
+      })
     ),
     ...follows.map(follow =>
       follow.kind === 'user'

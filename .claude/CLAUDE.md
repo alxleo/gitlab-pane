@@ -61,6 +61,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 - Run `npm run check` and `npm test`; CI runs the same and has gone red when a branch skipped one.
 - Messages are conventional (`feat:`, `fix(jira):`, `docs:` …); commitlint checks them. Do not edit `CHANGELOG.md`: releases write it.
+- A pull request's description follows [AGENTS.md](../AGENTS.md#pull-requests): `Was | Is`, the recommendation with what was rejected, and `Before | After | Delta` pictures pinned on `pr-screens` whenever the drawing changes.
 - Author and committer must be GitHub noreply addresses (CI fails any other). Set git's `author.*` and `committer.*` apart, not `user.*`, so a rebase keeps both right. In an agent container, `author.*` is the human's noreply identity and `committer.*` is `Claude <noreply@anthropic.com>`.
 
 ## Tests

@@ -16,12 +16,13 @@ import {
 import { stringRecord, usualRecord } from './decode'
 import { isEqual } from './equal'
 import { asFailure, Failure, together } from './failure'
-import { clear, record } from './failures'
+import { clear, quietly, record } from './failures'
 import { joined } from './in-flight'
+import { moveTickets } from './jira-mover'
 import { readUsual } from './gitlab'
 import { usualQuery } from './gitlab-documents'
 import { ask } from './graphql'
-import { TICKET_FIELDS, readTickets, ticketQuery } from './jira'
+import { readTickets, searchArgs } from './jira'
 import { ticketOf } from './format'
 import { pictureUri, sizedAvatar } from './picture'
 import { failureOf, runJson } from './tools'
@@ -49,8 +50,7 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
   if (keys.length === 0 || (!isDue && keys.every(key => key in known))) {
     return
   }
-  const search = ['jira', 'workitem', 'search', '--json', '--fields', TICKET_FIELDS, '--limit', String(keys.length), '--jql', ticketQuery(keys)]
-  const found = await runJson($, 'acli', search, readTickets, { timeoutMs: 60_000 })
+  const found = await runJson($, 'acli', searchArgs(keys), readTickets, { timeoutMs: 60_000 })
   if (!found.ok) {
     await record($, 'jira', failureOf(found))
     return
@@ -63,7 +63,7 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
  * How long each repo's MR pipelines usually run, every 30 minutes or when a new repo appears; one pass at a time, however
  * long it takes, each project saved as it is read, so one that fails keeps the last of its own and loses no other's.
  */
-export function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
+function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
   return joined('usual', async () => {
     const projects = [...new Map(rows.map(row => [row.project, row])).values()]
     const [known, reads] = await Promise.all([readUsualKnown($), readReads($)])
@@ -107,7 +107,7 @@ const AVATAR_STORE = 'avatars'
  * store is written only when a picture was fetched or a person left the pane: the store is a file every session rewrites
  * whole, and the pictures are its largest value after the snapshot.
  */
-export async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
+async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
   const urls = [...new Set(rows.flatMap(row => row.people.map(person => person.avatarUrl)))].filter(url => url !== null)
   const shown = await readAvatarsShown($)
   const known: Record<string, string> = Object.keys(shown).length > 0 ? shown : stringRecord(await $.store.get(AVATAR_STORE))
@@ -146,6 +146,16 @@ export async function readAvatars($: EngineInterface, rows: readonly MrCard[]): 
   if (Object.keys(fresh).length > 0 || Object.keys(known).some(url => !(url in kept))) {
     await $.store.set(AVATAR_STORE, kept)
   }
+}
+
+/**
+ * What the leader does with a read's open MRs once it has drawn them: their repos' run times, their people's pictures,
+ * and the Jira moves they call for (after the inbox, which says who the user is and what merged), each failing alone.
+ */
+export function afterRead($: EngineInterface, open: readonly MrCard[], now: number): void {
+  quietly($, readUsualTimes($, open, now), 'usual')
+  quietly($, readAvatars($, open), 'avatars')
+  quietly($, moveTickets($, open), 'jira-moves')
 }
 
 const USUAL_STORE = 'usual'

@@ -6,7 +6,7 @@ import { readTickets } from '../../hooks/jira.ts'
 
 test('what the outside tools print is checked, not cast', async () => {
   expect(() => readTickets({ error: 'not signed in' })).toThrow('acli answered something other than a list')
-  expect(readTickets([null, { key: 7 }, { key: 'ABC-1', fields: { summary: 4 } }])).toEqual({ 'ABC-1': { type: '', status: '', summary: '' } })
+  expect(readTickets([null, { key: 7 }, { key: 'ABC-1', fields: { summary: 4 } }])).toEqual({ 'ABC-1': { type: '', status: '', isDone: null, summary: '' } })
   expect(
     readSnapshot({
       at: 1,

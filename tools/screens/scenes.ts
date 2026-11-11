@@ -23,6 +23,13 @@ const PANE = {
   props: { title: 'GitLab', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
+/** The band above the prompt, with no survey in it, as wide as the pane's picture. */
+const BAND = {
+  plugin: 'gitlab-pane',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 60, scroll: { offset: 0, bodyRows: 11 }, view: {} },
+} as const
+
 const FIRST_SYNC_MS = 2_000
 
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
@@ -310,7 +317,7 @@ const inboxWorld = (): World => {
 /** GitLab as the scenes set it; every command not listed here fails, so nothing real is ever asked. */
 function engine(on: On, mrs: Mr[]) {
   // The same session the tests use: an id, a store shared as the engine shares it, and the panes the pane asks after.
-  const { titles } = fakeSession(on, { id: 'scene' })
+  const { titles, panes } = fakeSession(on, { id: 'scene' })
   const world = inboxWorld()
   fakeGitLab(
     on,
@@ -350,7 +357,7 @@ function engine(on: On, mrs: Mr[]) {
   on('ui.toast', () => ({ value: undefined }))
   on('session.repo', () => ({ value: { root: '/r', remote: 'git@gitlab.com:acme-corp/storefront.git', internal: false, name: null } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  return { titles }
+  return { titles, panes }
 }
 
 type Ui = Mounted<'desktop', 'Pane'>
@@ -379,8 +386,11 @@ const isNode = (value: unknown): value is Node =>
   (value.hover === undefined || (isRecord(value.hover) && (value.hover.scope === undefined || typeof value.hover.scope === 'string'))) &&
   (value.children === undefined || (Array.isArray(value.children) && value.children.every(child => typeof child === 'string' || isNode(child))))
 
-/** A scene is the pane after its steps, drawn with no pointer on it: nothing on the pane waits for one. */
-type Scene = { name: string; steps: (ui: Ui) => Promise<void> }
+/**
+ * A scene is the pane after its steps, drawn with no pointer on it: nothing on the pane waits for one. A scene at the
+ * band is the band above the prompt once the steps are done and the pane is closed.
+ */
+type Scene = { name: string; site?: 'band'; steps: (ui: Ui) => Promise<void> }
 
 const SCENES: Scene[] = [
   { name: 'mine', steps: async () => {} },
@@ -418,6 +428,7 @@ const SCENES: Scene[] = [
       await press(ui, 'inbox-open-')
     },
   },
+  { name: 'band', site: 'band', steps: async () => {} },
 ]
 
 // Said before any scene draws, so the caller knows which trees to expect and can tell a scene that was lost from one
@@ -427,18 +438,26 @@ console.log(`PANE-SCENES ${JSON.stringify(SCENES.map(scene => scene.name))}`)
 for (const scene of SCENES) {
   test(`scene ${scene.name}`, async ($, on) => {
     const clock = mock.clock(on, { now: NOW })
-    const { titles } = engine(on, mine())
+    const { titles, panes } = engine(on, mine())
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
     await clock.advance(FIRST_SYNC_MS)
     await scene.steps(ui)
-    const tree = await ui.drawn()
-    if (!isNode(tree)) {
-      throw new Error(`scene ${scene.name}: the pane did not draw a tree of elements`)
-    }
-    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', hover: [], hoverKeys: [], tree }
-    console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
+    let tree = await ui.drawn()
     await ui.unmount()
+    if (scene.site === 'band') {
+      // The person closes the pane; at the next tick the band takes up what its tab said.
+      panes.clear()
+      await clock.advance(FIRST_SYNC_MS)
+      const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+      tree = await band.drawn()
+      await band.unmount()
+    }
+    if (!isNode(tree)) {
+      throw new Error(`scene ${scene.name}: the ${scene.site ?? 'pane'} did not draw a tree of elements`)
+    }
+    const drawn = { name: scene.name, title: titles.at(-1) ?? 'GitLab', site: scene.site ?? 'pane', hover: [], hoverKeys: [], tree }
+    console.log(`PANE-SCENE ${JSON.stringify(drawn)}`)
   })
 }

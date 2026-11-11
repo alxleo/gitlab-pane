@@ -7,6 +7,7 @@ import { CI_STATUSES } from '../hooks/gitlab-status'
 import { VERB } from '../hooks/inbox-pane'
 import { RULES } from '../hooks/inbox-rules'
 import { FULL_EVERY_MS } from '../hooks/incremental'
+import { RETRY_MS } from '../hooks/jira-moves'
 import { EXPIRY_MS, RENEW_MS, TICK_MS } from '../hooks/lease'
 import { FOLLOW_MS, FOLLOW_TRIES, MOVES } from '../hooks/next-move'
 import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
@@ -61,6 +62,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [],
     // Jira
     [TICKETS_EVERY_MS],
+    // Jira moves: after a read, and again a while after a failed ask
+    [RETRY_MS],
     // avatars, once per face; glab's token, once per host
     [],
     [],

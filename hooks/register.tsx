@@ -7,11 +7,12 @@ import { drawn, forgetFound, forgetProbed } from './in-flight'
 import { rememberLogs } from './job-failures'
 import { hostsLine, namedHosts, parseHosts } from './hosts'
 import { briefCommand, setFollow } from './inbox'
+import { setMoveTargets } from './jira-mover'
 import { TICK_MS } from './lease'
 import type { ModelLine } from './model-text'
 import { mrUrls } from './mr-url'
 import { drawPane } from './pane'
-import { forgetScrolling, noteRing, openPane, readScrolling, stepRing } from './panes'
+import { bandOf, forgetScrolling, noteRing, openInbox, openPane, readScrolling, stepRing } from './panes'
 import { pin, refresh, step } from './poll'
 import { rememberSettings } from './tokens'
 
@@ -31,6 +32,7 @@ export const register: Register = (on, options) => {
     const hosts = parseHosts(options.gitlabHosts)
     await Promise.all([
       startData($, options.jiraUrl, hosts),
+      setMoveTargets($, options.jiraInReview, options.jiraOnMerge),
       setFollow($, options.inboxFollow),
       rememberSettings(options.gitlabTokens, hosts, namedHosts(options.gitlabHosts)[0]),
       rememberLogs($, options.failureLogs),
@@ -145,6 +147,32 @@ export const register: Register = (on, options) => {
       await noteRing($, e.element ?? '').catch(() => undefined)
     }
     return moved
+  })
+
+  // The band above the prompt, in every session: the inbox news while the pane's tabs do not say it. Otherwise the band is
+  // passed on, so a survey or another mod has it. Pressed, it opens the pane on the Inbox tab.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const label = await bandOf($, e.props.hasSurvey)
+    if (label === null) {
+      return next(e)
+    }
+    const { Button, Text } = $.ui.resolve(e)
+    return (
+      <Button
+        key="inbox-band"
+        plain
+        label={label}
+        onPress={() =>
+          quietly(
+            $,
+            openInbox($).then(() => step($)),
+            'gitlab'
+          )
+        }
+      >
+        <Text color="warning">{label}</Text>
+      </Button>
+    )
   })
 
   // A drawing that throws says why in the pane, where the engine would only report it in the debug log.

@@ -244,7 +244,14 @@ export type HostFeatures = {
   hasDiffLines: boolean
 }
 
-export type Ticket = { type: string; status: string; summary: string }
+/** A Jira ticket as acli read it; `isDone` says whether Jira counts its status as done, whatever the workflow calls it, or null when Jira did not say. */
+export type Ticket = { type: string; status: string; isDone: boolean | null; summary: string }
+
+/** The statuses each Jira move tries in turn, from the `jiraInReview` and `jiraOnMerge` settings; an empty list never moves. */
+export type MoveTargets = { review: string[]; done: string[] }
+
+/** Who the user is on one GitLab host, and their MRs merged lately, by card key, as the inbox last read them. */
+export type OwnMrs = { user: string | null; merged: { key: string; iid: number; title: string }[] }
 
 /** How the last read of one GitLab host went. */
 export type HostStatus = {
@@ -283,7 +290,7 @@ export type ReadClock = {
   inboxSeen: number | null
 }
 
-/** What a session does with GitLab: `leader` reads for all, `follower` draws what the leader read, `wake-only` reads only its raised MRs, `idle` nothing. */
+/** What a session does with GitLab: `leader` reads for all, `follower` draws what the leader read, `wake-only` reads only its raised MRs, `idle` no MR; with no pane drawn anywhere, one of the last two may read the inbox for the band. */
 export type Role = 'leader' | 'follower' | 'wake-only' | 'idle'
 
 /** One event a rule counted on an MR, as the pane draws it. */
@@ -402,7 +409,7 @@ export type InboxState = {
 export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server' | 'failed' | 'unknown'
 
 /** What a background job reports failing, by where it ran. */
-export type ProblemSource = 'gitlab' | 'jira' | 'usual' | 'avatars' | 'inbox' | 'pane' | 'store'
+export type ProblemSource = 'gitlab' | 'jira' | 'jira-moves' | 'usual' | 'avatars' | 'inbox' | 'pane' | 'store'
 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
 export type Problems = { [Source in ProblemSource]?: { message: string; kind: FailureKind; at: number } }
@@ -466,11 +473,17 @@ declare module 'claude-code' {
       details: Record<string, MrCard>
       /** The base of ticket links (`<jiraUrl>/browse/`); empty while no Jira site is set. */
       jira: string
+      /** The statuses the Jira moves try, from the settings. */
+      moveTargets: MoveTargets
+      /** Per GitLab host, the user and their lately merged MRs, which the Jira moves go by. */
+      ownMrs: Record<string, OwnMrs>
       /** Avatar URLs that failed to fetch, not asked for again until the session loads the mod again. */
       unreachable: string[]
       scrolling: Scrolling
       /** The key of the pane's button holding the focus ring, `''` for none: where the next arrow moves it on from. No drawing reads it. */
       ring: string
+      /** Whether a surface drew the pane at the last tick, for the band above the prompt, which says the inbox news only while it does not. */
+      paneDrawn: boolean
       problems: Problems
       /** What the session that reads GitLab last failed with, as its snapshot says. */
       reported: Problems

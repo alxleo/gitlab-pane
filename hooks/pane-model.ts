@@ -265,6 +265,19 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   }
 }
 
+/** The Inbox tab's words: how many MRs have news, when any do. */
+const inboxLabel = (count: number): string => (count > 0 ? `Inbox · ${count} new` : 'Inbox')
+
+/**
+ * The band above the prompt: the Inbox tab's words, while there is news and the pane shows no tabs that say it (it is not
+ * drawn, or an MR's page holds the place of its tabs). Otherwise nothing, and the band is left to the survey or whatever
+ * else draws there; a survey always has it.
+ */
+export function inboxBand(input: { count: number; isPaneDrawn: boolean; isPageOpen: boolean; hasSurvey: boolean }): string | null {
+  const isTabShown = input.isPaneDrawn && !input.isPageOpen
+  return input.count > 0 && !isTabShown && !input.hasSurvey ? inboxLabel(input.count) : null
+}
+
 /**
  * The pane's list as data. Rows come in order of what needs you, then pictures on faces where room is left. Rows that do
  * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
@@ -344,7 +357,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
     tabs: {
       // Every MR the tab holds, as `All` counts them: this session's, the ready, the parked and the drafts add up to it.
       mine: `Mine · ${rows.length}`,
-      inbox: input.news.count > 0 ? `Inbox · ${input.news.count} new` : 'Inbox',
+      inbox: inboxLabel(input.news.count),
       isInbox,
     },
     repos: {

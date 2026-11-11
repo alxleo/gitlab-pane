@@ -142,6 +142,8 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 | 🚦 | the pipeline |
 | 💬 | the comment |
 
+A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
+
 ## Inbox
 
 Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`). The last two name no one.
@@ -173,6 +175,7 @@ The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's na
 
 - A card with news has an amber border and says `N new`; one without is grey.
 - An MR can show under several tabs; the Inbox tab's count counts it once.
+- The band above the prompt says the Inbox tab's words in amber, `Inbox · N new`, only while there is news and the tabs are out of sight: the pane closed or undrawn, or an MR's page in their place. It never repeats the tab beside it, gives way to a survey, and opens the Inbox tab when pressed (`inboxBand`, `hooks/pane-model.ts`).
 - `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.
 - ✓ marks seen on this machine only; GitLab is not told. `● here` narrows every tab to the session's project.
 - In the terminal, while the inbox is taller than the pane, ↑ and ↓ move the focus ring a card at a time, onto its title (its ✓ when it has nothing to open), and Enter opens it; past the first or last card drawn they scroll again, and from the footer ↑ comes back to the last card drawn (`hooks/inbox-ring.ts`). ✓ on the card holding the ring hands the ring to the next. `s` presses `✓ mark all seen (s)`. The engine draws the ring, so moving it draws nothing again; while the inbox fits, the engine's arrows walk every button instead.

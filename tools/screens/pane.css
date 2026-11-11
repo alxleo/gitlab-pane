@@ -48,6 +48,11 @@ body { padding: 16px; font-family: var(--font); font-size: 13px; line-height: 1.
 #pane > header .close { color: var(--faint); font-weight: 400; font-size: 16px; line-height: 1; }
 #pane > main { padding: 12px 14px 14px; }
 
+/* The band above the prompt: its tree on the transcript's column, and the empty prompt box under it. */
+#band { width: var(--pane-width); }
+#band > main { padding: 0 14px 8px; }
+#band > .prompt { height: 44px; background: var(--surface); border: 1px solid var(--edge); border-radius: 12px; }
+
 /* Ink's Box: a flex row that may shrink, in the surface's own spacing. */
 .box { display: flex; flex-direction: row; flex-shrink: 1; flex-grow: 0; min-width: 0; position: relative; }
 .box[data-hidden] { display: none; }

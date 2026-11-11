@@ -43,6 +43,7 @@
     "hooks/inbox-snapshot.ts",
     "hooks/incremental.ts",
     "hooks/jira.ts",
+    "hooks/jira-moves.ts",
     "hooks/lease.ts",
     "hooks/markdown.ts",
     "hooks/merge-gitlab.ts",
