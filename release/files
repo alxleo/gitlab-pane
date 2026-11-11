@@ -35,6 +35,7 @@ hooks/inbox-gitlab.ts
 hooks/inbox-pane.tsx
 hooks/inbox-refs.ts
 hooks/inbox-requests.ts
+hooks/inbox-ring.ts
 hooks/inbox-rules.ts
 hooks/inbox-snapshot.ts
 hooks/inbox-turn.ts

@@ -38,6 +38,7 @@
     "hooks/inbox-gitlab.ts",
     "hooks/inbox-refs.ts",
     "hooks/inbox-requests.ts",
+    "hooks/inbox-ring.ts",
     "hooks/inbox-rules.ts",
     "hooks/inbox-snapshot.ts",
     "hooks/incremental.ts",

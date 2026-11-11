@@ -99,6 +99,18 @@ export const nextDraw = (): Promise<void> =>
 /** Where the window sat at the last drawing. */
 export const rowDrawn = (): number => drawnAtRow
 
+// The cards the inbox last drew under each rule, by MR key: the drawing stops short of the list when its budget runs out,
+// and the focus ring may go only to a card that is drawn.
+const inboxCardsDrawn = new Map<string, string[]>()
+
+/** The inbox drew these cards of `rule`: its drawing calls this. */
+export function inboxDrawn(rule: string, keys: string[]): void {
+  inboxCardsDrawn.set(rule, keys)
+}
+
+/** The cards of `rule` the inbox last drew, or none if it has not drawn that rule. */
+export const cardsDrawn = (rule: string): string[] | undefined => inboxCardsDrawn.get(rule)
+
 /** A session starting finds out again what each host lacks, and finds each token again where a session before it left one. */
 export function forgetProbed(): void {
   lacking.clear()
