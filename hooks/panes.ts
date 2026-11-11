@@ -6,7 +6,7 @@ import { readRows } from './data'
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
 import { inboxView, markSeen } from './inbox'
-import { arrowSteps, cardButtons, ringAfterSeen, ringStep } from './inbox-ring'
+import { arrowSteps, cardButtons, handOver, ringAfterSeen, ringStep } from './inbox-ring'
 import type { RingScroll } from './inbox-ring'
 import { ownedSections } from './inbox-rules'
 import { cardsDrawn, nextDraw, rowDrawn } from './in-flight'
@@ -67,13 +67,29 @@ export async function stepRing($: EngineInterface, scroll: Omit<RingScroll, 'isI
 export async function seenOne($: EngineInterface, key: string): Promise<void> {
   const [{ rule, cards }, at] = await Promise.all([drawnCards($), read($, ringAtom)])
   const next = Object.values(cardButtons(key)).includes(at) ? ringAfterSeen(cards, rule, key) : null
-  const redrawn = nextDraw()
+  const before = cardsDrawn(rule)
   await markSeen($, { key })
-  if (next !== null) {
-    // The engine keeps the ring by its place among the buttons, so it moves only once the card is gone from the drawing,
-    // which leaves after this resumes, as going back from a page finds.
-    await Promise.race([redrawn, $.clock.sleep(2000)])
-    await $.clock.sleep(50)
+  if (next === null) {
+    return
+  }
+  const until = (await $.clock.now()) + 2000
+  const now = async () => ({ at, ringNow: await read($, ringAtom), before, drawn: cardsDrawn(rule), isTimeUp: (await $.clock.now()) >= until })
+  for (;;) {
+    // Asked for before looking, so a drawing that ends in between is not missed.
+    const drew = nextDraw()
+    const state = await now()
+    const step = handOver(state)
+    if (step === 'leave') {
+      return
+    }
+    if (step === 'move') {
+      break
+    }
+    await Promise.race([drew, $.clock.sleep(Math.max(0, until - (await $.clock.now())))])
+  }
+  // The drawing leaves only after this resumes, as going back from a page finds.
+  await $.clock.sleep(50)
+  if (handOver({ ...(await now()), isTimeUp: true }) === 'move') {
     await ringTo($, next)
   }
 }

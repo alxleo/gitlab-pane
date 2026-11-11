@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { ITEMS_SHOWN, arrowSteps, cardButtons, footerButtons, ringAfterSeen, ringStep } from '../../hooks/inbox-ring.ts'
+import { ITEMS_SHOWN, arrowSteps, cardButtons, footerButtons, handOver, ringAfterSeen, ringStep } from '../../hooks/inbox-ring.ts'
 import type { RingCard } from '../../hooks/inbox-ring.ts'
 
 const RULE = 'on-my-mrs'
@@ -93,6 +93,21 @@ test('✓ on the card holding the ring hands it to the card below, or above when
   expect(ringAfterSeen(cards, RULE, cards[2]?.key ?? '')).toBe(title(2))
   expect(ringAfterSeen([card(1)], RULE, card(1).key)).toBeNull()
   expect(ringAfterSeen(cards, RULE, 'gitlab.com/g/p!99')).toBeNull()
+})
+
+test('after ✓ the ring waits for a drawing without the card, and stays put when the person moved it meanwhile', () => {
+  const before = cards.map(one => one.key)
+  const after = [cards[1]?.key ?? '', cards[2]?.key ?? '']
+  const pressed = { at: tick(1), ringNow: tick(1), before, drawn: before, isTimeUp: false }
+  // A drawing that started before the mark still shows the card: the ring would land on it and slip a card.
+  expect(handOver(pressed)).toBe('wait')
+  expect(handOver({ ...pressed, drawn: after })).toBe('move')
+  // In the review queue a card marked seen stays, lower down: the order changing is the drawing to wait for.
+  expect(handOver({ ...pressed, drawn: [before[1] ?? '', before[0] ?? '', before[2] ?? ''] })).toBe('move')
+  // A mark that changed nothing drawn waits only so long.
+  expect(handOver({ ...pressed, isTimeUp: true })).toBe('move')
+  expect(handOver({ ...pressed, ringNow: title(3), drawn: after })).toBe('leave')
+  expect(handOver({ ...pressed, ringNow: title(3), isTimeUp: true })).toBe('leave')
 })
 
 test('down then up from any card comes back to it, and every move lands on a card or leaves the arrow to scroll', () => {

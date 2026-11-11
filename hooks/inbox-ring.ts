@@ -76,3 +76,25 @@ export function ringAfterSeen(cards: readonly RingCard[], rule: string, key: str
   const at = cardButtons(key).seen
   return shown.some(card => card.key === key) ? (oneStep(shown, rule, at, 1) ?? oneStep(shown, rule, at, -1)) : null
 }
+
+/** Where a ✓ that hands the ring on has got to: the ring where ✓ was pressed and where it is now, and the cards drawn. */
+export type HandOver = {
+  at: string
+  ringNow: string
+  before: readonly string[] | undefined
+  drawn: readonly string[] | undefined
+  isTimeUp: boolean
+}
+
+/**
+ * After ✓, when the ring moves to the next card. The engine keeps the ring by its place among the buttons, so the ring
+ * moves only once a drawing without the card, or with it moved, is the one shown; any drawing before that, a poll's or
+ * one already under way, would have it land and then slip a card. Never once the person moved the ring.
+ */
+export function handOver(state: HandOver): 'wait' | 'move' | 'leave' {
+  if (state.ringNow !== state.at) {
+    return 'leave'
+  }
+  const isRedrawn = state.before?.join('\n') !== state.drawn?.join('\n')
+  return isRedrawn || state.isTimeUp ? 'move' : 'wait'
+}
