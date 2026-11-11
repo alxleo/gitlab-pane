@@ -12,6 +12,8 @@ import { ticketUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { nextMove } from './next-move.ts'
 import type { Move } from './next-move.ts'
+import { keptRepo, repoFilterOf } from './repo-filter.ts'
+import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import { STAGE_COLOURS, type Tone } from './status.ts'
@@ -119,7 +121,8 @@ export type PaneInput = {
 
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
-  repos: { all: { label: string; isActive: boolean }; each: { project: string; label: string; isActive: boolean }[] }
+  /** None with fewer than two repos to pick between. */
+  repos: RepoFilter | null
   /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
   /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
@@ -283,14 +286,15 @@ export function inboxBand(input: { count: number; isPaneDrawn: boolean; isPageOp
  * not fit at all are left out and counted. `budget.room` is what the rows may draw to; `budget.sizeOf` measures a piece of
  * a row, once.
  */
-export function buildPane(input: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
+export function buildPane(given: PaneInput, now: number, surface: { hasSvg: boolean }, budget: { room: number; sizeOf: SizeOf }): PaneModel {
   // GitLab says an MR is no longer open before the authored list drops it.
-  const rows = input.cards.filter(row => !hasLeft(row))
-  const pinnedKeys = new Set(input.pinned.map(pinKey))
+  const rows = given.cards.filter(row => !hasLeft(row))
   const counts = rows.reduce((count, row) => count.set(row.project, (count.get(row.project) ?? 0) + 1), new Map<string, number>())
   const repos = [...counts].toSorted((a, b) => b[1] - a[1])
+  // The next read forgets a pick that no longer narrows (`forgetGone`); until then the list is whole.
+  const input = { ...given, repoFilter: keptRepo(given.repoFilter, new Set(counts.keys())) }
+  const pinnedKeys = new Set(input.pinned.map(pinKey))
   const home = rows.find(row => pinnedKeys.has(row.key))?.project ?? repos[0]?.[0]
-  const repoName = (project: string) => rows.find(row => row.project === project)?.repo.name ?? project
   const shown = rows.filter(row => input.repoFilter === '' || row.project === input.repoFilter)
   // Only the rank of every MR is worked out to put them in order; the rest of what a row says (its badges, words, faces) is
   // worked out below for the rows that are drawn, once each.
@@ -360,10 +364,7 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       inbox: inboxLabel(input.news.count),
       isInbox,
     },
-    repos: {
-      all: { label: `All ${rows.length}`, isActive: input.repoFilter === '' },
-      each: repos.map(([project, count]) => ({ project, label: `${repoName(project)} ${count}`, isActive: input.repoFilter === project })),
-    },
+    repos: repoFilterOf(rows, repos, input.repoFilter),
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     others: isFolding ? { label: `${showOthers ? '▾' : '▸'} ${plural(rest.length, 'other')}${newOthers > 0 ? ` · ${newOthers} new` : ''}`, isOpen: showOthers } : null,
@@ -380,7 +381,9 @@ export function buildPane(input: PaneInput, now: number, surface: { hasSvg: bool
       parked.length > 0 ? { label: `${showParked ? '▾' : '▸'} Parked, untouched for a week · ${parked.length}`, isOpen: showParked, rows: showParked ? rowsOf(parked) : [] } : null,
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
-      built.length - finished.size > 0 ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws; pick a repo above to see them.` : null,
+      built.length - finished.size > 0
+        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 && input.repoFilter === '' ? '; pick a repo above to see them' : ''}.`
+        : null,
     status: statusOf(input.poll, now),
     isRefreshing: input.isReading || input.isSyncing,
     footer: footerOf(input.poll, now),

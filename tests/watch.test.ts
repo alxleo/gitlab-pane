@@ -570,6 +570,37 @@ test('a raised MR wakes when GitLab newly says it can merge, never for a passed 
   expect(woken).toHaveLength(1)
 })
 
+test('a repo picked until its MRs all closed is forgotten, so the repo coming back does not narrow the list by itself', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const inRepo = (iid: number, path: string, over: Parameters<typeof rawMr>[1] = {}) => rawMr(iid, { project: project(path), ...over })
+  const kept = [inRepo(1, 'g/p'), inRepo(2, 'g/p')]
+  const fake: Fake = { mrs: [...kept, inRepo(3, 'g/q')], isDown: false }
+  // Reads after the first ask GitLab for what changed since, so each change is stamped now.
+  const changed = (iid: number, path: string, state: 'opened' | 'merged' = 'opened') => inRepo(iid, path, { state, updatedAt: stamp(clock) })
+  engine(on, fake)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const ready = async () => (await ui.find({ type: 'Text', text: /^Ready · /u }))?.text
+  await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
+  expect(await ready()).toBe('Ready · 1')
+  // A read that still finds the repo's MR keeps the pick.
+  fake.mrs = [...kept, changed(3, 'g/q')]
+  await clock.advance(180_000)
+  expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('gitlab.com/g/q')
+  expect(await ready()).toBe('Ready · 1')
+  fake.mrs = [...kept, changed(3, 'g/q', 'merged'), changed(4, 'g/r')]
+  await clock.advance(180_000)
+  expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('all')
+  expect(await ready()).toBe('Ready · 3')
+  fake.mrs = [...kept, inRepo(4, 'g/r'), changed(5, 'g/q')]
+  await clock.advance(180_000)
+  expect((await ui.find({ type: 'Select', key: 'repo' }))?.props.value).toBe('all')
+  expect(await ready()).toBe('Ready · 4')
+  await ui.unmount()
+})
+
 test('an avatar kept by an earlier session is drawn without fetching it again', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'APPROVED')] } })], isDown: false }
@@ -1748,7 +1779,7 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.unmount()
 })
 
-test('thirty MRs in two repos, with a repo filter, draw on terminal, desktop and vscode', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
+test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's buttons", { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const pipelines: PipelineStatusEnum[] = ['SUCCESS', 'FAILED', 'RUNNING', 'MANUAL']
   const fake: Fake = {
@@ -1835,12 +1866,30 @@ test('thirty MRs in two repos, with a repo filter, draw on terminal, desktop and
     // The title is a plain button, not a link: it opens the MR's page, while 🔀 !iid leaves for GitLab.
     expect((await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.props.label).toBe('thing 103')
 
-    await ui.press({ key: 'repo-gitlab.com/g/q' })
+    // The repos are one picker, which takes one row however many there are: a repo narrows the list, All shows it whole.
+    expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
+    await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
     expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
-    await ui.press({ key: 'repo-all' })
+    expect((await ui.find({ type: 'Select', key: 'repo' }))?.props).toMatchObject({ label: '📁', value: 'gitlab.com/g/q' })
+    // Picking the repo already picked keeps it.
+    await ui.select({ key: 'repo', value: 'gitlab.com/g/q' })
+    expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
+    await ui.select({ key: 'repo', value: 'all' })
+    expect((await ui.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 25')
     await ui.press({ key: 'more' })
     await ui.unmount()
   }
+  // A phone draws a picker only when its app asked for one, which the pane cannot tell, so there the repos are buttons.
+  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect(await phone.find({ type: 'Select' })).toBeUndefined()
+  expect(await phone.find({ type: 'Text', text: '📁' })).toBeDefined()
+  expect((await phone.find({ type: 'Button', key: 'repo-all' }))?.props.label).toBe('All')
+  await phone.press({ key: 'repo-gitlab.com/g/q' })
+  expect((await phone.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 5')
+  expect((await phone.find({ type: 'Button', key: 'repo-gitlab.com/g/q' }))?.props.variant).toBe('primary')
+  await phone.press({ key: 'repo-all' })
+  expect((await phone.find({ type: 'Text', text: /^Ready · /u }))?.text).toBe('Ready · 25')
+  await phone.unmount()
 })
 
 /** The card the leader shares for an MR, as a snapshot another session wrote holds it. */

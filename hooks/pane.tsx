@@ -14,6 +14,7 @@ import { pageHead } from './page-lines'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
+import { pickedRepo } from './repo-filter'
 import { drawnReply } from './replies'
 import { drawnWrites } from './writes'
 import { withDetail } from './slim'
@@ -113,13 +114,29 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ...fold('drafts', drafts),
         ]
       : []
+  // The repos are one picker, a row however many there are; a phone, which may not draw one, has a button for each.
+  const { repos } = model
+  const { Select } = kit
+  const filterRow =
+    repos === null
+      ? []
+      : Select !== undefined
+        ? [<Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />]
+        : [
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+              <Text>{repos.mark}</Text>
+              {repos.choices.map(choice => (
+                <Button
+                  key={`repo-${choice.value}`}
+                  label={choice.label}
+                  variant={choice.value === repos.value ? 'primary' : 'secondary'}
+                  onPress={() => filterRepo($, pickedRepo(choice.value))}
+                />
+              ))}
+            </Box>,
+          ]
   const mineTab = [
-    <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-      <Button key="repo-all" label={model.repos.all.label} variant={model.repos.all.isActive ? 'primary' : 'secondary'} onPress={() => filterRepo($, repoFilter)} />
-      {model.repos.each.map(repo => (
-        <Button key={`repo-${repo.project}`} label={repo.label} variant={repo.isActive ? 'primary' : 'secondary'} onPress={() => filterRepo($, repo.project)} />
-      ))}
-    </Box>,
+    ...filterRow,
     ...model.firstRun.map(line => (
       <Text color="warning" size="footnote">
         {line}

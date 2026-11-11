@@ -78,6 +78,7 @@ hooks/job-lines.ts
 hooks/job-tail.ts
 hooks/page-lines.ts
 hooks/pane-model.ts
+hooks/repo-filter.ts
 hooks/row-facts.ts
 hooks/strip-model.ts
 hooks/first-run.ts

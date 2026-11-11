@@ -198,6 +198,7 @@ const DRAWN = new Map<string, ReadonlySet<string>>([
   ],
   ['Text', new Set(['color', 'backgroundColor', 'dimColor', 'size', 'weight', 'bold', 'mono', 'tabular', 'italic', 'underline', 'strikethrough', 'inverse', 'wrap'])],
   ['Button', new Set(['label', 'variant', 'plain', 'dimColor'])],
+  ['Select', new Set(['label', 'options', 'value'])],
   ['Link', new Set(['href', 'label'])],
   ['Svg', new Set(['source', 'alt', 'width', 'height'])],
   ['Image', new Set(['source', 'alt', 'columns', 'rows'])],
@@ -210,6 +211,7 @@ const KEPT = new Map<string, ReadonlySet<string>>([
   ['Box', new Set(['key'])],
   ['Text', new Set(['dir'])],
   ['Button', new Set(['key', 'hotkey', 'action', 'role', 'autoFocus'])],
+  ['Select', new Set(['key', 'autoFocus'])],
   ['Link', new Set()],
   ['Svg', new Set(['isInteractive'])],
   ['Image', new Set(['key'])],
@@ -493,6 +495,14 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
         props['dimColor'] === true ? 'dim' : '',
       ].filter(each => each !== '')
       return `<button class="${classes.join(' ')}${marked}">${inner === '' ? label : inner}</button>`
+    }
+    case 'Select': {
+      // Closed, as a picker sits on the page: its label, the picked option's text (the first's when none is picked) and the
+      // mark that opens the list.
+      const options = Array.isArray(props['options']) ? props['options'].filter(isRecord) : []
+      const picked = options.find(option => option['value'] === props['value']) ?? options[0]
+      const shown = picked !== undefined ? text(picked['label'] ?? picked['value']) : ''
+      return `<span class="select${marked}">${label !== '' ? `${label} ` : ''}${escape(shown)}<span class="caret">▾</span></span>`
     }
     case 'Svg': {
       // An Svg's size is CSS pixels, not cells.
