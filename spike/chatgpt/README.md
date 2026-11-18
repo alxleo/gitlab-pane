@@ -10,6 +10,7 @@ Not for merging. It answers whether gitlab-pane's core can drive a ChatGPT plugi
 | `server.ts` | An MCP server over stdio with one tool, `list_my_mrs`. A thread entrypoint opens the tool beside a ChatGPT conversation. |
 | `panel.ts`, `panel.html` | The panel, an MCP App. The server bundles it into one HTML resource. |
 | `plugin.json`, `mcp.json` | The desktop-only plugin shape: ChatGPT's desktop app launches the server on your machine. |
+| `build.ts`, `panel-build.ts` | Bundle the server, the core and the panel into `dist/`, which is what a package holds. |
 | `probe.ts` | Talks to the server the way the desktop app would, and prints a verdict, never the MRs. |
 | `harness.ts` | Plays ChatGPT's side of the panel in a browser, with made-up MRs, or `--live`. |
 
@@ -33,7 +34,10 @@ The probe needs a token: `GITLAB_TOKEN`, or `glab auth login`. `GITLAB_PANE_HOST
 
 ## Trying it in ChatGPT itself (not done here)
 
-1. In the ChatGPT desktop app, add a local marketplace that contains this folder, and install the plugin from the Plugins Directory.
-2. Open a conversation and choose "My merge requests" from the panel's entrypoints.
+An installed plugin is copied out of the repository, so it gets the bundle and none of the sources. `node build.ts` writes `dist/server.mjs`, which holds the server, the core and the MCP packages in one file, and `dist/panel.bundled.html`, which `mcp.json` launches beside it. A copy that holds only `plugin.json`, `mcp.json` and `dist/`, kept outside the repository, passed `node probe.ts <copy>/dist/server.mjs` under Node 22, 24 and 26.
 
-A packaged plugin cannot import `../../hooks`: it would need `server.ts` bundled with the core into the package. Public submission of a local MCP server is limited to partners OpenAI has allowlisted.
+1. Run `node build.ts`.
+2. In the ChatGPT desktop app, add a local marketplace that contains this folder, and install the plugin from the Plugins Directory. Workspace policies on custom MCP servers apply, so a company workspace may refuse this.
+3. Open a conversation and choose "My merge requests" from the panel's entrypoints.
+
+Public submission of a local MCP server is limited to partners OpenAI has allowlisted.

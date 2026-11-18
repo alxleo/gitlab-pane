@@ -9,8 +9,9 @@ import type { Row } from './read.ts'
 const REFRESH_MS = 60_000
 
 const app = new App({ name: 'gitlab-pane-panel', version: '0.0.0' })
-// ext-apps' own sendMessage drops `_meta`, so the draft-only flag (`send: false`) goes through OpenAI's extension, which
-// a host without `openai/message` leaves undefined.
+// The draft-only flag (`send: false`) goes through OpenAI's extension: it checks the flag's shape, and a host without
+// `openai/message` leaves it undefined, so the button shows only where the flag is understood. (The harness's AppBridge
+// drops `_meta` when it parses `ui/message`; the panel puts it on the wire, which is what ChatGPT reads.)
 const openai = new OpenAIExtensions(app)
 const list = document.querySelector<HTMLElement>('#rows')
 const count = document.querySelector<HTMLElement>('#count')

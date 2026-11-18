@@ -5,7 +5,12 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const client = new Client({ name: 'probe', version: '0.0.0' })
 await client.connect(
-  new StdioClientTransport({ command: process.execPath, args: [new URL('./server.ts', import.meta.url).pathname], env: { ...process.env } as Record<string, string> })
+  // The server to launch: the sources by default, or a packaged one (`node probe.ts dist/server.mjs`).
+  new StdioClientTransport({
+    command: process.execPath,
+    args: [process.argv[2] ?? new URL('./server.ts', import.meta.url).pathname],
+    env: { ...process.env } as Record<string, string>,
+  })
 )
 
 const { tools } = await client.listTools()

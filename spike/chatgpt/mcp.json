@@ -3,7 +3,7 @@
     "gitlab-pane": {
       "type": "stdio",
       "command": "node",
-      "args": ["${PLUGIN_ROOT}/server.ts"],
+      "args": ["${PLUGIN_ROOT}/dist/server.mjs"],
       "cwd": "${PLUGIN_ROOT}"
     }
   }

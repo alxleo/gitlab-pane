@@ -12,7 +12,8 @@ import { build } from 'esbuild'
 
 import { checks, pipe, rawMr, reviewer, thread, user } from '../../tests/fixtures.ts'
 import { openMrs, rowsFrom } from './read.ts'
-import { createServer, panelHtml } from './server.ts'
+import { panelHtml } from './panel-build.ts'
+import { createServer } from './server.ts'
 
 const { values } = parseArgs({ options: { port: { type: 'string', default: '4319' }, live: { type: 'boolean', default: false } } })
 
