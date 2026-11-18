@@ -10,7 +10,7 @@
 //
 // So the types are exactly those of the claude on PATH, which CI pins (CLAUDE_CODE_VERSION in check.yml). It does nothing
 // when the folder already holds that version's file, so it is cheap to run before every check.
-import { spawnSync } from 'node:child_process'
+import { type SpawnSyncOptions, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -51,38 +51,67 @@ export function versionFrom(printed: string | undefined): string {
 }
 
 /**
- * What claude runs with: PATH, and a home, config folder and temp folder inside `work`, with an API address nothing
- * answers. Nothing else of this environment reaches it, so it has no credential of yours to send.
+ * How claude is run to unpack the skill: in `work`, so it reads no project's settings or instructions, with nothing of
+ * this environment but PATH, a home, config folder and temp folder inside `work`, and an API address nothing answers. So
+ * it has no credential of yours to send; it may still reach Anthropic unauthenticated, which spends nothing.
  *
- * claude puts its temp folder in CLAUDE_CODE_TMPDIR, else /tmp, and on macOS ignores TMPDIR; CI's Linux build has been
- * seen to unpack under TMPDIR, for a reason not checked. Both name the same folder.
+ * claude puts its temp folder in CLAUDE_CODE_TMPDIR, else /tmp, and the native macOS builds ignore TMPDIR; the build CI
+ * installs from npm has been seen to unpack under TMPDIR, for a reason not checked. Both name the same folder.
  */
-export function isolatedEnv(work: string, path: string): Record<string, string> {
+export function unpackRun(work: string, path: string): SpawnSyncOptions {
   return {
-    PATH: path,
-    HOME: join(work, 'home'),
-    CLAUDE_CONFIG_DIR: join(work, 'config'),
-    CLAUDE_CODE_TMPDIR: join(work, 'tmp'),
-    TMPDIR: join(work, 'tmp'),
-    ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
+    cwd: work,
+    env: {
+      PATH: path,
+      HOME: join(work, 'home'),
+      CLAUDE_CONFIG_DIR: join(work, 'config'),
+      CLAUDE_CODE_TMPDIR: join(work, 'tmp'),
+      TMPDIR: join(work, 'tmp'),
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
+    },
+    stdio: 'ignore',
+    timeout: 120_000,
   }
 }
 
 const head = (file: string): string => readFileSync(file, 'utf8').split('\n', 1)[0] ?? ''
+const stamp = (version: string): string => `// Written by Claude Code ${version}.`
 
 /**
  * Has the claude on PATH unpack its plugin-authoring skill inside `work`, an empty folder, and returns where its
- * declarations landed, or undefined when they are not there. It runs in `work`, so it reads no project's settings or
- * instructions. Unpacking happens before any request, so the refused request and the exit status are expected and ignored.
+ * declarations landed, or undefined when they are not there. Unpacking happens before any request, so the refused
+ * request and the exit status are expected and ignored.
  */
 function unpackDeclarations(version: string, work: string): string | undefined {
   for (const folder of ['home', 'config', 'tmp']) {
     mkdirSync(join(work, folder))
   }
-  spawnSync('claude', ['-p', '/plugin-authoring'], { cwd: work, env: isolatedEnv(work, process.env['PATH'] ?? ''), stdio: 'ignore', timeout: 120_000 })
+  spawnSync('claude', ['-p', '/plugin-authoring'], unpackRun(work, process.env['PATH'] ?? ''))
   const skills = join(work, 'tmp', readdirSync(join(work, 'tmp')).find(name => name.startsWith('claude-')) ?? 'missing', 'bundled-skills', version)
   const hashes = existsSync(skills) ? readdirSync(skills) : []
   return hashes.map(hash => join(skills, hash, 'plugin-authoring', 'types', 'claude-code.d.ts')).find(existsSync)
+}
+
+/** Lays claude `version`'s declarations in .claude-plugin/types/ and returns what went wrong, or '' when nothing did. */
+function lay(version: string, target: string): string {
+  const work = mkdtempSync(join(tmpdir(), 'engine-types-'))
+  try {
+    const source = unpackDeclarations(version, work)
+    if (source === undefined) {
+      return `claude ${version} did not unpack its bundled plugin-authoring skill under ${join(work, 'tmp')}.`
+    }
+    if (head(source) !== stamp(version)) {
+      return `the unpacked declarations are not those of claude ${version}: ${head(source)}`
+    }
+    rmSync(dest, { recursive: true, force: true })
+    mkdirSync(join(dest, 'claude-code'), { recursive: true })
+    cpSync(source, target)
+    writeFileSync(join(dest, '.gitignore'), '*\n')
+    writeFileSync(join(dest, 'tsconfig.json'), `${JSON.stringify(TSCONFIG, null, 2)}\n`)
+    return ''
+  } finally {
+    rmSync(work, { recursive: true, force: true })
+  }
 }
 
 if (import.meta.main) {
@@ -90,28 +119,13 @@ if (import.meta.main) {
   if (version === '') {
     fail('`claude --version` printed nothing; is Claude Code on PATH?')
   }
-  const firstLine = `// Written by Claude Code ${version}.`
   const target = join(dest, 'claude-code', 'index.d.ts')
-  if (existsSync(target) && existsSync(join(dest, 'tsconfig.json')) && head(target) === firstLine) {
-    process.exit(0)
-  }
-
-  const work = mkdtempSync(join(tmpdir(), 'engine-types-'))
-  try {
-    const source = unpackDeclarations(version, work)
-    if (source === undefined) {
-      fail(`claude ${version} did not unpack its bundled plugin-authoring skill under ${join(work, 'tmp')}.`)
-    } else if (head(source) !== firstLine) {
-      fail(`the unpacked declarations are not those of claude ${version}: ${head(source)}`)
-    } else {
-      rmSync(dest, { recursive: true, force: true })
-      mkdirSync(join(dest, 'claude-code'), { recursive: true })
-      cpSync(source, target)
-      writeFileSync(join(dest, '.gitignore'), '*\n')
-      writeFileSync(join(dest, 'tsconfig.json'), `${JSON.stringify(TSCONFIG, null, 2)}\n`)
-      console.log(`Laid Claude Code ${version}'s declarations in .claude-plugin/types/.`)
+  const current = existsSync(target) && existsSync(join(dest, 'tsconfig.json')) && head(target) === stamp(version)
+  if (!current) {
+    const problem = lay(version, target)
+    if (problem !== '') {
+      fail(problem)
     }
-  } finally {
-    rmSync(work, { recursive: true, force: true })
+    console.log(`Laid Claude Code ${version}'s declarations in .claude-plugin/types/.`)
   }
 }
