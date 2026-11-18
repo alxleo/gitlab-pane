@@ -25,7 +25,8 @@ console.log('panel', first?.mimeType, `${Math.round(html.length / 1024)} kB`, ht
 
 const result = await client.callTool({ name: 'list_my_mrs', arguments: {} })
 const mrs = (result.structuredContent as { mrs?: unknown[] } | undefined)?.mrs ?? []
-const rows = (result._meta as { gitlabPane?: { rows?: unknown[] } } | undefined)?.gitlabPane?.rows ?? []
+const sections = (result._meta as { gitlabPane?: { sections?: { rows: unknown[] }[] } } | undefined)?.gitlabPane?.sections ?? []
+const rows = sections.flatMap(section => section.rows)
 const modelKeys = new Set(mrs.flatMap(mr => Object.keys(mr as object)))
 console.log('call', result.isError === true ? `error: ${JSON.stringify(result.content)}` : `${mrs.length} MRs for the model, ${rows.length} rows for the panel`)
 console.log('model sees fields', [...modelKeys].join(','), modelKeys.has('title') ? '(TITLE LEAKS)' : '(no titles)')

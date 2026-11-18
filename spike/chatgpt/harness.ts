@@ -10,49 +10,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { build } from 'esbuild'
 
-import { checks, pipe, rawMr, reviewer, thread, user } from '../../tests/fixtures.ts'
-import { openMrs, rowsFrom } from './read.ts'
+import { fakeGitLab } from './fake.ts'
 import { panelHtml } from './panel-build.ts'
+import { connect } from './read.ts'
 import { createServer } from './server.ts'
 
 const { values } = parseArgs({ options: { port: { type: 'string', default: '4319' }, live: { type: 'boolean', default: false } } })
 
-/** Made-up MRs that show each kind of row: failed, conflicts, approved, waiting, draft. */
-const madeUp = () =>
-  rowsFrom('gitlab.com', {
-    data: {
-      currentUser: {
-        authoredMergeRequests: {
-          nodes: [
-            rawMr(412, {
-              title: 'feat: [SHOP-88] basket keeps its items across devices',
-              headPipeline: pipe('FAILED'),
-              reviewers: { nodes: [reviewer('mira', 'REQUESTED_CHANGES')] },
-              discussions: { nodes: [thread('This should not block the main thread.', 'mira')] },
-            }),
-            rawMr(398, {
-              title: 'fix: retry the payment webhook once on a 502',
-              conflicts: true,
-              approvalsLeft: 0,
-              approvedBy: { nodes: [user('tom')] },
-              mergeabilityChecks: checks({ CONFLICT: 'FAILED' }),
-            }),
-            rawMr(405, {
-              title: 'chore: raise the image cache to 7 days',
-              approvalsLeft: 0,
-              approvedBy: { nodes: [user('ana')] },
-              reviewers: { nodes: [reviewer('ana', 'APPROVED')] },
-              mergeabilityChecks: checks(),
-            }),
-            rawMr(417, { title: 'feat: [SHOP-91] gift cards at checkout', headPipeline: pipe('RUNNING'), reviewers: { nodes: [reviewer('tom', 'UNREVIEWED')] } }),
-            rawMr(420, { title: 'Draft: spike the new search ranking', draft: true, headPipeline: pipe('MANUAL') }),
-          ],
-        },
-      },
-    },
-  })
-
-const read = values.live ? openMrs : async () => madeUp()
+// Live reads (and writes!) the real GitLab; by default a made-up one answers, and a merge there merges nothing real.
+const gitlabFor = values.live ? connect : () => fakeGitLab()
 
 async function hostScript(): Promise<string> {
   const source = `
@@ -90,7 +56,7 @@ aside{flex:1;padding:12px}h2{font-size:13px;margin:0 0 8px}ul{padding-left:16px;
 
 const client = new Client({ name: 'harness', version: '0' })
 const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
-await createServer(read).connect(serverSide)
+await createServer(gitlabFor).connect(serverSide)
 await client.connect(clientSide)
 const [html, script] = await Promise.all([panelHtml(), hostScript()])
 

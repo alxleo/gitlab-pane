@@ -12,9 +12,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { OpenAIUiToolMetadata } from '@openai/mcp-extensions'
 
+import { z } from 'zod'
+
 import { foreign } from '../../hooks/model-text.ts'
-import { openMrs } from './read.ts'
-import type { Row } from './read.ts'
+import type { RowModel } from '../../hooks/pane-model.ts'
+import type { MrCard, Pressed } from '../../types/index.d.ts'
+import { liveHeld, pressMove } from './move.ts'
+import { connect, openMrs, panelOf } from './read.ts'
+import type { GitLab, Panel } from './read.ts'
 
 const PANEL_URI = 'ui://gitlab-pane/panel.html'
 const HOST = process.env.GITLAB_PANE_HOST ?? 'gitlab.com'
@@ -25,22 +30,41 @@ const PANEL_BUILDER = './panel-build.ts'
 
 const loadPanel = async (): Promise<string> => (existsSync(BUILT_PANEL) ? readFileSync(BUILT_PANEL, 'utf8') : (await import(PANEL_BUILDER)).panelHtml())
 
-/** What the model reads of a row: who, what and where, in the pane's own words. Titles go to the panel alone (`_meta`). */
-const forModel = (row: Row) => ({
+/**
+ * What the model reads of a row: where it is and what stands in its way, in the pane's own words. Titles, faces and
+ * quoted comments go to the panel alone (`_meta`). Verdict and blocker words can carry GitLab's text (job names), so they
+ * pass through `foreign` like any text from GitLab.
+ */
+const forModel = (row: RowModel) => ({
   key: row.key,
-  url: row.url,
-  draft: row.draft,
-  pipeline: row.pipeline.glyph,
-  verdict: row.verdict?.words ?? null,
-  // Badge words can carry GitLab's text (job names), so they pass through `foreign` like any text from GitLab.
-  blockers: row.badges.map(badge => foreign(badge.words)),
+  url: row.mr.href,
+  verdict: row.verdict !== null ? foreign(row.verdict.words) : null,
+  blocker: row.blocker !== null ? foreign(row.blocker.text) : null,
+  move: row.verdict?.move?.label ?? null,
 })
+const rowsIn = (panel: Panel) => panel.sections.flatMap(section => section.rows)
 
-export function createServer(read: (host: string) => Promise<{ rows: Row[] }> = openMrs): McpServer {
+const failed = (error: unknown) => ({ isError: true, content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }] })
+
+export function createServer(connectTo: (host: string) => GitLab = connect): McpServer {
   const server = new McpServer(
     { name: 'gitlab-pane', version: '0.0.0' },
     { instructions: "list_my_mrs reads the user's open GitLab merge requests. Rows carry no titles or comments; open the URL for those." }
   )
+  // What the server holds between calls, as the mod's atoms hold it: the last read, and each MR's press.
+  let gitlab: GitLab | null = null
+  let cards: MrCard[] = []
+  const held = new Map<string, Pressed>()
+  const read = async () => {
+    gitlab ??= connectTo(HOST)
+    cards = await openMrs(gitlab)
+    return panelOf(cards, liveHeld(held))
+  }
+  const listed = (panel: Panel) => ({
+    structuredContent: { host: HOST, mrs: rowsIn(panel).map(forModel) },
+    content: [{ type: 'text' as const, text: `${rowsIn(panel).length} open merge requests on ${HOST}.` }],
+    _meta: { gitlabPane: panel },
+  })
   const html = loadPanel()
   registerAppResource(server, 'GitLab MRs panel', PANEL_URI, {}, async () => ({
     contents: [{ uri: PANEL_URI, mimeType: RESOURCE_MIME_TYPE, text: await html }],
@@ -60,15 +84,36 @@ export function createServer(read: (host: string) => Promise<{ rows: Row[] }> = 
     },
     async () => {
       try {
-        const { rows } = await read(HOST)
-        const model = rows.map(forModel)
-        return {
-          structuredContent: { host: HOST, mrs: model },
-          content: [{ type: 'text', text: `${rows.length} open merge requests on ${HOST}.` }],
-          _meta: { gitlabPane: { rows } },
-        }
+        return listed(await read())
       } catch (error) {
-        return { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }] }
+        return failed(error)
+      }
+    }
+  )
+  // The panel's press on a row's move. Only the panel can call it (`visibility: ["app"]`): a person presses, the model
+  // never merges. A merge takes two presses within ARMED_MS, as in the pane.
+  registerAppTool(
+    server,
+    'press_move',
+    {
+      title: 'Press a merge request move',
+      description: 'The panel calls this when the person presses a row move: merge, rebase, or rebase and merge.',
+      inputSchema: { key: z.string(), kind: z.enum(['merge', 'rebase', 'rebase-merge']), does: z.enum(['arm', 'make']) },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      _meta: { ui: { resourceUri: PANEL_URI, visibility: ['app'] } },
+    },
+    async ({ key, kind, does }) => {
+      try {
+        gitlab ??= connectTo(HOST)
+        const card = cards.find(each => each.key === key)
+        if (card === undefined) {
+          return failed(new Error('that MR is no longer in the list: read again'))
+        }
+        const outcome = await pressMove(gitlab, card, { kind, does }, held)
+        const panel = await read()
+        return { ...listed(panel), structuredContent: { host: HOST, outcome, mrs: rowsIn(panel).map(forModel) } }
+      } catch (error) {
+        return failed(error)
       }
     }
   )

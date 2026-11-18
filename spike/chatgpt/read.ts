@@ -1,34 +1,37 @@
-// The one part of the read path that is not the core: how a token is found and how a document reaches GitLab. In the
+// The one part of the GitLab path that is not the core: how a token is found and how a document reaches GitLab. In the
 // Claude Code mod these are `tokens.ts` and `graphql.ts`, which go through the session's `$` (its fetch, settings,
 // in-memory atoms). Here they are Node's global fetch and the environment. Everything else is the core, imported as is.
 import { execFileSync } from 'node:child_process'
+import { homedir } from 'node:os'
 
 import { authoredQuery } from '../../hooks/authored-request.ts'
 import { decodeGraphql } from '../../hooks/decode.ts'
 import { Failure } from '../../hooks/failure.ts'
 import type { RawResponse, Request } from '../../hooks/gitlab-documents.ts'
-import type { AuthoredPlainQuery, AuthoredQuery } from '../../hooks/gitlab.generated.ts'
-import { missingFeatures, readResponse } from '../../hooks/gitlab.ts'
+import type { AuthoredPlainQuery, AuthoredQuery, MergeStatusQuery } from '../../hooks/gitlab.generated.ts'
+import { missingFeatures, readMergeStatus, readResponse } from '../../hooks/gitlab.ts'
+import type { GitLabVerdict } from '../../hooks/gitlab.ts'
 import { redact } from '../../hooks/hosts.ts'
-import { cardFacts } from '../../hooks/row-facts.ts'
-import { statusMark } from '../../hooks/status.ts'
-import { foreign } from '../../hooks/model-text.ts'
+import { mergeReads } from '../../hooks/incremental.ts'
+import { mergeStatusQuery } from '../../hooks/merge-gitlab.ts'
+import { lines } from '../../hooks/model-text.ts'
+import { conflictsTask, nextMove } from '../../hooks/next-move.ts'
+import { buildPane } from '../../hooks/pane-model.ts'
+import type { RowModel } from '../../hooks/pane-model.ts'
+import { slimCard, slimChecks } from '../../hooks/slim.ts'
 
-import type { HostFeatures, MrCard } from '../../types/index.d.ts'
+import type { HostFeatures, MrCard, Pressed } from '../../types/index.d.ts'
 
-/** A row of the panel: what the core says of a card, flattened for an iframe that runs no core code. */
-export type Row = {
-  key: string
-  url: string
-  title: string
-  ticket: string | null
-  draft: boolean
-  pipeline: { glyph: string; tone: string; url: string | null }
-  verdict: { words: string; tone: string } | null
-  badges: { glyph: string; words: string; tone: string }[]
-  people: { call: string; initials: string; openThreads: number }[]
-  updatedAt: string
+/** How a document, or a REST call, reaches one host with the user's token. */
+export type GitLab = {
+  host: string
+  graphql<Data>(request: Request<Data>): Promise<RawResponse<Data>>
+  /** A PUT to `https://<host>/api/v4/<path>` (a rebase: GraphQL has none), sent once. */
+  put(path: string): Promise<{ status: number; text: string }>
 }
+
+/** Where glab may be when the desktop app starts this server with a short PATH. */
+const GLABS = ['glab', '/opt/homebrew/bin/glab', '/usr/local/bin/glab', `${homedir()}/.local/share/mise/shims/glab`]
 
 /** A token for `host`: GITLAB_TOKEN, else the one glab stored for the host, as the mod's own `tokens.ts` asks for it. */
 function tokenFor(host: string): string {
@@ -36,65 +39,104 @@ function tokenFor(host: string): string {
   if (fromEnv !== '') {
     return fromEnv
   }
-  try {
-    const stored = execFileSync('glab', ['config', 'get', 'token', '--host', host], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-    if (stored === '') {
-      throw new Error('empty')
+  for (const glab of GLABS) {
+    try {
+      const stored = execFileSync(glab, ['config', 'get', 'token', '--host', host], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      if (stored !== '') {
+        return stored
+      }
+    } catch {
+      // Not there, or no token for the host: try the next.
     }
-    return stored
-  } catch {
-    throw new Failure('unauthorized', `no token for ${host}: set GITLAB_TOKEN or run glab auth login --hostname ${host}`)
   }
+  throw new Failure('unauthorized', `no token for ${host}: set GITLAB_TOKEN or run glab auth login --hostname ${host}`)
 }
 
-async function post<Data>(host: string, token: string, request: Request<Data>): Promise<RawResponse<Data>> {
-  let answer: Response
-  try {
-    answer = await fetch(`https://${host}/api/graphql`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ query: request.query, variables: request.variables, operationName: request.operation }),
-    })
-  } catch (error) {
-    throw new Failure('network', redact(`${host} failed: ${error instanceof Error ? error.message : String(error)}`, [token]))
-  }
-  if (answer.status === 401 || answer.status === 403) {
-    throw new Failure('unauthorized', `${host} refused the token (HTTP ${answer.status}): it needs read_api`)
-  }
-  return decodeGraphql<Data>(await answer.json())
-}
-
-/** The user's open MRs on `host`, most pressing first, as the core ranks them. */
-export async function openMrs(host: string): Promise<{ cards: MrCard[]; rows: Row[] }> {
+/** The user's GitLab on `host`. Every request is sent once: a write must not go twice. */
+export function connect(host: string): GitLab {
   const token = tokenFor(host)
+  const send = async (url: string, init: RequestInit): Promise<Response> => {
+    try {
+      return await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } })
+    } catch (error) {
+      throw new Failure('network', redact(`${host} failed: ${error instanceof Error ? error.message : String(error)}`, [token]))
+    }
+  }
+  return {
+    host,
+    async graphql<Data>(request: Request<Data>): Promise<RawResponse<Data>> {
+      const answer = await send(`https://${host}/api/graphql`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ query: request.query, variables: request.variables, operationName: request.operation }),
+      })
+      if (answer.status === 401 || answer.status === 403) {
+        throw new Failure('unauthorized', `${host} refused the token (HTTP ${answer.status})`)
+      }
+      return decodeGraphql<Data>(await answer.json())
+    },
+    async put(path: string) {
+      const answer = await send(`https://${host}/api/v4/${path}`, { method: 'PUT', headers: { Accept: 'application/json' } })
+      return { status: answer.status, text: await answer.text() }
+    },
+  }
+}
+
+/** The user's open MRs with GitLab's merge verdicts, read side by side as the mod's `read-gitlab.ts` reads them. */
+export async function openMrs(gitlab: GitLab): Promise<MrCard[]> {
   let features: HostFeatures = { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true }
-  let response = await post(host, token, authoredQuery(features, { kind: 'open' }))
-  const lacking = missingFeatures(response)
+  let authored = await gitlab.graphql(authoredQuery(features, { kind: 'open' }))
+  const lacking = missingFeatures(authored)
   if (lacking.length > 0) {
     features = { ...features, ...Object.fromEntries(lacking.map(feature => [feature, false])) }
-    response = await post(host, token, authoredQuery(features, { kind: 'open' }))
+    authored = await gitlab.graphql(authoredQuery(features, { kind: 'open' }))
   }
-  return rowsFrom(host, response)
+  const asked = mergeStatusQuery(features)
+  const status = asked === null ? null : await gitlab.graphql(asked).catch(() => null)
+  return cardsFrom(gitlab.host, authored, status)
 }
 
-/** GitLab's answer to the authored read as ranked cards and the rows the panel draws: the core, end to end. */
-export function rowsFrom(host: string, response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): { cards: MrCard[]; rows: Row[] } {
-  const cards = readResponse(host, response)
-  const ranked = cards.map(card => ({ card, facts: cardFacts(card, {}) })).toSorted((a, b) => a.facts.rank - b.facts.rank)
-  const rows = ranked.map(({ card, facts }): Row => {
-    const mark = statusMark(card.pipeline?.status)
-    return {
-      key: card.key,
-      url: card.url,
-      title: foreign(facts.title, 200),
-      ticket: facts.ticket,
-      draft: card.isDraft,
-      pipeline: { glyph: mark.glyph, tone: mark.tone, url: card.pipeline?.url ?? null },
-      verdict: facts.verdict === null ? null : { words: facts.verdict.words, tone: facts.verdict.tone },
-      badges: facts.row.map(badge => ({ glyph: badge.glyph, words: badge.words, tone: badge.tone })),
-      people: facts.people.map(person => ({ call: foreign(person.call), initials: person.initials, openThreads: person.openThreads })),
-      updatedAt: card.updatedAt,
-    }
-  })
-  return { cards: ranked.map(each => each.card), rows }
+/** GitLab's two answers as cards with their verdicts: a failed verdict read leaves every card without one, as in the mod. */
+export function cardsFrom(host: string, authored: RawResponse<AuthoredQuery | AuthoredPlainQuery>, status: RawResponse<MergeStatusQuery> | null): MrCard[] {
+  const verdicts: Map<string, GitLabVerdict> | null =
+    status === null ? null : new Map([...readMergeStatus(host, status)].map(([key, verdict]) => [key, { ...verdict, checks: slimChecks(verdict.checks) ?? verdict.checks }]))
+  return mergeReads({ scope: 'open', base: [], fetched: readResponse(host, authored).map(slimCard), singles: [], pinned: new Set(), verdicts })
+}
+
+/**
+ * What the panel draws: the pane's own rows (`buildPane`, the model `pane.tsx` draws), in its sections, with every fold
+ * open and no room limit, since an iframe has neither the engine's budget nor its folds. `handOff` is the task Claude is
+ * handed for an MR's conflicts (`conflictsTask`), by card key, for the MRs whose one move is to hand them on.
+ */
+export type Panel = { sections: { label: string | null; rows: RowModel[] }[]; handOff: Record<string, string> }
+
+export function panelOf(cards: readonly MrCard[], held: ReadonlyMap<string, Pressed>, now = Date.now()): Panel {
+  const pane = buildPane(
+    {
+      cards,
+      avatars: {},
+      pinned: [],
+      usual: {},
+      browse: '',
+      expanded: ['more', 'parked', 'drafts'],
+      repoFilter: '',
+      view: 'mine',
+      news: { count: 0, keys: [] },
+      poll: { fetchedAt: now, error: null, hosts: {} },
+      isReading: false,
+      isSyncing: false,
+      isWaking: false,
+      failures: {},
+      pressed: Object.fromEntries(held),
+      // No thread works in a repo, so the core offers no conflicts move; the panel hands them on as a message instead.
+      here: null,
+    },
+    now,
+    { hasSvg: true },
+    { room: Number.POSITIVE_INFINITY, sizeOf: () => 0 }
+  )
+  const folds = [pane.parked, pane.drafts].flatMap(fold => (fold !== null && fold.rows.length > 0 ? [{ label: fold.label, rows: fold.rows }] : []))
+  // Whether conflicts would go to Claude from a session in the MR's repo: what the core says with `isHere`.
+  const handOff = Object.fromEntries(cards.flatMap(card => (nextMove(card, undefined, true)?.press?.kind === 'conflicts' ? [[card.key, lines(conflictsTask(card))]] : [])))
+  return { sections: [{ label: null, rows: pane.mine.rows }, ...folds], handOff }
 }
