@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitLab MRs</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: var(--color-text-primary, light-dark(#1f1f1f, #ececec));
+        --soft: var(--color-text-secondary, light-dark(#6b6b6b, #a3a3a3));
+        --line: var(--color-border-tertiary, light-dark(#e6e6e6, #333));
+        --page: var(--color-background-primary, light-dark(#fff, #212121));
+        --success: var(--color-text-success, light-dark(#1a7f37, #3fb950));
+        --error: var(--color-text-danger, light-dark(#cf222e, #f85149));
+        --warning: var(--color-text-warning, light-dark(#9a6700, #d29922));
+        --suggestion: var(--color-text-info, light-dark(#0969da, #58a6ff));
+      }
+      body { margin: 0; background: var(--page); color: var(--ink); font: 13px/1.4 var(--font-sans, system-ui, sans-serif); }
+      header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--page); }
+      header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+      #count { color: var(--soft); }
+      #status { margin-left: auto; color: var(--soft); font-size: 12px; }
+      button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+      #refresh { font-size: 15px; padding: 2px 6px; border-radius: 6px; }
+      #refresh:hover, .move:hover { background: var(--line); }
+      ul { list-style: none; margin: 0; padding: 0; }
+      .card { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+      .card.draft .title { color: var(--soft); }
+      .head { display: flex; gap: 8px; align-items: baseline; }
+      .mark { width: 1.2em; flex: none; text-align: center; }
+      .title { font-weight: 500; overflow-wrap: anywhere; }
+      .title:hover { text-decoration: underline; }
+      .line { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 2px 0 0 calc(1.2em + 8px); color: var(--soft); font-size: 12px; }
+      .key { font-family: var(--font-mono, ui-monospace, monospace); }
+      .move { margin: 6px 0 0 calc(1.2em + 8px); padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+      .tone-success { color: var(--success); }
+      .tone-error { color: var(--error); }
+      .tone-warning { color: var(--warning); }
+      .tone-suggestion { color: var(--suggestion); }
+      .tone-subtle { color: var(--soft); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>My MRs</h1>
+      <span id="count"></span>
+      <span id="status"></span>
+      <button id="refresh" type="button" title="Read GitLab now" aria-label="Read GitLab now">↻</button>
+    </header>
+    <ul id="rows"></ul>
+    <script type="module">
+/*BUNDLE*/
+    </script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "gitlab-pane": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.ts"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}
