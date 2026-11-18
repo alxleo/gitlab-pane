@@ -42,47 +42,51 @@ const fail = (message: string): never => {
   process.exit(1)
 }
 
-/** The version the claude on PATH prints, or '' when there is none. */
-export function claudeVersion(): string {
-  const run = spawnSync('claude', ['--version'], { encoding: 'utf8', timeout: 30_000 })
-  return run.error === undefined ? (run.stdout.split(' ')[0] ?? '') : ''
+/**
+ * The version in what `claude --version` printed, or '' when it printed nothing. Node leaves the output undefined when
+ * there is no claude to run, whatever its types say.
+ */
+export function versionFrom(printed: string | undefined): string {
+  return printed === undefined ? '' : (printed.split(' ')[0] ?? '')
 }
 
-/** The first line of a file, which in the declarations names the Claude Code that wrote them. */
-export const head = (file: string): string => readFileSync(file, 'utf8').split('\n', 1)[0] ?? ''
+/**
+ * What claude runs with: PATH, and a home, config folder and temp folder inside `work`, with an API address nothing
+ * answers. Nothing else of this environment reaches it, so it has no credential of yours to send.
+ *
+ * claude puts its temp folder in CLAUDE_CODE_TMPDIR, else /tmp, and on macOS ignores TMPDIR; CI's Linux build has been
+ * seen to unpack under TMPDIR, for a reason not checked. Both name the same folder.
+ */
+export function isolatedEnv(work: string, path: string): Record<string, string> {
+  return {
+    PATH: path,
+    HOME: join(work, 'home'),
+    CLAUDE_CONFIG_DIR: join(work, 'config'),
+    CLAUDE_CODE_TMPDIR: join(work, 'tmp'),
+    TMPDIR: join(work, 'tmp'),
+    ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
+  }
+}
+
+const head = (file: string): string => readFileSync(file, 'utf8').split('\n', 1)[0] ?? ''
 
 /**
  * Has the claude on PATH unpack its plugin-authoring skill inside `work`, an empty folder, and returns where its
- * declarations landed, or undefined when they are not there.
+ * declarations landed, or undefined when they are not there. It runs in `work`, so it reads no project's settings or
+ * instructions. Unpacking happens before any request, so the refused request and the exit status are expected and ignored.
  */
-export function unpackDeclarations(version: string, work: string): string | undefined {
+function unpackDeclarations(version: string, work: string): string | undefined {
   for (const folder of ['home', 'config', 'tmp']) {
     mkdirSync(join(work, folder))
   }
-  // Unpacking happens before any request, so the refused request and the exit status are expected and ignored.
-  // claude puts its temp folder in CLAUDE_CODE_TMPDIR, else /tmp, and on macOS ignores TMPDIR; CI's Linux build has been
-  // seen to unpack under TMPDIR, for a reason not checked. Both name the same folder. It runs in `work`, so it reads no project's settings or
-  // instructions either.
-  spawnSync('claude', ['-p', '/plugin-authoring'], {
-    cwd: work,
-    env: {
-      PATH: process.env['PATH'] ?? '',
-      HOME: join(work, 'home'),
-      CLAUDE_CONFIG_DIR: join(work, 'config'),
-      CLAUDE_CODE_TMPDIR: join(work, 'tmp'),
-      TMPDIR: join(work, 'tmp'),
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
-    },
-    stdio: 'ignore',
-    timeout: 120_000,
-  })
+  spawnSync('claude', ['-p', '/plugin-authoring'], { cwd: work, env: isolatedEnv(work, process.env['PATH'] ?? ''), stdio: 'ignore', timeout: 120_000 })
   const skills = join(work, 'tmp', readdirSync(join(work, 'tmp')).find(name => name.startsWith('claude-')) ?? 'missing', 'bundled-skills', version)
   const hashes = existsSync(skills) ? readdirSync(skills) : []
   return hashes.map(hash => join(skills, hash, 'plugin-authoring', 'types', 'claude-code.d.ts')).find(existsSync)
 }
 
 if (import.meta.main) {
-  const version = claudeVersion()
+  const version = versionFrom(spawnSync('claude', ['--version'], { encoding: 'utf8', timeout: 30_000 }).stdout)
   if (version === '') {
     fail('`claude --version` printed nothing; is Claude Code on PATH?')
   }

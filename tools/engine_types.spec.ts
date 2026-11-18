@@ -1,31 +1,30 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import { expect, test } from 'vitest'
 
-import { claudeVersion, head, unpackDeclarations } from './engine_types.ts'
+import { isolatedEnv, versionFrom } from './engine_types.ts'
 
-test('with no claude on PATH the version is empty, so the tool can say so instead of crashing', () => {
-  const path = process.env['PATH']
-  process.env['PATH'] = mkdtempSync(join(tmpdir(), 'engine-types-empty-path-'))
-  try {
-    expect(claudeVersion()).toBe('')
-  } finally {
-    rmSync(process.env['PATH'], { recursive: true, force: true })
-    process.env['PATH'] = path
-  }
+// Plain data only: npm run setup, lint and types run the tool against the real claude, so these tests need not.
+
+test('claude is told to unpack under the folder it is given, by CLAUDE_CODE_TMPDIR, which it reads, and by TMPDIR, which some builds read', () => {
+  const env = isolatedEnv('/work', '/bin')
+  expect(env['CLAUDE_CODE_TMPDIR']).toBe('/work/tmp')
+  expect(env['TMPDIR']).toBe('/work/tmp')
 })
 
-// The claude on PATH, as every check uses it: CI installs the pinned version before the tests run.
-test("the claude on PATH unpacks its declarations into the folder it is given, not the machine's shared temp folder", () => {
-  const version = claudeVersion()
-  const work = mkdtempSync(join(tmpdir(), 'engine-types-spec-'))
-  try {
-    const source = unpackDeclarations(version, work)
-    expect(source).toBeDefined()
-    expect(head(source ?? '')).toBe(`// Written by Claude Code ${version}.`)
-  } finally {
-    rmSync(work, { recursive: true, force: true })
-  }
-}, 120_000)
+test('claude gets nothing of yours but PATH: an empty home and config folder, and an API address nothing answers', () => {
+  expect(isolatedEnv('/work', '/bin')).toEqual({
+    PATH: '/bin',
+    HOME: '/work/home',
+    CLAUDE_CONFIG_DIR: '/work/config',
+    CLAUDE_CODE_TMPDIR: '/work/tmp',
+    TMPDIR: '/work/tmp',
+    ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
+  })
+})
+
+test('the version is the first word claude --version prints', () => {
+  expect(versionFrom('2.1.322 (Claude Code)\n')).toBe('2.1.322')
+})
+
+test('with no claude to run the version is empty, so the tool says claude is missing instead of crashing', () => {
+  expect(versionFrom(undefined)).toBe('')
+})
