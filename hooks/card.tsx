@@ -2,6 +2,7 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 
 import { face } from './faces'
 import type { Kit } from './kit'
+import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
 import { openReading } from './panes'
 import { togglePin } from './shared'
@@ -143,4 +144,33 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
       ) : null
     }
   }
+}
+
+/**
+ * One MR merged lately, a line: its link, how long ago it merged, and the build GitLab ran on the commit that landed, a mark in the
+ * colour of its status with its pipeline's link, as a card's pipeline is. A merge whose commit could not be told says so and has
+ * no mark, never a guessed one.
+ */
+export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
+  const { Box, Text, Link } = kit
+  const { build } = row
+  return (
+    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+      {/* A Link takes no flex props, so this box keeps it whole when the line wraps. */}
+      <Box flexShrink={0}>
+        <Link href={row.mr.href}>{row.mr.text}</Link>
+      </Box>
+      <Text dimColor size="footnote">
+        {row.ago}
+      </Text>
+      {build.kind === 'unknown' ? (
+        <Text dimColor>{build.words}</Text>
+      ) : (
+        <Box flexDirection="row" gap={1} flexShrink={0}>
+          <Text color={build.tone}>{build.glyph}</Text>
+          {build.link !== null ? <Link href={build.link.href}>{build.link.text}</Link> : <Text dimColor>no pipeline</Text>}
+        </Box>
+      )}
+    </Box>
+  )
 }

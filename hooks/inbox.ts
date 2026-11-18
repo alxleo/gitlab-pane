@@ -2,27 +2,28 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { readHosts } from './data'
+import { dataOf } from './decode'
 import { isEqual } from './equal'
-import { Failure, kindOf } from './failure'
+import { Failure, kindOf, messageOf } from './failure'
 import { clear, quietly, record, reported } from './failures'
-import type { RawResponse } from './gitlab-documents'
-import { ask, askVariant } from './graphql'
-import { inboxAuthoredQuery, inboxBriefQuery, inboxFollowProjectQuery, inboxFollowUserQuery, inboxQueueQuery, inboxTodosQuery } from './inbox-requests'
+import { ask } from './graphql'
+import { inboxBriefQuery } from './inbox-requests'
 import { briefing, readBrief } from './inbox-brief'
 import type { Brief } from './inbox-brief'
-import { authoredMrs, combine, followedProjectMrs, followedUserMrs, ownMrs, queueMrs, todoMrs } from './inbox-gitlab'
-import type { Found } from './inbox-gitlab'
 import { parseFollow } from './inbox-follow'
+import { readHost } from './inbox-read'
 import { isRefTo, parseRef, parseRemote } from './inbox-refs'
-import { HORIZON_MS, RULES, bounded, ownedSections, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
+import { RULES, bounded, ownedSections, ruleNamed, sectionsOf, seenKeyOf, staleSeenKeys } from './inbox-rules'
 import type { Context } from './inbox-rules'
 import { NO_SNAPSHOT, carryOver, problemOf, readSnapshot } from './inbox-snapshot'
 import { cardKey } from './hosts'
 import { joined } from './in-flight'
-import { noteOwn } from './jira-mover'
+import { keptLanded, knownLanded, withLanded } from './landed'
+import type { Lately } from './landed'
+import { readLanded } from './landed-read'
 import { parseMrUrl } from './mr-url'
 
-import type { InboxFollow, InboxHost, InboxMr, InboxSnapshot, InboxState } from '../types'
+import type { InboxMr, InboxSnapshot, InboxState, Landed } from '../types'
 
 // GitLab owns the data, the rules are inbox-rules.ts, and this module only asks, keeps and marks. What the pane draws is
 // the rules applied to the last snapshot and the marks, so a mark shows at once and needs no read.
@@ -61,82 +62,15 @@ export function toggleHere($: EngineInterface): void {
   )
 }
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
-/** A document's data; an answer without any is the errors GitLab gave in its place. */
-function dataOf<Data>(answer: RawResponse<Data>): Data {
-  if (answer.data === null || answer.data === undefined) {
-    throw new Failure('bad-answer', answer.errors?.map(one => one.message).join('; ') ?? 'GitLab answered without data')
-  }
-  return answer.data
-}
-
-type HostRead = { found: Found; failure: InboxHost['failure'] }
-
-type Tried = { label: string; found: Found } | { label: string; error: unknown }
-
-async function tried(label: string, work: Promise<Found>): Promise<Tried> {
-  try {
-    return { label, found: await work }
-  } catch (error) {
-    return { label, error }
-  }
-}
-
-/**
- * One host's documents (three, and one more per followed person or project), asked at once: a host that times one out loses only that one. What came is kept; why the
- * rest did not is the failure, with the document named unless every one failed the same way.
- */
-async function readHost($: EngineInterface, host: string, now: number, follows: readonly InboxFollow[]): Promise<HostRead> {
-  const since = new Date(now - HORIZON_MS).toISOString()
-  const results = await Promise.all([
-    tried(
-      'to-dos',
-      askVariant($, host, inboxTodosQuery).then(answer => todoMrs(host, dataOf(answer)))
-    ),
-    tried(
-      'review queue',
-      ask($, host, inboxQueueQuery()).then(answer => queueMrs(host, dataOf(answer), now))
-    ),
-    tried(
-      'your MRs',
-      // The same answer tells the Jira moves who the user is here and which of their MRs merged.
-      ask($, host, inboxAuthoredQuery(since)).then(async answer => {
-        const data = dataOf(answer)
-        await noteOwn($, host, ownMrs(host, data))
-        return authoredMrs(host, data, now)
-      })
-    ),
-    ...follows.map(follow =>
-      follow.kind === 'user'
-        ? tried(
-            `@${follow.name}`,
-            ask($, host, inboxFollowUserQuery(follow.name, since)).then(answer => followedUserMrs(host, dataOf(answer), now))
-          )
-        : tried(
-            follow.name,
-            ask($, host, inboxFollowProjectQuery(follow.name, since)).then(answer => followedProjectMrs(host, dataOf(answer), now))
-          )
-    ),
-  ])
-  const founds = results.flatMap(one => ('found' in one ? [one.found] : []))
-  const failed = results.flatMap(one => ('error' in one ? [{ label: one.label, error: one.error }] : []))
-  const [first] = failed
-  const isSame = failed.length === results.length && new Set(failed.map(one => messageOf(one.error))).size === 1
-  return {
-    found: combine(founds),
-    failure:
-      first === undefined ? null : { kind: kindOf(first.error), message: isSame ? messageOf(first.error) : failed.map(one => `${one.label}: ${messageOf(one.error)}`).join('; ') },
-  }
-}
-
 /**
  * Reads the inbox of every host from GitLab: the user's pending to-dos, review queue and own MRs, as MRs with the events
- * the rules count. It is the one read the reader's leader makes. It also drops the seen marks of MRs that are gone from a
- * host that answered whole, so the store keeps one small value per MR that is still listed. Whatever fails is in the
- * snapshot, not thrown, so a host that is down leaves the rest.
+ * the rules count, and the MRs they merged lately, as the inbox's own answer lists them; what landed of those is asked for
+ * after (`askLanded`). It is the one read the reader's leader makes. It also drops the seen marks of MRs that are gone from a
+ * host that answered whole, so the store keeps one small value per MR that is still listed. Whatever fails is in the snapshot,
+ * not thrown, so a host that is down leaves the rest. The snapshot's `landed` is left for `publish`, which fills it in from the
+ * one kept; `lately` is what it fills it in with.
  */
-async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<InboxSnapshot> {
+async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<{ snapshot: InboxSnapshot; lately: Lately[]; now: number }> {
   const [now, follows] = await Promise.all([$.clock.now(), read($, inboxFollowAtom)])
   const reads = await Promise.all(hosts.map(async host => ({ host, ...(await readHost($, host, now, follows)) })))
   const listed = reads.flatMap(one => one.found.mrs)
@@ -144,10 +78,11 @@ async function readInbox($: EngineInterface, hosts: readonly string[]): Promise<
     at: now,
     hosts: Object.fromEntries(reads.map(one => [one.host, { user: one.found.user, failure: one.failure }])),
     mrs: bounded(listed),
+    landed: [],
   }
   // A mark goes when GitLab stops listing its MR, not when the MR only falls past what the snapshot keeps: it may come back.
   await Promise.all(staleSeenKeys(await $.store.keys(), { ...snapshot, mrs: listed }).map(key => $.store.delete(key)))
-  return snapshot
+  return { snapshot, lately: reads.map(one => ({ host: one.host, merged: one.merged })), now }
 }
 
 /** The marks of the MRs a snapshot lists, from the store, by key. */
@@ -178,8 +113,66 @@ async function applyInbox($: EngineInterface, snapshot: InboxSnapshot): Promise<
 /** Where the leader keeps the inbox for the sessions that only draw it: a key of its own, so a mark written beside it is never lost. */
 const INBOX_STORE = 'inbox-snapshot'
 
-/** The leader's inbox: reads every host once, keeps the snapshot in the store when it changed, and shows it. A call mid-read joins it. */
-export function leadInbox($: EngineInterface, hosts: readonly string[]): Promise<void> {
+/** The snapshot the atom shows, its merged MRs read entry by entry: the atom outlives a reload, so an older version may have left them in another shape. */
+async function shownSnapshot($: EngineInterface): Promise<InboxSnapshot> {
+  const { snapshot } = await read($, inboxAtom)
+  return { ...snapshot, landed: keptLanded(snapshot.landed) }
+}
+
+/**
+ * The one place the leader's snapshot is written, and shown: `change` gives the snapshot to put from the one kept (the store's,
+ * or the one shown while the store has none), or null when there is nothing to put. The store is rewritten whole for any write,
+ * so a snapshot that says what is there already writes nothing. The inbox's read and the later answer for what landed both go
+ * through it. If they meet, the one that wrote last stands and the next read of the other sets it right, as both read what
+ * they were given from the same entries.
+ */
+async function publish($: EngineInterface, change: (kept: InboxSnapshot) => InboxSnapshot | null): Promise<void> {
+  const shared = readSnapshot(await $.store.get(INBOX_STORE))
+  const snapshot = change(shared ?? (await shownSnapshot($)))
+  if (snapshot === null) {
+    return
+  }
+  if (shared === null || !isEqual({ ...shared, at: 0 }, { ...snapshot, at: 0 })) {
+    await $.store.set(INBOX_STORE, snapshot).then(() => clear($, 'store'), reported($, 'store'))
+  }
+  await applyInbox($, snapshot)
+}
+
+/**
+ * Asks GitLab for the commit and the build of the MRs the inbox just listed as merged lately, and puts what it finds in the
+ * snapshot. It runs after the inbox is shown and on its own, so a slow answer holds back no to-do, no count and no wake: the list
+ * is already drawn, with what was kept of each, and the answer fills it in. A failure is told as a problem of its own for
+ * `/gitlab`, as the inbox is whole without it; a read that asked nothing of an MR whose commit failed earlier does not say it
+ * works, so the problem stands until it is asked again.
+ */
+async function askLanded($: EngineInterface, lately: readonly Lately[], now: number, isAsked: boolean): Promise<void> {
+  const { landed: kept } = await shownSnapshot($)
+  const { landed, failure, isHeld } = await readLanded(
+    $,
+    lately.flatMap(one => one.merged ?? []),
+    kept,
+    now,
+    isAsked
+  )
+  if (failure !== null) {
+    await record($, 'merged', failure)
+  } else if (!isHeld) {
+    await clear($, 'merged')
+  }
+  // Only those entries are put in place: the snapshot may have been read again since, and what it dropped is not brought back.
+  await publish($, current => {
+    const next = withLanded(current.landed, landed)
+    return isEqual(next, current.landed) ? null : { ...current, landed: next }
+  })
+}
+
+/**
+ * The leader's inbox: reads every host once, keeps the snapshot in the store when it changed, and shows it; then, apart, asks
+ * for what landed of the MRs merged lately (`askLanded`). A call mid-read joins it, and one mid-ask of what landed leaves that
+ * ask to finish alone, so a ↻ pressed during either asks nothing more than it did. `isAsked`: a person pressed ↻, which asks again
+ * for the builds that could still change.
+ */
+export function leadInbox($: EngineInterface, hosts: readonly string[], isAsked: boolean): Promise<void> {
   return joined('inbox-sync', async () => {
     await update($, inboxAtom, state => ({ ...state, isSyncing: true }))
     try {
@@ -188,13 +181,13 @@ export function leadInbox($: EngineInterface, hosts: readonly string[]): Promise
       if (stored !== null) {
         await applyInbox($, stored)
       }
-      const snapshot = await readInbox($, hosts)
-      const shared = readSnapshot(await $.store.get(INBOX_STORE))
-      // The store is rewritten whole for any write, so a read that found what is there already writes nothing.
-      if (shared === null || !isEqual({ ...shared, at: 0 }, { ...snapshot, at: 0 })) {
-        await $.store.set(INBOX_STORE, snapshot).then(() => clear($, 'store'), reported($, 'store'))
-      }
-      await applyInbox($, snapshot)
+      const { snapshot, lately, now } = await readInbox($, hosts)
+      await publish($, kept => ({ ...snapshot, landed: knownLanded(lately, kept.landed) }))
+      quietly(
+        $,
+        joined('landed-sync', () => askLanded($, lately, now, isAsked)),
+        'merged'
+      )
     } finally {
       await update($, inboxAtom, state => ({ ...state, isSyncing: false }))
     }
@@ -218,13 +211,15 @@ export async function sharedInboxAt($: EngineInterface): Promise<number | null> 
 
 /**
  * The MRs with news, each once whichever rules list it: how many the inbox counts as it is shown (narrowed to this repo
- * while `here` is on), and the keys of all of them, every repo's, which the list parks and folds by; and whether this
- * session is reading the inbox now, which dims the pane's ↻. One read of the inbox's atom serves both.
+ * while `here` is on), and the keys of all of them, every repo's, which the list parks and folds by; whether this
+ * session is reading the inbox now, which dims the pane's ↻; and the user's MRs merged lately, which Mine folds under
+ * `▸ N merged`. One read of the inbox's atom serves all.
  */
-export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[]; isSyncing: boolean }> {
+export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[]; isSyncing: boolean; landed: Landed[] }> {
   const { snapshot, seen, isSyncing } = await read($, inboxAtom)
   const newsIn = (sections: ReturnType<typeof sectionsOf>) => new Set(sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key)))
-  return { count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size, keys: [...newsIn(sectionsOf(snapshot, seen))], isSyncing }
+  // The atom outlives a reload, so a snapshot an older version kept has no merged MRs, or ones in another shape.
+  return { count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size, keys: [...newsIn(sectionsOf(snapshot, seen))], isSyncing, landed: keptLanded(snapshot.landed) }
 }
 
 export async function inboxView($: EngineInterface) {

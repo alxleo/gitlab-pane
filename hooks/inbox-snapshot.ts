@@ -1,6 +1,7 @@
 // The inbox snapshot as it travels: read back from the plugin store, where the reader's leader keeps it for the other
 // sessions, and carried over a read in which a host did not answer. Plain data, so a test needs no engine.
 import { field, isRecord, records, text, textOrNull } from './decode.ts'
+import { keptLanded } from './landed.ts'
 
 import type { FailureKind, InboxHost, InboxKind, InboxMr, InboxSignal, InboxSnapshot } from '../types'
 
@@ -34,7 +35,7 @@ const isInboxKind = (kind: string): kind is InboxKind => Object.hasOwn(KINDS, ki
 const isFailureKind = (kind: string): kind is FailureKind => Object.hasOwn(FAILURES, kind)
 
 /** A snapshot with nothing in it, as before the first read. */
-export const NO_SNAPSHOT: InboxSnapshot = { at: 0, hosts: {}, mrs: [] }
+export const NO_SNAPSHOT: InboxSnapshot = { at: 0, hosts: {}, mrs: [], landed: [] }
 
 function signalOf(raw: Record<string, unknown>): InboxSignal[] {
   const kind = text(raw.kind)
@@ -75,7 +76,10 @@ function hostOf(raw: unknown): InboxHost {
   }
 }
 
-/** The snapshot a store value holds, or null for anything else: a value from an older version of the mod is read again, not trusted. */
+/**
+ * The snapshot a store value holds, or null for anything else: a value from an older version of the mod is read again, not
+ * trusted. One written before merged MRs were kept has none, which reads as none merged until its leader reads again.
+ */
 export function readSnapshot(raw: unknown): InboxSnapshot | null {
   const hosts = field(raw, 'hosts')
   const at = field(raw, 'at')
@@ -83,7 +87,12 @@ export function readSnapshot(raw: unknown): InboxSnapshot | null {
   if (typeof at !== 'number' || !isRecord(hosts) || !Array.isArray(mrs)) {
     return null
   }
-  return { at, hosts: Object.fromEntries(Object.entries(hosts).map(([host, one]) => [host, hostOf(one)])), mrs: records(mrs).flatMap(mrOf) }
+  return {
+    at,
+    hosts: Object.fromEntries(Object.entries(hosts).map(([host, one]) => [host, hostOf(one)])),
+    mrs: records(mrs).flatMap(mrOf),
+    landed: keptLanded(field(raw, 'landed')),
+  }
 }
 
 /**
@@ -100,6 +109,8 @@ export function carryOver(previous: InboxSnapshot, fresh: InboxSnapshot): InboxS
     at: fresh.at,
     hosts: Object.fromEntries(Object.entries(fresh.hosts).map(([host, one]) => [host, names.has(host) ? { user: previous.hosts[host]?.user ?? null, failure: one.failure } : one])),
     mrs: [...fresh.mrs, ...previous.mrs.filter(mr => names.has(mr.host))],
+    // The leader's `publish` keeps the merged MRs of a host whose own document failed (`knownLanded`), a silent one's included.
+    landed: fresh.landed,
   }
 }
 

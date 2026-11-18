@@ -4,9 +4,10 @@ import type { On } from 'claude-code'
 import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
+import { RECHECK_MS } from '../hooks/landed'
 import { NOW, mergeStatuses, pipe, rawMr } from './fixtures'
 import type { Mr } from './fixtures'
-import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, open, queued, system, todo } from './inbox_fixtures'
+import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, merged, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 
@@ -35,7 +36,7 @@ const REMOTE = 'git@gitlab.com:g/p.git'
 const TOKEN = 'tok-1'
 
 /** The host with `world` behind it, and `mine` as your open MRs on Mine; every call is in `requests`. The token comes from the environment. */
-function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: () => Promise<void>, mine: Mr[] = []) {
+function engine(on: On, world: World, hasToken = true, remote: string | null = REMOTE, held?: (operation: string) => Promise<void>, mine: Mr[] = []) {
   // The pane is drawn by a session that holds the plugin's store, where the marks are and nowhere else.
   const { store, panes, surfaces, unreadable } = fakeSession(on)
   const gitlab = fakeGitLab(
@@ -43,6 +44,7 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
     {
       'gitlab.com': {
         accepts: TOKEN,
+        mergeRequests: (path, iid) => (`${path}!${iid}` in world.squashed ? { squash_commit_sha: world.squashed[`${path}!${iid}`] ?? null } : undefined),
         answers: {
           ...inboxAnswers(world),
           Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mine } } } }),
@@ -417,6 +419,531 @@ test('a session that only draws shows the inbox the leader shared, asks GitLab f
   await ui.unmount()
 })
 
+// ---- the MRs you merged lately --------------------------------------------------------------------------------------------
+
+const MERGE_COMMIT = 'a'.repeat(40)
+const SQUASH_COMMIT = 'b'.repeat(40)
+const HEAD_SQUASHED = 'c'.repeat(40)
+const HEAD_PLAIN = 'd'.repeat(40)
+
+/**
+ * Three of your MRs merged lately, one by each method. !11 went in with a merge commit, onto a release branch; !12 was
+ * fast-forwarded after a squash, so the commit on the branch is the squash commit, which GraphQL does not name; !13 was
+ * fast-forwarded as it was. Each has the build GitLab ran on its commit on its target branch, and a pipeline of the same commit
+ * on the branch it came from, which is newer and not the build on the target. !11's branch also had a nightly pipeline run on
+ * the same commit after the merge, newer than the build and a failure: no schedule's pipeline is the build of a merge.
+ */
+const mergedWorld = (): World => ({
+  ...emptyWorld(),
+  merged: [
+    merged(11, 10, { mergeCommitSha: MERGE_COMMIT, diffHeadSha: 'e'.repeat(40) }, { targetBranch: 'release/2.1' }),
+    merged(12, 25, { diffHeadSha: HEAD_SQUASHED }),
+    merged(13, 50, { diffHeadSha: HEAD_PLAIN }),
+  ],
+  squashed: { 'g/p!12': SQUASH_COMMIT, 'g/p!13': null },
+  pipelines: [
+    { sha: MERGE_COMMIT, ref: 'release/2.1', id: 101, status: 'SUCCESS' },
+    { sha: MERGE_COMMIT, ref: 'release/2.1', id: 400, status: 'FAILED', source: 'schedule' },
+    { sha: SQUASH_COMMIT, ref: 'main', id: 102, status: 'FAILED' },
+    { sha: HEAD_PLAIN, ref: 'main', id: 103, status: 'RUNNING' },
+    { sha: HEAD_PLAIN, ref: 'feat/plain', id: 300, status: 'FAILED' },
+    { sha: HEAD_SQUASHED, ref: 'feat/squashed', id: 301, status: 'FAILED' },
+  ],
+})
+
+/** The fold's words, or none while Mine draws no such line. */
+const foldOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }) =>
+  (await ui.find({ type: 'Button', key: 'merged' }))?.props?.label
+
+test('the MRs you merged lately fold at the foot of Mine, a failed build on the branch they landed on is said on the fold, and nothing wakes Claude or toasts', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const woken: string[] = []
+  const toasts: string[] = []
+  on('prompt.submit', (_, e) => {
+    woken.push(e.text)
+    return { text: e.text }
+  })
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  const gitlab = engine(on, mergedWorld())
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // Three merged, one build failed: only that is said while folded; the running and passed builds are quiet.
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 1 build ✗')
+  expect(await ui.find({ type: 'Link', text: /!11/u })).toBeUndefined()
+  // Beside the fold sits no inbox news: the merges are no one's activity, and the inbox's tabs say nothing of them.
+  expect(JSON.stringify(await ui.drawn())).not.toContain('"Inbox ·')
+
+  await ui.press({ key: 'merged' })
+  expect(await foldOf(ui)).toBe('▾ 3 merged')
+  // A link's text in the drawing is its address and then its words.
+  const links = (await ui.findAll({ type: 'Link' })).map(link => [link.text.replace(String(link.props.href), ''), link.props.href])
+  expect(links).toEqual([
+    ['🔀 !11 thing 11', 'https://gitlab.com/g/p/-/merge_requests/11'],
+    ['🚦 release/2.1', 'https://gitlab.com/g/p/-/pipelines/101'],
+    ['🔀 !12 thing 12', 'https://gitlab.com/g/p/-/merge_requests/12'],
+    ['🚦 main', 'https://gitlab.com/g/p/-/pipelines/102'],
+    ['🔀 !13 thing 13', 'https://gitlab.com/g/p/-/merge_requests/13'],
+    ['🚦 main', 'https://gitlab.com/g/p/-/pipelines/103'],
+  ])
+  // Each build's mark is its status in its colour; how long ago it merged is said once, and who merged it is not (the inbox says that).
+  const marks = (await ui.findAll({ type: 'Text' })).filter(text => ['✓', '✗', '●'].includes(text.text)).map(text => [text.text, text.props.color])
+  expect(marks).toEqual([
+    ['✓', 'success'],
+    ['✗', 'error'],
+    ['●', 'suggestion'],
+  ])
+  expect((await ui.findAll({ type: 'Text' })).map(text => text.text)).toEqual(expect.arrayContaining(['10m', '25m', '50m']))
+  // The squash commit is asked of REST once per MR that had no merge commit, and not at all for the merge commit's MR.
+  expect(gitlab.requests.filter(request => request.includes('merge-request'))).toEqual(['gitlab.com merge-request g/p!12', 'gitlab.com merge-request g/p!13'])
+  expect(woken).toEqual([])
+  expect(toasts).toEqual([])
+  await ui.press({ key: 'merged' })
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 1 build ✗')
+  await ui.unmount()
+})
+
+test('a build that passed is asked for once and kept, a running one at every read, a failed one only after the recheck period, and a squash commit is read once', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = mergedWorld()
+  const gitlab = engine(on, world)
+  const asked = (what: string) => gitlab.requests.filter(request => request.endsWith(what)).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(asked(' Landed')).toBe(3)
+  // The next minute asks for the one that was still running, and for nothing else: the others ended, and !12's squash commit is known.
+  await clock.advance(60_000)
+  expect(asked(' Landed')).toBe(4)
+  expect(asked('g/p!12')).toBe(1)
+  expect(asked('g/p!13')).toBe(1)
+  // It ends, and the fold says so on the next read, as it said the failed one.
+  world.pipelines = world.pipelines.map(each => (each.id === 103 ? { ...each, status: 'FAILED' } : each))
+  await clock.advance(60_000)
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 2 builds ✗')
+  // Nothing is asked for the next five minutes: the passed build is final, and the two that failed wait to be asked again, as a retry may turn them green.
+  await clock.advance(5 * 60_000)
+  expect(asked(' Landed')).toBe(5)
+  // Someone retries !12's pipeline and it passes. Past the recheck period both failed builds are asked for once, and the fold has one failure left.
+  world.pipelines = world.pipelines.map(each => (each.id === 102 ? { ...each, status: 'SUCCESS' } : each))
+  await clock.advance(6 * 60_000)
+  expect(asked(' Landed')).toBe(7)
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 1 build ✗')
+  await ui.unmount()
+})
+
+test('a build that failed and was retried to success loses its mark on the fold once the recheck period has passed, and not before', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), merged: [merged(21, 1, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  world.pipelines = [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'SUCCESS' }]
+  // Five minutes on, the failed build has not been asked for again, so the fold is as it was.
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(1)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  await clock.advance(RECHECK_MS)
+  expect(asked()).toBe(2)
+  expect(await foldOf(ui)).toBe('▸ 1 merged')
+  // It passed: final, and asked for no more.
+  await clock.advance(20 * 60_000)
+  expect(asked()).toBe(2)
+  await ui.unmount()
+})
+
+test('↻ asks again for a failed build at once, and for a manual one, and not for one that passed', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = {
+    ...emptyWorld(),
+    merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT }), merged(22, 31, { mergeCommitSha: SQUASH_COMMIT }), merged(23, 32, { mergeCommitSha: HEAD_PLAIN })],
+    pipelines: [
+      { sha: MERGE_COMMIT, ref: 'main', id: 701, status: 'FAILED' },
+      { sha: SQUASH_COMMIT, ref: 'main', id: 702, status: 'MANUAL' },
+      { sha: HEAD_PLAIN, ref: 'main', id: 703, status: 'SUCCESS' },
+    ],
+  }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(asked()).toBe(3)
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 1 build ✗')
+  world.pipelines = world.pipelines.map(each => (each.id === 701 ? { ...each, status: 'SUCCESS' } : each))
+  await ui.press({ key: 'refresh' })
+  expect(asked()).toBe(5)
+  expect(await foldOf(ui)).toBe('▸ 3 merged')
+  await ui.unmount()
+})
+
+test('a build GitLab can no longer name, as its ten newest pipelines are all a schedule’s, is the build it was, mark and link', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  // Ten nights run on the commit since: they are the ten newest, and none is the merge's build.
+  world.pipelines = [
+    ...world.pipelines,
+    ...[701, 702, 703, 704, 705, 706, 707, 708, 709, 710].map(id => ({ sha: MERGE_COMMIT, ref: 'main', id, status: 'SUCCESS' as const, source: 'schedule' as const })),
+  ]
+  await clock.advance(RECHECK_MS + 60_000)
+  expect(asked()).toBe(2)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/700')
+  await ui.unmount()
+})
+
+test('a build that cannot be asked for is asked for again after the recheck period, not at every read, while /gitlab names it, and the pane has the build once GitLab answers', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // Past the doubt of whether a pipeline will start, where a look that failed must not read as the answer that none ran.
+  const world: World = { ...emptyWorld(), merged: [merged(21, 20, { mergeCommitSha: MERGE_COMMIT })], landedErrors: 'Timeout on validation of query' }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+  const gitlabSays = async () => (await $.command.run({ ...typed(''), command: 'gitlab' })).text
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(asked()).toBe(1)
+  // Five minutes of reads, every answer an error: nothing more is asked.
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(1)
+  // The problem stands meanwhile, though no read made it again. (`/gitlab` also asks for a fresh read: ↻, which asks once more.)
+  expect(await gitlabSays()).toContain('merged: g/p!21: Timeout on validation of query')
+  await clock.advance(1_000)
+  expect(asked()).toBe(2)
+  // GitLab recovers; the next ask is after the recheck period, not at the next read.
+  world.landedErrors = undefined
+  world.pipelines = [{ sha: MERGE_COMMIT, ref: 'main', id: 800, status: 'SUCCESS' }]
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(2)
+  await clock.advance(RECHECK_MS)
+  expect(asked()).toBe(3)
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/800')
+  expect(await gitlabSays()).not.toContain('merged:')
+  await ui.unmount()
+})
+
+test('a build still unfinished long after the merge is asked for at the recheck period, not at every read', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // Merged two hours ago and still pending: a pipeline waiting for a runner that never comes.
+  const world: World = { ...emptyWorld(), merged: [merged(21, 120, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 900, status: 'PENDING' }] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(asked()).toBe(1)
+  await clock.advance(5 * 60_000)
+  expect(asked()).toBe(1)
+  await clock.advance(RECHECK_MS)
+  expect(asked()).toBe(2)
+  await ui.unmount()
+})
+
+test('a read that asks nothing of GitLab about the merged MRs writes nothing to the store, and shows the inbox once', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT }), merged(22, 31, { mergeCommitSha: SQUASH_COMMIT })] }
+  world.pipelines = [
+    { sha: MERGE_COMMIT, ref: 'main', id: 701, status: 'FAILED' },
+    { sha: SQUASH_COMMIT, ref: 'main', id: 702, status: 'MANUAL' },
+  ]
+  const written: string[] = []
+  on('state.set', (_, e, next) => {
+    written.push(String(e.key))
+    return next(e)
+  })
+  const kit = engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // A write puts a new object in the store: the same one is no write.
+  const shared = kit.store.get('inbox-snapshot')
+  const asked = kit.requests.length
+  const reads = () => kit.requests.filter(request => request.endsWith(' InboxAuthored')).length
+  const before = reads()
+  written.length = 0
+  // Four more minutes of reads: the inbox is read each minute, the two builds wait for the recheck period, and the snapshot is as it was.
+  await clock.advance(4 * 60_000)
+  expect(kit.requests.length).toBeGreaterThan(asked)
+  expect(kit.requests.filter(request => request.endsWith(' Landed'))).toHaveLength(2)
+  expect(kit.store.get('inbox-snapshot')).toBe(shared)
+  // Each read marks the inbox as syncing, shows its snapshot and marks it done; the lookups, which found nothing new, show nothing more.
+  expect(written.filter(key => key === 'inbox')).toHaveLength(3 * (reads() - before))
+  await ui.unmount()
+})
+
+test('a merge whose pipeline GitLab has not started yet is looked for again, and one whose branch runs none is given up on once it is past doubt', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = { ...emptyWorld(), merged: [merged(21, 1, { mergeCommitSha: MERGE_COMMIT })] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await ui.press({ key: 'merged' })
+  // No pipeline yet: the mark for none, and no link to a pipeline.
+  expect((await ui.findAll({ type: 'Text' })).some(text => text.text === '○')).toBe(true)
+  expect(await ui.find({ type: 'Link', text: /🚦/u })).toBeUndefined()
+  await clock.advance(60_000)
+  expect(asked()).toBe(2)
+  // The pipeline appears, running: the mark is blue and links to it.
+  world.pipelines = [{ sha: MERGE_COMMIT, ref: 'main', id: 500, status: 'RUNNING' }]
+  await clock.advance(60_000)
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/500')
+  await ui.unmount()
+})
+
+test('a merge on a branch that runs no pipeline is not asked for after ten minutes, and its row says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = { ...emptyWorld(), merged: [merged(21, 1, { mergeCommitSha: MERGE_COMMIT })] }
+  const gitlab = engine(on, world)
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Landed')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  await clock.advance(11 * 60_000)
+  const before = asked()
+  // The look after ten minutes found none; nothing more is asked of this MR, now or later.
+  await clock.advance(30 * 60_000)
+  expect(asked()).toBe(before)
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Text', text: 'no pipeline' }))?.text).toBe('no pipeline')
+  await ui.unmount()
+})
+
+test('a merge whose squash commit GitLab will not say draws no build, says so, and is asked for again, while the rest of the inbox reads on', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = { ...emptyWorld(), opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])], merged: [merged(31, 20, { diffHeadSha: HEAD_PLAIN })] }
+  const gitlab = engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // The REST entity is not found: the commit is not guessed from the head, and no build is read for one.
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Text', text: 'build unknown' }))?.text).toBe('build unknown')
+  expect(gitlab.requests.some(request => request.endsWith(' Landed'))).toBe(false)
+  expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 1 new"')
+  // What went wrong is no failure of the inbox, which is whole: its tab says nothing, and `/gitlab` names the MR.
+  await ui.press({ key: 'tab-inbox' })
+  expect(await ui.find({ type: 'Text', text: /sync failed/u })).toBeUndefined()
+  await ui.press({ key: 'tab-mine' })
+  // A minute later it is not asked again: a project that refuses REST is not asked every minute.
+  const askedRest = () => gitlab.requests.filter(request => request.includes('merge-request')).length
+  expect(askedRest()).toBe(1)
+  await clock.advance(60_000)
+  expect(askedRest()).toBe(1)
+  // GitLab will say there is no squash commit when it is asked again. `/gitlab` is a request for a fresh read, and says what stood before it.
+  world.squashed = { 'g/p!31': null }
+  world.pipelines = [{ sha: HEAD_PLAIN, ref: 'main', id: 600, status: 'SUCCESS' }]
+  const gitlabSays = async () => (await $.command.run({ ...typed(''), command: 'gitlab' })).text
+  // The read that asked nothing did not clear it: the commit is still unknown, and `/gitlab` names the MR.
+  expect(await gitlabSays()).toContain('merged: g/p!31: GitLab answered HTTP 404')
+  await clock.advance(1_000)
+  expect(askedRest()).toBe(2)
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/600')
+  expect(await gitlabSays()).not.toContain('merged:')
+  await ui.unmount()
+})
+
+test('a squash commit GitLab would not say is asked for again once the recheck period has passed, with no press of ↻', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = { ...emptyWorld(), merged: [merged(31, 20, { diffHeadSha: HEAD_PLAIN })] }
+  const gitlab = engine(on, world)
+  const askedRest = () => gitlab.requests.filter(request => request.includes('merge-request')).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(askedRest()).toBe(1)
+  world.squashed = { 'g/p!31': null }
+  world.pipelines = [{ sha: HEAD_PLAIN, ref: 'main', id: 600, status: 'SUCCESS' }]
+  await clock.advance(RECHECK_MS - FIRST_SYNC_MS - 60_000)
+  expect(askedRest()).toBe(1)
+  await clock.advance(2 * 60_000)
+  expect(askedRest()).toBe(2)
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Link', text: '🚦 main' }))?.props.href).toBe('https://gitlab.com/g/p/-/pipelines/600')
+  await ui.unmount()
+})
+
+test('a read that fails keeps the merged MRs and builds it last showed, and the next that works asks only for what is not settled', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world = mergedWorld()
+  const gitlab = engine(on, world)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 1 build ✗')
+  world.isDown = true
+  await ui.press({ key: 'refresh' })
+  expect(await foldOf(ui)).toBe('▸ 3 merged · 1 build ✗')
+  world.isDown = false
+  const asked = gitlab.requests.filter(request => request.endsWith(' Landed')).length
+  await ui.press({ key: 'refresh' })
+  // Back up, ↻ asks for the builds that could still change, the running one and the failed one: what passed, and the squash commit, were kept through the failure.
+  expect(gitlab.requests.filter(request => request.endsWith(' Landed')).length).toBe(asked + 2)
+  expect(gitlab.requests.filter(request => request.includes('merge-request')).length).toBe(2)
+  await ui.unmount()
+})
+
+test('a session that only draws shows the merged MRs the leader shared and asks GitLab for nothing', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kit = engine(on, emptyWorld())
+  kit.store.set('lease', { owner: 'other', renewedAt: NOW })
+  const entry = (iid: number, minutes: number, status: 'success' | 'failed') => ({
+    host: 'gitlab.com',
+    path: 'g/p',
+    iid,
+    title: `thing ${iid}`,
+    url: `https://gitlab.com/g/p/-/merge_requests/${iid}`,
+    mergedAt: NOW - minutes * 60_000,
+    targetBranch: 'main',
+    sha: MERGE_COMMIT,
+    build: { status, url: `https://gitlab.com/g/p/-/pipelines/${iid}` },
+    checkedAt: NOW,
+    hasFailed: false,
+  })
+  kit.store.set('inbox-snapshot', { ...sharedInbox(NOW), landed: [entry(1, 10, 'success'), entry(2, 20, 'failed')] })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(10_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await foldOf(ui)).toBe('▸ 2 merged · 1 build ✗')
+  expect(kit.requests).toEqual([])
+  await ui.unmount()
+})
+
+test('a snapshot an older leader shared, with no merged MRs in it, draws no fold', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kit = engine(on, emptyWorld())
+  kit.store.set('lease', { owner: 'other', renewedAt: NOW })
+  kit.store.set('inbox-snapshot', sharedInbox(NOW))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(10_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await foldOf(ui)).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the leader keeps the merged MRs and their builds in the snapshot it shares, so a session that draws has them', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const kit = engine(on, mergedWorld())
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  const shared = readSnapshot(kit.store.get('inbox-snapshot'))
+  expect(shared?.landed.map(each => [each.iid, each.sha, each.build?.status])).toEqual([
+    [11, MERGE_COMMIT, 'success'],
+    [12, SQUASH_COMMIT, 'failed'],
+    [13, HEAD_PLAIN, 'running'],
+  ])
+  await ui.unmount()
+})
+
+test('a build GitLab is slow to answer holds back no to-do and no card, the merged list is there without it, and the answer fills it in', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = {
+    ...emptyWorld(),
+    opened: [open(1, [comment(12, 'carol.jones', 180, 'please rename')])],
+    merged: [merged(11, 30, { mergeCommitSha: MERGE_COMMIT })],
+    pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 101, status: 'FAILED' }],
+  }
+  let answer = () => {}
+  const answered = new Promise<void>(resolve => {
+    answer = resolve
+  })
+  const kit = engine(on, world, true, REMOTE, operation => (operation === 'Landed' ? answered : Promise.resolve()), [rawMr(5, { headPipeline: pipe('RUNNING') })])
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // The build was asked for and is not answered; the to-do, your own MR and the merged one are all there.
+  expect(kit.requests.filter(request => request.endsWith(' Landed'))).toHaveLength(1)
+  expect(JSON.stringify(await ui.drawn())).toContain('"Inbox · 1 new"')
+  expect((await ui.findAll({ type: 'Button' })).some(button => button.key?.startsWith('open-5-') === true)).toBe(true)
+  expect(await foldOf(ui)).toBe('▸ 1 merged')
+  await ui.press({ key: 'merged' })
+  expect((await ui.find({ type: 'Text', text: 'build unknown' }))?.text).toBe('build unknown')
+  // What the inbox is, is shared at once, with what was known of the merged MR.
+  expect(readSnapshot(kit.store.get('inbox-snapshot'))?.landed.map(each => [each.iid, each.build])).toEqual([[11, null]])
+  // The answer comes, and the same list has its build, drawn and shared.
+  answer()
+  await clock.advance(1_000)
+  expect(await foldOf(ui)).toBe('▾ 1 merged')
+  await ui.press({ key: 'merged' })
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  expect(readSnapshot(kit.store.get('inbox-snapshot'))?.landed.map(each => [each.iid, each.build?.status])).toEqual([[11, 'failed']])
+  await ui.unmount()
+})
+
+test('with no snapshot in the store, what the atom held before a reload is kept entry by entry, so an entry an older version left reads as one', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), merged: [merged(21, 30, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
+  const kit = engine(on, world)
+  // An older version left an entry with no mark of whether its last ask failed, and something that is no entry.
+  const older = {
+    host: 'gitlab.com',
+    path: 'g/p',
+    iid: 21,
+    title: 'thing 21',
+    url: 'https://gitlab.com/g/p/-/merge_requests/21',
+    mergedAt: NOW - 30 * 60_000,
+    targetBranch: 'main',
+    sha: MERGE_COMMIT,
+    build: { status: 'failed', url: 'https://gitlab.com/g/p/-/pipelines/700' },
+    checkedAt: NOW,
+  }
+  // The atom never written reads as that, at the version it stands at, so its first write lands as it would after a reload.
+  on('state.get', async (_, e, next) => {
+    const answer = await next(e)
+    const standing = answer.value
+    return e.key === 'inbox' && standing !== undefined && standing.value === undefined
+      ? {
+          value: {
+            value: { snapshot: { at: NOW - 1, hosts: {}, mrs: [], landed: [older, 'not an entry'] }, seen: {}, isSyncing: false, readAt: null },
+            version: standing.version,
+          },
+        }
+      : answer
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  // The entry is what the leader shares, with the mark it lacked, and what it knew of the build is not asked again.
+  expect(JSON.stringify(kit.store.get('inbox-snapshot'))).toContain('"checkedAt":' + String(NOW) + ',"hasFailed":false')
+  expect(kit.requests.filter(request => request.endsWith(' Landed'))).toHaveLength(0)
+  expect(await foldOf(ui)).toBe('▸ 1 merged · 1 build ✗')
+  await ui.unmount()
+})
+
 test('the leader prunes the marks of MRs that left the inbox without losing one made in another session', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const kit = engine(on, busyWorld())
@@ -513,6 +1040,26 @@ test('a failed read says why and keeps the rules it last applied', async ($, on)
   world.isDown = false
   await ui.press({ key: 'refresh' })
   expect(await ui.find({ type: 'Text', text: /sync failed/u })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('an inbox document GitLab answers with errors and no data is the server’s failure: the Inbox tab says its words, and a pane that has read nothing says so', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const world: World = { ...emptyWorld(), queueErrors: 'Timeout on validation of query' }
+  // Mine's own read is out, so the pane has read nothing and tells what is wrong with the inbox.
+  let release = () => {}
+  const answered = new Promise<void>(resolve => {
+    release = resolve
+  })
+  engine(on, world, true, REMOTE, operation => (operation === 'Authored' ? answered : Promise.resolve()))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  expect((await ui.find({ type: 'Text', text: /^Inbox: /u }))?.text).toBe('Inbox: the server answered with an error: it is tried again, or press ↻')
+  await ui.press({ key: 'tab-inbox' })
+  expect((await ui.find({ type: 'Text', text: /sync failed/u }))?.text).toBe('sync failed: review queue: Timeout on validation of query')
+  release()
   await ui.unmount()
 })
 

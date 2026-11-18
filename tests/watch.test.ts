@@ -11,7 +11,9 @@ import type { Answers } from './gitlab_fake'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
+import { DRAWING_BUDGET } from '../hooks/drawing'
 import { toCard } from '../hooks/gitlab'
+import { MERGED_ROW_SIZE } from '../hooks/landed-model'
 import { REPLY_MOST } from '../hooks/reply-model'
 import { LOST, SENT_HOLDS_MS } from '../hooks/write-model'
 import { slimCard } from '../hooks/slim'
@@ -296,6 +298,8 @@ function engine(
                     author: user('me'),
                     mergedAt: mr.updatedAt,
                     mergeUser: user('me'),
+                    mergeCommitSha: 'c'.repeat(40),
+                    diffHeadSha: null,
                   })),
                 },
               },
@@ -1813,7 +1817,16 @@ const fiftyBusy = (): Fake => {
 
 test('fifty MRs with full pipelines and long threads stay inside the 100,000 characters a drawing holds', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const { store } = engine(on, fiftyBusy())
+  // Five MRs merged lately, the longest titles and addresses the section may be given.
+  const lately = Array.from({ length: 5 }, (_, i) =>
+    rawMr(2000 + i, {
+      title: `feat(ABC-${i}): ${'a very long title that keeps going '.repeat(4)}`,
+      project: project(`acme-corp/platform/some-group/another-group/repo-${'x'.repeat(20)}`),
+      webUrl: `https://gitlab.com/acme-corp/platform/some-group/another-group/repo-${'x'.repeat(20)}/-/merge_requests/${2000 + i}`,
+      updatedAt: new Date(NOW - (i + 1) * 3_600_000).toISOString(),
+    })
+  )
+  const { store } = engine(on, { ...fiftyBusy(), mergedLately: lately })
   let reads = 0
   let bytes = 0
   on('state.get', async (_, e, next) => {
@@ -1848,6 +1861,13 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   // Unfolded, rows past the budget are left out and counted, the most pressing first in.
   await ui.press({ key: 'more' })
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
+  // The merged section opens last, with the longest titles and addresses it may be given: the list leaves it the room each of
+  // its rows may take, so the whole still draws inside the budget, and a row is no bigger than that room.
+  const folded = JSON.stringify(await ui.drawn()).length
+  await ui.press({ key: 'merged' })
+  const open = JSON.stringify(await ui.drawn()).length
+  expect(open - folded).toBeLessThanOrEqual(5 * MERGED_ROW_SIZE)
+  expect(open).toBeLessThan(DRAWING_BUDGET)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
   await ui.unmount()
