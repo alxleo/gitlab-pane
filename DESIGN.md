@@ -8,7 +8,7 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 | Rule | Means | Code |
 |---|---|---|
-| What needs you comes first | failing or blocked, then running, then waiting on others, then ready | `rank`, `hooks/attention.ts` |
+| What you can finish comes first | what GitLab says can merge, then failing or blocked, then running, then waiting on others, then passed | `byAttention`, `hooks/attention.ts` |
 | Colour means the same everywhere | one palette for stages, card borders and reviewer rings | `STAGE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
 | Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
@@ -34,8 +34,8 @@ The same in light and dark. Hovering a card turns its border the theme's `claude
 | Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
 | Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
 | Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
-| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict or the move in its place (below) with other blockers trailing dimly, then the people; a name opens the page on what that person wrote | `row-facts.ts` |
-| Quiet row | one line, the title, GitLab's verdict (or its merge) and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is neither red nor amber and that quotes no one; its links and faces are on its page | `isQuiet` |
+| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, an approver's face badged ✓; a name opens the page on what that person wrote | `row-facts.ts` |
+| Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is grey and that quotes no one; its links and faces are on its page. One GitLab says can merge is a decision, so never quiet | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
 
 ## An MR's page
@@ -57,8 +57,8 @@ A title opens the MR on a page of its own. Its open threads are a person's feedb
 | Top row | the tabs and, on Mine, how old the cards are (the inbox says its own age on the row below); at the right, `↻` reads GitLab again, dim while a read is out, and `🔔` says a raised MR wakes Claude, `🔕` once pressed off. An MR read whole has its way back and its age there instead of the tabs | `pane.tsx` |
 | Repo filter | on Mine, `📁` (the repo, as on a card's link) and one picker of `All` and each repo with how many MRs it holds, a single row however many repos there are; a phone, which may not draw a picker, has a button for each instead. None while every MR is in one repo. A pick whose repo has no MRs left, or that leaves one repo, shows them all and is forgotten at the next read, so the repo coming back does not narrow the list by itself. A session whose pane closes reads only the MRs it raised, so like its folds and open page, the pick goes then too | `keptRepo` |
 | This session | the MRs this session raised, watched or you pinned, in the order they came | `buildPane` |
-| `▸ N others` | while This session holds any, every other MR folds behind one line saying how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
-| Ready | the open MRs, most pressing first, ten until `▸ more` | `MINE_SHOWN` |
+| `▸ N others` | while This session holds any, every other MR folds behind one line saying how many GitLab says can merge and how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
+| Ready | the open MRs, those GitLab says can merge first, then the most pressing, ten until `▸ more` | `MINE_SHOWN` |
 | Parked | a ready MR untouched for a week, its pipeline included, with no news in the inbox; a comment, a push, a pipeline run or news brings it back | `PARKED_AFTER_MS` |
 | Drafts | GitLab's drafts, folded | `buildPane` |
 
@@ -88,7 +88,7 @@ A failing check's tone is what it asks of you (`CHECK_TONE` in `hooks/attention.
 
 ## Moves
 
-The one press that moves an MR along, where GitLab's checks name it and you may make it (`nextMove` in `hooks/next-move.ts`). It stands in place of the verdict when it fixes the check the verdict names, else beside the verdict, and that check trails no more. Every other MR has none: waiting on people, on a pipeline or on a fix stays as it was.
+The one press that moves an MR along, where GitLab's checks name it and you may make it (`nextMove` in `hooks/next-move.ts`). It leads the card's second line, the same place on every card and across reads, so it is found by habit; the verdict is not said again when the move fixes the check it names, and the move's own check trails no more. Every other MR has none: waiting on people, on a pipeline or on a fix stays as it was.
 
 | Move | Offered when | A press |
 |---|---|---|
@@ -142,6 +142,7 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 | 📁 | the repo |
 | 🚦 | the pipeline |
 | 💬 | the comment |
+| 📍 | the commit a merge takes |
 
 A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
 

@@ -947,6 +947,15 @@ const moveOf = async (ui: { findAll: (query: { type: string }) => Promise<FoundE
   return button !== undefined ? { label: button.props.label, variant: button.props.variant, key: button.key ?? '' } : undefined
 }
 
+/** The first three things a row says, in the order drawn: its move by its label, links by their words, and what trails a verdict (`· …`). */
+const leadOf = async (ui: { findAll: (query: { type?: string }) => Promise<FoundElement[]> }, iid: number) =>
+  (await ui.findAll({}))
+    .flatMap(element => {
+      const words = element.children.filter(child => typeof child === 'string').join('')
+      return keyed(`move-${iid}-`)(element) ? [String(element.props['label'])] : element.type === 'Link' || (element.type === 'Text' && words.startsWith('· ')) ? [words] : []
+    })
+    .slice(0, 3)
+
 test('a mergeable MR’s verdict is its merge: one press arms it, a second merges the head GitLab judged, squashed as its project requires, and the card goes once GitLab says it merged', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   // A project that always squashes, on an MR whose own squash flag is off: GitLab says it will squash.
@@ -955,9 +964,11 @@ test('a mergeable MR’s verdict is its merge: one press arms it, a second merge
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The quiet row's one line offers the merge in place of saying it can merge.
+  // The card offers the merge in place of saying it can merge, leading its second line so it is in one place on every
+  // card, with the head it merges beside it and then the MR's own links.
   expect(await moveOf(ui, 12)).toMatchObject({ label: '✓ merge', variant: 'secondary' })
   expect(await ui.find({ type: 'Text', text: '✓ mergeable' })).toBeUndefined()
+  expect(await leadOf(ui, 12)).toEqual(['✓ merge', '📍 head-12', '🔀 !12'])
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
   await clock.settle()
   expect(await moveOf(ui, 12)).toMatchObject({ label: '✓ merge !12? press again', variant: 'primary' })
@@ -1024,7 +1035,7 @@ test('a session in another repo has no conflicts to hand on: they trail the verd
 
 test('an MR behind its target with nothing else failing rebases and then merges once checks pass, from two presses', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [ready(12, { mergeabilityChecks: checks({ NEED_REBASE: 'FAILED' }) })], isDown: false }
+  const fake: Fake = { mrs: [ready(12, { approvalsRequired: 1, mergeabilityChecks: checks({ NEED_REBASE: 'FAILED' }) })], isDown: false }
   const rebases: string[] = []
   const { merged, toasts, gitlab } = engine(
     on,
@@ -1044,6 +1055,8 @@ test('an MR behind its target with nothing else failing rebases and then merges 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await moveOf(ui, 12))?.label).toBe('↻ rebase and merge')
+  // The move says the verdict, so what trails the verdict follows the move, not a dot alone after the links.
+  expect(await leadOf(ui, 12)).toEqual(['↻ rebase and merge', '· approved', '🔀 !12'])
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })
   await clock.settle()
   await ui.press({ key: (await moveOf(ui, 12))?.key ?? '' })

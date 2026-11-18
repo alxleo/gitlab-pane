@@ -15,14 +15,19 @@ const withChecks = (iid: number, says: MergeStatus, over: Parameters<typeof rawM
 
 const marks = (iid: number, over: Parameters<typeof rawMr>[1] = {}) => badges(toCard(HOST, rawMr(iid, over))).map(badge => `${badge.glyph}${badge.count}`)
 
-test('MRs sort by what needs you: failing, then running, then waiting, then ready', async () => {
+test('MRs sort by what you can finish, then what needs you: mergeable, failing, running, waiting, then passed', async () => {
   const ready = toCard(HOST, rawMr(1, { approvalsLeft: 0, updatedAt: '2026-10-23T15:05:00Z' }))
   const waiting = toCard(HOST, rawMr(2))
   const running = toCard(HOST, rawMr(3, { headPipeline: pipe('RUNNING') }))
   const failing = toCard(HOST, rawMr(4, { headPipeline: pipe('FAILED') }))
   const asked = toCard(HOST, rawMr(5, { reviewers: { nodes: [reviewer('tim', 'REQUESTED_CHANGES')] } }))
+  // GitLab says these two can merge: one quiet, one with a person's open thread its project does not make you resolve, which
+  // ranks it as needing you. Both come before everything else, the latest first, as the green verdict on each says.
+  const mergeable = withChecks(6, gitlabSays(), { approvalsLeft: 0, updatedAt: '2026-10-23T15:01:00Z' })
+  const mergeableWithThread = withChecks(7, gitlabSays(), { approvalsLeft: 0, updatedAt: '2026-10-23T15:02:00Z', discussions: { nodes: [thread('Nit: rename this.')] } })
+  expect(rank(mergeableWithThread)).toBe(0)
 
-  expect([ready, waiting, running, asked, failing].toSorted(byAttention).map(card => card.iid)).toEqual([5, 4, 3, 2, 1])
+  expect([ready, waiting, running, mergeable, asked, failing, mergeableWithThread].toSorted(byAttention).map(card => card.iid)).toEqual([7, 6, 5, 4, 3, 2, 1])
 })
 
 test('on a host with no merge checks each blocker is its own marker: a glyph and a count, no words', async () => {

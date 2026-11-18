@@ -101,6 +101,8 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     '🔀 !14': ['round', STAGE_COLOURS.success],
     '🔀 !15': ['round', STAGE_COLOURS.success],
   })
+  // The one GitLab says can merge comes first, so finishing comes before the rest; then the failed one, which needs you.
+  expect(mine.rows.map(row => row.mr.text)).toEqual(['🔀 !14', '🔀 !12', '🔀 !15', '🔀 !13'])
   // GitLab says one is no longer open, so it leaves Mine before the next full read.
   expect(tabs.mine).toBe('Mine · 4')
   const byLink = Object.fromEntries(mine.rows.map(row => [row.mr.text, row]))
@@ -113,7 +115,7 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
 })
 
-test('a row that passed and waits on nothing of yours folds to one line; one that runs, failed, is blocked or quotes a person does not', () => {
+test('a row that passed and waits on others folds to one line; one that can merge, runs, failed, is blocked or quotes a person does not', () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const rows = {
     waiting: toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS') })),
@@ -126,13 +128,20 @@ test('a row that passed and waits on nothing of yours folds to one line; one tha
   }
   const model = modelOf(Object.values(rows))
   const quiet = Object.fromEntries(Object.entries(rows).map(([name, card]) => [name, model.mine.rows.find(row => row.key === card.key)?.isQuiet]))
-  expect(quiet).toEqual({ waiting: true, mergeable: true, running: false, failed: false, conflict: false, asked: false })
-  // Its one line still says what it waits on, or that it can merge.
+  // One that can merge is a decision to make, not waiting: it keeps its links and faces to check before merging.
+  expect(quiet).toEqual({ waiting: true, mergeable: false, running: false, failed: false, conflict: false, asked: false })
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.verdict?.words).toBe('✓ mergeable')
-  // Where the person may merge it, that line offers the merge in place of saying it can, and stays one line.
-  const mayMerge = { ...rows.mergeable, merging: CAN }
+  // GitLab named no head its checks were made on, so there is none to show.
+  expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.head).toBeNull()
+  // Where the person may merge it, the line offers the merge in place of saying it can, with the head a press merges, linked.
+  const sha = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+  const mayMerge = { ...rows.mergeable, merging: { ...CAN, head: sha } }
   const offered = modelOf([mayMerge]).mine.rows[0]
-  expect(offered?.isQuiet).toBe(true)
+  expect(offered?.isQuiet).toBe(false)
+  // Its id shortened as GitLab shortens one; the link opens the whole commit.
+  expect(offered?.head).toEqual({ href: `${mayMerge.repo.url}/-/commit/${sha}`, text: '📍 a1b2c3d4' })
+  // On an MR that cannot merge yet, the head is not said: there is nothing to check it against.
+  expect(modelOf([{ ...rows.waiting, merging: CAN }]).mine.rows[0]?.head).toBeNull()
   expect(offered?.verdict?.move).toEqual({
     key: `move-2-${shortHash(mayMerge.project)}`,
     label: '✓ merge',
@@ -266,7 +275,7 @@ test("the Mine tab and the repos count the same MRs, and this session's, the rea
 
 const pinOf = (card: MrCard, origin: 'raised' | 'watched' = 'watched') => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin })
 
-test('with this session holding MRs, the rest fold to one line counting them and their news; a picked repo shows its MRs', () => {
+test('with this session holding MRs, the rest fold to one line counting them, what can merge and their news; a picked repo shows its MRs', () => {
   const failing = (iid: number) => toCard(HOST, rawMr(iid, { headPipeline: pipe('FAILED') }))
   const [held, other, news] = [failing(21), failing(22), failing(23)]
   const cards = [held, other, news, toCard(HOST, rawMr(24, { headPipeline: pipe('FAILED'), project: project('g/q') }))]
@@ -275,6 +284,9 @@ test('with this session holding MRs, the rest fold to one line counting them and
   const folded = modelOf(cards, { pinned, news: { count: 2, keys: [news.key, 'gitlab.example.com/other/repo!9'] } })
   expect(folded.session.map(row => row.key)).toEqual([held.key])
   expect(folded.others).toEqual({ label: '▸ 3 others · 1 new', isOpen: false })
+  // One GitLab says can merge is work to finish, so the folded line says so, news or not.
+  const mergeable = { ...toCard(HOST, rawMr(25, { approvalsLeft: 0, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() }
+  expect(modelOf([...cards, mergeable], { pinned, news: { count: 1, keys: [news.key] } }).others?.label).toBe('▸ 4 others · 1 can merge · 1 new')
   expect(folded.mine.rows).toEqual([])
   const opened = modelOf(cards, { pinned, expanded: ['others'] })
   expect(opened.others?.label).toBe('▾ 3 others')

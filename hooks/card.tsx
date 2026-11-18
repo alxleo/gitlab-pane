@@ -11,31 +11,41 @@ import { strip } from './strip'
 /** The parts of a row the pane fits to its room. */
 export type RowPart = 'line1' | 'line2' | 'faces' | 'said'
 
+type Verdict = NonNullable<RowModel['verdict']>
+
+/** GitLab's verdict in words, or nothing when the MR's move fixes the check it names and so says it. */
+function verdictWords(kit: Kit, verdict: Verdict): RenderChildren[] {
+  const { Text } = kit
+  return verdict.move?.isVerdict === true
+    ? []
+    : [
+        <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
+          {verdict.words}
+        </Text>,
+      ]
+}
+
 /**
- * GitLab's verdict and the MR's one move: the move in place of the verdict when it fixes what the verdict names, else
- * beside it. A move is a Button while it can be pressed (primary once armed, asking for the press that confirms), and dim
- * words while it is under way; why its last press failed follows it, amber.
+ * The MR's one move: a Button while it can be pressed (primary once armed, asking for the press that confirms), dim words
+ * while it is under way. On a merge, the head it takes follows it; then `trailing`, the blockers that trail a verdict the
+ * move says; then why its last press failed, amber, so nothing before it moves when a failure comes or goes.
  */
-function verdictParts($: EngineInterface, kit: Kit, row: RowModel, verdict: NonNullable<RowModel['verdict']>): RenderChildren {
-  const { Text, Button } = kit
-  const { move } = verdict
-  const words = (
-    <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
-      {verdict.words}
-    </Text>
-  )
-  if (move === null) {
-    return words
-  }
-  const { press } = move
+function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['move'], trailing: string | null): RenderChildren[] {
+  const { Text, Button, Link } = kit
+  const press = move?.press ?? null
   return [
-    ...(move.isVerdict ? [] : [words]),
-    press !== null ? (
-      <Button key={move.key} variant={move.isArmed ? 'primary' : 'secondary'} label={move.label} onPress={() => pressMove($, row.key, press)} />
-    ) : (
-      <Text dimColor>{move.label}</Text>
-    ),
-    ...(move.failed !== null ? [<Text color="warning">{move.failed}</Text>] : []),
+    ...(move === null
+      ? []
+      : [
+          press !== null ? (
+            <Button key={move.key} variant={move.isArmed ? 'primary' : 'secondary'} label={move.label} onPress={() => pressMove($, row.key, press)} />
+          ) : (
+            <Text dimColor>{move.label}</Text>
+          ),
+        ]),
+    ...(row.head !== null ? [<Link href={row.head.href}>{row.head.text}</Link>] : []),
+    ...(trailing !== null ? [<Text dimColor>{trailing}</Text>] : []),
+    ...(move !== null && move.failed !== null ? [<Text color="warning">{move.failed}</Text>] : []),
   ]
 }
 
@@ -58,10 +68,11 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Box flexGrow={1} flexShrink={1}>
             <Button key={row.titleKey} plain label={row.title} onPress={() => openReading($, row.key)} />
           </Box>
-          {/* A quiet row is this line alone: what it waits on, or that it can merge, goes beside its title. */}
+          {/* A quiet row is this line alone: what it waits on goes beside its title, with GitLab's own merge once checks pass. */}
           {row.isQuiet && row.verdict !== null && (
             <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-              {verdictParts($, kit, row, row.verdict)}
+              {verdictWords(kit, row.verdict)}
+              {moveParts($, kit, row, row.verdict.move, null)}
             </Box>
           )}
           {row.isQuiet && row.verdict === null && row.blocker !== null && (
@@ -80,8 +91,18 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
     case 'line2':
     case 'faces': {
       const withPictures = part === 'faces'
+      const said = row.verdict !== null ? verdictWords(kit, row.verdict) : []
+      // What trails the verdict follows its words; where the move says the verdict, it follows the move.
+      const trailing = row.verdict?.trailing ?? null
+      const lead = moveParts($, kit, row, row.verdict?.move ?? null, said.length > 0 ? null : trailing)
       return (
         <Box flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+          {/* The move leads the line, so it is in one place on every card and across reads, whatever the links and ages say. */}
+          {lead.length > 0 && (
+            <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+              {lead}
+            </Box>
+          )}
           {/* A Link takes no flex props, so this box keeps the links whole when the line wraps. */}
           <Box flexDirection="row" gap={1} flexShrink={0}>
             <Link href={row.mr.href}>{row.mr.text}</Link>
@@ -90,18 +111,18 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           </Box>
           {row.strip !== null && strip(kit, row.strip)}
           {row.pipeline !== null ? <Link href={row.pipeline.href}>{row.pipeline.text}</Link> : <Text dimColor>no pipeline</Text>}
-          {row.verdict !== null ? (
-            <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-              {verdictParts($, kit, row, row.verdict)}
-              {row.verdict.trailing !== null && <Text dimColor>{row.verdict.trailing}</Text>}
-            </Box>
-          ) : (
-            row.blocker !== null && (
-              <Box flexShrink={0}>
-                <Text color={row.blocker.tone}>{row.blocker.text}</Text>
-              </Box>
-            )
-          )}
+          {row.verdict !== null
+            ? said.length > 0 && (
+                <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
+                  {said}
+                  {trailing !== null && <Text dimColor>{trailing}</Text>}
+                </Box>
+              )
+            : row.blocker !== null && (
+                <Box flexShrink={0}>
+                  <Text color={row.blocker.tone}>{row.blocker.text}</Text>
+                </Box>
+              )}
           {/* A name opens the MR's page on that person's comments alone. */}
           {row.people.map(person => (
             <Box flexDirection="row" alignItems="center" flexShrink={0}>
