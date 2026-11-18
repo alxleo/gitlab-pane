@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Keeps the pinned actions, mise.toml's tools, the dev-time npm packages and the pinned Claude Code current. The mod itself has no npm packages.",
+  "description": "Keeps the pinned actions, mise.toml's tools, the dev-time npm packages and the two Claude Codes CI tests current. The mod itself has no npm packages.",
   "extends": ["config:recommended", "schedule:monthly"],
   "minimumReleaseAge": "14 days",
   "packageRules": [
@@ -20,6 +20,11 @@
       "description": "The linter and the compiler in one pull request, majors included: oxlint-tsgolint's version names the TypeScript it is built on (7.0.2005 is 7.0), oxlint requires a tsgolint at least as new, @oxlint/plugins types the local rules for that oxlint, and oxc-parser reads the same tree for tools/lint_rules.ts and tools/directives.ts. Raised apart, `typescript` and the type-aware lint would check against two TypeScripts.",
       "matchPackageNames": ["typescript", "oxlint", "oxlint-tsgolint", "@oxlint/plugins", "oxc-parser"],
       "groupName": "lint and compiler"
+    },
+    {
+      "description": "The second Claude Code that check.yml tests follows npm's `stable` tag, the version the stable release channel installs, so CI keeps testing the oldest version an updating install runs.",
+      "matchDepTypes": ["stable channel"],
+      "followTag": "stable"
     }
   ],
   "customManagers": [
@@ -29,6 +34,16 @@
       "managerFilePatterns": ["/^\\.github/workflows/(check|screens)\\.yml$/", "/^tools/pane_screens\\.ts$/"],
       "matchStrings": ["CLAUDE_CODE_VERSION: \"(?<currentValue>[^\"]+)\"", "const EXPECTED_CLAUDE = '(?<currentValue>[^']+)'"],
       "depNameTemplate": "@anthropic-ai/claude-code",
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "The stable channel's Claude Code, which check.yml also validates and tests the plugin on; it follows npm's `stable` tag (packageRules).",
+      "managerFilePatterns": ["/^\\.github/workflows/check\\.yml$/"],
+      "matchStrings": ["CLAUDE_CODE_STABLE: \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "@anthropic-ai/claude-code",
+      "depTypeTemplate": "stable channel",
       "datasourceTemplate": "npm",
       "versioningTemplate": "npm"
     }
