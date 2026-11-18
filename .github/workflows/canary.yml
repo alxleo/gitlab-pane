@@ -5,6 +5,8 @@
 # empty setup as a teammate would, installs the release tree (tools/release_tree.ts) and checks that only the plugin's
 # files arrive, checks that the release branch holds the latest released version once there is one, and checks every query the pane sends against gitlab.com's live schema
 # (tools/gitlab_schema.ts), and that the schema snapshot and the generated types (hooks/gitlab.generated.ts) still match it.
+# Once the newest Claude Code is installed, each of those checks runs even when one before it failed, so one known failure
+# (a stricter validator, say) does not hide a second one behind it; the run's step list shows each result.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
 # the repository; the next green run closes it. Renovate raises the pinned version in check.yml and screens.yml (see
 # renovate.json); a failure here on the newest Claude Code warns before that pull request arrives.
@@ -47,10 +49,14 @@ jobs:
         with:
           node-version: 26
       - run: npm install --global @anthropic-ai/claude-code@latest # zizmor: ignore[adhoc-packages] the newest is the point
-      - run: claude --version
+      - id: claude
+        run: claude --version
+      # From here, each check runs whenever claude installed, whatever the checks before it found.
       - run: claude plugin validate --strict .
-      - run: claude plugin test .
+      - if: ${{ !cancelled() && steps.claude.outcome == 'success' }}
+        run: claude plugin test .
       - name: Install from GitHub into an empty setup
+        if: ${{ !cancelled() && steps.claude.outcome == 'success' }}
         env:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/fresh
         run: |
@@ -59,6 +65,7 @@ jobs:
           claude plugin list --json | jq -e '.[] | select(.id == "gitlab-pane@gitlab-pane") | .enabled'
       # What a team that pins `plugin-v<version>` gets: the tree's own marketplace, built here, installed from its folder.
       - name: Install the release tree, which holds the plugin's files and nothing else
+        if: ${{ !cancelled() && steps.claude.outcome == 'success' }}
         env:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/tree-setup
         run: |
@@ -77,6 +84,7 @@ jobs:
           done
       # Once the first release has been published, the branch must hold the latest released tree.
       - name: The release branch holds the latest released version
+        if: ${{ !cancelled() && steps.claude.outcome == 'success' }}
         run: |
           url="https://github.com/${GITHUB_REPOSITORY}.git"
           if ! git ls-remote --exit-code --heads "$url" refs/heads/release > /dev/null; then
