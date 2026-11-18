@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { defineConfig } from 'vitest/config'
+import type { ViteUserConfig } from 'vitest/config'
 
 const root = dirname(fileURLToPath(import.meta.url))
 
@@ -35,8 +35,10 @@ export const PROJECTS = [
 // specs sit beside the tools because tools/tsconfig.json, with Node's types, is the project that checks both.
 // The one setting beyond the tests' location: Vite reads a tsconfig to strip types, and the core's is the one that does not
 // extend the engine's declarations, which are git-ignored and absent on a fresh clone.
-export default defineConfig({
+// The config is checked against Vitest's type, not built by defineConfig: loading vitest/config reads /proc on Linux, which
+// the ban refuses to tools/vitest_config.spec.ts, the spec that imports this file.
+export default {
   tsconfig: 'tsconfig.core.json',
   // No test here takes half a second; one that takes two has started doing something these tests are not for.
   test: { environment: 'node', setupFiles: ['tests/core/setup.ts'], testTimeout: 2_000, projects: PROJECTS },
-})
+} satisfies ViteUserConfig
