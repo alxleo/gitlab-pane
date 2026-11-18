@@ -1,17 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "gitlab-pane",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Your open GitLab merge requests beside a ChatGPT conversation.",
-  "license": "MIT",
-  "extensions": {
-    "com.openai": {
-      "interface": {
-        "displayName": "GitLab MRs",
-        "shortDescription": "Your open merge requests beside the conversation",
-        "category": "Productivity",
-        "capabilities": ["Read"]
-      }
-    }
-  }
+  "license": "MIT"
 }

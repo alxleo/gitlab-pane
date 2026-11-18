@@ -1,0 +1,13 @@
+{
+  "name": "gitlab-pane",
+  "version": "0.0.1",
+  "description": "Your open GitLab merge requests beside a ChatGPT conversation.",
+  "license": "MIT",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "GitLab MRs",
+    "shortDescription": "Your open merge requests beside the conversation",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"]
+  }
+}
