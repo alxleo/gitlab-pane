@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { excerpt, lead } from '../../hooks/format.ts'
-import { cleanBody } from '../../hooks/gitlab.ts'
+import { cleanBody } from '../../hooks/mr-card.ts'
 import { MAX_ROUNDS, cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
 import type { Part } from '../../hooks/markdown.ts'
 import { HOST } from '../fixtures.ts'

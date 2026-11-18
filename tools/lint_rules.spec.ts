@@ -240,8 +240,8 @@ tester.run('only-importers', ruleNamed('only-importers'), {
   valid: [
     {
       name: 'the listed file imports the name',
-      filename: join(ROOT, 'hooks', 'gitlab.ts'),
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      filename: join(ROOT, 'hooks', 'mr-card.ts'),
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "import { fromGitLab } from './markdown.ts'",
     },
   ],
@@ -249,28 +249,28 @@ tester.run('only-importers', ruleNamed('only-importers'), {
     {
       name: 'another file imports the name',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "import { fromGitLab } from './markdown.ts'",
       errors: [{ messageId: 'name' }],
     },
     {
       name: 'another file imports the module as a namespace',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "import * as markdown from './markdown.ts'",
       errors: [{ messageId: 'namespace' }],
     },
     {
       name: 'another file re-exports the name',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "export { fromGitLab } from './markdown.ts'",
       errors: [{ messageId: 'name' }],
     },
     {
       name: 'a restriction the config misspells is reported, not dropped',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', why: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', why: 'it says so' } } }],
       code: "import { fromGitLab } from './markdown.ts'",
       errors: [{ messageId: 'malformed' }],
     },

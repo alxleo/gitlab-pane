@@ -5,8 +5,8 @@ import { NOW, HOST, heavyMr, job, listed, pipe, project, rawMr, stage } from '..
 import { parseJson } from '../../hooks/decode.ts'
 import { failedCount, threadCount } from '../../hooks/format.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
-import { toCard } from '../../hooks/gitlab.ts'
-import type { GitLabVerdict } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
+import type { GitLabVerdict } from '../../hooks/ask-merge-status.ts'
 import { cursorAfter, FULL_EVERY_MS, mergeReads, movingRows, OVERLAP_MS, scopeFor } from '../../hooks/incremental.ts'
 import { slimCard, withDetail } from '../../hooks/slim.ts'
 import {
@@ -25,7 +25,7 @@ import {
   unionPins,
 } from '../../hooks/snapshot.ts'
 import type { ReadResult } from '../../hooks/snapshot.ts'
-import { pinnedQuery } from '../../hooks/gitlab-documents.ts'
+import { pinnedQuery } from '../../hooks/ask-pinned.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 
 import type { Merging, MrCard, Pinned } from '../../types'

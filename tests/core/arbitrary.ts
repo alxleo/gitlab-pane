@@ -4,7 +4,7 @@ import fc from 'fast-check'
 
 import { HOST, job, pipe, rawMr, reviewer, stage, thread } from '../fixtures.ts'
 import type { Mr } from '../fixtures.ts'
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 
 import type { CiJobStatus, MergeRequestReviewState, PipelineStatusEnum } from '../../hooks/gitlab.generated.ts'
 import type { CheckStatus, MergeStatus, MrCard } from '../../types'

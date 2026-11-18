@@ -60,7 +60,7 @@ Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`.
 
 ## GitLab's types
 
-Edit the `/* GraphQL */` documents in `hooks/gitlab-documents.ts` (or `hooks/inbox-documents.ts`, `hooks/page-documents.ts`, `hooks/merge-gitlab.ts`), run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
+Each question the pane asks GitLab is one `hooks/ask-*.ts` module: its `/* GraphQL */` documents, the request, the cost, and how its answer reads. A new question is a new module, added to `hooks/gitlab-operations.ts` (and `tsconfig.core.json`, `release/files`); a document names the fragments it spreads and `documentOf` appends them, so no list of fragments is kept by hand. Edit a document, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
 `tools/gitlab_schema.snapshot.json` is the slice of gitlab.com's schema the documents use; `npm run schema -- snapshot` then `types` takes the schema as it is now.
 A document's cost is stated in `COMPLEXITY`, which `schema -- check` verifies. A host that answers `undefinedField` is sent the variant without that field.
 

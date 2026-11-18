@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest'
 
+import { buildOf } from '../../hooks/ask-landed.ts'
+import { mergeRequestPath, squashShaOf } from '../../hooks/ask-squash-commit.ts'
 import { Failure } from '../../hooks/failure.ts'
 import type { LandedQuery } from '../../hooks/gitlab.generated.ts'
 import {
@@ -9,14 +11,11 @@ import {
   LANDED_WITHIN_MS,
   RECHECK_MS,
   answeredBuild,
-  buildOf,
   isDue,
   keptLanded,
   knownLanded,
   landingOf,
-  mergeRequestPath,
   mergedLately,
-  squashShaOf,
   unanswered,
   withLanded,
 } from '../../hooks/landed.ts'

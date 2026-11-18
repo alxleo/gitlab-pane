@@ -1,13 +1,14 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { CLOSED, decideArm, decidePost, EXCERPT_LINES, LINE_MOST, hunkOf, mayTakeBack, openedBox, postedOf, REPLY_MOST, replyId, sayOf, tooLong } from '../../hooks/reply-model.ts'
+import { postedOf } from '../../hooks/ask-reply.ts'
+import { CLOSED, decideArm, decidePost, EXCERPT_LINES, LINE_MOST, hunkOf, mayTakeBack, openedBox, REPLY_MOST, replyId, sayOf, tooLong } from '../../hooks/reply-model.ts'
 import type { DiffLine } from '../../hooks/reply-model.ts'
 import { refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
 import { Failure } from '../../hooks/failure.ts'
 import type { ReplyMutation } from '../../hooks/gitlab.generated.ts'
-import type { RawResponse } from '../../hooks/gitlab-documents.ts'
+import type { RawResponse } from '../../hooks/gitlab-request.ts'
 
 import type { FailureKind, Write } from '../../types'
 
