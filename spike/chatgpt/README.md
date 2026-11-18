@@ -1,6 +1,6 @@
 # Spike: gitlab-pane as a ChatGPT conversation panel
 
-Not for merging. It answers whether gitlab-pane's core can drive a ChatGPT plugin. The verdict and evidence are in the issue linked from this branch's pull request, or in the repository's issues under "ChatGPT".
+Not for merging. It answers whether gitlab-pane's core can drive a ChatGPT plugin. The verdict and evidence are in [alxleo/gitlab-pane#115](https://github.com/alxleo/gitlab-pane/issues/115).
 
 ![The panel in the local harness, with made-up MRs](harness.png)
 
