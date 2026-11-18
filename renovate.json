@@ -22,9 +22,10 @@
       "groupName": "lint and compiler"
     },
     {
-      "description": "The second Claude Code that check.yml tests follows npm's `stable` tag, the version the stable release channel installs, so CI keeps testing the oldest version an updating install runs.",
+      "description": "The second Claude Code that check.yml tests follows npm's `stable` tag, the version the stable release channel installs, so CI keeps testing the oldest version an updating install runs. Its own group, because both managers name the same package: without one, Renovate raises it on the pin's branch, which waits on screens.yml.",
       "matchDepTypes": ["stable channel"],
-      "followTag": "stable"
+      "followTag": "stable",
+      "groupName": "Claude Code stable channel"
     }
   ],
   "customManagers": [
