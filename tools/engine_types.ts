@@ -3,9 +3,10 @@
 // tsconfig.json extends. The folder is git-ignored; nothing from Anthropic is committed. Run: node tools/engine_types.ts
 //
 // The declarations ship inside the claude binary as the bundled plugin-authoring skill, which the binary unpacks to
-// $CLAUDE_CODE_TMPDIR/claude-<uid>/bundled-skills/<version>/<hash>/ the first time the skill's prompt is built. That needs no sign-in
-// and no network: `claude -p /plugin-authoring` unpacks it and then answers or fails, and either way the file is there.
-// It runs with an empty HOME and config folder and a closed API address, so it never spends a model call on your account.
+// $CLAUDE_CODE_TMPDIR/claude-<uid>/bundled-skills/<version>/<hash>/ the first time the skill's prompt is built. That needs no sign-in:
+// `claude -p /plugin-authoring` unpacks it and then answers or fails, and either way the file is there. It runs with an
+// empty HOME and config folder and a closed API address, so it has no credential to send and never spends a model call on
+// your account (claude may still reach Anthropic unauthenticated, which changes nothing here).
 //
 // So the types are exactly those of the claude on PATH, which CI pins (CLAUDE_CODE_VERSION in check.yml). It does nothing
 // when the folder already holds that version's file, so it is cheap to run before every check.
@@ -42,7 +43,10 @@ const fail = (message: string): never => {
 }
 
 /** The version the claude on PATH prints, or '' when there is none. */
-export const claudeVersion = (): string => spawnSync('claude', ['--version'], { encoding: 'utf8' }).stdout.split(' ')[0] ?? ''
+export function claudeVersion(): string {
+  const run = spawnSync('claude', ['--version'], { encoding: 'utf8', timeout: 30_000 })
+  return run.error === undefined ? (run.stdout.split(' ')[0] ?? '') : ''
+}
 
 /** The first line of a file, which in the declarations names the Claude Code that wrote them. */
 export const head = (file: string): string => readFileSync(file, 'utf8').split('\n', 1)[0] ?? ''
@@ -56,8 +60,8 @@ export function unpackDeclarations(version: string, work: string): string | unde
     mkdirSync(join(work, folder))
   }
   // Unpacking happens before any request, so the refused request and the exit status are expected and ignored.
-  // claude puts its temp folder in CLAUDE_CODE_TMPDIR, else /tmp: on macOS it ignores TMPDIR, while the Linux build CI
-  // installs has unpacked under TMPDIR. Both name the same folder. It runs in `work`, so it reads no project's settings or
+  // claude puts its temp folder in CLAUDE_CODE_TMPDIR, else /tmp, and on macOS ignores TMPDIR; CI's Linux build has been
+  // seen to unpack under TMPDIR, for a reason not checked. Both name the same folder. It runs in `work`, so it reads no project's settings or
   // instructions either.
   spawnSync('claude', ['-p', '/plugin-authoring'], {
     cwd: work,
