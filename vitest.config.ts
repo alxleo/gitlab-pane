@@ -1,4 +1,5 @@
-import { dirname } from 'node:path'
+import { realpathSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { defineConfig } from 'vitest/config'
@@ -8,7 +9,9 @@ const root = dirname(fileURLToPath(import.meta.url))
 // Each project's tests run in a Node that refuses what a test here has no business doing: writing anywhere, reading outside
 // the repository, starting a process or a thread, or opening a connection (Node 26, which package.json, mise.toml and CI
 // pin). A test that tries gets ERR_ACCESS_DENIED, however it reached the call. tools/vitest_config.spec.ts keeps it so.
-const refuseAllBut = (...allowed: string[]): string[] => ['--permission', `--allow-fs-read=${root}`, ...allowed]
+// The packages are read where they really are, which is outside the repository when node_modules is a link to another
+// checkout's.
+const refuseAllBut = (...allowed: string[]): string[] => ['--permission', `--allow-fs-read=${root}`, `--allow-fs-read=${realpathSync(join(root, 'node_modules'))}`, ...allowed]
 
 /** The two kinds of spec Vitest runs, each with what its Node allows. */
 export const PROJECTS = [

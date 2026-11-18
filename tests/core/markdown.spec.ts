@@ -235,21 +235,29 @@ test('an <a> whose attribute holds a < keeps its words but not its link', () => 
 // ---- a strip takes time in proportion to the text, however hostile it is ------------------------------------------------
 
 /**
- * What reading a body costs, in milliseconds: the slowest of what a poll runs on it (its lead, or a note's first line) and
+ * Node's count of the processor time this process has spent, which the specs here run under. The core's specs compile
+ * without Node's types, so the one function this file calls is declared here.
+ */
+declare const process: { cpuUsage(since?: { user: number; system: number }): { user: number; system: number } }
+
+/**
+ * What reading a body costs, in milliseconds of processor time, which a busy machine does not inflate as it does the time
+ * on the clock: the slowest of what a poll runs on it (its lead, or a note's first line) and
  * what an MR's page runs on it (its parts), each from the body as GitLab sends it.
  */
 function msToRead(body: string): number {
   const reads = [() => lead(cleanBody(body, HOST, 'g/p'), 240), () => excerpt(cleanBody(body, HOST, 'g/p')), () => partsOf(cleanBody(body, HOST, 'g/p'))]
   return Math.max(
     ...reads.map(read => {
-      const start = performance.now()
+      const start = process.cpuUsage()
       read()
-      return performance.now() - start
+      const { user, system } = process.cpuUsage(start)
+      return (user + system) / 1000
     })
   )
 }
 
-/** A megabyte of text, which GitLab takes as one description or one comment. */
+/** A megabyte of text, which GitLab takes as one description or one comment; the timings read fractions of it. */
 const MEGABYTE = 1_000_000
 
 /** `open` as many times as `size` characters allow, then `close` as many times: markup nested as deep as it can be. */
@@ -303,7 +311,7 @@ const HOSTILE: [string, (size: number) => string][] = [
   ['lines of a form feed alone, then a callout', size => `x\n${over('\f\n', size)}> [!NOTE]`],
 ]
 
-/** The fastest of five readings of `body`: the one least slowed by whatever else the machine was doing. */
+/** The fastest of five readings of `body`: the one least slowed by collecting garbage or a cold start. */
 const fastestRead = (body: string): number => Math.min(...[0, 1, 2, 3, 4].map(() => msToRead(body)))
 
 /** How many times longer `large` takes to read than `small`. */
@@ -313,9 +321,10 @@ const slowdown = (small: string, large: string): number => {
 }
 
 // Each took minutes on a megabyte before it was made linear. A reading in proportion to the text takes about four times as
-// long on four times the text, and one that is quadratic again sixteen times: eight sits between, on any machine, however
-// fast. It is a timing still, but of one reading against another on the same machine, not against the clock.
-test.each(HOSTILE)('%s takes four times as long to read at four times the length, not sixteen', (_, make) => {
+// long on four times the text, and one that is quadratic again sixteen times. Eight is where a reading that grows as the
+// text's length to the power 1.5 would sit, so it catches anything that grows that fast or faster, on any machine, however
+// fast or busy. It does not catch a milder slide, such as a sort that makes a reading n log n.
+test.each(HOSTILE)('%s takes about four times as long to read at four times the length, and under eight', (_, make) => {
   expect(slowdown(make(MEGABYTE / 32), make(MEGABYTE / 8))).toBeLessThan(8)
 })
 

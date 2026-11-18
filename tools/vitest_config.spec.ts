@@ -1,3 +1,6 @@
+import { realpathSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { expect, test } from 'vitest'
 
 import { PROJECTS } from '../vitest.config.ts'
@@ -15,10 +18,10 @@ test('a tool spec may read the repository and nothing else, and may not write, s
   expect(permission.has('net')).toBe(false)
 })
 
-test('every kind of spec runs under the ban, reading only the repository, and none is let write, spawn or connect', () => {
-  for (const { test: project } of PROJECTS) {
-    expect(project.execArgv.slice(0, 2)).toEqual(['--permission', `--allow-fs-read=${ROOT}`])
-    expect(project.execArgv.filter(flag => /^--allow-(?:fs-write|child-process|worker|net|wasi|inspector)/u.test(flag))).toEqual([])
-  }
-  expect(PROJECTS.map(({ test: project }) => project.name)).toEqual(['core', 'tools'])
+test('each kind of spec runs with exactly the ban: reads of the repository and its packages, and for the tools their parsers', () => {
+  const ban = ['--permission', `--allow-fs-read=${ROOT}`, `--allow-fs-read=${realpathSync(join(ROOT, 'node_modules'))}`]
+  expect(PROJECTS.map(({ test: project }) => [project.name, project.execArgv])).toEqual([
+    ['core', ban],
+    ['tools', [...ban, '--allow-addons', '--disable-warning=PERM0001']],
+  ])
 })
