@@ -1,5 +1,5 @@
 // The request for the user's authored MRs, whole or as the changes since a moment: the one document that comes in two scopes.
-import { DOCUMENTS } from './gitlab-documents.ts'
+import { DOCUMENTS, isCurrent } from './gitlab-documents.ts'
 import type { Request } from './gitlab-documents.ts'
 import type { AuthoredPlainQuery, AuthoredQuery, AuthoredQueryVariables } from './gitlab.generated.ts'
 
@@ -12,11 +12,12 @@ export const AUTHORED_PAGE = 50
 export type AuthoredScope = { kind: 'open' } | { kind: 'since'; after: string }
 
 /**
- * The user's authored MRs, the heaviest document (`COMPLEXITY.Authored`). A read `since` a moment asks for
- * MRs of every state updated after it, so one merged or closed since comes back as such instead of vanishing.
+ * The user's authored MRs, the heaviest document (`COMPLEXITY.Authored`), their pipelines without the jobs (`needsJobs`).
+ * A read `since` a moment asks for MRs of every state updated after it, so one merged or closed since comes back as such
+ * instead of vanishing.
  */
 export const authoredQuery = (features: HostFeatures, scope: AuthoredScope): Request<AuthoredQuery | AuthoredPlainQuery> => {
   const variables: Record<string, string> =
     scope.kind === 'open' ? ({ state: 'opened' } satisfies AuthoredQueryVariables) : ({ after: scope.after } satisfies AuthoredQueryVariables)
-  return features.hasReviewStates ? { operation: 'Authored', query: DOCUMENTS.Authored, variables } : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables }
+  return isCurrent(features) ? { operation: 'Authored', query: DOCUMENTS.Authored, variables } : { operation: 'AuthoredPlain', query: DOCUMENTS.AuthoredPlain, variables }
 }

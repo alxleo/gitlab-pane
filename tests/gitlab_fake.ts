@@ -12,6 +12,11 @@ export const undefinedField = (typeName: string, fieldName: string) => ({
   errors: [{ message: `Field '${fieldName}' doesn't exist on type '${typeName}'`, extensions: { code: 'undefinedField', typeName, fieldName } }],
 })
 
+/** GitLab's answer to a document with an argument its schema lacks, as a GitLab older than 16.5 gives the comment filter. */
+export const argumentNotAccepted = (name: string, argumentName: string) => ({
+  errors: [{ message: `Field '${name}' doesn't accept argument '${argumentName}'`, extensions: { code: 'argumentNotAccepted', name, typeName: 'Field', argumentName } }],
+})
+
 /** What an account with nothing waiting on it answers to the three inbox documents unless a test sets them: the user is `me`. */
 const NOTHING = {
   InboxTodos: { data: { currentUser: { username: 'me', todos: { nodes: [] } } } },

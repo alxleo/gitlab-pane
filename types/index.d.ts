@@ -242,6 +242,8 @@ export type HostFeatures = {
   hasTodoEntity: boolean
   /** `Discussion.truncatedDiffLines`: without it an MR's page draws its threads with no lines of the diff. */
   hasDiffLines: boolean
+  /** `MergeRequest.notes(filter:)` (GitLab 16.5): without it the MR documents ask for every note, system ones too, and go plain. */
+  hasCommentFilter: boolean
 }
 
 /** A Jira ticket as acli read it; `isDone` says whether Jira counts its status as done, whatever the workflow calls it, or null when Jira did not say. */

@@ -10,7 +10,7 @@ import type { Mounted } from 'claude-code/testing'
 
 import { isFilled, isRecord } from '../../hooks/decode'
 import type { CiJobStatus, MergeRequestReviewState } from '../../hooks/gitlab.generated'
-import { NOW, checks, job, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
+import { NOW, checks, commented, job, listed, mergeStatuses, note, pipe, project, rawMr, reviewer, stage, thread } from '../../tests/fixtures'
 import type { Mr } from '../../tests/fixtures'
 import { fakeGitLab, fakeSession, ran } from '../../tests/gitlab_host'
 import { comment, emptyWorld, fields, inboxAnswers, merged, system } from '../../tests/inbox_fixtures'
@@ -346,11 +346,12 @@ function engine(on: On, mrs: Mr[]) {
         answers: {
           Usual: () => ({ data: { project: { pipelines: { nodes: [420, 480, 540, 600, 660, 720].map(duration => ({ duration })) } } } }),
           MergeStatus: () => mergeStatuses(mrs),
-          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs } } } }),
-          // An MR's page reads it whole, description and threads, as the pane does on demand.
-          Pinned: ({ path, iid }) => ({
-            data: { project: { mergeRequest: mrs.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } },
-          }),
+          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mrs.map(mr => listed(commented(mr))) } } } }),
+          // An MR's page reads it whole, description and threads, as the pane does on demand, and so does a list row that draws its jobs.
+          Pinned: ({ path, iid }) => {
+            const mr = mrs.find(each => each.iid === iid && each.project.fullPath === path)
+            return { data: { project: { mergeRequest: mr === undefined ? null : commented(mr) } } }
+          },
           // And beside it, where a reply to each thread goes and the lines of the diff it was left on.
           Threads: ({ path, iid }) => {
             const mr = mrs.find(each => each.iid === iid && each.project.fullPath === path)

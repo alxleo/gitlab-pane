@@ -1,14 +1,14 @@
 import type { EngineInterface } from 'claude-code'
 
 import { asFailure, Failure } from './failure'
-import { lostIn, readMergeStatus, readPinned, readResponse } from './gitlab'
+import { jobsWanted, lostIn, readMergeStatus, readPinned, readResponse } from './gitlab'
 import { AUTHORED_PAGE, authoredQuery } from './authored-request'
 import type { AuthoredScope } from './authored-request'
 import { pinnedQuery } from './gitlab-documents'
 import { mergeStatusQuery } from './merge-gitlab'
 import { threadsQuery, withThreads } from './page-documents'
 import { askVariant } from './graphql'
-import { cursorAfter, mergeReads, MOVING_MAX, movingRows, scopeFor } from './incremental'
+import { cursorAfter, mergeReads, movingRows, scopeFor } from './incremental'
 import { pinKey } from './mr-url'
 import { slimCard, slimChecks } from './slim'
 import type { Cursor } from './snapshot'
@@ -49,15 +49,14 @@ const asPin = (card: MrCard): Pinned => ({ url: card.url, host: card.host, path:
 
 /**
  * One host: the authored MRs (whole, or what changed since the last read), GitLab's merge verdicts for them, then the MRs
- * that are asked for one by one: pinned ones the list lacks (someone else's, or merged) and, in a delta, those whose
- * pipeline is running, as the delta does not say that it moved.
+ * that are asked for one by one: pinned ones the list lacks (someone else's, or merged), those the list read whose row
+ * draws from the jobs it leaves out (`needsJobs`), and, in a delta, those whose pipeline is running, as the delta does
+ * not say that it moved.
  */
 async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
   const { host, base, pinned, extras, cursor, now } = input
   const moving = movingRows(base)
-  // Reading a running pipeline's MR one by one costs about two thirds of a whole read, so past a few, read whole.
-  const wanted = scopeFor(cursor, now, input.isFresh)
-  const scope: AuthoredScope = wanted.kind === 'since' && moving.length > MOVING_MAX ? { kind: 'open' } : wanted
+  const scope = scopeFor(cursor, now, input.isFresh)
   const notes: Failure[] = []
   // The merge verdict comes from a query of its own, read alongside; a host without it, or a failed read of it, leaves
   // every card without a verdict, and none says it can merge.
@@ -83,8 +82,23 @@ async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
   const pins = pinned.filter(pin => !fetchedKeys.has(pinKey(pin)) && (scope.kind === 'open' || extras.has(pinKey(pin)) || !baseKeys.has(pinKey(pin))))
   const asked = new Set(pins.map(pinKey))
   const movingSingles = scope.kind === 'since' ? moving.filter(row => !fetchedKeys.has(row.key) && !asked.has(row.key)).map(asPin) : []
-  const singles = await Promise.all([...pins, ...movingSingles].map(async pin => readPinned(host, await askVariant($, host, features => pinnedQuery(pin, features))).map(slimCard)))
-  const rows = mergeReads({ scope: scope.kind, base, fetched, singles: singles.flat(), pinned: new Set(pinned.map(pinKey)), verdicts })
+  // The list leaves out the jobs; an MR whose row draws from them is read again on its own. The list just named it, so an
+  // answer without it is GitLab timing it out, as a failure is: either keeps its row.
+  const withoutJobs = new Set<string>()
+  const jobSingles = jobsWanted(host, authored).map(pin =>
+    readSingle($, pin)
+      .then(card => card ?? Promise.reject(new Failure('bad-answer', 'GitLab sent no MR')))
+      .then(
+        card => [card],
+        (error: unknown) => {
+          withoutJobs.add(pinKey(pin))
+          notes.push(asFailure(error, message => `jobs of ${pin.path}!${pin.iid}: ${message}`))
+          return []
+        }
+      )
+  )
+  const singles = await Promise.all([...[...pins, ...movingSingles].map(pin => readSingle($, pin).then(card => (card !== null ? [card] : []))), ...jobSingles])
+  const rows = mergeReads({ scope: scope.kind, base, fetched, singles: singles.flat(), pinned: new Set(pinned.map(pinKey)), verdicts, withoutJobs })
   return {
     rows,
     lost,

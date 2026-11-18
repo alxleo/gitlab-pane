@@ -5,7 +5,7 @@ import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
 import { RECHECK_MS } from '../hooks/landed'
-import { NOW, mergeStatuses, pipe, rawMr } from './fixtures'
+import { NOW, commented, listed, mergeStatuses, pipe, rawMr } from './fixtures'
 import type { Mr } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, merged, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
@@ -47,9 +47,12 @@ function engine(on: On, world: World, hasToken = true, remote: string | null = R
         mergeRequests: (path, iid) => (`${path}!${iid}` in world.squashed ? { squash_commit_sha: world.squashed[`${path}!${iid}`] ?? null } : undefined),
         answers: {
           ...inboxAnswers(world),
-          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mine } } } }),
+          Authored: () => ({ data: { currentUser: { authoredMergeRequests: { nodes: mine.map(mr => listed(commented(mr))) } } } }),
           MergeStatus: () => mergeStatuses(mine),
-          Pinned: ({ path, iid }) => ({ data: { project: { mergeRequest: mine.find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null } } }),
+          Pinned: ({ path, iid }) => {
+            const mr = mine.find(each => each.iid === iid && each.project.fullPath === path)
+            return { data: { project: { mergeRequest: mr === undefined ? null : commented(mr) } } }
+          },
         },
       },
     },

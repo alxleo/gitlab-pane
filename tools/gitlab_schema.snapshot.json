@@ -1140,6 +1140,22 @@
         "enumValues": null,
         "fields": [
           {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "id",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "DiscussionID",
+                "ofType": null
+              }
+            }
+          },
+          {
             "args": [
               {
                 "defaultValue": null,
@@ -1631,6 +1647,30 @@
           },
           {
             "args": [
+              {
+                "defaultValue": "ALL_NOTES",
+                "deprecationReason": null,
+                "description": null,
+                "isDeprecated": false,
+                "name": "filter",
+                "type": {
+                  "kind": "ENUM",
+                  "name": "NotesFilterType",
+                  "ofType": null
+                }
+              },
+              {
+                "defaultValue": null,
+                "deprecationReason": null,
+                "description": null,
+                "isDeprecated": false,
+                "name": "first",
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              },
               {
                 "defaultValue": null,
                 "deprecationReason": null,
@@ -2897,6 +2937,18 @@
             "deprecationReason": null,
             "description": null,
             "isDeprecated": false,
+            "name": "discussion",
+            "type": {
+              "kind": "OBJECT",
+              "name": "Discussion",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
             "name": "id",
             "type": {
               "kind": "NON_NULL",
@@ -3028,6 +3080,35 @@
         "interfaces": null,
         "kind": "SCALAR",
         "name": "NoteableID",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": [
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "ALL_NOTES"
+          },
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "ONLY_ACTIVITY"
+          },
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "ONLY_COMMENTS"
+          }
+        ],
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "kind": "ENUM",
+        "name": "NotesFilterType",
         "possibleTypes": null
       },
       {
@@ -3194,6 +3275,22 @@
               "ofType": {
                 "kind": "ENUM",
                 "name": "PipelineStatusEnum",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "warnings",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Boolean",
                 "ofType": null
               }
             }
