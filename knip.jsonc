@@ -8,6 +8,8 @@
     "tools/*.ts",
     // tools/pane_screens.ts copies it into a scratch mod as a test and runs it under the engine.
     "tools/screens/scenes.ts",
+    // The guards the lint rules' tests make a made-up file import, which the rule under test reads from disk by its path.
+    "tools/lint-fixtures/*.ts",
     // A plugin of its own, validated and loaded by the engine.
     "tools/store-probe/hooks/probe.tsx",
     // The engine's runner takes *.test.ts, Vitest takes tests/core/*.spec.ts.

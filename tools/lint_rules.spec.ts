@@ -1,5 +1,3 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { Rule } from '@oxlint/plugins'
@@ -27,22 +25,9 @@ const ENGINE_FILE = join(ROOT, 'hooks', 'pane.tsx')
 // A file the tests make up in hooks/, so that `./decode.ts` is the real decode.ts.
 const HOOK = join(ROOT, 'hooks', 'made-up.ts')
 
-// A module of guards written each way a guard is exported, and of look-alikes that are not guards, in a folder of its own,
-// beside the made-up file that imports them.
-const FIXTURES = mkdtempSync(join(tmpdir(), 'lint-rules-'))
-writeFileSync(
-  join(FIXTURES, 'guards.ts'),
-  [
-    "export function isText(value: unknown): value is string { return typeof value === 'string' }",
-    "export const isWord = function (value: unknown): value is string { return typeof value === 'string' }",
-    "export function isLong(value: unknown): boolean { return typeof value === 'string' && value.length > 9 }",
-    "function isHidden(value: unknown): value is string { return typeof value === 'string' }",
-    'export { isHidden }',
-    'export default function isDefault(value: unknown): value is string { return typeof value === "string" }',
-    '',
-  ].join('\n')
-)
-const IMPORTER = join(FIXTURES, 'importer.ts')
+// tools/lint-fixtures/guards.ts holds guards written each way a guard is exported, and look-alikes that are not guards. The
+// made-up file that imports them sits beside it; the rule reads guards.ts from disk, so it is committed, not written here.
+const IMPORTER = join(ROOT, 'tools', 'lint-fixtures', 'importer.ts')
 const guardOf = (imported: string, local: string) => `${imported}\nexport function isBox(value: unknown): value is string { return ${local}(value) }`
 
 // The one assertion `no-type-assertion` allows here: inside the private function `brand`.
