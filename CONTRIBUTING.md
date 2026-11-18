@@ -32,7 +32,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run scan` | gitleaks, actionlint, zizmor: each only if installed, and a skipped one is named. |
 | `npm run check:fast` | `files`, `format:check`, `knip`, `lint`, `types`, `schema -- types --check`, `release-tree -- check`, `docs -- check`, `validate`. |
 | `npm run check` | `check:fast`, then `scan`. |
-| `npm test` | Vitest on the core and the dev tools' own specs (plain Node), `claude plugin test .` (the engine), then the scenes. |
+| `npm test` | Vitest on the core and the dev tools' own specs (plain Node), `claude plugin test .` (the engine), then the scenes. Vitest runs its specs in a Node that refuses to write, start a process or thread, connect, or read outside the repository (`vitest.config.ts`), each within two seconds: those specs work on plain data. |
 | `npm run schema -- <check\|snapshot\|types>` | `check`: every query against gitlab.com's live schema, and what each costs; `snapshot`: refresh the snapshot; `types`: regenerate the types. |
 | `npm run screens -- <render\|setup\|scenes>` | `render` photographs the pane in Chromium for `docs/screens`; `setup` fetches Chromium; `scenes` runs the scenes. |
 | `npm run rig -- flow` | Drives the pane through a headless engine. |
