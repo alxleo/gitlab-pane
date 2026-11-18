@@ -41,7 +41,6 @@ const NOTE_FRAGMENT = /* GraphQL */ `
   }
 `
 
-// Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
 const MR_FRAGMENT = /* GraphQL */ `
   fragment MrFields on MergeRequest {
     iid state title webUrl draft conflicts shouldBeRebased approvalsLeft approvalsRequired updatedAt
@@ -50,10 +49,36 @@ const MR_FRAGMENT = /* GraphQL */ `
     diffStatsSummary { additions deletions fileCount }
     project { fullPath name webUrl }
     approvedBy { nodes { username name bot avatarUrl } }
-    headPipeline {
-      id status duration startedAt finishedAt path
-      stages { nodes { name status jobs { nodes { name status allowFailure startedAt finishedAt webPath } } } }
-    }
+  }
+`
+
+// The list's pipeline is its stages without their jobs: asking every job of every MR was half of a read that timed out.
+// `needsJobs` says which MRs' rows draw from their jobs, and those are read one by one with PIPELINE_JOBS_FRAGMENT.
+const PIPELINE_FRAGMENT = /* GraphQL */ `
+  fragment PipelineFields on Pipeline {
+    id status duration startedAt finishedAt path warnings
+    stages { nodes { name status } }
+  }
+`
+
+// Stage jobs leave out retried ones, so a job that failed then passed on retry reads as passed.
+const PIPELINE_JOBS_FRAGMENT = /* GraphQL */ `
+  fragment PipelineJobs on Pipeline {
+    id status duration startedAt finishedAt path warnings
+    stages { nodes { name status jobs { nodes { name status allowFailure startedAt finishedAt webPath } } } }
+  }
+`
+
+// An MR's comments, each with the thread it is in: system notes (pushes, label changes) were four in five of the notes
+// and a third of a read's time, and no card shows one. The filter needs GitLab 16.5; an older host gets THREADS_FRAGMENT.
+const COMMENTS_FRAGMENT = /* GraphQL */ `
+  fragment CommentFields on MergeRequest {
+    notes(filter: ONLY_COMMENTS, first: 100) { nodes { ...NoteFields discussion { id resolvable resolved } } }
+  }
+`
+
+const THREADS_FRAGMENT = /* GraphQL */ `
+  fragment ThreadFields on MergeRequest {
     discussions(first: 100) { nodes { resolvable resolved notes(first: 20) { nodes { ...NoteFields } } } }
   }
 `
@@ -73,25 +98,33 @@ const REVIEWER_PLAIN_FRAGMENT = /* GraphQL */ `
 
 const AUTHORED = /* GraphQL */ `
   query Authored($state: MergeRequestState, $after: Time) {
-    currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerFields } } } } }
+    currentUser {
+      authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) {
+        nodes { ...MrFields ...CommentFields headPipeline { ...PipelineFields } reviewers { nodes { ...ReviewerFields } } }
+      }
+    }
   }
 `
 
 const AUTHORED_PLAIN = /* GraphQL */ `
   query AuthoredPlain($state: MergeRequestState, $after: Time) {
-    currentUser { authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) { nodes { ...MrFields reviewers { nodes { ...ReviewerPlain } } } } }
+    currentUser {
+      authoredMergeRequests(state: $state, updatedAfter: $after, first: 50, sort: UPDATED_DESC) {
+        nodes { ...MrFields ...ThreadFields headPipeline { ...PipelineFields } reviewers { nodes { ...ReviewerPlain } } }
+      }
+    }
   }
 `
 
 const PINNED = /* GraphQL */ `
   query Pinned($path: ID!, $iid: String!) {
-    project(fullPath: $path) { mergeRequest(iid: $iid) { ...MrFields reviewers { nodes { ...ReviewerFields } } } }
+    project(fullPath: $path) { mergeRequest(iid: $iid) { ...MrFields ...CommentFields headPipeline { ...PipelineJobs } reviewers { nodes { ...ReviewerFields } } } }
   }
 `
 
 const PINNED_PLAIN = /* GraphQL */ `
   query PinnedPlain($path: ID!, $iid: String!) {
-    project(fullPath: $path) { mergeRequest(iid: $iid) { ...MrFields reviewers { nodes { ...ReviewerPlain } } } }
+    project(fullPath: $path) { mergeRequest(iid: $iid) { ...MrFields ...ThreadFields headPipeline { ...PipelineJobs } reviewers { nodes { ...ReviewerPlain } } } }
   }
 `
 
@@ -116,7 +149,10 @@ const USUAL = /* GraphQL */ `
 export type Request<Data> = { operation: keyof Operations; query: string; variables: Record<string, string | boolean>; readonly answer?: Data }
 
 /** GitLab's answer to a document: its data, or none, and the errors beside either. */
-export type RawResponse<Data> = { data?: Data | null; errors?: { message: string; extensions?: { code?: string; typeName?: string; fieldName?: string } }[] }
+export type RawResponse<Data> = {
+  data?: Data | null
+  errors?: { message: string; extensions?: { code?: string; typeName?: string; fieldName?: string; name?: string; argumentName?: string } }[]
+}
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
 export type Operations = PageOperations &
@@ -136,12 +172,12 @@ type Reads = Exclude<keyof Operations, (typeof WRITES)[number]>
 
 /** The text sent for each document, by operation name, for tools/gitlab_schema.py to check against GitLab's schema. */
 export const DOCUMENTS = {
-  Authored: AUTHORED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
-  AuthoredPlain: AUTHORED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
+  Authored: AUTHORED + MR_FRAGMENT + COMMENTS_FRAGMENT + PIPELINE_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
+  AuthoredPlain: AUTHORED_PLAIN + MR_FRAGMENT + THREADS_FRAGMENT + PIPELINE_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
   Failures: FAILURES,
   MergeStatus: MERGE_STATUS,
-  Pinned: PINNED + MR_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
-  PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
+  Pinned: PINNED + MR_FRAGMENT + COMMENTS_FRAGMENT + PIPELINE_JOBS_FRAGMENT + REVIEWER_FRAGMENT + NOTE_FRAGMENT,
+  PinnedPlain: PINNED_PLAIN + MR_FRAGMENT + THREADS_FRAGMENT + PIPELINE_JOBS_FRAGMENT + REVIEWER_PLAIN_FRAGMENT + NOTE_FRAGMENT,
   Usual: USUAL,
   ...PAGE_DOCUMENTS,
   ...INBOX_DOCUMENTS,
@@ -156,13 +192,13 @@ export const DOCUMENTS = {
  * write is not here: scoring a document sends it.
  */
 export const COMPLEXITY = {
-  Authored: 151,
-  AuthoredPlain: 148,
+  Authored: 157,
+  AuthoredPlain: 125,
   Failures: 16,
   MergeStatus: 34,
   MoveState: 18,
-  Pinned: 100,
-  PinnedPlain: 98,
+  Pinned: 120,
+  PinnedPlain: 99,
   Usual: 8,
   ...PAGE_COMPLEXITY,
   ...INBOX_COMPLEXITY,
@@ -172,12 +208,18 @@ export const COMPLEXITY = {
 export const COMPLEXITY_SHARE = 0.8
 
 /**
+ * Whether a host gets the current MR documents: reviewers with their review state, and comments filtered from the system
+ * notes (GitLab 16.5). A host lacking either gets the plain ones, which have neither.
+ */
+export const isCurrent = (features: HostFeatures): boolean => features.hasReviewStates && features.hasCommentFilter
+
+/**
  * A pinned MR the authored list lacks (someone else's, or merged), one query each (`COMPLEXITY.Pinned`): that needs no
  * aliases that change with how many are pinned, and a project out of reach loses its own MR and no other.
  */
 export const pinnedQuery = (pin: Pinned, features: HostFeatures): Request<PinnedQuery | PinnedPlainQuery> => {
   const variables = { path: pin.path, iid: String(pin.iid) } satisfies PinnedQueryVariables
-  return features.hasReviewStates ? { operation: 'Pinned', query: DOCUMENTS.Pinned, variables } : { operation: 'PinnedPlain', query: DOCUMENTS.PinnedPlain, variables }
+  return isCurrent(features) ? { operation: 'Pinned', query: DOCUMENTS.Pinned, variables } : { operation: 'PinnedPlain', query: DOCUMENTS.PinnedPlain, variables }
 }
 
 /** The recent successful MR pipelines of a project, for how long one usually runs: cheap (`COMPLEXITY.Usual`), so one query each. */

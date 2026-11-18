@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { NOW, HOST, heavyMr, pipe, project, rawMr } from '../fixtures.ts'
+import { NOW, HOST, heavyMr, job, listed, pipe, project, rawMr, stage } from '../fixtures.ts'
 import { parseJson } from '../../hooks/decode.ts'
 import { failedCount, threadCount } from '../../hooks/format.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
@@ -174,6 +174,7 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
     singles: [],
     pinned: new Set(['gitlab.com/g/p!3']),
     verdicts: new Map([['gitlab.com/g/p!5', { checks: conflict, merging: merging('new') }]]),
+    withoutJobs: new Set(),
   })
   const byIid = Object.fromEntries(delta.map(row => [row.iid, [row.title, row.isOpen, row.mergeStatus, row.merging?.head ?? null]]))
   // 4 closed and nobody pins it any more; 3 closed but pinned stays, so each session can unpin it, with no verdict; 1 and 2 keep theirs.
@@ -183,14 +184,49 @@ test('a delta replaces the cards that changed, drops the merged unless pinned, k
     3: ['fix: [ABC-1] thing 3', false, null, null],
     5: ['fix: [ABC-1] thing 5', true, conflict, 'new'],
   })
-  const whole = mergeReads({ scope: 'open', base, fetched: [card(2)], singles: [], pinned: new Set(), verdicts: null })
+  const whole = mergeReads({ scope: 'open', base, fetched: [card(2)], singles: [], pinned: new Set(), verdicts: null, withoutJobs: new Set() })
   expect(whole.map(row => row.iid)).toEqual([2])
   expect(whole[0]).toMatchObject({ mergeStatus: null, merging: null })
   expect(movingRows([toCard(HOST, rawMr(1, { headPipeline: pipe('RUNNING') })), toCard(HOST, rawMr(2))]).map(row => row.iid)).toEqual([1])
 })
 
+test('an MR whose jobs could not be read keeps the jobs its row had of the same pipeline, and shows none of another', () => {
+  const failing = (id: number) =>
+    pipe('FAILED', { id: `gid://gitlab/Ci::Pipeline/${id}`, stages: { nodes: [stage('test', 'FAILED', [job('unit', 'FAILED'), job('lint', 'SUCCESS')])] } })
+  const whole = (iid: number, id: number) => slimCard(toCard(HOST, rawMr(iid, { headPipeline: failing(id) })))
+  const listedOnly = (iid: number, id: number) => slimCard(toCard(HOST, listed(rawMr(iid, { headPipeline: failing(id) }))))
+  expect(listedOnly(1, 99).pipeline?.failed).toEqual([])
+  const rows = mergeReads({
+    scope: 'open',
+    base: [whole(1, 99), whole(2, 98), whole(3, 99)],
+    fetched: [listedOnly(1, 99), listedOnly(2, 99), listedOnly(3, 99)],
+    singles: [whole(3, 99)],
+    pinned: new Set(),
+    verdicts: null,
+    withoutJobs: new Set(['gitlab.com/g/p!1', 'gitlab.com/g/p!2']),
+  })
+  expect(rows.map(row => [row.iid, row.pipeline?.failed.map(one => one.name)])).toEqual([
+    [1, ['unit']],
+    [2, []],
+    [3, ['unit']],
+  ])
+  // The same pipeline in another state says nothing of its jobs now.
+  const restarted = mergeReads({
+    scope: 'open',
+    base: [whole(1, 99)],
+    fetched: [slimCard(toCard(HOST, listed(rawMr(1, { headPipeline: { ...failing(99), status: 'RUNNING' } }))))],
+    singles: [],
+    pinned: new Set(),
+    verdicts: null,
+    withoutJobs: new Set(['gitlab.com/g/p!1']),
+  })
+  expect(restarted[0]?.pipeline?.failed).toEqual([])
+})
+
 test('a pinned MR is asked for by its path and number, one query each, and a project of its own host', () => {
-  expect(pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true }).variables).toEqual({
+  expect(
+    pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true }).variables
+  ).toEqual({
     path: 'g/q',
     iid: '7',
   })
@@ -236,6 +272,7 @@ const readWorld = (world: World, pinned: ReadonlySet<number>, scope: 'open' | 's
     singles: cards.filter(card => !card.isOpen && pinned.has(card.iid)),
     pinned: new Set([...pinned].map(iid => `gitlab.com/g/p!${iid}`)),
     verdicts: verdictsOf(world),
+    withoutJobs: new Set(),
   })
 }
 

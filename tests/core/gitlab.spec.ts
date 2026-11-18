@@ -1,10 +1,13 @@
+import fc from 'fast-check'
 import { expect, test } from 'vitest'
 
 import { badges, rank, rowBadges } from '../../hooks/attention.ts'
 import { describe } from '../../hooks/wake.ts'
 import { discMarks, discSource } from '../../hooks/avatar.ts'
 import { ciStatusOf } from '../../hooks/gitlab-status.ts'
-import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../../hooks/gitlab.ts'
+import { cleanBody, jobsWanted, missingFeatures, needsJobs, readPinned, readResponse, readUsual, toCard } from '../../hooks/gitlab.ts'
+import type { RawPipeline } from '../../hooks/gitlab.ts'
+import { passedMrArb, rawMrArb } from './arbitrary.ts'
 import { slimCard } from '../../hooks/slim.ts'
 import { authoredQuery } from '../../hooks/authored-request.ts'
 import { pinnedQuery, usualQuery } from '../../hooks/gitlab-documents.ts'
@@ -16,8 +19,8 @@ import { featuresOf, forgetProbed, learnLack } from '../../hooks/in-flight.ts'
 import { excerpt } from '../../hooks/format.ts'
 import { flatOf } from '../../hooks/markdown.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
-import { undefinedField } from '../gitlab_fake.ts'
-import { HOST, NOW, SELF_MANAGED, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from '../fixtures.ts'
+import { argumentNotAccepted, undefinedField } from '../gitlab_fake.ts'
+import { HOST, NOW, SELF_MANAGED, commented, job, listed, note, pipe, project, rawMr, reviewer, stage, thread, user } from '../fixtures.ts'
 
 test('each person who reviewed or commented gets one icon; the author gets none, and a bot none unless it holds the merge', async () => {
   const card = toCard(
@@ -56,6 +59,77 @@ test('each person who reviewed or commented gets one icon; the author gets none,
   ])
   expect(card.people[1]?.notes.map(one => one.body)).toEqual(['Fair', 'Why this?'])
   expect(rowBadges(card).map(badge => badge.kind)).toEqual(['approvals'])
+})
+
+test('comments sent in the order written go back into their threads, and make the card the threads make', () => {
+  const at = (minute: number) => `2026-10-23T13:${String(minute).padStart(2, '0')}:00Z`
+  const mr = rawMr(1, {
+    discussions: {
+      nodes: [
+        { resolvable: true, resolved: false, notes: { nodes: [note('Rename this', 'tim', { createdAt: at(0) }), note('Still?', 'tim', { createdAt: at(20) })] } },
+        { resolvable: true, resolved: true, notes: { nodes: [note('Why this?', 'mel', { createdAt: at(10) }), note('Because', 'alex', { createdAt: at(30) })] } },
+        { resolvable: false, resolved: false, notes: { nodes: [note('Nice work', 'mel', { createdAt: at(40) })] } },
+      ],
+    },
+  })
+  const comments = commented(mr)
+  expect(comments.notes.nodes?.map(one => one?.body)).toEqual(['Rename this', 'Why this?', 'Still?', 'Because', 'Nice work'])
+  const card = toCard(HOST, comments)
+  expect(card).toEqual(toCard(HOST, mr))
+  expect(card.openThreads.map(open => [open.body, (open.replies ?? []).map(reply => reply.body)])).toEqual([['Rename this', ['Still?']]])
+  expect(card.people.map(person => [person.username, person.notes.map(one => [one.body, one.isOpen])])).toEqual([
+    [
+      'tim',
+      [
+        ['Rename this', true],
+        ['Still?', true],
+      ],
+    ],
+    [
+      'mel',
+      [
+        ['Nice work', false],
+        ['Why this?', false],
+      ],
+    ],
+  ])
+})
+
+test('any MR read as comments is the card read as threads', () => {
+  fc.assert(
+    fc.property(rawMrArb, raw => {
+      expect(toCard(HOST, commented(raw))).toEqual(toCard(HOST, raw))
+    })
+  )
+})
+
+test('a list read of an MR whose pipeline passed with no warning shares the card a read with its jobs shares', () => {
+  fc.assert(
+    fc.property(passedMrArb, raw => {
+      expect(needsJobs(listed(raw).headPipeline)).toBe(false)
+      expect(slimCard(toCard(HOST, listed(raw)))).toEqual(slimCard(toCard(HOST, raw)))
+    })
+  )
+})
+
+test('an MR whose row draws from its jobs is asked for one by one: a pipeline not passed, with a warning, a stage not passed, or no duration', () => {
+  const passed = pipe('SUCCESS')
+  const needs = (pipeline: RawPipeline | null) => needsJobs(listed({ headPipeline: pipeline }).headPipeline)
+  expect(needs(null)).toBe(false)
+  expect(needs(passed)).toBe(false)
+  expect(needs({ ...passed, stages: { nodes: [stage('build', 'SUCCESS', []), stage('deploy', 'SKIPPED', [])] } })).toBe(false)
+  for (const status of ['FAILED', 'RUNNING', 'MANUAL', 'PENDING', 'CREATED', 'CANCELED'] as const) {
+    expect(needs(pipe(status))).toBe(true)
+  }
+  // An allowed failure leaves the pipeline passed and draws ⚠; a passed pipeline still owing a manual stage draws its time.
+  expect(needs({ ...passed, warnings: true })).toBe(true)
+  expect(needs({ ...passed, stages: { nodes: [stage('build', 'SUCCESS', []), stage('release', 'MANUAL', [])] } })).toBe(true)
+  expect(needs({ ...passed, duration: null })).toBe(true)
+  const mrs = [rawMr(1), rawMr(2, { headPipeline: pipe('FAILED') }), rawMr(3, { headPipeline: null }), rawMr(4, { headPipeline: pipe('RUNNING'), project: project('g/q') })]
+  expect(jobsWanted(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [...mrs.map(mr => listed(commented(mr))), null] } } } })).toEqual([
+    { url: 'https://gitlab.com/g/p/-/merge_requests/2', host: HOST, path: 'g/p', iid: 2 },
+    { url: 'https://gitlab.com/g/p/-/merge_requests/4', host: HOST, path: 'g/q', iid: 4 },
+  ])
 })
 
 test('two people with the same initials are told apart', async () => {
@@ -253,6 +327,11 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   expect(said('MergeRequest', 'mergeabilityChecks')).toEqual(['hasMergeVerdict'])
   expect(said('Todo', 'targetEntity')).toEqual(['hasTodoEntity'])
   expect(said('Discussion', 'truncatedDiffLines')).toEqual(['hasDiffLines'])
+  // A GitLab older than 16.5 refuses the comment filter as an argument, not a field.
+  const refused = (name: string, argumentName: string) => missingFeatures(decodeGraphql(parseJson(JSON.stringify(argumentNotAccepted(name, argumentName)))))
+  expect(refused('notes', 'filter')).toEqual(['hasCommentFilter'])
+  expect(refused('discussions', 'filter')).toEqual([])
+  expect(refused('notes', 'first')).toEqual([])
   // Another type's field of the same name, another field, and the words of the message alone are not it.
   expect(said('Project', 'reviewState')).toEqual([])
   expect(said('Query', '__type')).toEqual([])
@@ -262,10 +341,18 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   ).toEqual([])
   forgetProbed()
   const current = featuresOf('git.corp.com')
-  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true })
+  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true })
+  // A host with review states but no comment filter gets the plain documents, which ask for every thread whole.
+  const unfiltered = { ...current, hasCommentFilter: false }
+  expect([authoredQuery(unfiltered, { kind: 'open' }).operation, pinnedQuery({ url: '', host: SELF_MANAGED, path: 'g/p', iid: 3 }, unfiltered).operation]).toEqual([
+    'AuthoredPlain',
+    'PinnedPlain',
+  ])
+  expect(authoredQuery(unfiltered, { kind: 'open' }).query).not.toContain('ONLY_COMMENTS')
+  expect(authoredQuery(current, { kind: 'open' }).query).toContain('ONLY_COMMENTS')
   learnLack('git.corp.com', 'hasReviewStates')
   learnLack('git.corp.com', 'hasDiffLines')
-  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false, hasTodoEntity: true, hasDiffLines: false })
+  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false, hasTodoEntity: true, hasDiffLines: false, hasCommentFilter: true })
   const older = featuresOf('git.corp.com')
   expect(featuresOf('gitlab.com')).toEqual(current)
   forgetProbed()

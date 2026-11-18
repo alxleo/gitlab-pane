@@ -1,13 +1,17 @@
 import type {
   AuthoredPlainQuery,
   AuthoredQuery,
+  CommentFieldsFragment,
   MergeStatusQuery,
   MrFieldsFragment,
   NoteFieldsFragment,
   PinnedPlainQuery,
   PinnedQuery,
+  PipelineFieldsFragment,
+  PipelineJobsFragment,
   ReviewerFieldsFragment,
   ReviewerPlainFragment,
+  ThreadFieldsFragment,
   UsualQuery,
 } from './gitlab.generated.ts'
 import type { RawResponse } from './gitlab-documents.ts'
@@ -19,15 +23,19 @@ import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
 import { firstDifference } from './order.ts'
 
-import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, Merging, MrCard, Note, Person, PersonState, ReviewState, Usual } from '../types'
+import type { GitLabMarkdown, HostFeatures, Job, JobLink, MergeStatus, Merging, MrCard, Note, Person, PersonState, Pinned, ReviewState, Usual } from '../types'
 
 /**
  * Which features a host lacks, from the answer it gave: GitLab validates a whole document and says, for each field its
- * schema does not have, `undefinedField` with the type and field in the error's `extensions` (never read from the message).
+ * schema does not have, `undefinedField` with the type and field in the error's `extensions` (never read from the message),
+ * and for an argument, `argumentNotAccepted` with the field and argument.
  */
 export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeatures)[] {
   return (response.errors ?? []).flatMap(error => {
-    const { code, typeName, fieldName } = error.extensions ?? {}
+    const { code, typeName, fieldName, name, argumentName } = error.extensions ?? {}
+    if (code === 'argumentNotAccepted') {
+      return name === 'notes' && argumentName === 'filter' ? ['hasCommentFilter' as const] : []
+    }
     if (code !== 'undefinedField') {
       return []
     }
@@ -84,16 +92,62 @@ export function readUsual(response: RawResponse<UsualQuery>): Usual | null {
 
 type NodeOf<Connection> = Connection extends { nodes: Array<infer Node> | null } ? NonNullable<Node> : never
 
-// The shapes below are the generated types of MrFields and NoteFields (gitlab.generated.ts), which carry the schema's
-// nullability: what the schema lets be null is null here too.
+// The shapes below are the generated types of the fragments (gitlab.generated.ts), which carry the schema's nullability:
+// what the schema lets be null is null here too.
 type RawReviewer = ReviewerFieldsFragment | ReviewerPlainFragment
-/** An MR as either variant of the documents gives it: its reviewers come with their review state, or without. */
-export type RawMr = MrFieldsFragment & { reviewers?: { nodes?: Array<RawReviewer | null> | null } | null }
+/** A pipeline read whole, its stages with their jobs, as an MR read on its own gives it. */
+export type RawPipeline = PipelineJobsFragment
+/** A pipeline as the list gives it: its stages without their jobs. */
+export type ListedPipeline = PipelineFieldsFragment
+/**
+ * An MR as any variant of the documents gives it: its comments with their threads or its threads whole, its pipeline whole
+ * or listed, its reviewers with their review state or without.
+ */
+export type RawMr = MrFieldsFragment &
+  (CommentFieldsFragment | ThreadFieldsFragment) & { headPipeline: RawPipeline | ListedPipeline | null; reviewers?: { nodes?: Array<RawReviewer | null> | null } | null }
 export type RawNote = NoteFieldsFragment
 type RawUser = NodeOf<RawMr['approvedBy']>
-export type RawPipeline = NonNullable<RawMr['headPipeline']>
 export type RawStage = NodeOf<RawPipeline['stages']>
 export type RawJob = NodeOf<RawStage['jobs']>
+type Thread = { isOpen: boolean; notes: RawNote[] }
+
+/**
+ * An MR's threads, in the order each began, their system notes left out. Comments come in the order written, each naming
+ * its thread, so a thread's notes are those naming it, in that order; the filter that sends them sends no system note.
+ */
+function threadsOf(raw: CommentFieldsFragment | ThreadFieldsFragment): Thread[] {
+  if ('discussions' in raw) {
+    return present(raw.discussions.nodes).map(thread => ({ isOpen: thread.resolvable && !thread.resolved, notes: present(thread.notes.nodes).filter(one => !one.system) }))
+  }
+  const threads = new Map<string, Thread>()
+  present(raw.notes.nodes).forEach(({ discussion, ...one }) => {
+    if (discussion === null) {
+      return
+    }
+    const thread = threads.get(discussion.id) ?? { isOpen: discussion.resolvable && !discussion.resolved, notes: [] }
+    thread.notes.push(one)
+    threads.set(discussion.id, thread)
+  })
+  return [...threads.values()]
+}
+
+/**
+ * Whether an MR's row draws from its pipeline's jobs, which the list leaves out: the jobs to open, the allowed failures,
+ * a manual job holding the merge, and how long a stage that did not pass ran, or a pipeline still going has. A pipeline
+ * that passed with no warning (an allowed failure), every stage passed or skipped, and its duration known draws none.
+ */
+export const needsJobs = (pipeline: ListedPipeline | null): boolean =>
+  pipeline !== null &&
+  (pipeline.status !== 'SUCCESS' ||
+    pipeline.warnings ||
+    pipeline.duration === null ||
+    present(pipeline.stages?.nodes).some(stage => !['success', 'skipped'].includes(ciStatusOf(stage.status ?? ''))))
+
+/** The authored MRs to read again one by one with their jobs (`needsJobs`), as pins of `host`. */
+export const jobsWanted = (host: string, response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): Pinned[] =>
+  present<RawMr>(response.data?.currentUser?.authoredMergeRequests?.nodes)
+    .filter(raw => needsJobs(raw.headPipeline))
+    .map(raw => ({ url: raw.webUrl ?? `${siteOf(host)}/${raw.project.fullPath}/-/merge_requests/${raw.iid}`, host, path: raw.project.fullPath, iid: Number(raw.iid) }))
 
 /** GitLab gives an uploaded avatar as a path on its own host and a Gravatar one as a full URL. */
 const absolute = (host: string, url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${siteOf(host)}${url}` : url) : null)
@@ -159,7 +213,7 @@ const STATE_RANK: Record<PersonState | 'open', number> = {
 const isIdenticon = (url: string | null): boolean => url !== null && /[?&]d=identicon\b/u.test(url)
 
 /** Who to talk to, most pressing first: asked for changes, has open threads, approved, then the rest; bots after people. */
-function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads: { isOpen: boolean; notes: RawNote[] }[]): Person[] {
+function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads: Thread[]): Person[] {
   const author = raw.author?.username
   const byName = new Map<string, { name: string; isBot: boolean; avatarUrl: string | null; review: ReviewState; isApprover: boolean; openThreads: number; notes: Note[] }>()
   const meet = (user: RawUser | null) => {
@@ -243,10 +297,9 @@ export function toCard(host: string, raw: RawMr): MrCard {
   const pipeline = raw.headPipeline
   const mrUrl = raw.webUrl ?? `${siteOf(host)}/${path}/-/merge_requests/${raw.iid}`
   const isBot = (note: RawNote) => note.author?.bot === true
-  const threads = present(raw.discussions.nodes).flatMap(thread => {
-    const notes = present(thread.notes.nodes).filter(one => !one.system)
-    const [first] = notes
-    return first !== undefined ? [{ isOpen: thread.resolvable && !thread.resolved, notes, first }] : []
+  const threads = threadsOf(raw).flatMap(thread => {
+    const [first] = thread.notes
+    return first !== undefined ? [{ ...thread, first }] : []
   })
   const open = threads.filter(thread => thread.isOpen)
   const reviewers = present(raw.reviewers?.nodes).map(reviewer => ({
@@ -256,8 +309,9 @@ export function toCard(host: string, raw: RawMr): MrCard {
   }))
   const requested = reviewers.filter(reviewer => reviewer.state === 'requested_changes')
   const pipelineUrl = isFilled(pipeline?.path) ? `${siteOf(host)}${pipeline.path}` : mrUrl
-  const stages = present(pipeline?.stages?.nodes).map(stage => {
-    const stageJobs = present(stage.jobs?.nodes).map(job => toJob(host, job, pipelineUrl))
+  // A listed pipeline's stages have no jobs: `needsJobs` says when the row draws from them, and they are read one by one.
+  const stages = present(pipeline?.stages?.nodes).map((stage: NodeOf<ListedPipeline['stages']> | RawStage) => {
+    const stageJobs = 'jobs' in stage ? present(stage.jobs?.nodes).map(job => toJob(host, job, pipelineUrl)) : []
     return { name: stage.name ?? UNNAMED, status: ciStatusOf(stage.status ?? ''), jobs: stageJobs, ran: ranOf(stageJobs) }
   })
   const jobs = stages.flatMap(stage => stage.jobs)
@@ -334,7 +388,7 @@ export const lostIn = (response: RawResponse<AuthoredQuery | AuthoredPlainQuery>
 
 /** The authored MRs as cards. A read with no data at all throws; a partial one keeps what came back. */
 export const readResponse = (host: string, response: RawResponse<AuthoredQuery | AuthoredPlainQuery>): MrCard[] =>
-  present(dataOf(response).currentUser?.authoredMergeRequests?.nodes).map(raw => toCard(host, raw))
+  present<RawMr>(dataOf(response).currentUser?.authoredMergeRequests?.nodes).map(raw => toCard(host, raw))
 
 /** The one pinned MR as a card, or none when GitLab named no such MR or project (out of reach). */
 export const readPinned = (host: string, response: RawResponse<PinnedQuery | PinnedPlainQuery>): MrCard[] => {

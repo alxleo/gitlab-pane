@@ -6,9 +6,12 @@ import type {
   MrFieldsFragment,
   PipelineStatusEnum,
   ReviewerFieldsFragment,
+  ThreadFieldsFragment,
+  CommentFieldsFragment,
 } from '../hooks/gitlab.generated.ts'
 import type { CheckStatus, MergeStatus } from '../types'
-import type { RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
+import { present } from '../hooks/decode.ts'
+import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
 
 /** The host the made-up GitLab answers as, unless a test says another. */
 export const HOST = 'gitlab.com'
@@ -40,6 +43,7 @@ export const pipe = (status: PipelineStatusEnum, over: Partial<RawPipeline> = {}
     startedAt: '2026-10-23T14:50:00Z',
     finishedAt: status === 'RUNNING' ? null : '2026-10-23T15:00:00Z',
     path: '/g/p/-/pipelines/99',
+    warnings: false,
     stages: {
       nodes: [stage('build', jobStatus, [job('compile', jobStatus)]), stage('test', jobStatus, [job('unit', jobStatus)])],
     },
@@ -98,8 +102,13 @@ export const checks = (over: Partial<Record<MergeabilityCheckIdentifier, Mergeab
 export const gitlabSays = (over: Partial<Record<string, CheckStatus>> = {}): MergeStatus =>
   checks().map(check => ({ id: check.identifier, status: over[check.identifier] ?? 'success' }))
 
-/** An MR as the fake GitLab holds it: what MrFields asks for, and the merge checks that only the MergeStatus query gives. */
+/**
+ * An MR as the fake GitLab holds it: what MrFields asks for, its whole pipeline and its threads, and the merge checks that
+ * only the MergeStatus query gives. `listed` and `commented` give it as each document asks for it.
+ */
 export type Mr = MrFieldsFragment & {
+  headPipeline: RawPipeline | null
+  discussions: ThreadFieldsFragment['discussions']
   /** The reviewers with their review state, as a current GitLab sends them. */
   reviewers: { nodes: Array<ReviewerFieldsFragment | null> | null } | null
   mergeabilityChecks?: MergeabilityCheck[]
@@ -140,6 +149,31 @@ export const rawMr = (iid: number, over: Partial<Mr> = {}): Mr => ({
   discussions: { nodes: [] },
   ...over,
 })
+
+/** The MR as a list read gives it: its pipeline's stages without their jobs. */
+export const listed = <Read extends { headPipeline: RawPipeline | null }>(mr: Read): Omit<Read, 'headPipeline'> & { headPipeline: ListedPipeline | null } => ({
+  ...mr,
+  headPipeline:
+    mr.headPipeline === null
+      ? null
+      : { ...mr.headPipeline, stages: { nodes: (mr.headPipeline.stages?.nodes ?? []).map(one => (one === null ? null : { name: one.name, status: one.status })) } },
+})
+
+/**
+ * The MR as a GitLab with the comment filter sends it: its comments in the order written, each with the thread it is in,
+ * in place of the threads; no system note.
+ */
+export const commented = <Read extends { discussions: ThreadFieldsFragment['discussions'] }>(mr: Read): Omit<Read, 'discussions'> & CommentFieldsFragment => {
+  const { discussions, ...rest } = mr
+  const notes = (discussions.nodes ?? []).flatMap((thread, i) =>
+    thread === null
+      ? []
+      : present(thread.notes.nodes)
+          .filter(one => !one.system)
+          .map(one => ({ ...one, discussion: { id: `gid://gitlab/Discussion/${i}`, resolvable: thread.resolvable, resolved: thread.resolved } }))
+  )
+  return { ...rest, notes: { nodes: notes.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt)) } }
+}
 
 export const note = (body: string, author = 'reviewer', over: Partial<RawNote> = {}): RawNote => ({
   body,

@@ -76,17 +76,16 @@ export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (data !== undefined && data !== null && !isRecord(data)) {
     throw new Failure('bad-answer', 'GitLab answered data that is not an object')
   }
+  // What an error says of where it is: the field or argument a schema lacks, by name (`missingFeatures`).
   const errors = records(raw.errors).map(error => {
     const extensions = isRecord(error.extensions) ? error.extensions : {}
-    const code = textOrNull(extensions.code)
-    const typeName = textOrNull(extensions.typeName)
-    const fieldName = textOrNull(extensions.fieldName)
-    return {
-      message: text(error.message),
-      ...(code !== null || typeName !== null || fieldName !== null
-        ? { extensions: { ...(code !== null ? { code } : {}), ...(typeName !== null ? { typeName } : {}), ...(fieldName !== null ? { fieldName } : {}) } }
-        : {}),
-    }
+    const said = Object.fromEntries(
+      (['code', 'typeName', 'fieldName', 'name', 'argumentName'] as const).flatMap(key => {
+        const value = textOrNull(extensions[key])
+        return value !== null ? [[key, value]] : []
+      })
+    )
+    return { message: text(error.message), ...(Object.keys(said).length > 0 ? { extensions: said } : {}) }
   })
   // The one cast at the GraphQL boundary: GitLab validated this answer against the document and the schema the types
   // were generated from, so `data` has the shape of `Data`, nulls where the schema allows them.

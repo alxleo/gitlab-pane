@@ -138,30 +138,60 @@ export type MrFieldsFragment = {
   diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
   project: { fullPath: string; name: string; webUrl: string | null }
   approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
-  headPipeline: {
-    id: string
-    status: PipelineStatusEnum
-    duration: number | null
-    startedAt: string | null
-    finishedAt: string | null
-    path: string | null
-    stages: {
-      nodes: Array<{
-        name: string | null
-        status: string | null
-        jobs: {
-          nodes: Array<{
-            name: string | null
-            status: CiJobStatus | null
-            allowFailure: boolean
-            startedAt: string | null
-            finishedAt: string | null
-            webPath: string | null
-          } | null> | null
-        } | null
-      } | null> | null
-    } | null
+}
+
+export type PipelineFieldsFragment = {
+  id: string
+  status: PipelineStatusEnum
+  duration: number | null
+  startedAt: string | null
+  finishedAt: string | null
+  path: string | null
+  warnings: boolean
+  stages: { nodes: Array<{ name: string | null; status: string | null } | null> | null } | null
+}
+
+export type PipelineJobsFragment = {
+  id: string
+  status: PipelineStatusEnum
+  duration: number | null
+  startedAt: string | null
+  finishedAt: string | null
+  path: string | null
+  warnings: boolean
+  stages: {
+    nodes: Array<{
+      name: string | null
+      status: string | null
+      jobs: {
+        nodes: Array<{
+          name: string | null
+          status: CiJobStatus | null
+          allowFailure: boolean
+          startedAt: string | null
+          finishedAt: string | null
+          webPath: string | null
+        } | null> | null
+      } | null
+    } | null> | null
   } | null
+}
+
+export type CommentFieldsFragment = {
+  notes: {
+    nodes: Array<{
+      body: string
+      system: boolean
+      url: string | null
+      createdAt: string
+      discussion: { id: string; resolvable: boolean; resolved: boolean } | null
+      author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
+      position: { filePath: string; newLine: number | null; oldLine: number | null } | null
+    } | null> | null
+  }
+}
+
+export type ThreadFieldsFragment = {
   discussions: {
     nodes: Array<{
       resolvable: boolean
@@ -212,6 +242,16 @@ export type AuthoredQuery = {
         description: string | null
         sourceBranch: string
         targetBranch: string
+        headPipeline: {
+          id: string
+          status: PipelineStatusEnum
+          duration: number | null
+          startedAt: string | null
+          finishedAt: string | null
+          path: string | null
+          warnings: boolean
+          stages: { nodes: Array<{ name: string | null; status: string | null } | null> | null } | null
+        } | null
         reviewers: {
           nodes: Array<{
             username: string
@@ -225,44 +265,15 @@ export type AuthoredQuery = {
         diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
         project: { fullPath: string; name: string; webUrl: string | null }
         approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
-        headPipeline: {
-          id: string
-          status: PipelineStatusEnum
-          duration: number | null
-          startedAt: string | null
-          finishedAt: string | null
-          path: string | null
-          stages: {
-            nodes: Array<{
-              name: string | null
-              status: string | null
-              jobs: {
-                nodes: Array<{
-                  name: string | null
-                  status: CiJobStatus | null
-                  allowFailure: boolean
-                  startedAt: string | null
-                  finishedAt: string | null
-                  webPath: string | null
-                } | null> | null
-              } | null
-            } | null> | null
-          } | null
-        } | null
-        discussions: {
+        notes: {
           nodes: Array<{
-            resolvable: boolean
-            resolved: boolean
-            notes: {
-              nodes: Array<{
-                body: string
-                system: boolean
-                url: string | null
-                createdAt: string
-                author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
-                position: { filePath: string; newLine: number | null; oldLine: number | null } | null
-              } | null> | null
-            }
+            body: string
+            system: boolean
+            url: string | null
+            createdAt: string
+            discussion: { id: string; resolvable: boolean; resolved: boolean } | null
+            author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
+            position: { filePath: string; newLine: number | null; oldLine: number | null } | null
           } | null> | null
         }
       } | null> | null
@@ -292,11 +303,6 @@ export type AuthoredPlainQuery = {
         description: string | null
         sourceBranch: string
         targetBranch: string
-        reviewers: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
-        author: { username: string } | null
-        diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
-        project: { fullPath: string; name: string; webUrl: string | null }
-        approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
         headPipeline: {
           id: string
           status: PipelineStatusEnum
@@ -304,23 +310,14 @@ export type AuthoredPlainQuery = {
           startedAt: string | null
           finishedAt: string | null
           path: string | null
-          stages: {
-            nodes: Array<{
-              name: string | null
-              status: string | null
-              jobs: {
-                nodes: Array<{
-                  name: string | null
-                  status: CiJobStatus | null
-                  allowFailure: boolean
-                  startedAt: string | null
-                  finishedAt: string | null
-                  webPath: string | null
-                } | null> | null
-              } | null
-            } | null> | null
-          } | null
+          warnings: boolean
+          stages: { nodes: Array<{ name: string | null; status: string | null } | null> | null } | null
         } | null
+        reviewers: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
+        author: { username: string } | null
+        diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
+        project: { fullPath: string; name: string; webUrl: string | null }
+        approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
         discussions: {
           nodes: Array<{
             resolvable: boolean
@@ -363,19 +360,6 @@ export type PinnedQuery = {
       description: string | null
       sourceBranch: string
       targetBranch: string
-      reviewers: {
-        nodes: Array<{
-          username: string
-          name: string
-          bot: boolean
-          avatarUrl: string | null
-          mergeRequestInteraction: { reviewState: MergeRequestReviewState | null } | null
-        } | null> | null
-      } | null
-      author: { username: string } | null
-      diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
-      project: { fullPath: string; name: string; webUrl: string | null }
-      approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
       headPipeline: {
         id: string
         status: PipelineStatusEnum
@@ -383,6 +367,7 @@ export type PinnedQuery = {
         startedAt: string | null
         finishedAt: string | null
         path: string | null
+        warnings: boolean
         stages: {
           nodes: Array<{
             name: string | null
@@ -400,20 +385,28 @@ export type PinnedQuery = {
           } | null> | null
         } | null
       } | null
-      discussions: {
+      reviewers: {
         nodes: Array<{
-          resolvable: boolean
-          resolved: boolean
-          notes: {
-            nodes: Array<{
-              body: string
-              system: boolean
-              url: string | null
-              createdAt: string
-              author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
-              position: { filePath: string; newLine: number | null; oldLine: number | null } | null
-            } | null> | null
-          }
+          username: string
+          name: string
+          bot: boolean
+          avatarUrl: string | null
+          mergeRequestInteraction: { reviewState: MergeRequestReviewState | null } | null
+        } | null> | null
+      } | null
+      author: { username: string } | null
+      diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
+      project: { fullPath: string; name: string; webUrl: string | null }
+      approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
+      notes: {
+        nodes: Array<{
+          body: string
+          system: boolean
+          url: string | null
+          createdAt: string
+          discussion: { id: string; resolvable: boolean; resolved: boolean } | null
+          author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
+          position: { filePath: string; newLine: number | null; oldLine: number | null } | null
         } | null> | null
       }
     } | null
@@ -441,11 +434,6 @@ export type PinnedPlainQuery = {
       description: string | null
       sourceBranch: string
       targetBranch: string
-      reviewers: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
-      author: { username: string } | null
-      diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
-      project: { fullPath: string; name: string; webUrl: string | null }
-      approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
       headPipeline: {
         id: string
         status: PipelineStatusEnum
@@ -453,6 +441,7 @@ export type PinnedPlainQuery = {
         startedAt: string | null
         finishedAt: string | null
         path: string | null
+        warnings: boolean
         stages: {
           nodes: Array<{
             name: string | null
@@ -470,6 +459,11 @@ export type PinnedPlainQuery = {
           } | null> | null
         } | null
       } | null
+      reviewers: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
+      author: { username: string } | null
+      diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
+      project: { fullPath: string; name: string; webUrl: string | null }
+      approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
       discussions: {
         nodes: Array<{
           resolvable: boolean
