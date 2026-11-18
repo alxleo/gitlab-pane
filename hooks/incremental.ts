@@ -65,7 +65,17 @@ export function mergeReads({ scope, base, fetched, singles, pinned, verdicts, wi
   const rows = new Map(scope === 'since' ? base.filter(row => row.isOpen || pinned.has(row.key)).map(row => [row.key, row]) : [])
   const withJobs = fetched.map(card => {
     const known = withoutJobs.has(card.key) ? before.get(card.key)?.pipeline : undefined
-    return known !== undefined && known.id === card.pipeline?.id && known.status === card.pipeline.status ? { ...card, pipeline: known } : card
+    const { pipeline } = card
+    if (pipeline === undefined || known === undefined || known.id !== pipeline.id || known.status !== pipeline.status) {
+      return card
+    }
+    // What the list said of the pipeline stands; what only its jobs say comes from the row before.
+    const stages = pipeline.stages.map(stage => {
+      const was = known.stages.find(each => each.name === stage.name)
+      return was !== undefined ? { ...stage, jobs: was.jobs, ran: was.ran } : stage
+    })
+    const { failed, amber, blockedOn, moreJobs, moreFailed, moreAmber } = known
+    return { ...card, pipeline: { ...pipeline, stages, failed, amber, blockedOn, moreJobs, moreFailed, moreAmber } }
   })
   for (const card of [...withJobs, ...singles]) {
     if (card.isOpen || pinned.has(card.key)) {

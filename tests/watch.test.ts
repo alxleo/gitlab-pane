@@ -26,7 +26,7 @@ import {
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum, ReplyMutation, ReplyMutationVariables } from '../hooks/gitlab.generated'
 import type { RawResponse } from '../hooks/gitlab-documents'
-import { undefinedField } from './gitlab_fake'
+import { argumentNotAccepted, undefinedField } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
@@ -87,6 +87,8 @@ type Fake = {
   mrs: Mr[]
   isDown: boolean
   lost?: string[]
+  /** MRs GitLab times out when asked for one by one. */
+  timedOut?: string[]
   isJiraMissing?: boolean
   isPaneBroken?: boolean
   /** The user's MRs the inbox reads as merged lately. */
@@ -180,7 +182,9 @@ function answersFor(
   lost: () => string[],
   reads: string[],
   reasons: () => Record<string, string>,
-  reply: (variables: ReplyMutationVariables) => RawResponse<ReplyMutation> = NO_REPLY
+  reply: (variables: ReplyMutationVariables) => RawResponse<ReplyMutation> = NO_REPLY,
+  /** MRs GitLab times out when asked for one by one: they come back null beside an error. */
+  timedOut: () => string[] = () => []
 ): Answers {
   /** An MR's threads as the page asks for them: its ID, and each thread's, its diff lines and its first note's address. */
   const threads = ({ path, iid }: { path: string; iid: string }) => {
@@ -232,6 +236,9 @@ function answersFor(
     Authored: variables => authored(variables, mr => listed(commented(mr))),
     Pinned: variables => {
       const mr = pinned(variables)
+      if (timedOut().includes(variables.iid)) {
+        return { data: { project: { mergeRequest: null } }, errors: [{ message: 'Timeout on MergeRequest.headPipeline' }] }
+      }
       return { data: { project: { mergeRequest: mr === null ? null : commented(mr) } } }
     },
     Failures: () => ({
@@ -299,7 +306,8 @@ function engine(
             () => fake.lost ?? [],
             reads,
             () => fake.reasons ?? {},
-            variables => (fake.reply ?? NO_REPLY)(variables)
+            variables => (fake.reply ?? NO_REPLY)(variables),
+            () => fake.timedOut ?? []
           ),
           ...moveAnswers(
             () => fake.mrs,
@@ -511,6 +519,45 @@ test('turning the failure logs setting off leaves the log unread and the wake wi
 })
 
 const HOSTS = ['gitlab.com', SELF_MANAGED, 'git.empty.example']
+
+test(
+  'a GitLab older than 16.5 refuses the comment filter once, then is read whole threads at a time, and draws the same threads',
+  { options: { gitlabHosts: [SELF_MANAGED] } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const failing = pipe('FAILED', { stages: { nodes: [stage('test', 'FAILED', [job('lint', 'FAILED')])] } })
+    const corpMrs = [
+      rawMr(12, {
+        webUrl: `https://${SELF_MANAGED}/g/p/-/merge_requests/12`,
+        project: project('g/p', SELF_MANAGED),
+        headPipeline: failing,
+        discussions: { nodes: [thread('Rename this', 'tim')] },
+      }),
+    ]
+    const corpReads: string[] = []
+    const filtered = answersFor(
+      () => corpMrs,
+      () => [],
+      corpReads,
+      () => ({})
+    )
+    const corp = {
+      answers: { ...filtered, Authored: () => argumentNotAccepted('notes', 'filter'), Pinned: () => argumentNotAccepted('notes', 'filter') },
+      // The only host configured takes the environment's token.
+      accepts: TOKEN,
+    }
+    const { gitlab, store } = engine(on, { mrs: [], isDown: false }, {}, { [SELF_MANAGED]: corp })
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    await clock.advance(FULL_EVERY_MS)
+    const asked = gitlab.requests.filter(request => request.startsWith(`${SELF_MANAGED} `) && !request.includes(' Inbox')).map(request => request.slice(SELF_MANAGED.length + 1))
+    // Refused once, then never asked again: the plain documents, for the list and for the MR whose jobs it draws.
+    expect(asked.filter(name => name === 'Authored')).toHaveLength(1)
+    expect(new Set(asked)).toEqual(new Set(['Authored', 'MergeStatus', 'AuthoredPlain', 'PinnedPlain', 'Usual']))
+    const [row] = readSnapshot(store.get('snapshot'))?.rows ?? []
+    expect([row?.openThreads.map(open => open.body), row?.pipeline?.failed.map(one => one.name)]).toEqual([['Rename this'], ['lint']])
+  }
+)
 
 test(
   'an MR watched with watch_mr is pinned and answered on any configured host, never wakes the session, and a host with no token says so',
@@ -1684,12 +1731,19 @@ test('an MR whose jobs GitLab will not give keeps the failed jobs its row showed
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const failedJobs = () => readSnapshot(store.get('snapshot'))?.rows.map(row => row.pipeline?.failed.map(one => one.name))
   expect(failedJobs()).toEqual([['lint']])
+  const said = async () => (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
 
+  // GitLab times the MR out when asked for it alone: it answers null beside an error, which is no answer either.
+  fake.timedOut = ['12']
+  await clock.advance(FULL_EVERY_MS)
+  expect(failedJobs()).toEqual([['lint']])
+  expect(await said()).toMatch(/jobs of g\/p!12: GitLab sent no MR/u)
+
+  fake.timedOut = []
   jobs.isDown = true
   await clock.advance(FULL_EVERY_MS)
   expect(failedJobs()).toEqual([['lint']])
-  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
-  expect(answer.text).toMatch(/jobs of g\/p!12: /u)
+  expect(await said()).toMatch(/jobs of g\/p!12: /u)
   // A new pipeline says nothing of the old one's jobs.
   fake.mrs = [rawMr(12, { headPipeline: { ...failing, id: 'gid://gitlab/Ci::Pipeline/100' } })]
   await clock.advance(FULL_EVERY_MS)

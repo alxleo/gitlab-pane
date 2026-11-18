@@ -210,6 +210,25 @@ test('an MR whose jobs could not be read keeps the jobs its row had of the same 
     [2, []],
     [3, ['unit']],
   ])
+  // What the list read says of the pipeline stays: only what its jobs give comes from the row before.
+  const moved = (card: MrCard): MrCard =>
+    card.pipeline === undefined
+      ? card
+      : { ...card, pipeline: { ...card.pipeline, duration: 640, stages: card.pipeline.stages.map(one => ({ ...one, status: 'canceled' as const })) } }
+  const [kept] = mergeReads({
+    scope: 'open',
+    base: [whole(1, 99)],
+    fetched: [moved(listedOnly(1, 99))],
+    singles: [],
+    pinned: new Set(),
+    verdicts: null,
+    withoutJobs: new Set(['gitlab.com/g/p!1']),
+  })
+  expect([kept?.pipeline?.duration, kept?.pipeline?.stages.map(one => [one.status, one.jobs.map(each => each.name)]), kept?.pipeline?.failed.map(one => one.name)]).toEqual([
+    640,
+    [['canceled', ['unit']]],
+    ['unit'],
+  ])
   // The same pipeline in another state says nothing of its jobs now.
   const restarted = mergeReads({
     scope: 'open',

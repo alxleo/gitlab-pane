@@ -82,17 +82,20 @@ async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
   const pins = pinned.filter(pin => !fetchedKeys.has(pinKey(pin)) && (scope.kind === 'open' || extras.has(pinKey(pin)) || !baseKeys.has(pinKey(pin))))
   const asked = new Set(pins.map(pinKey))
   const movingSingles = scope.kind === 'since' ? moving.filter(row => !fetchedKeys.has(row.key) && !asked.has(row.key)).map(asPin) : []
-  // The list leaves out the jobs; an MR whose row draws from them is read again on its own. One that fails keeps its row.
+  // The list leaves out the jobs; an MR whose row draws from them is read again on its own. The list just named it, so an
+  // answer without it is GitLab timing it out, as a failure is: either keeps its row.
   const withoutJobs = new Set<string>()
   const jobSingles = jobsWanted(host, authored).map(pin =>
-    readSingle($, pin).then(
-      card => (card !== null ? [card] : []),
-      (error: unknown) => {
-        withoutJobs.add(pinKey(pin))
-        notes.push(asFailure(error, message => `jobs of ${pin.path}!${pin.iid}: ${message}`))
-        return []
-      }
-    )
+    readSingle($, pin)
+      .then(card => card ?? Promise.reject(new Failure('bad-answer', 'GitLab sent no MR')))
+      .then(
+        card => [card],
+        (error: unknown) => {
+          withoutJobs.add(pinKey(pin))
+          notes.push(asFailure(error, message => `jobs of ${pin.path}!${pin.iid}: ${message}`))
+          return []
+        }
+      )
   )
   const singles = await Promise.all([...[...pins, ...movingSingles].map(pin => readSingle($, pin).then(card => (card !== null ? [card] : []))), ...jobSingles])
   const rows = mergeReads({ scope: scope.kind, base, fetched, singles: singles.flat(), pinned: new Set(pinned.map(pinKey)), verdicts, withoutJobs })
