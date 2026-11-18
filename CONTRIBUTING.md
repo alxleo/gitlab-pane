@@ -50,13 +50,14 @@ npm run check && npm test    # everything a commit and a push must pass
 | Commit message and pull request title (commitlint) | | x | | x | |
 | Author and committer are noreply addresses | | | | x | |
 | `npm test` | | | x | x | x, `claude plugin test .` on the newest Claude Code |
+| `claude plugin validate --strict` and `claude plugin test .` on the stable channel's Claude Code | | | | x | |
 | Release tree builds and validates | | | | x | x, and installs |
 | `screens -- render --verify --check` | | | | x, when the drawing changes | |
 | `schema -- check` against gitlab.com | | | | x, when queries change | x |
 | Plugin installs from GitHub; release branch holds the latest tag | | | | | x |
 | gitleaks over the whole history | | | | | x |
 
-Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
+Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. `check.yml` also validates and tests the plugin on `CLAUDE_CODE_STABLE`, the version npm's `stable` tag names, which is what the stable release channel installs and usually older than the pin; Renovate keeps it on that tag. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
 
 ## GitLab's types
 

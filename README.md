@@ -34,6 +34,8 @@ MRs GitLab says can merge come first, each with its links, approvers and the com
 claude plugin install gitlab-pane --marketplace alxleo/gitlab-pane
 ```
 
+Every change is tested on two Claude Code versions: the one CI pins, and the one the stable release channel installed when CI last caught up with it. The newest release is tested every week, and a failure there opens an issue.
+
 Renamed from `gitlab-ci` in 0.3.0. The marketplace tells Claude Code of the rename, so an installed or enabled `gitlab-ci@gitlab-pane` moves to `gitlab-pane@gitlab-pane` by itself. The store (avatars, seen marks) starts empty, the plugin's options may need setting again, and a permission rule for `mcp__gitlab-ci__watch_mr` must be added again as `mcp__gitlab-pane__watch_mr`.
 
 Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`); merging, rebasing and replying from the pane need `api`. Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in; moving tickets needs that sign-in to have Jira's permission to transition them.

@@ -31,7 +31,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 - GitLab's types: documents are static strings in `gitlab-documents.ts`, and those only an MR's page sends (the reply, the one write) in `page-documents.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types`. Never edit it; a stale one fails `npm run check`. `schema -- snapshot` refreshes the snapshot from gitlab.com.
 - `types/index.d.ts` stays one self-contained file (`claude plugin validate --strict`): domain types cannot move out, and every atom key is declared there.
 - The engine's declarations are not committed: `npm run setup` unpacks them into git-ignored `.claude-plugin/types/`. `tsconfig.core.json` has none, which keeps the core off the engine.
-- The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all together.
+- The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all together. `CLAUDE_CODE_STABLE` in `check.yml` is apart: the stable channel's version, which follows npm's `stable` tag.
 
 ## What the engine enforces
 
