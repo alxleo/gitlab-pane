@@ -1280,6 +1280,11 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   expect(alts).toContain('Ines Mendel, approved')
   expect(alts).toContain('Tessa R, requested changes')
   expect(alts).toContain('Mel Northcote')
+  // The card's border is the theme's own key for the review, so the app paints it in its light or dark shade, as the ring is.
+  const borders = boxesOf(await ui.drawn())
+    .filter(box => box.props?.borderStyle !== undefined)
+    .map(box => box.props?.borderColor)
+  expect(borders).toEqual(['error'])
 
   await ui.unmount()
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })

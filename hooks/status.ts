@@ -81,10 +81,11 @@ export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
 }
 
 /**
- * What a picture's root `<svg>` carries so the parts painted by `tonePaint` follow the app's theme: it takes the light or
- * dark scheme the app prefers, where a picture would otherwise stay light.
+ * Wraps a picture's parts so those painted by `tonePaint` follow the app's theme: they take the light or dark scheme the
+ * app prefers, where a picture would otherwise stay light. A group, not the root `<svg>`: a root with a dark scheme paints
+ * an opaque dark canvas behind the picture where it is drawn in a frame (the stage strip), and the root stays transparent.
  */
-export const FOLLOWS_THEME: RawSvg = raw(svg`style='color-scheme:light dark'`)
+export const followingTheme = (parts: RawSvg): RawSvg => raw(svg`<g style='color-scheme:light dark'>${parts}</g>`)
 
 /**
  * Paints a picture's part (its `fill` or `stroke`) in a tone, the light shade or the dark one as the app's theme is: the

@@ -2,15 +2,16 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { CI_STATUSES } from '../../hooks/gitlab-status.ts'
-import { FOLLOWS_THEME, TONE_COLOURS, stageTone, tonePaint } from '../../hooks/status.ts'
+import { TONE_COLOURS, followingTheme, stageTone, tonePaint } from '../../hooks/status.ts'
 import { stripModel } from '../../hooks/strip-model.ts'
-import { svg } from '../../hooks/svg.ts'
+import { raw, svg } from '../../hooks/svg.ts'
 import type { CiStatus } from '../../types'
 
 test("a picture's part is painted in its tone's light shade, and its dark one while the app is dark", () => {
   const { light, dark } = TONE_COLOURS.error
   expect(svg`<circle ${tonePaint('stroke', 'error')}/>`).toBe(`<circle stroke='${light}' style='stroke:light-dark(${light},${dark})'/>`)
-  expect(svg`<svg ${FOLLOWS_THEME}>`).toBe(`<svg style='color-scheme:light dark'>`)
+  // On a group, so the picture's root stays transparent where it is drawn in a frame.
+  expect(svg`<svg>${followingTheme(raw(svg`<circle/>`))}</svg>`).toBe(`<svg><g style='color-scheme:light dark'><circle/></g></svg>`)
 })
 
 test('a stage strip follows the theme, and paints each stage in its tone in both shades', () => {
@@ -22,7 +23,10 @@ test('a stage strip follows the theme, and paints each stage in its tone in both
         stages.map(each => ({ ...each, jobs: [], ran: { done: [], running: [] } })),
         0
       )
-      expect(source).toContain(svg`${FOLLOWS_THEME}`)
+      // Every painted part is inside the group that follows the theme, and the root takes no scheme.
+      const [, themed = ''] = /<g style='color-scheme:light dark'>(.*)<\/g><\/svg>$/u.exec(source) ?? []
+      expect(source.replace(themed, '')).not.toContain('light-dark(')
+      expect(source).toMatch(/^<svg [^>]*height='10'>/u)
       for (const { status } of stages) {
         const { light, dark } = TONE_COLOURS[stageTone(status)]
         expect(source).toContain(`fill='${light}' style='fill:light-dark(${light},${dark})'`)

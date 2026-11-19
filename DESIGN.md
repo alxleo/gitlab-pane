@@ -17,7 +17,7 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 ## Colour
 
-Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches. Text and card borders name the key and the app paints it. A picture (a face's ring and badge, the stage strip) cannot name a key, so it carries both shades below and the app's theme picks one (`tonePaint`). Hovering a card turns its border the theme's `claude` colour.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches. Text and card borders name the key and the app paints it. A picture (a face's ring and badge, the stage strip) cannot name a key, so it carries both shades below and the app's theme picks one (`tonePaint`); a custom theme recolours the text and borders, never these. The screen renderer's `pane.css` paints the same shades (`tools/pane_screens.spec.ts`). Hovering a card turns its border the theme's `claude` colour.
 
 | Tone | Light | Dark | Means |
 |---|---|---|---|

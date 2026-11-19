@@ -2,7 +2,7 @@
 // counted in the image's tooltip; any other stage is its own square with its name, state and time. A surface without
 // Svg gets a glyph per stage, from `tones`. Pure; the draw layer only puts the source in an Svg.
 import { duration, plural, ranFor } from './format.ts'
-import { FOLLOWS_THEME, stageTone, tonePaint } from './status.ts'
+import { followingTheme, stageTone, tonePaint } from './status.ts'
 import type { Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { SvgSource } from './svg.ts'
@@ -61,6 +61,6 @@ export function stripModel(stages: Stage[], now: number): StripModel {
     width,
     alt: `${stages.length} stages`,
     // Passed runs fill with the pattern, so it is there only when a stage passed.
-    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10' ${FOLLOWS_THEME}>${raw(count > 0 ? svg`<title>${plural(count, 'stage')} passed</title>` : svg``)}<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>${raw(marks)}</svg>`,
+    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${raw(count > 0 ? svg`<title>${plural(count, 'stage')} passed</title>` : svg``)}${followingTheme(raw([svg`<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>`, ...marks]))}</svg>`,
   }
 }

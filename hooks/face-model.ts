@@ -2,7 +2,7 @@
 // no Svg uses. Pure; the draw layer only puts the source in an Svg. Built once for a card, until the card or a picture changes.
 import { personTone } from './attention.ts'
 import { BOT_MARKS, discMarks } from './avatar.ts'
-import { FOLLOWS_THEME, tonePaint } from './status.ts'
+import { followingTheme, tonePaint } from './status.ts'
 import type { Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { SvgSource } from './svg.ts'
@@ -56,7 +56,7 @@ export function faceFacts(person: Person, picture: string | undefined): FaceFact
       : svg``
   // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
   const around = (inner: SvgSource): SvgSource =>
-    svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22' ${FOLLOWS_THEME}>${raw(inner)}${raw(ring)}${raw(mark)}</svg>`
+    svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${followingTheme(raw([inner, ring, mark]))}</svg>`
   const disc = person.isBot ? BOT_MARKS : discMarks(person.username, 16, person.initials)
   return {
     tone,
