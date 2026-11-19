@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { fold, found, queryOf, scoreOf } from '../../hooks/search.ts'
+import { fold, found, keptSearch, queryOf, scoreOf } from '../../hooks/search.ts'
 import type { Findable, Query } from '../../hooks/search.ts'
 
 const mr = (iid: number, over: Partial<Findable> = {}): Findable => ({
@@ -53,6 +53,39 @@ test('words of the title, branch, repo and author are found by their start or an
   expect(find('web-store')).toEqual([1398, 77])
   expect(find('sam lee')).toEqual([13980])
   expect(find('thoris')).toEqual([13980])
+})
+
+test('accents, strokes, a capital of two letters and a final sigma fold away, so a word typed plain or cut short still finds it', () => {
+  const named = [mr(1, { title: 'Café crème for Łódź' }), mr(2, { title: 'Straße names' }), mr(3, { title: 'ΟΔΟΣΑ route' })]
+  expect(find('cafe creme', named)).toEqual([1])
+  expect(find('lodz', named)).toEqual([1])
+  expect(find('STRASSE', named)).toEqual([2])
+  expect(find('strasse', named)).toEqual([2])
+  expect(find('οδοσ', named)).toEqual([3])
+})
+
+test("an MR's address or GitLab's reference to it, pasted, finds it by its repo and number", () => {
+  const two = [mr(1, { repo: 'g/web' }), mr(1, { repo: 'g/api' }), mr(12, { repo: 'g/web' })]
+  const repos = (text: string) => {
+    const query = queryOf(text)
+    return query !== null ? found(query, two, each => each).map(each => `${each.repo}!${each.iid}`) : []
+  }
+  expect(repos('g/web!1')).toEqual(['g/web!1'])
+  expect(repos('web!12')).toEqual(['g/web!12'])
+  expect(repos('https://gitlab.com/g/api/-/merge_requests/1')).toEqual(['g/api!1'])
+  expect(repos('https://gitlab.com/g/web/-/merge_requests/12/diffs')).toEqual(['g/web!12'])
+})
+
+test('a ticket named by the branch alone ranks above a title word that only starts with it', () => {
+  const branch = mr(1, { title: 'Other', branch: 'het-1100-delivery' })
+  const title = mr(2, { title: 'the het11000 thing', branch: 'two' })
+  expect(find('HET-1100', [title, branch])).toEqual([1, 2])
+})
+
+test('a search is kept to its first 200 characters, none cut in half', () => {
+  expect(keptSearch('order history')).toBe('order history')
+  expect(keptSearch('a'.repeat(5_000))).toBe('a'.repeat(200))
+  expect(keptSearch(`${'a'.repeat(199)}👍🏽`)).toBe('a'.repeat(199))
 })
 
 test('every word must match, so a word no MR has finds nothing', () => {

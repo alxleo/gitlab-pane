@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import { isEqual } from './equal'
 import { quietly } from './failures'
 import { keptRepo } from './repo-filter'
+import { keptSearch } from './search'
 
 import type { Choices } from '../types'
 
@@ -34,7 +35,7 @@ export async function drawnChoices($: EngineInterface) {
 export function setSearch($: EngineInterface, text: string): void {
   quietly(
     $,
-    update($, searchAtom, () => text)
+    update($, searchAtom, () => keptSearch(text))
   )
 }
 

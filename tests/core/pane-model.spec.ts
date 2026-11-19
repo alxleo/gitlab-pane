@@ -386,6 +386,8 @@ test('a search lists what matches in place of the list, past the repo picked and
     expect(modelOf(cards, { ...folded, ...over }).found).toBeNull()
   }
   expect(modelOf(cards, folded).repos).not.toBeNull()
+  // Rows a search leaves out are counted, with no word of a picker that is not drawn.
+  expect(modelOf(cards, { search: 'order' }, () => 1_000, 1_500).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
 })
 
 test("a search finds the user's merged MRs and others' in the inbox as links, leaving the cards the room their rows take", () => {

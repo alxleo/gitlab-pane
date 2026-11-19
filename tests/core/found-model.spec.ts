@@ -79,6 +79,23 @@ test('merged MRs come in the order the search ranks them, not when they merged',
   expect(matchesOf(query('retry'), held({ landed })).merged.map(row => row.key)).toEqual([cardKey(HOST, 'g/p', 19), cardKey(HOST, 'g/p', 9)])
 })
 
+test('the merged MRs a search keeps are the five that match best of those merged in the last three days, not the five newest', () => {
+  const newer = [101, 102, 103, 104, 105, 106].map(iid => landedOf(iid, `fix: 9 ${iid}`, NOW - 60_000))
+  const exact = landedOf(9, 'fix: nine', NOW - 40 * 3_600_000)
+  const old = landedOf(99, 'fix: nine again', NOW - 4 * 86_400_000)
+  const keys = matchesOf(query('9'), held({ landed: [...newer, exact, old] })).merged.map(row => row.key)
+  expect(keys).toHaveLength(5)
+  expect(keys[0]).toBe(cardKey(HOST, 'g/p', 9))
+  expect(keys).not.toContain(cardKey(HOST, 'g/p', 99))
+})
+
+test('an inbox MR is found by its author’s name and its repo, a merged one by its repo', () => {
+  const inbox = [inboxOf(71, 'fix: Retry the queue')]
+  expect(matchesOf(query('lee'), held({ inbox })).inbox.map(row => row.key)).toEqual([cardKey(HOST, 'g/shop', 71)])
+  expect(matchesOf(query('shop queue'), held({ inbox })).inbox.map(row => row.key)).toEqual([cardKey(HOST, 'g/shop', 71)])
+  expect(matchesOf(query('g/p'), held({ landed: [landedOf(6, 'Other')] })).merged.map(row => row.key)).toEqual([cardKey(HOST, 'g/p', 6)])
+})
+
 test('the list counts all it found, cards, merged and inbox, and says when it found nothing', () => {
   const found = matchesOf(query('retry'), held({ cards: [toCard(HOST, rawMr(5, { title: 'Retry' }))], landed: [landedOf(6, 'Retry')], inbox: [inboxOf(7, 'Retry')] }))
   expect(foundList(found, cards => cards.map(card => card.iid))).toEqual({ heading: 'Found · 3', isEmpty: false, rows: [5], merged: found.merged, inbox: found.inbox })
