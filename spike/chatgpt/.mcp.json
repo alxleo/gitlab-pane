@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "gitlab-pane": {
-      "command": "node",
-      "args": ["./dist/server.mjs"],
-      "cwd": "."
-    }
-  }
-}

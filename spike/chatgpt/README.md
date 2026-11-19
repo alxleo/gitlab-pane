@@ -14,8 +14,8 @@ The panel draws the pane's own row model, built by the core's `buildPane`, laid 
 | `move.ts` | `moves.ts` without the engine: it sends what the core's steps decide, and keeps each MR's press in memory. |
 | `server.ts` | An MCP server over stdio. `list_my_mrs` opens beside a conversation through a thread entrypoint. `press_move` is for the panel alone. |
 | `panel.ts`, `panel.html` | The panel, an MCP App. The server bundles it into one HTML resource. |
-| `plugin.json`, `mcp.json` | The portable plugin shape (Agent Plugins). |
-| `.codex-plugin/plugin.json`, `.mcp.json` | What ChatGPT's desktop app actually reads. Its bundled Codex starts a plugin's servers from the file the overlay's `mcpServers` names, else from `.mcp.json`; the portable `mcp.json` alone installs a plugin whose server never starts. |
+| `plugin.json`, `mcp.json` | The portable plugin shape (Agent Plugins). ChatGPT's bundled Codex reads `mcp.json` only when it names the Agent Plugins schema in `$schema`; without that line the plugin installs, but its server never starts. |
+| `.codex-plugin/plugin.json` | The name and category ChatGPT's desktop app shows. |
 | `build.ts`, `panel-build.ts` | Bundle the server, the core and the panel into `dist/`, which is what a package holds. |
 | `install.ts` | Copies the package to `~/.codex/plugins/gitlab-pane` and lists it in the personal marketplace, `~/.agents/plugins/marketplace.json`. |
 | `fake.ts`, `move-check.ts` | A made-up GitLab, and a check that a merge pressed in the panel arms, merges, and is followed to "merged". |

@@ -1,5 +1,5 @@
-// Installs the built plugin where ChatGPT's desktop app finds a personal plugin: the package (plugin.json, mcp.json and
-// dist/) copied to ~/.codex/plugins/gitlab-pane, and an entry for it in the personal marketplace,
+// Installs the built plugin where ChatGPT's desktop app finds a personal plugin: the package (plugin.json, mcp.json, the
+// Codex overlay and dist/) copied to ~/.codex/plugins/gitlab-pane, and an entry for it in the personal marketplace,
 // ~/.agents/plugins/marketplace.json, which is created if missing and otherwise keeps its other plugins. Run after
 // `node build.ts`; restart the desktop app afterwards so it reads the new files.
 //
@@ -21,16 +21,12 @@ if (!existsSync(join(here, 'dist', 'server.mjs')) || !existsSync(join(here, 'dis
 
 rmSync(target, { recursive: true, force: true })
 mkdirSync(target, { recursive: true })
-// The portable plugin.json and mcp.json, and the Codex overlay: ChatGPT's desktop app (its bundled Codex) finds MCP
-// servers only through `.codex-plugin/plugin.json`'s `mcpServers`, which names `.mcp.json`; the root mcp.json alone
-// installs a plugin whose server never starts.
+// The portable plugin.json and mcp.json carry the server; ChatGPT's bundled Codex reads mcp.json only when it names the
+// Agent Plugins schema, and otherwise installs a plugin with no server. The Codex overlay adds the name and category the
+// app shows. Codex finds `node` on the PATH it takes from the login shell.
 for (const file of ['plugin.json', 'mcp.json', '.codex-plugin', 'dist']) {
   cpSync(join(here, file), join(target, file), { recursive: true })
 }
-// The packaged `.mcp.json` says `node`, which an app started from the Dock may not find on its PATH. This install is for
-// this machine, so it names the Node that ran it, a pinned install, and launches it directly.
-const server = { command: process.execPath, args: ['./dist/server.mjs'], cwd: '.' }
-writeFileSync(join(target, '.mcp.json'), `${JSON.stringify({ mcpServers: { [NAME]: server } }, null, 2)}\n`)
 
 const entry = {
   name: NAME,
