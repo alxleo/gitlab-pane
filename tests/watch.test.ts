@@ -743,29 +743,44 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   await ui.unmount()
 })
 
-test('a ticket Jira does not know is asked about again at the quarter-hour pace, not at every read', { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  // The made-up Jira knows ABC-1 alone.
-  const fake: Fake = { mrs: [rawMr(12, SHOWN), rawMr(13, { title: '[XYZ-9] thing 13' })], isDown: false }
-  const { jiraReads } = engine(on, fake)
+test(
+  'a ticket Jira does not know, or a search that fails, waits for the quarter-hour pace, while a ticket newly named is asked about at once',
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    // The made-up Jira knows ABC-1 alone.
+    const others = [rawMr(13, { title: '[XYZ-9] thing 13' })]
+    const fake: Fake = { mrs: [rawMr(12, SHOWN), ...others], isDown: false }
+    const { jiraReads } = engine(on, fake)
+    const searches = () => jiraReads.length
 
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await clock.settle()
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // Each read finds something new, so the pane takes in a new snapshot each time, which is when it looks at the tickets.
-  const takes = async (count: number) => {
-    for (let take = 0; take < count; take += 1) {
-      fake.mrs = [rawMr(12, { ...SHOWN, title: `[ABC-1] thing 12, take ${String(stamp(clock))}`, updatedAt: stamp(clock) }), rawMr(13, { title: '[XYZ-9] thing 13' })]
-      await clock.advance(2 * 60_000)
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    // Each read finds something new, so the pane takes in a new snapshot each time, which is when it looks at the tickets.
+    const takes = async (count: number) => {
+      for (let take = 0; take < count; take += 1) {
+        fake.mrs = [rawMr(12, { ...SHOWN, title: `[ABC-1] thing 12, take ${String(stamp(clock))}`, updatedAt: stamp(clock) }), ...others]
+        await clock.advance(2 * 60_000)
+      }
     }
+    await takes(5)
+    expect(searches()).toBe(1)
+    others.push(rawMr(14, { title: '[NEW-1] thing 14', updatedAt: stamp(clock) }))
+    await takes(1)
+    expect(searches()).toBe(2)
+    // Jira cannot be asked: the search for a newly named ticket fails, and is not made again at every snapshot.
+    fake.isJiraMissing = true
+    others.push(rawMr(15, { title: '[NEW-2] thing 15', updatedAt: stamp(clock) }))
+    await takes(1)
+    expect(searches()).toBe(3)
+    await takes(TICKETS_EVERY_MS / (2 * 60_000) - 1)
+    expect(searches()).toBe(3)
+    await takes(1)
+    expect(searches()).toBe(4)
+    await ui.unmount()
   }
-  await takes(5)
-  expect(jiraReads).toHaveLength(1)
-  // Past the quarter hour, the next new snapshot asks again.
-  await takes(TICKETS_EVERY_MS / (2 * 60_000) - 5 + 1)
-  expect(jiraReads).toHaveLength(2)
-  await ui.unmount()
-})
+)
 
 test('a project with too few pipelines to say how long one usually runs is asked again at the half-hour pace, not at every read', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
@@ -779,7 +794,9 @@ test('a project with too few pipelines to say how long one usually runs is asked
   // The running pipeline has the MR read many times over; its project's run times were asked once.
   expect(asked('Authored')).toBeGreaterThan(3)
   expect(asked('Usual')).toBe(1)
-  await clock.advance(USUAL_EVERY_MS - 20 * 60_000)
+  await clock.advance(USUAL_EVERY_MS - 20 * 60_000 - 60_000)
+  expect(asked('Usual')).toBe(1)
+  await clock.advance(60_000)
   expect(asked('Usual')).toBe(2)
   await ui.unmount()
 })

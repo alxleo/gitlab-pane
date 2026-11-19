@@ -50,8 +50,9 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
   if (!isPassDue(keys, { at: reads.ticketsAt, asked: reads.ticketsAsked }, TICKETS_EVERY_MS, now)) {
     return
   }
-  const found = await runJson($, 'acli', searchArgs(keys), readTickets, { timeoutMs: 60_000 })
+  // Marked before the search, so a new snapshot taken in while it runs (up to a minute) starts no second one.
   await markTicketsRead($, now, keys)
+  const found = await runJson($, 'acli', searchArgs(keys), readTickets, { timeoutMs: 60_000 })
   if (!found.ok) {
     await record($, 'jira', failureOf(found))
     return
@@ -62,7 +63,8 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
 
 /**
  * How long each repo's MR pipelines usually run, every 30 minutes or when a new repo appears; one pass at a time, however
- * long it takes, each project saved as it is read, so one that fails keeps the last of its own and loses no other's.
+ * long it takes, each project saved as it is read, so one that fails keeps the last of its own and loses no other's. A
+ * project that fails is asked again at the next pass, as one that refuses or times out is no cheaper to ask at every read.
  */
 function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
   return joined('usual', async () => {
