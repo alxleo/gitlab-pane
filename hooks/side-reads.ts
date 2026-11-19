@@ -1,14 +1,14 @@
 import type { EngineInterface } from 'claude-code'
 
 import {
+  knowTickets,
+  markTicketsRead,
   markUnreachable,
   markUsualRead,
-  mergeTickets,
   mergeUsual,
   readAvatarsShown,
   readBrowse,
   readReads,
-  readTicketsKnown,
   readUnreachable,
   readUsualKnown,
   setAvatars,
@@ -25,6 +25,7 @@ import { ask } from './graphql'
 import { readTickets, searchArgs } from './jira'
 import { ticketOf } from './format'
 import { pictureUri, sizedAvatar } from './picture'
+import { isPassDue } from './snapshot'
 import { failureOf, runJson } from './tools'
 
 import type { MrCard } from '../types'
@@ -38,25 +39,25 @@ export const USUAL_EVERY_MS = 30 * 60_000
 
 /**
  * Jira's view of the tickets the titles name, every 15 minutes or when a new one appears, while a Jira site is set; a
- * failure (no `acli` installed or signed in, say) keeps the last.
+ * failure (no `acli` installed or signed in, say) keeps the last, and a key Jira does not know waits like the rest.
  */
 export async function readJira($: EngineInterface, rows: readonly MrCard[], now: number): Promise<void> {
   if ((await readBrowse($)) === '') {
     return
   }
   const keys = [...new Set(rows.map(row => ticketOf(row.title)).filter(key => key !== null))]
-  const [known, reads] = await Promise.all([readTicketsKnown($), readReads($)])
-  const isDue = reads.ticketsAt === null || now - reads.ticketsAt >= TICKETS_EVERY_MS
-  if (keys.length === 0 || (!isDue && keys.every(key => key in known))) {
+  const reads = await readReads($)
+  if (!isPassDue(keys, { at: reads.ticketsAt, asked: reads.ticketsAsked }, TICKETS_EVERY_MS, now)) {
     return
   }
   const found = await runJson($, 'acli', searchArgs(keys), readTickets, { timeoutMs: 60_000 })
+  await markTicketsRead($, now, keys)
   if (!found.ok) {
     await record($, 'jira', failureOf(found))
     return
   }
   await clear($, 'jira')
-  await mergeTickets($, found.value, now)
+  await knowTickets($, found.value)
 }
 
 /**
@@ -67,8 +68,8 @@ function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number
   return joined('usual', async () => {
     const projects = [...new Map(rows.map(row => [row.project, row])).values()]
     const [known, reads] = await Promise.all([readUsualKnown($), readReads($)])
-    const isDue = reads.usualAt === null || now - reads.usualAt >= USUAL_EVERY_MS
-    if (projects.length === 0 || (!isDue && projects.every(row => row.project in known))) {
+    const keys = projects.map(row => row.project)
+    if (!isPassDue(keys, { at: reads.usualAt, asked: reads.usualAsked }, USUAL_EVERY_MS, now)) {
       return
     }
     const failures: Failure[] = []
@@ -82,7 +83,7 @@ function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number
         failures.push(asFailure(error, message => `${row.project}: ${message}`))
       }
     }
-    await markUsualRead($, now)
+    await markUsualRead($, now, keys)
     // The run times are GitLab's, so only the leader reads them; the store carries them to the sessions that draw.
     const after = await readUsualKnown($)
     if (!isEqual(after, known)) {

@@ -46,6 +46,21 @@ export const INBOX_EVERY_MS = 60_000
 export function isInboxDue(inboxAt: number | null, now: number, isAsked: boolean): boolean {
   return isAsked || inboxAt === null || now - inboxAt >= INBOX_EVERY_MS
 }
+/** The last pass over some keys (the tickets the titles name, the projects' run times): when it was, and what it asked. */
+export type Pass = { at: number | null; asked: readonly string[] | undefined }
+/**
+ * Whether a pass over `keys` is made now: never made yet, `every` since the last, or a key the last pass did not ask. A key
+ * asked counts as read whatever came of it (an answer, none, an error), so a key that never gets one waits for the next
+ * pass rather than having every key asked again at every read. A pass an older version kept names no key, so the first
+ * read after the update makes one.
+ */
+export function isPassDue(keys: readonly string[], last: Pass, every: number, now: number): boolean {
+  if (keys.length === 0) {
+    return false
+  }
+  const asked = new Set(last.asked ?? [])
+  return last.at === null || now - last.at >= every || keys.some(key => !asked.has(key))
+}
 /** A session that draws no pane but raised an MR looks at it this often, so its wakes still fire. */
 export const WAKE_ONLY_EVERY_MS = 300_000
 
