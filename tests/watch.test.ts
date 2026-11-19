@@ -40,7 +40,7 @@ import { slimCard } from '../hooks/slim'
 import { FULL_EVERY_MS } from '../hooks/incremental'
 import { nextSnapshot, readSnapshot } from '../hooks/snapshot'
 import type { ReadResult } from '../hooks/snapshot'
-import { STAGE_COLOURS } from '../hooks/status'
+import { TONE_COLOURS } from '../hooks/status'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
 
@@ -1263,11 +1263,13 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const faceOf = async (name: string) =>
     String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt?.toString().startsWith(name) === true)?.props?.source)
-  expect(await faceOf('Ines')).toContain(`stroke='${STAGE_COLOURS.success}' stroke-width='3'`)
-  expect(await faceOf('Ines')).toContain(`fill='${STAGE_COLOURS.success}'`)
-  expect(await faceOf('Tessa')).toContain(`stroke='${STAGE_COLOURS.error}' stroke-width='3'`)
-  expect(await faceOf('Tessa')).toContain(`fill='${STAGE_COLOURS.error}'`)
-  expect(await faceOf('Mel')).not.toContain(`fill='${STAGE_COLOURS.subtle}'`)
+  // The ring and the badge are in the tone's class, which the face's own style paints in the app theme's shade.
+  expect(await faceOf('Ines')).toContain(`class='t-success' stroke='currentColor' stroke-width='3'`)
+  expect(await faceOf('Ines')).toContain(`class='t-success' fill='currentColor'`)
+  expect(await faceOf('Ines')).toContain(`.t-success{color:${TONE_COLOURS.success.light}}@media(prefers-color-scheme:dark){.t-success{color:${TONE_COLOURS.success.dark}}}`)
+  expect(await faceOf('Tessa')).toContain(`class='t-error' stroke='currentColor' stroke-width='3'`)
+  expect(await faceOf('Tessa')).toContain(`class='t-error' fill='currentColor'`)
+  expect(await faceOf('Mel')).not.toContain(`fill='currentColor'`)
   expect(await faceOf('Mel')).not.toContain("stroke-width='3'")
   const alts = elementsOf(await ui.drawn())
     .filter(element => element.type === 'Svg')

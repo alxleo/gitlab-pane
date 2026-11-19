@@ -13,7 +13,7 @@ import { EXPIRY_MS, RENEW_MS, TICK_MS } from '../hooks/lease'
 import { FOLLOW_MS, FOLLOW_TRIES, MOVES } from '../hooks/next-move'
 import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
 import { BACKOFF_MAX_MS, INBOX_EVERY_MS, WAKE_ONLY_EVERY_MS, pollEvery } from '../hooks/snapshot'
-import { STAGE_COLOURS, statusMark } from '../hooks/status'
+import { TONE_COLOURS, statusMark } from '../hooks/status'
 import { DESIGN, README } from './docs.generated'
 
 import type { CiStatus, PersonState } from '../types'
@@ -78,8 +78,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
 })
 
 test("DESIGN's colour table is the palette, tone for tone", () => {
-  expect(DESIGN.colours.length).toBe(Object.keys(STAGE_COLOURS).length)
-  expect(Object.fromEntries(DESIGN.colours)).toEqual(STAGE_COLOURS)
+  expect(DESIGN.colours.length).toBe(Object.keys(TONE_COLOURS).length)
+  expect(Object.fromEntries(DESIGN.colours)).toEqual(TONE_COLOURS)
 })
 
 test("DESIGN's pipeline marks are statusMark's, for every status GitLab sends and for no pipeline", () => {

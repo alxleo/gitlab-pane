@@ -1,3 +1,6 @@
+import { raw, svg } from './svg.ts'
+import type { RawSvg, SvgSource } from './svg.ts'
+
 import type { CiStatus } from '../types'
 
 /** Ends a switch over a union, so a new member is a compile error at every switch that does not name it. */
@@ -62,12 +65,32 @@ export function statusMark(status: CiStatus | undefined): { glyph: Glyph; tone: 
   }
 }
 
-export const STAGE_COLOURS: Record<Tone, string> = {
-  success: '#2da44e',
-  error: '#cf222e',
-  warning: '#bf8700',
-  suggestion: '#0969da',
-  subtle: '#8c959f',
+/**
+ * Each tone as the desktop app paints its theme key, in its light theme and its dark one. Text and borders name the key
+ * and the app picks the shade; a picture (a face, the stage strip) cannot name a key, so it carries both shades
+ * (`toneStyle`), and the app's theme picks between them as it switches.
+ */
+export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
+  success: { light: '#2c7a39', dark: '#4eba65' },
+  error: { light: '#ab2b3f', dark: '#ff6b80' },
+  warning: { light: '#966c1e', dark: '#ffc107' },
+  suggestion: { light: '#3d5fe0', dark: '#b1b9f9' },
+  subtle: { light: '#8a8983', dark: '#6f6e69' },
+}
+
+const TONES = Object.keys(TONE_COLOURS).filter((tone): tone is Tone => tone in TONE_COLOURS)
+
+/** The class a picture's part takes to be drawn in a tone: its `fill` or `stroke` is `currentColor`. */
+export const toneClass = (tone: Tone): string => `t-${tone}`
+
+/**
+ * The style a picture carries so each of `tones` is drawn in the app theme's shade: the light one, and the dark one while
+ * the app is dark. Only the tones named, each once, in one order, so equal pictures stay equal.
+ */
+export function toneStyle(tones: readonly Tone[]): SvgSource {
+  const used = TONES.filter(tone => tones.includes(tone))
+  const rules = (shade: 'light' | 'dark'): RawSvg => raw(used.map(tone => svg`.${toneClass(tone)}{color:${TONE_COLOURS[tone][shade]}}`))
+  return used.length === 0 ? svg`` : svg`<style>${rules('light')}@media(prefers-color-scheme:dark){${rules('dark')}}</style>`
 }
 
 export function stageTone(status: CiStatus): Tone {

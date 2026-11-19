@@ -11,7 +11,6 @@ import { buildPane, inboxBand, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { pickedRepo, REPO_ALL } from '../../hooks/repo-filter.ts'
 import { slimCard } from '../../hooks/slim.ts'
-import { STAGE_COLOURS } from '../../hooks/status.ts'
 import { readCardArb } from './arbitrary.ts'
 import { HOST, NOW, gitlabSays, pipe, project, rawMr, thread } from '../fixtures.ts'
 import type { Mr } from '../fixtures.ts'
@@ -95,12 +94,13 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     { ...toCard(HOST, rawMr(16)), mergeStatus: gitlabSays({ NOT_OPEN: 'failed' }) },
   ]
   const { mine, tabs } = modelOf(cards)
-  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
-  expect(Object.fromEntries(mine.rows.map(row => [row.mr.text, [row.border.style, row.border.colour]]))).toEqual({
-    '🔀 !12': ['bold', STAGE_COLOURS.error],
-    '🔀 !13': ['round', STAGE_COLOURS.subtle],
-    '🔀 !14': ['round', STAGE_COLOURS.success],
-    '🔀 !15': ['round', STAGE_COLOURS.success],
+  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green. Each is the
+  // theme's key, so the app paints it in its light or dark shade as its theme switches.
+  expect(Object.fromEntries(mine.rows.map(row => [row.mr.text, [row.border.style, row.border.tone]]))).toEqual({
+    '🔀 !12': ['bold', 'error'],
+    '🔀 !13': ['round', 'subtle'],
+    '🔀 !14': ['round', 'success'],
+    '🔀 !15': ['round', 'success'],
   })
   // The one GitLab says can merge comes first, so finishing comes before the rest; then the failed one, which needs you.
   expect(mine.rows.map(row => row.mr.text)).toEqual(['🔀 !14', '🔀 !12', '🔀 !15', '🔀 !13'])

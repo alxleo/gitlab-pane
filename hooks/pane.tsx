@@ -92,7 +92,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // The colour is the review, in the stage squares' own colours, brighter than the theme's tones; the heavier line
     // is an MR that needs you.
     return (
-      <Box key={row.boxKey} flexDirection="column" borderStyle={row.border.style} borderColor={row.border.colour} hover={{ borderColor: 'claude' }} paddingX={1}>
+      <Box key={row.boxKey} flexDirection="column" borderStyle={row.border.style} borderColor={row.border.tone} hover={{ borderColor: 'claude' }} paddingX={1}>
         {partOf(row, 'line1').element}
         {!row.isQuiet && (fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element)}
         {!row.isQuiet && partOf(row, 'said').element}

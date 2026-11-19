@@ -9,11 +9,11 @@ export const README = {
 
 export const DESIGN = {
   colours: [
-    ['success', '#2da44e'],
-    ['error', '#cf222e'],
-    ['warning', '#bf8700'],
-    ['suggestion', '#0969da'],
-    ['subtle', '#8c959f'],
+    ['success', { light: '#2c7a39', dark: '#4eba65' }],
+    ['error', { light: '#ab2b3f', dark: '#ff6b80' }],
+    ['warning', { light: '#966c1e', dark: '#ffc107' }],
+    ['suggestion', { light: '#3d5fe0', dark: '#b1b9f9' }],
+    ['subtle', { light: '#8a8983', dark: '#6f6e69' }],
   ],
   checkTones: [
     [

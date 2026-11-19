@@ -9,7 +9,7 @@ What each colour, border and mark in the pane means, and the code that holds it.
 | Rule | Means | Code |
 |---|---|---|
 | What you can finish comes first | what GitLab says can merge, then failing or blocked, then running, then waiting on others, then passed | `byAttention`, `hooks/attention.ts` |
-| Colour means the same everywhere | one palette for stages, card borders and reviewer rings | `STAGE_COLOURS`, `hooks/status.ts` |
+| Colour means the same everywhere | one palette for stages, card borders and reviewer rings, in either theme | `TONE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
 | Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
 | Nothing waits for the pointer | no part of a card shows or hides on a hover, so nothing moves under it; the rest of an MR is on its page, a press away | `card.tsx` |
@@ -17,15 +17,15 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 ## Colour
 
-The same in light and dark. Hovering a card turns its border the theme's `claude` colour.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches. Text and card borders name the key and the app paints it. A picture (a face's ring and badge, the stage strip) cannot name a key, so it carries both shades below and the app's theme picks one (`toneStyle`). Hovering a card turns its border the theme's `claude` colour.
 
-| Tone | Colour | Means |
-|---|---|---|
-| `success` | `#2da44e` green | passed, approved |
-| `error` | `#cf222e` red | failed, changes requested, conflicts |
-| `warning` | `#bf8700` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
-| `suggestion` | `#0969da` blue | running, reviewed |
-| `subtle` | `#8c959f` grey | skipped, canceled, not started, waiting on a review |
+| Tone | Light | Dark | Means |
+|---|---|---|---|
+| `success` | `#2c7a39` green | `#4eba65` green | passed, approved |
+| `error` | `#ab2b3f` red | `#ff6b80` red | failed, changes requested, conflicts |
+| `warning` | `#966c1e` amber | `#ffc107` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
+| `suggestion` | `#3d5fe0` blue | `#b1b9f9` blue | running, reviewed |
+| `subtle` | `#8a8983` grey | `#6f6e69` grey | skipped, canceled, not started, waiting on a review |
 
 ## MR cards
 
