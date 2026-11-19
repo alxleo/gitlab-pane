@@ -510,6 +510,31 @@ test('the MRs you merged lately fold at the foot of Mine, a failed build on the 
   await ui.unmount()
 })
 
+test("a search draws your merged MRs and others' inbox MRs that match as links under their own words, and says when nothing matches", async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { merged: landed, squashed, pipelines } = mergedWorld()
+  engine(on, { ...busyWorld(), merged: landed, squashed, pipelines })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(FIRST_SYNC_MS)
+  const linkWords = async () => (await ui.findAll({ type: 'Link' })).map(link => link.text.replace(String(link.props.href), '')).filter(text => text.startsWith('🔀'))
+  const texts = async () => (await ui.findAll({ type: 'Text' })).map(text => text.text)
+
+  await ui.input({ key: 'search', text: 'thing' })
+  expect(await texts()).toEqual(expect.arrayContaining(['Merged', 'Inbox']))
+  expect(await linkWords()).toEqual(expect.arrayContaining(['🔀 !11 thing 11', '🔀 !12 thing 12', '🔀 !13 thing 13', '🔀 !2 thing 2']))
+  await ui.input({ key: 'search', text: 'abc12' })
+  expect(await texts()).toEqual(expect.arrayContaining(['Found · 1', 'Merged']))
+  expect(await texts()).not.toContain('Inbox')
+  expect(await linkWords()).toEqual(['🔀 !12 thing 12'])
+  await ui.input({ key: 'search', text: 'zebra' })
+  expect(await texts()).toEqual(expect.arrayContaining(['Found · 0', 'Nothing the pane holds matches.']))
+  // What is pasted is kept to its first 200 characters, which the box draws back.
+  await ui.input({ key: 'search', text: 'x'.repeat(300) })
+  expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('x'.repeat(200))
+  await ui.unmount()
+})
+
 test('a build that passed is asked for once and kept, a running one at every read, a failed one only after the recheck period, and a squash commit is read once', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = mergedWorld()

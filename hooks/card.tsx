@@ -147,11 +147,6 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
   }
 }
 
-/**
- * One MR merged lately, a line: its link, how long ago it merged, and the build GitLab ran on the commit that landed, a mark in the
- * colour of its status with its pipeline's link, as a card's pipeline is. A merge whose commit could not be told says so and has
- * no mark, never a guessed one.
- */
 /** An inbox MR a search found: its link, then its repo and who wrote it, dim. */
 export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
   const { Box, Text, Link } = kit
@@ -167,6 +162,11 @@ export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
   )
 }
 
+/**
+ * One MR merged lately, a line: its link, how long ago it merged, and the build GitLab ran on the commit that landed, a mark in the
+ * colour of its status with its pipeline's link, as a card's pipeline is. A merge whose commit could not be told says so and has
+ * no mark, never a guessed one.
+ */
 export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
   const { Box, Text, Link } = kit
   const { build } = row
