@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { Desktop, Engine, RigError, messageOf, openPane, title, viewOf } from './pane_engine.ts'
+import { Desktop, Engine, RigError, messageOf, openPane, spawnWire, title, viewOf } from './pane_engine.ts'
 
 async function describe(desktop: Desktop, engine: Engine, show: number, before: { scrolls: number; shown: number }): Promise<string[]> {
   return [
@@ -44,7 +44,8 @@ type Options = {
 
 async function flow(options: Options): Promise<number> {
   const folder = mkdtempSync(join(tmpdir(), 'pane-rig-'))
-  const engine = new Engine(folder, options.log ?? join(folder, 'debug.log'))
+  const log = options.log ?? join(folder, 'debug.log')
+  const engine = new Engine(spawnWire(folder, log), log)
   try {
     await engine.ask({ subtype: 'initialize' })
     const desktop = new Desktop(engine, options.bodyRows)

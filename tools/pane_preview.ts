@@ -20,7 +20,7 @@ import { parseArgs } from 'node:util'
 
 import { isRecord, parseJson, text } from '../hooks/decode.ts'
 import { decodeNode, escape, liveHtml } from './pane_html.ts'
-import { Desktop, Engine, PLUGIN, ROOT, estimate, messageOf, openPane, title, type Json, type Keyed, type Measured } from './pane_engine.ts'
+import { Desktop, Engine, EngineGone, PLUGIN, ROOT, estimate, messageOf, openPane, spawnWire, title, type Json, type Keyed, type Measured } from './pane_engine.ts'
 
 /** The port `.claude/launch.json` names; tools/pane_preview.spec.ts keeps the two equal. */
 export const DEFAULT_PORT = 4780
@@ -99,8 +99,11 @@ export type Action =
   | { readonly kind: 'select'; readonly key: string; readonly value: string }
   | { readonly kind: 'input'; readonly key: string; readonly value: string; readonly submit: boolean }
   | { readonly kind: 'scroll'; readonly offset: number }
-  /** Where the page drew drawing `draw`'s pressable elements, in rows, and how many rows its window shows. */
-  | { readonly kind: 'measured'; readonly draw: number; readonly measured: Measured; readonly bodyRows: number }
+  /**
+   * Where the page drew drawing `draw`'s pressable elements, in rows, and how many rows its window shows; `resized` when
+   * it measured again because its window changed size.
+   */
+  | { readonly kind: 'measured'; readonly draw: number; readonly measured: Measured; readonly bodyRows: number; readonly resized: boolean }
 
 /** What a page asks of the engine, which waits its turn; a measurement does not. */
 type Asked = Exclude<Action, { readonly kind: 'measured' }>
@@ -141,9 +144,13 @@ export class Measurements {
     })
   }
 
-  /** Takes a page's measurement of drawing `draw`. */
-  take(draw: number, measured: Measured): Taken {
-    if (draw !== this.#latest || draw === this.#answered) {
+  /**
+   * Takes a page's measurement of drawing `draw`. One `resized` (the page's window changed size) counts even when the
+   * drawing was measured already; the drawing it then asks for takes only its first measurement, so another tab's cannot
+   * answer back.
+   */
+  take(draw: number, measured: Measured, resized: boolean): Taken {
+    if (draw !== this.#latest || (draw === this.#answered && !resized)) {
       return 'stale'
     }
     this.#answered = draw
@@ -203,9 +210,13 @@ function keyedIn(value: unknown): Keyed {
 }
 
 /** The action a page sent, or an ActionError saying what is wrong with it. */
-export function decodeAction(value: unknown): Action {
+export function decodeAction(value: unknown, run: string): Action {
   if (!isRecord(value)) {
     throw new ActionError('an action is not an object')
+  }
+  // A page left open across a restart, perhaps of another checkout on the same port, must not press in this one's engine.
+  if (value['run'] !== run) {
+    throw new ActionError('this page was served by another run of the preview: reload it')
   }
   switch (value['kind']) {
     case 'press':
@@ -227,7 +238,13 @@ export function decodeAction(value: unknown): Action {
       if (!Array.isArray(keyed)) {
         throw new ActionError('a measurement lists no elements')
       }
-      return { kind: 'measured', draw: rowIn(value, 'draw'), measured: { rows: rowIn(value, 'rows'), keyed: keyed.map(keyedIn) }, bodyRows: Math.max(1, rowIn(value, 'bodyRows')) }
+      return {
+        kind: 'measured',
+        draw: rowIn(value, 'draw'),
+        measured: { rows: rowIn(value, 'rows'), keyed: keyed.map(keyedIn) },
+        bodyRows: Math.max(1, rowIn(value, 'bodyRows')),
+        resized: value['resized'] === true,
+      }
     }
     default:
       throw new ActionError(`no action is called ${JSON.stringify(value['kind'])}`)
@@ -258,7 +275,9 @@ export function isOwnRequest(method: string, headers: IncomingHttpHeaders, port:
  * number. A click on a keyed Button, a pick in a Select, an edit or Enter in an Input, and a scroll the person made are
  * posted by key; a scroll the engine sent moves the body without being posted back.
  */
-const PAGE_SCRIPT = `(() => {
+const pageScript = (run: string): string => `(() => {
+  // The run of the preview that served this page: every action names it, and a server of another run is not answered.
+  const run = ${JSON.stringify(run)}
   const body = document.getElementById('body')
   const note = document.getElementById('note')
   const heading = document.getElementById('title')
@@ -280,14 +299,14 @@ const PAGE_SCRIPT = `(() => {
     sent.set(key, submit ? [] : [...(sent.get(key) || []), value].slice(-50))
     act({ kind: 'input', key, value, submit })
   }
-  const act = action => fetch('/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(action) })
+  const act = action => fetch('/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...action, run }) })
     .then(answer => answer.ok ? null : answer.text().then(said => { note.textContent = said }))
     .catch(() => undefined)
   const holderOf = (target, kind) => {
     const holder = target instanceof Element ? target.closest('[data-kind="' + kind + '"]') : null
     return holder !== null && body.contains(holder) ? holder : null
   }
-  const measure = () => {
+  const measure = (resized = false) => {
     const unit = row()
     const origin = body.getBoundingClientRect().top - body.scrollTop
     const keyed = [...body.querySelectorAll('[data-press-key]')].flatMap(element => {
@@ -296,7 +315,7 @@ const PAGE_SCRIPT = `(() => {
       const top = Math.max(0, Math.floor((box.top - origin) / unit))
       return [{ key: element.dataset.pressKey, top, bottom: Math.max(top, Math.ceil((box.bottom - origin) / unit) - 1) }]
     })
-    act({ kind: 'measured', draw: drawn, rows: Math.ceil(body.scrollHeight / unit), bodyRows: Math.max(1, Math.floor(body.clientHeight / unit)), keyed })
+    act({ kind: 'measured', draw: drawn, rows: Math.ceil(body.scrollHeight / unit), bodyRows: Math.max(1, Math.floor(body.clientHeight / unit)), keyed, resized })
   }
   const show = frame => {
     drawn = frame.draw
@@ -325,11 +344,13 @@ const PAGE_SCRIPT = `(() => {
   }
   const events = new EventSource('/events')
   const read = handle => event => { if (!stopped) handle(JSON.parse(event.data)) }
+  const stop = reason => { stopped = true; note.textContent = reason; note.className = 'stopped'; events.close() }
+  events.addEventListener('hello', read(said => { if (said.run !== run) stop('this page was served by another run of the preview, perhaps of another checkout: reload it') }))
   events.addEventListener('frame', read(frame => { show(frame); if (frame.title !== '') named(frame.title) }))
   events.addEventListener('title', read(said => named(said.title)))
   events.addEventListener('note', read(said => { note.textContent = said.text }))
   events.addEventListener('scroll', read(said => { hush(); body.scrollTop = said.offset * row() }))
-  events.addEventListener('stopped', read(said => { stopped = true; note.textContent = 'stopped: ' + said.reason; note.className = 'stopped'; events.close() }))
+  events.addEventListener('stopped', read(said => stop('stopped: ' + said.reason)))
   events.onerror = () => { if (!stopped) note.textContent = 'the preview is not answering; it may have stopped' }
   body.addEventListener('click', event => {
     const button = holderOf(event.target, 'button')
@@ -363,12 +384,12 @@ const PAGE_SCRIPT = `(() => {
   })
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(() => { if (drawn > 0) measure() }, 200)
+    resizeTimer = setTimeout(() => { if (drawn > 0) measure(true) }, 200)
   })
 })()`
 
 /** The page: which checkout it shows, the pane with its title and scrolling body, and a line for what the engine said. */
-export function pageShell(where: string, width: number | null, nonce: string): string {
+export function pageShell(where: string, width: number | null, nonce: string, run: string): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>GitLab · preview</title>
 <link rel="stylesheet" href="pane.css">
@@ -388,16 +409,26 @@ body { display: flex; flex-direction: column; gap: 8px; }
 <div id="where">${escape(where)}</div>
 <div id="pane"><header><span id="title">GitLab</span><span class="close">×</span></header><main id="body"><span class="text dim">starting the engine…</span></main></div>
 <div id="note"></div>
-<script nonce="${nonce}">${PAGE_SCRIPT}</script>
+<script nonce="${nonce}">${pageScript(run)}</script>
 </body></html>
 `
 }
 
 // ---- the server ---------------------------------------------------------------------------------------------------------
 
+/** A page's stream of events, as the server holds it: an answer to `/events` kept open. */
+export type Watcher = {
+  readonly write: (said: string) => unknown
+  readonly end: () => unknown
+  readonly on: (event: 'close', heard: () => void) => unknown
+}
+
+const event = (name: string, data: Json): string => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`
+
 /** The engine's pane, and every page watching it: what each is sent, and what each asks, one at a time. */
-class Preview {
-  readonly #pages = new Set<ServerResponse>()
+export class Preview {
+  readonly #run: string
+  readonly #pages = new Set<Watcher>()
   readonly #queue: Queued[] = []
   readonly #measurements = new Measurements()
   #desktop: Desktop | null = null
@@ -405,20 +436,27 @@ class Preview {
   #title = ''
   #stopped: string | null = null
 
+  /** `run` names this run of the preview, so a page served by another is told to reload rather than drive this engine. */
+  constructor(run: string) {
+    this.#run = run
+  }
+
   /** Sends one event to every page. */
-  send(event: string, data: Json): void {
-    const said = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+  send(name: string, data: Json): void {
+    const said = event(name, data)
     this.#pages.forEach(page => page.write(said))
   }
 
-  /** A page started watching: it gets the latest drawing, or why the engine stopped. */
-  watch(page: ServerResponse): void {
+  /** A page started watching: it hears which run this is, then the latest drawing, or why the engine stopped. */
+  watch(page: Watcher): void {
     this.#pages.add(page)
     page.on('close', () => this.#pages.delete(page))
+    page.write(event('hello', { run: this.#run }))
     if (this.#stopped !== null) {
-      page.write(`event: stopped\ndata: ${JSON.stringify({ reason: this.#stopped })}\n\n`)
+      page.write(event('stopped', { reason: this.#stopped }))
+      page.end()
     } else if (this.#frame !== null) {
-      page.write(`event: frame\ndata: ${JSON.stringify(this.#frame)}\n\n`)
+      page.write(event('frame', this.#frame))
     }
   }
 
@@ -432,7 +470,7 @@ class Preview {
       return
     }
     this.#desktop?.resize(action.bodyRows)
-    if (this.#measurements.take(action.draw, action.measured) === 'unasked') {
+    if (this.#measurements.take(action.draw, action.measured, action.resized) === 'unasked') {
       this.#queue.push({ kind: 'remeasured', measured: action.measured })
     }
   }
@@ -441,15 +479,14 @@ class Preview {
   readonly measure = async (tree: Json): Promise<Measured> => {
     const draw = this.#measurements.drawn()
     const { html, unknown } = liveHtml(decodeNode(tree))
+    // The wait starts before the drawing goes out, so no answer, however quick, comes before it.
+    const measured = this.#pages.size > 0 ? this.#measurements.wait(draw, MEASURE_MS) : Promise.resolve(null)
     this.#frame = { draw, html, title: this.#title }
     this.send('frame', this.#frame)
     if (unknown.size > 0) {
       this.send('note', { text: `not drawn here: ${[...unknown].toSorted().join(', ')}` })
     }
-    if (this.#pages.size === 0) {
-      return estimate(tree)
-    }
-    return (await this.#measurements.wait(draw, MEASURE_MS)) ?? estimate(tree)
+    return (await measured) ?? estimate(tree)
   }
 
   async #perform(desktop: Desktop, action: Queued): Promise<string> {
@@ -474,7 +511,10 @@ class Preview {
     return said
   }
 
-  /** Runs the engine until it stops: opens the pane, then answers its redraws and scrolls and the pages' actions in turn. */
+  /**
+   * Runs the engine until it stops: opens the pane, then answers its redraws and scrolls and the pages' actions in turn. An
+   * action the engine refuses is a note; an engine that has gone, or began a model turn, ends the run, so the caller stops.
+   */
   async run(engine: Engine, bodyRows: number): Promise<never> {
     const desktop = new Desktop(engine, bodyRows, this.measure)
     this.#desktop = desktop
@@ -489,6 +529,9 @@ class Preview {
         try {
           said = await this.#perform(desktop, action)
         } catch (error) {
+          if (error instanceof EngineGone) {
+            throw error
+          }
           said = `refused: ${messageOf(error)}`
         }
         console.log(said)
@@ -541,60 +584,103 @@ function whereFrom(root: string): string {
 /** Says who holds the port: another checkout's preview, by its checkout, or something else. */
 async function holderOf(port: number): Promise<string> {
   try {
-    const answer: unknown = await (await fetch(`http://127.0.0.1:${port}/about`)).json()
+    // Something that holds the port and never answers is not waited on past this.
+    const answer: unknown = await (await fetch(`http://127.0.0.1:${port}/about`, { signal: AbortSignal.timeout(2000) })).json()
     return `the preview of ${text(isRecord(answer) ? answer['where'] : undefined)}`
   } catch {
     return 'something that is not a preview'
   }
 }
 
+/** What the server serves in one run: fixed when it starts. */
+export type Site = {
+  readonly port: number
+  readonly where: string
+  readonly page: string
+  readonly policy: string
+  /** The folder of pane.css and fonts/. */
+  readonly screens: string
+  readonly fonts: ReadonlySet<string>
+}
+
+/** How the server answers a request: a reply as it is, or the page's event stream, or an action to read and take. */
+export type Answer =
+  | { readonly kind: 'reply'; readonly status: number; readonly headers: Readonly<Record<string, string>>; readonly body: string | Buffer }
+  | { readonly kind: 'events' }
+  | { readonly kind: 'act' }
+
+const reply = (status: number, headers: Readonly<Record<string, string>> = {}, body: string | Buffer = ''): Answer => ({
+  kind: 'reply',
+  status,
+  headers: { ...NO_STORE, ...headers },
+  body,
+})
+
+/** A file the page loads, read before anything is answered, so one that cannot be read is a 404, not a broken answer. */
+function fileAnswer(path: string, type: string): Answer {
+  try {
+    return reply(200, { 'content-type': type }, readFileSync(path))
+  } catch {
+    return reply(404)
+  }
+}
+
+/** How the server answers `method` on `url`: only a request from a page it served, and only for what it serves. */
+export function answerOf(method: string, url: string, headers: IncomingHttpHeaders, site: Site): Answer {
+  if (!isOwnRequest(method, headers, site.port)) {
+    return reply(403, { 'content-type': 'text/plain; charset=utf-8' }, 'this preview answers only pages it served\n')
+  }
+  const path = new URL(url, 'http://127.0.0.1').pathname
+  const font = path.startsWith('/fonts/') ? path.slice('/fonts/'.length) : ''
+  if (method === 'GET' && path === '/') {
+    return reply(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': site.policy, 'x-frame-options': 'DENY' }, site.page)
+  }
+  if (method === 'GET' && path === '/pane.css') {
+    return fileAnswer(join(site.screens, 'pane.css'), 'text/css; charset=utf-8')
+  }
+  if (method === 'GET' && site.fonts.has(font)) {
+    return fileAnswer(join(site.screens, 'fonts', font), 'font/woff2')
+  }
+  if (method === 'GET' && path === '/about') {
+    return reply(200, { 'content-type': 'application/json' }, JSON.stringify({ where: site.where }))
+  }
+  if (method === 'GET' && path === '/events') {
+    return { kind: 'events' }
+  }
+  if (method === 'POST' && path === '/act') {
+    return { kind: 'act' }
+  }
+  return reply(404)
+}
+
 async function serve(options: Options): Promise<number> {
-  const preview = new Preview()
+  const run = randomUUID()
+  const preview = new Preview(run)
   const where = whereFrom(ROOT)
   const nonce = randomUUID()
-  const fonts = new Set(readdirSync(join(SCREENS, 'fonts')).filter(name => name.endsWith('.woff2')))
-  const page = pageShell(where, options.width, nonce)
-  const policy = policyFor(nonce)
-  /** A file the page loads, read before anything is answered, so one that cannot be read is a 404, not a broken answer. */
-  const file = (response: ServerResponse, path: string, type: string): void => {
-    let body: Buffer
-    try {
-      body = readFileSync(path)
-    } catch {
-      response.writeHead(404, NO_STORE).end()
-      return
-    }
-    response.writeHead(200, { ...NO_STORE, 'content-type': type }).end(body)
+  const site: Site = {
+    port: options.port,
+    where,
+    page: pageShell(where, options.width, nonce, run),
+    policy: policyFor(nonce),
+    screens: SCREENS,
+    fonts: new Set(readdirSync(join(SCREENS, 'fonts')).filter(name => name.endsWith('.woff2'))),
   }
 
   const answer = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
-    const method = request.method ?? 'GET'
-    if (!isOwnRequest(method, request.headers, options.port)) {
-      response.writeHead(403, NO_STORE).end('this preview answers only pages it served\n')
-      return
-    }
-    const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
-    const font = path.startsWith('/fonts/') ? path.slice('/fonts/'.length) : ''
-    if (method === 'GET' && path === '/') {
-      response.writeHead(200, { ...NO_STORE, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': policy, 'x-frame-options': 'DENY' }).end(page)
-    } else if (method === 'GET' && path === '/pane.css') {
-      file(response, join(SCREENS, 'pane.css'), 'text/css; charset=utf-8')
-    } else if (method === 'GET' && fonts.has(font)) {
-      file(response, join(SCREENS, 'fonts', font), 'font/woff2')
-    } else if (method === 'GET' && path === '/about') {
-      response.writeHead(200, { ...NO_STORE, 'content-type': 'application/json' }).end(JSON.stringify({ where }))
-    } else if (method === 'GET' && path === '/events') {
+    const answered = answerOf(request.method ?? 'GET', request.url ?? '/', request.headers, site)
+    if (answered.kind === 'reply') {
+      response.writeHead(answered.status, answered.headers).end(answered.body)
+    } else if (answered.kind === 'events') {
       response.writeHead(200, { ...NO_STORE, 'content-type': 'text/event-stream', connection: 'keep-alive' })
       preview.watch(response)
-    } else if (method === 'POST' && path === '/act') {
+    } else {
       try {
-        preview.take(decodeAction(parseJson(await readBody(request))))
+        preview.take(decodeAction(parseJson(await readBody(request)), run))
         response.writeHead(204, NO_STORE).end()
       } catch (error) {
         response.writeHead(400, { ...NO_STORE, 'content-type': 'text/plain; charset=utf-8' }).end(`refused: ${messageOf(error)}`)
       }
-    } else {
-      response.writeHead(404, NO_STORE).end()
     }
   }
   const server = createServer((request, response) => {
@@ -622,7 +708,8 @@ async function serve(options: Options): Promise<number> {
   mkdirSync(folder)
   console.log(`pane-preview: http://127.0.0.1:${options.port} shows ${where}`)
 
-  const engine = new Engine(folder, options.log ?? join(folder, 'debug.log'))
+  const log = options.log ?? join(folder, 'debug.log')
+  const engine = new Engine(spawnWire(folder, log), log)
   const end = (code: number) => {
     engine.close()
     server.close()

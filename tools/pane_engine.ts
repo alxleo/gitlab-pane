@@ -49,45 +49,70 @@ export const keyOf = (element: Json): string => text(record(element['props'])['k
 
 // ---- the engine ---------------------------------------------------------------------------------------------------------
 
-/** A headless claude process spoken to over its stream-json control protocol. */
+/** The engine has gone: it exited, or never started. Nothing more can be asked of it, so whoever runs it stops. */
+export class EngineGone extends RigError {}
+
+/** The line-by-line connection to an engine. The real one is a `claude -p` process; a spec's is a stand-in. */
+export type Wire = {
+  /** Sends one line to the engine. */
+  readonly send: (line: string) => void
+  /** Hears each line the engine writes. */
+  readonly onLine: (heard: (line: string) => void) => void
+  /** Hears, once, how the engine went. */
+  readonly onGone: (heard: (how: string) => void) => void
+  readonly close: () => void
+}
+
+/** A headless `claude -p` in `cwd`, on this checkout's mod, writing its debug log to `debugFile`. */
+export function spawnWire(cwd: string, debugFile: string): Wire {
+  const proc: ChildProcessByStdio<Writable, Readable, null> = spawn(
+    'claude',
+    [
+      '-p',
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--strict-mcp-config',
+      '--mcp-config',
+      '{"mcpServers":{}}',
+      '--plugin-dir',
+      ROOT,
+      '--debug-file',
+      debugFile,
+    ],
+    { stdio: ['pipe', 'pipe', 'ignore'], cwd }
+  )
+  return {
+    send: line => proc.stdin.write(line),
+    onLine: heard => createInterface({ input: proc.stdout }).on('line', heard),
+    onGone: heard => {
+      proc.on('exit', code => heard(`exited (${code ?? -1})`))
+      // A `claude` that cannot be started is said so by the next ask, not thrown where nothing catches it.
+      proc.on('error', error => heard(`could not start (${error.message})`))
+    },
+    close: () => proc.kill('SIGKILL'),
+  }
+}
+
+/** A headless engine spoken to over its stream-json control protocol. */
 export class Engine {
-  readonly #proc: ChildProcessByStdio<Writable, Readable, null>
-  readonly #debugFile: string
+  readonly #wire: Wire
+  readonly #debugFile: string | null
   readonly #events: Json[] = []
   readonly #responses = new Map<string, Json>()
   #ids = 0
   #debugSeen = 0
-  #exited: string | null = null
+  #gone: string | null = null
 
-  constructor(cwd: string, debugFile: string) {
+  constructor(wire: Wire, debugFile: string | null) {
+    this.#wire = wire
     this.#debugFile = debugFile
-    this.#proc = spawn(
-      'claude',
-      [
-        '-p',
-        '--input-format',
-        'stream-json',
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        '--strict-mcp-config',
-        '--mcp-config',
-        '{"mcpServers":{}}',
-        '--plugin-dir',
-        ROOT,
-        '--debug-file',
-        debugFile,
-      ],
-      { stdio: ['pipe', 'pipe', 'ignore'], cwd }
-    )
-    this.#proc.on('exit', code => {
-      this.#exited = `exited (${code ?? -1})`
+    wire.onGone(how => {
+      this.#gone ??= how
     })
-    // A `claude` that cannot be started is said so by the next ask, not thrown where nothing catches it.
-    this.#proc.on('error', error => {
-      this.#exited = `could not start (${error.message})`
-    })
-    createInterface({ input: this.#proc.stdout }).on('line', line => {
+    wire.onLine(line => {
       let message: unknown
       try {
         message = parseJson(line)
@@ -106,11 +131,19 @@ export class Engine {
     })
   }
 
+  /** Throws EngineGone once the engine has gone, naming what was going on. */
+  #alive(during: string): void {
+    if (this.#gone !== null) {
+      throw new EngineGone(`the engine ${this.#gone} during ${during}`)
+    }
+  }
+
   async ask(request: Json, waitSeconds = 60): Promise<Json> {
+    const subtype = String(request['subtype'])
+    this.#alive(subtype)
     this.#ids += 1
     const id = `rig-${this.#ids}`
-    const subtype = String(request['subtype'])
-    this.#proc.stdin.write(`${JSON.stringify({ type: 'control_request', request_id: id, request })}\n`)
+    this.#wire.send(`${JSON.stringify({ type: 'control_request', request_id: id, request })}\n`)
     const end = Date.now() + waitSeconds * 1000
     while (Date.now() < end) {
       const response = this.#responses.get(id)
@@ -121,14 +154,13 @@ export class Engine {
         }
         return record(response['response'])
       }
-      if (this.#exited !== null) {
-        throw new RigError(`the engine ${this.#exited} during ${subtype}`)
-      }
+      this.#alive(subtype)
       await sleep(20)
     }
     throw new RigError(`${subtype}: no answer in ${waitSeconds.toFixed(0)}s`)
   }
 
+  /** The engine's next event within `timeoutMs`, or null when it was quiet; EngineGone once it has gone and said all it wrote. */
   async nextEvent(timeoutMs: number): Promise<Json | null> {
     const end = Date.now() + timeoutMs
     while (this.#events.length === 0 && Date.now() < end) {
@@ -136,6 +168,7 @@ export class Engine {
     }
     const event = this.#events.shift()
     if (event === undefined) {
+      this.#alive('a quiet spell')
       return null
     }
     const type = event['type']
@@ -146,7 +179,7 @@ export class Engine {
   }
 
   newLogLines(): string[] {
-    if (!existsSync(this.#debugFile)) {
+    if (this.#debugFile === null || !existsSync(this.#debugFile)) {
       return []
     }
     const written = readFileSync(this.#debugFile, 'utf8').split('\n')
@@ -157,7 +190,7 @@ export class Engine {
   }
 
   close(): void {
-    this.#proc.kill('SIGKILL')
+    this.#wire.close()
   }
 }
 
