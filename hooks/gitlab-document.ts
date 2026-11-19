@@ -2,8 +2,11 @@
 // a document that defines a fragment it does not use, and one that uses a fragment it does not define, so the list of
 // fragments is read off the text rather than kept beside it by hand.
 
-/** A named spread, `...MrFields`. An inline fragment is written `... on Type`, with a space, and is not one. */
-const SPREAD = /\.\.\.([A-Z]\w*)/gu
+/**
+ * A named spread, `...MrFields`, which GraphQL also reads with space between the dots and the name, or a lowercase name.
+ * An inline fragment, `... on Type`, is not one: `on` is the one name a fragment may not have.
+ */
+const SPREAD = /\.\.\.\s*(?!on\b)([A-Z_a-z]\w*)/gu
 
 /** The name a fragment's text defines. */
 function nameOf(fragment: string): string {

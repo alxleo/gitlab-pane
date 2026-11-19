@@ -1,10 +1,12 @@
 import { expect, test } from 'vitest'
-import { Kind, parse } from 'graphql'
+import { Kind, parse, visit } from 'graphql'
 
 import { mergeWrite } from '../../hooks/ask-merge.ts'
 import { moveStateQuery } from '../../hooks/ask-move-state.ts'
 import { COMPLEXITY, DOCUMENTS, isWrite } from '../../hooks/gitlab-operations.ts'
 import type { Operations } from '../../hooks/gitlab-operations.ts'
+import { INBOX_FRAGMENTS } from '../../hooks/inbox-fragments.ts'
+import { MR_FRAGMENTS } from '../../hooks/mr-fragments.ts'
 
 const isOperation = (name: string): name is keyof Operations => Object.hasOwn(DOCUMENTS, name)
 
@@ -28,12 +30,30 @@ test('no write is scored: scoring a document sends it to gitlab.com', () => {
   expect(Object.keys(COMPLEXITY).filter(name => isOperation(name) && isWrite({ operation: name }))).toEqual([])
 })
 
+/** The names of the fragments a document defines. */
+const definedIn = (text: string): string[] => parse(text).definitions.flatMap(definition => (definition.kind === Kind.FRAGMENT_DEFINITION ? [definition.name.value] : []))
+
+/** The names of the fragments a document spreads, as GraphQL reads them rather than as `documentOf` finds them. */
+const spreadIn = (text: string): Set<string> => {
+  const names = new Set<string>()
+  visit(parse(text), {
+    FragmentSpread: spread => {
+      names.add(spread.name.value)
+    },
+  })
+  return names
+}
+
 test('every document holds its operation and exactly the fragments it uses, each once, as GitLab requires', () => {
   for (const [name, text] of Object.entries(DOCUMENTS)) {
-    const definitions = parse(text).definitions
-    const fragments = definitions.flatMap(definition => (definition.kind === Kind.FRAGMENT_DEFINITION ? [definition.name.value] : []))
-    const spread = new Set([...text.matchAll(/\.\.\.([A-Z]\w*)/gu)].map(([, used = '']) => used))
-    expect([name, definitions.filter(definition => definition.kind === Kind.OPERATION_DEFINITION).length]).toEqual([name, 1])
-    expect([name, fragments.toSorted()]).toEqual([name, [...spread].toSorted()])
+    const operations = parse(text).definitions.filter(definition => definition.kind === Kind.OPERATION_DEFINITION)
+    expect([name, operations.length]).toEqual([name, 1])
+    expect([name, definedIn(text).toSorted()]).toEqual([name, [...spreadIn(text)].toSorted()])
   }
+})
+
+test('every fragment of a family is sent in some document, so none sits there unused', () => {
+  const sent = new Set(Object.values(DOCUMENTS).flatMap(definedIn))
+  const listed = [...MR_FRAGMENTS, ...INBOX_FRAGMENTS].flatMap(definedIn)
+  expect(listed.filter(name => !sent.has(name))).toEqual([])
 })

@@ -19,6 +19,13 @@ test('a document that spreads no fragment is its operation alone, and an inline 
   expect(documentOf(operation, [A, B, C])).toBe(operation)
 })
 
+test('a spread written with a space after its dots, or with a lowercase name, is followed like any other', () => {
+  const lower = fragment('b', 'name')
+  const operation = 'query Q { thing { ... A ...\n b } }'
+  expect(documentOf(operation, [lower, C, A])).toBe(operation + lower + C + A)
+  expect(documentOf('query Q { thing { ... on Other { id } ...online } }', [fragment('online', 'id')])).toContain('fragment online')
+})
+
 test('a spread its family has no fragment for throws, as GitLab would refuse the document', () => {
   expect(() => documentOf('query Q { thing { ...Missing } }', [A, C])).toThrow('Missing')
   expect(() => documentOf('query Q { thing { ...A } }', [A])).toThrow('C')
