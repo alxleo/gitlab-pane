@@ -1,7 +1,8 @@
 // pane-html: a tree the pane drew, turned into the web page tools/screens/pane.css styles as the desktop app draws it.
 //
-// `npm run screens` photographs these pages for the README. The page is this module's reading of the element tree, not the
-// desktop app's own paint: when the app's look changes, change pane.css.
+// `npm run screens` photographs these pages for the README, and `npm run preview` draws the engine's live tree with them,
+// its keyed elements marked so a click, a pick or typing goes back by key. The page is this module's reading of the element
+// tree, not the desktop app's own paint: when the app's look changes, change pane.css.
 import MarkdownIt from 'markdown-it'
 
 import { isRecord, isSome, text } from '../hooks/decode.ts'
@@ -426,17 +427,32 @@ const MARK_CLASS: Record<Mark, string> = { same: ' delta-same', changed: ' delta
  */
 const DELTA_STYLE = '<style>.delta-same { filter: opacity(0.3); } .delta-changed { outline: 2px solid #d97706; outline-offset: 2px; border-radius: 3px; }</style>'
 
-/** The tree as HTML; `unknown` collects what it could not draw, so the run can say so. `key` is the nearest keyed Box around. */
-function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: ReadonlyMap<Drawn, Mark>, key: string | null = null): string {
+/**
+ * How one tree is drawn: what the pointer lights, what a delta picture marks, and whether the page is live. `unknown`
+ * collects what could not be drawn, so the run can say so.
+ */
+type Drawing = { readonly lit: Lit; readonly marks: ReadonlyMap<Drawn, Mark>; readonly live: boolean; readonly unknown: Set<string> }
+
+/**
+ * A live page's mark on an element a person can press, pick in or type in, as the desktop marks what it measures: the
+ * element's key and which of the three it is. A picture draws none.
+ */
+function pressable(node: Node, drawing: Drawing, kind: 'button' | 'select' | 'input'): string {
+  const key = node.props['key']
+  return drawing.live && isText(key) && key !== '' ? ` data-press-key="${escape(key)}" data-kind="${kind}"` : ''
+}
+
+/** The tree as HTML. `key` is the nearest keyed Box around. */
+function draw(node: Node | string, drawing: Drawing, key: string | null = null): string {
   if (isText(node)) {
     return escape(node)
   }
-  unknownProps(node).forEach(name => unknown.add(name))
+  unknownProps(node).forEach(name => drawing.unknown.add(name))
   const nearest = node.type === 'Box' && isText(node.props['key']) ? node.props['key'] : key
-  const props = { ...node.props, ...hovered(node, nearest, lit) }
-  const inner = node.children.map(child => draw(child, lit, unknown, marks, nearest)).join('')
+  const props = { ...node.props, ...hovered(node, nearest, drawing.lit) }
+  const inner = node.children.map(child => draw(child, drawing, nearest)).join('')
   const label = escape(text(props['label']))
-  const mark = marks.get(node)
+  const mark = drawing.marks.get(node)
   const marked = mark !== undefined ? MARK_CLASS[mark] : ''
   switch (node.type) {
     case 'Box': {
@@ -449,7 +465,9 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
     }
     case 'Link': {
       const href = text(props['href'])
-      return `<a class="link${marked}" href="${escape(href)}">${inner === '' ? escape(text(props['label'] ?? props['href'])) : inner}</a>`
+      // A live page opens a link beside itself, as the desktop opens it in the browser.
+      const away = drawing.live ? ' target="_blank" rel="noopener noreferrer"' : ''
+      return `<a class="link${marked}" href="${escape(href)}"${away}>${inner === '' ? escape(text(props['label'] ?? props['href'])) : inner}</a>`
     }
     case 'Button': {
       const variant = props['variant']
@@ -459,22 +477,37 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
         variant === 'primary' || variant === 'secondary' ? variant : '',
         props['dimColor'] === true ? 'dim' : '',
       ].filter(each => each !== '')
-      return `<button class="${classes.join(' ')}${marked}">${inner === '' ? label : inner}</button>`
+      return `<button class="${classes.join(' ')}${marked}"${pressable(node, drawing, 'button')}>${inner === '' ? label : inner}</button>`
     }
     case 'Select': {
       // Closed, as a picker sits on the page: its label, the picked option's text (the first's when none is picked) and the
-      // mark that opens the list.
+      // mark that opens the list. A live page's picker opens.
       const options = Array.isArray(props['options']) ? props['options'].filter(isRecord) : []
       const picked = options.find(option => option['value'] === props['value']) ?? options[0]
+      const head = label !== '' ? `${label} ` : ''
+      if (drawing.live) {
+        const choices = options.map(option => {
+          const value = text(option['value'])
+          return `<option value="${escape(value)}"${option === picked ? ' selected' : ''}>${escape(text(option['label'] ?? option['value']))}</option>`
+        })
+        return `<span class="select${marked}"${pressable(node, drawing, 'select')}>${head}<select>${choices.join('')}</select></span>`
+      }
       const shown = picked !== undefined ? text(picked['label'] ?? picked['value']) : ''
-      return `<span class="select${marked}">${label !== '' ? `${label} ` : ''}${escape(shown)}<span class="caret">▾</span></span>`
+      return `<span class="select${marked}">${head}${escape(shown)}<span class="caret">▾</span></span>`
     }
     case 'Input': {
-      // Without focus: its label, then the field with the text it holds, or its placeholder dim, as tall as its rows.
+      // Without focus: its label, then the field with the text it holds, or its placeholder dim, as tall as its rows. A live
+      // page's field takes typing, and notes the text it was drawn with.
       const value = text(props['value'])
       const rows = typeof props['rows'] === 'number' ? Math.max(1, Math.trunc(props['rows'])) : 1
+      const head = label !== '' ? `<span>${label}</span>` : ''
+      if (drawing.live) {
+        const held = `class="field" placeholder="${escape(text(props['placeholder']))}" data-drawn="${escape(value)}"`
+        const field = rows > 1 ? `<textarea ${held} rows="${rows}">${escape(value)}</textarea>` : `<input ${held} value="${escape(value)}">`
+        return `<span class="input${marked}"${pressable(node, drawing, 'input')}>${head}${field}</span>`
+      }
       const field = value !== '' ? escape(value) : `<span class="dim">${escape(text(props['placeholder']))}</span>`
-      return `<span class="input${marked}">${label !== '' ? `<span>${label}</span>` : ''}<span class="field" style="min-height: ${rows * 1.5}em">${field}</span></span>`
+      return `<span class="input${marked}">${head}<span class="field" style="min-height: ${rows * 1.5}em">${field}</span></span>`
     }
     case 'Svg': {
       // An Svg's size is CSS pixels, not cells.
@@ -489,14 +522,14 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
         const size = `width: ${space(props['columns'], 'x') ?? 'None'}; height: ${space(props['rows'], 'y') ?? 'None'}`
         return `<img class="svg${marked}" alt="${escape(text(props['alt']))}" style="${size}" src="data:image/png;base64,${png}">`
       }
-      return undrawn(node, unknown)
+      return undrawn(node, drawing.unknown)
     }
     case 'Markdown':
       return `<div class="md${props['dimColor'] === true ? ' dim' : ''}${marked}">${MARKDOWN.render(text(props['text']))}</div>`
     case 'Code':
       return `<div class="code${props['wrap'] === 'truncate-end' ? ' cut' : ''}${marked}">${codeRows(text(props['source']), props['format'] === 'diff', props['startLine'])}</div>`
     default:
-      return undrawn(node, unknown)
+      return undrawn(node, drawing.unknown)
   }
 }
 
@@ -537,12 +570,22 @@ function undrawn(node: Node, unknown: Set<string>): string {
 }
 
 /**
+ * The pane's body as a live page draws it: each keyed Button, Select and Input marked with its key, so the page can send a
+ * click, a pick or typing back by it; no hover lit and no delta marked. `unknown` is what it could not draw.
+ */
+export function liveHtml(tree: Node): { readonly html: string; readonly unknown: ReadonlySet<string> } {
+  const unknown = new Set<string>()
+  const html = draw(tree, { lit: { scopes: new Set(), keys: new Set() }, marks: new Map(), live: true, unknown })
+  return { html, unknown }
+}
+
+/**
  * The scene's page; `width` overrides pane.css's own only when the command line gave one. With `marks`, it is the scene's
  * delta picture: what was drawn before fades, and what is new or changed keeps its look, outlined.
  */
 export function pageHtml(scene: Scene, width: number | null, marks: ReadonlyMap<Drawn, Mark> = new Map()): { readonly document: string; readonly unknown: Set<string> } {
   const unknown = new Set<string>()
-  const body = draw(scene.tree, { scopes: new Set(scene.hover), keys: new Set(scene.hoverKeys) }, unknown, marks)
+  const body = draw(scene.tree, { lit: { scopes: new Set(scene.hover), keys: new Set(scene.hoverKeys) }, marks, live: false, unknown })
   const override = `${width === null ? '' : `<style>:root { --pane-width: ${width}px; }</style>`}${marks.size > 0 ? DELTA_STYLE : ''}`
   const title = escape(scene.title)
   const document = `<!doctype html>

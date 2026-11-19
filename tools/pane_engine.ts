@@ -19,7 +19,8 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { isRecord, parseJson, text } from '../hooks/decode.ts'
 
 export const PANE_ID = 'gitlab-pane'
-const PLUGIN = 'gitlab-pane'
+/** The plugin a measured element belongs to: the mod's id. */
+export const PLUGIN = 'gitlab-pane'
 /** The checkout this file is in: the mod the engine runs is this one, whichever copy is installed. */
 export const ROOT = join(import.meta.dirname, '..')
 /** Characters a row holds, for estimating how many rows text takes. */

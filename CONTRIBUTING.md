@@ -36,6 +36,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run schema -- <check\|snapshot\|types>` | `check`: every query against gitlab.com's live schema, and what each costs; `snapshot`: refresh the snapshot; `types`: regenerate the types. |
 | `npm run screens -- <render\|setup\|scenes>` | `render` photographs the pane in Chromium for `docs/screens`; `setup` fetches Chromium; `scenes` runs the scenes. |
 | `npm run rig -- flow` | Drives the pane through a headless engine. |
+| `npm run preview` | Serves the pane this checkout draws, live from your GitLab, on 127.0.0.1 (`--help`; [what it cannot show](#checking-the-pane-in-the-desktop-app)). |
 | `npm run shot -- <capture\|press\|tour\|windows>` | Photographs and presses the pane in the running desktop app; Mac only ([when](#checking-the-pane-in-the-desktop-app)). |
 | `npm run commit-msg` | commitlint on a message file (the commit-msg hook). |
 | `npm run pr-title` | commitlint on stdin (CI, for a pull request's title). |
@@ -99,7 +100,17 @@ It compares elements, not pixels, so a row that only moved down stays faded. The
 
 ## Checking the pane in the desktop app
 
-The rig and the shot answer different questions. `npm run rig -- flow` stands in for the desktop: it asks a headless engine for drawings, presses and scrolls as the desktop would, and prints what came back. It runs anywhere, CI included, so reach for it first, for anything about what the mod draws or how it answers.
+The rig, the preview and the shot answer different questions. `npm run rig -- flow` stands in for the desktop: it asks a headless engine for drawings, presses and scrolls as the desktop would, and prints what came back. It runs anywhere, CI included, so reach for it first, for anything about what the mod draws or how it answers.
+
+`npm run preview` is the same engine drawn in a browser, so a branch can be looked at and used without loading it in the desktop app, whatever copy is installed there. In the Claude app, start `pane-preview` from `.claude/launch.json` in the browser pane; elsewhere, open http://127.0.0.1:4780. The page redraws whenever the engine does, and clicks, picks in a picker, typing, Enter and scrolling go back to the engine by element key. They reach GitLab as they would from the desktop app, so a merge pressed here is a merge. A second checkout needs `--port`; the page names the checkout and branch it shows.
+
+The preview draws with the screenshots' stylesheet, not the app's own paint, so it cannot show what only the desktop app does:
+- it draws a Button's `label` and not its children, so a symbol in a Button's children shows here and not there;
+- an Input keeps the person's typing across redraws in its own way, which the preview only approximates;
+- it draws a blank pane past 100,000 characters (`DRAWING_BUDGET`), which the preview draws in full;
+- hover cards, the app's fonts and its window's width.
+
+`npm run shot` stays for those.
 
 `npm run shot` looks at the real desktop app on a Mac. Reach for it when the question is what the app itself does with the drawing: whether a click lands, where a hover card pushes the rows, how a narrow window wraps a card, or a bug the rig cannot reproduce. It reads the pane off the screen with macOS text recognition, clicks and scrolls through Hammerspoon, and writes the pane alone as a PNG. The pictures show real MR titles and names, so write them outside the checkout:
 
