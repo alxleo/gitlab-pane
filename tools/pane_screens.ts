@@ -199,6 +199,7 @@ const DRAWN = new Map<string, ReadonlySet<string>>([
   ['Text', new Set(['color', 'backgroundColor', 'dimColor', 'size', 'weight', 'bold', 'mono', 'tabular', 'italic', 'underline', 'strikethrough', 'inverse', 'wrap'])],
   ['Button', new Set(['label', 'variant', 'plain', 'dimColor'])],
   ['Select', new Set(['label', 'options', 'value'])],
+  ['Input', new Set(['label', 'placeholder', 'value', 'rows'])],
   ['Link', new Set(['href', 'label'])],
   ['Svg', new Set(['source', 'alt', 'width', 'height'])],
   ['Image', new Set(['source', 'alt', 'columns', 'rows'])],
@@ -212,6 +213,8 @@ const KEPT = new Map<string, ReadonlySet<string>>([
   ['Text', new Set(['dir'])],
   ['Button', new Set(['key', 'hotkey', 'action', 'role', 'autoFocus'])],
   ['Select', new Set(['key', 'autoFocus'])],
+  // What Enter is called is drawn beside the field only while it has focus, and no scene has focus.
+  ['Input', new Set(['key', 'autoFocus', 'submitLabel'])],
   ['Link', new Set()],
   ['Svg', new Set(['isInteractive'])],
   ['Image', new Set(['key'])],
@@ -503,6 +506,13 @@ function draw(node: Node | string, lit: Lit, unknown: Set<string>, marks: Readon
       const picked = options.find(option => option['value'] === props['value']) ?? options[0]
       const shown = picked !== undefined ? text(picked['label'] ?? picked['value']) : ''
       return `<span class="select${marked}">${label !== '' ? `${label} ` : ''}${escape(shown)}<span class="caret">▾</span></span>`
+    }
+    case 'Input': {
+      // Without focus: its label, then the field with the text it holds, or its placeholder dim, as tall as its rows.
+      const value = text(props['value'])
+      const rows = typeof props['rows'] === 'number' ? Math.max(1, Math.trunc(props['rows'])) : 1
+      const field = value !== '' ? escape(value) : `<span class="dim">${escape(text(props['placeholder']))}</span>`
+      return `<span class="input${marked}">${label !== '' ? `<span>${label}</span>` : ''}<span class="field" style="min-height: ${rows * 1.5}em">${field}</span></span>`
     }
     case 'Svg': {
       // An Svg's size is CSS pixels, not cells.
