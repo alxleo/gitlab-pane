@@ -86,6 +86,8 @@ hooks/pane-model.ts
 hooks/pane-status.ts
 hooks/repo-filter.ts
 hooks/row-facts.ts
+hooks/search.ts
+hooks/found-model.ts
 hooks/strip-model.ts
 hooks/first-run.ts
 hooks/detail.ts

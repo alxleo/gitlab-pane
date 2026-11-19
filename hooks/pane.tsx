@@ -1,8 +1,8 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { drawMerged, drawPart } from './card'
+import { drawFound, drawMerged, drawPart } from './card'
 import type { RowPart } from './card'
-import { filterRepo, toggle, toggleWake } from './choices'
+import { filterRepo, setSearch, toggle, toggleWake } from './choices'
 import { CHROME_SIZE, DRAWING_BUDGET, measure } from './drawing'
 import { quietly } from './failures'
 import { inboxNews } from './inbox'
@@ -22,10 +22,31 @@ import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const { pinned, rows, details, avatars, tickets, usual, expanded, chosen, folds, repoFilter, tab, page, poll, isReading, isWaking, browse, failures, pressed, here, now } =
-    await view($)
+  const {
+    pinned,
+    rows,
+    details,
+    avatars,
+    tickets,
+    usual,
+    expanded,
+    chosen,
+    folds,
+    repoFilter,
+    search,
+    tab,
+    page,
+    poll,
+    isReading,
+    isWaking,
+    browse,
+    failures,
+    pressed,
+    here,
+    now,
+  } = await view($)
   const kit = kitOf($, e, now)
-  const { Box, Text, Button } = kit
+  const { Box, Text, Button, Input } = kit
   // Only the open tab or page is drawn, so the MR list, the inbox and one MR read whole each have all the app draws.
   const isInbox = tab === 'inbox'
   // The cards are the shared ones; the MR read whole has its description and threads put back (detail.ts reads them).
@@ -58,7 +79,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
   }
 
-  const { isSyncing, landed, ...news } = await inboxNews($)
+  const { isSyncing, landed, mrs, ...news } = await inboxNews($)
   const model = buildPane(
     {
       cards,
@@ -71,6 +92,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       view: isInbox ? 'inbox' : reading !== undefined ? 'reading' : 'mine',
       news,
       landed,
+      // A surface with no search box searches for nothing, so it never shows a search it could not end.
+      search: Input !== undefined ? search : '',
+      inbox: mrs,
       poll,
       isReading,
       isSyncing,
@@ -136,16 +160,42 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
               ))}
             </Box>,
           ]
+  // The search box tops Mine; Enter searches, so typing redraws nothing, and ✕ ends the search.
+  const searchRow =
+    Input !== undefined
+      ? [
+          <Box flexDirection="row" columnGap={1} alignItems="center">
+            <Box flexGrow={1} flexShrink={1}>
+              <Input key="search" label="🔍" placeholder="!iid, ticket, title, branch or author" value={search} submitLabel="find" onSubmit={text => setSearch($, text)} />
+            </Box>
+            {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => setSearch($, '')} />}
+          </Box>,
+        ]
+      : []
+  const { found } = model
+  const list =
+    found !== null
+      ? [
+          <Text weight="semibold">{found.heading}</Text>,
+          ...(found.isEmpty ? [<Text dimColor>Nothing the pane holds matches.</Text>] : []),
+          ...found.rows.map(draw),
+          ...(found.merged.length > 0 ? [<Text dimColor>Merged</Text>, ...found.merged.map(row => drawMerged(kit, row))] : []),
+          ...(found.inbox.length > 0 ? [<Text dimColor>Inbox</Text>, ...found.inbox.map(row => drawFound(kit, row))] : []),
+        ]
+      : [
+          ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),
+          ...(others !== null ? [<Button key="others" plain label={others.label} onPress={() => toggle($, 'others')} />] : []),
+          ...rest,
+        ]
   const mineTab = [
+    ...searchRow,
     ...filterRow,
     ...model.firstRun.map(line => (
       <Text color="warning" size="footnote">
         {line}
       </Text>
     )),
-    ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),
-    ...(others !== null ? [<Button key="others" plain label={others.label} onPress={() => toggle($, 'others')} />] : []),
-    ...rest,
+    ...list,
     ...(model.leftOut !== null ? [<Text dimColor>{model.leftOut}</Text>] : []),
     // Last, and outside what folds under the others, so a failed build on the fold line is never out of sight.
     ...(merged !== null ? [<Button key="merged" plain label={merged.label} onPress={() => toggle($, 'merged')} />, ...merged.rows.map(row => drawMerged(kit, row))] : []),

@@ -20,10 +20,22 @@ const choicesAtom = atom({ plugin: 'gitlab-pane', key: 'choices' } as const, {
   wake: true,
 } satisfies Choices)
 
+// What was searched for, apart from the choices: a key of its own reads empty in a session whose choices an older version kept.
+// Written on Enter alone, so typing redraws nothing and a redraw never puts back an older text over what is being typed.
+const searchAtom = atom({ plugin: 'gitlab-pane', key: 'search' } as const, '')
+
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnChoices($: EngineInterface) {
-  const { expanded, person, folds, repoFilter, tab, reading, wake } = await read($, choicesAtom)
-  return { expanded, chosen: person, folds, repoFilter, tab, page: reading, isWaking: wake }
+  const [{ expanded, person, folds, repoFilter, tab, reading, wake }, search] = await Promise.all([read($, choicesAtom), read($, searchAtom)])
+  return { expanded, chosen: person, folds, repoFilter, tab, page: reading, isWaking: wake, search }
+}
+
+/** Searches the MRs the pane holds for `text`; an empty one ends the search. */
+export function setSearch($: EngineInterface, text: string): void {
+  quietly(
+    $,
+    update($, searchAtom, () => text)
+  )
 }
 
 export async function readTab($: EngineInterface): Promise<string> {

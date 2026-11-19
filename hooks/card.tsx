@@ -1,6 +1,7 @@
 import type { EngineInterface, RenderChildren } from 'claude-code'
 
 import { face } from './faces'
+import type { InboxRow } from './found-model'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
@@ -151,6 +152,21 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
  * colour of its status with its pipeline's link, as a card's pipeline is. A merge whose commit could not be told says so and has
  * no mark, never a guessed one.
  */
+/** An inbox MR a search found: its link, then its repo and who wrote it, dim. */
+export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
+  const { Box, Text, Link } = kit
+  return (
+    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+      <Box flexShrink={0}>
+        <Link href={row.mr.href}>{row.mr.text}</Link>
+      </Box>
+      <Text dimColor size="footnote">
+        {row.about}
+      </Text>
+    </Box>
+  )
+}
+
 export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
   const { Box, Text, Link } = kit
   const { build } = row
