@@ -180,7 +180,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ...(found.isEmpty ? [<Text dimColor>Nothing the pane holds matches.</Text>] : []),
           ...found.rows.map(draw),
           ...(found.merged.length > 0 ? [<Text dimColor>Merged</Text>, ...found.merged.map(row => drawMerged(kit, row))] : []),
+          ...(found.mergedMore !== null ? [<Text dimColor>{found.mergedMore}</Text>] : []),
           ...(found.inbox.length > 0 ? [<Text dimColor>Inbox</Text>, ...found.inbox.map(row => drawFound(kit, row))] : []),
+          ...(found.inboxMore !== null ? [<Text dimColor>{found.inboxMore}</Text>] : []),
         ]
       : [
           ...(model.session.length > 0 ? [<Text weight="semibold">This session</Text>, ...model.session.map(draw)] : []),

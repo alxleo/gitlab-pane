@@ -3,10 +3,13 @@
 // what each MR is called, and this says which match and in what order.
 import { cut } from './graphemes.ts'
 
-/** What a typed search looks for: each word folded to letters and digits, the ones typed with `!` an MR's number alone. */
+/**
+ * What a typed search looks for: each word folded to letters and digits. One typed with `!` is an MR's number alone; the repo
+ * of a pasted address or reference is a repo's whole path or its last parts, never part of another repo's name.
+ */
 export type Query = { words: readonly Word[] }
 
-type Word = { text: string; isIid: boolean }
+type Word = { text: string; kind: 'any' | 'iid' | 'repo' }
 
 /** What of an MR a search reads. `people` are its author's username and name, where known. */
 export type Findable = { iid: number; title: string; branch: string; repo: string; people: readonly string[] }
@@ -49,33 +52,48 @@ const wordsOf = (text: string): string[] =>
 const ticketsOf = (text: string): string[] => [...text.matchAll(/\p{L}+[-_ ]?\p{N}+/gu)].map(([match]) => fold(match))
 
 /**
- * A word as typed, or pasted: an MR's address (`https://host/group/repo/-/merge_requests/12`) or GitLab's reference to it
- * (`group/repo!12`) is its repo and its number, `!12`.
+ * A word as typed, or pasted: an MR's address anywhere in it (`https://host/group/repo/-/merge_requests/12`, in a Markdown link
+ * or angle brackets too) or GitLab's reference to it (`group/repo!12`, punctuation around it aside) is its repo and number.
  */
-function piecesOf(raw: string): string[] {
-  const address = /^https?:\/\/[^/]+\/(.+?)\/-\/merge_requests\/(\p{N}+)/u.exec(raw)
-  const reference = /^(.+)!(\p{N}+)$/u.exec(raw)
+function wordsTyped(raw: string): Word[] {
+  const address = /https?:\/\/[^/\s]+\/(.+?)\/(?:-\/)?merge_requests\/(\p{N}+)/u.exec(raw)
+  const bare = raw.replace(/^[<([{"'`]+|[>)\]}"'`,.;:]+$/gu, '')
+  const reference = /^([^!]+)!(\p{N}+)$/u.exec(bare)
   const [, repo, iid] = address ?? reference ?? []
-  return repo !== undefined && iid !== undefined ? [repo, `!${iid}`] : [raw]
+  if (repo !== undefined && iid !== undefined) {
+    return [
+      { text: fold(repo), kind: 'repo' },
+      { text: iid, kind: 'iid' },
+    ]
+  }
+  return [{ text: fold(raw), kind: bare.startsWith('!') && /^\p{N}+$/u.test(fold(raw)) ? 'iid' : 'any' }]
 }
 
 /** The search typed, or null when it holds nothing to look for, which shows the list as it is. */
 export function queryOf(text: string): Query | null {
   const words = text
     .split(/\s+/u)
-    .flatMap(piecesOf)
-    .map(raw => ({ text: fold(raw), isIid: raw.startsWith('!') && /^\p{N}+$/u.test(fold(raw)) }))
+    .flatMap(wordsTyped)
     .filter(word => word.text !== '')
   return words.length > 0 ? { words } : null
+}
+
+/** Whether `text` is the repo's path, or its last parts (`web`, `group/web`), folded. */
+const isRepo = (text: string, path: string): boolean => {
+  const parts = path.split('/')
+  return parts.some((_, i) => fold(parts.slice(i).join('/')) === text)
 }
 
 /** How well one word matches the MR, or null when it does not. */
 function tierOf(word: Word, mr: Findable): number | null {
   const iid = String(mr.iid)
+  if (word.kind === 'repo') {
+    return isRepo(word.text, mr.repo) ? TIER.start : null
+  }
   if (word.text === iid) {
     return TIER.iid
   }
-  if (word.isIid) {
+  if (word.kind === 'iid') {
     return null
   }
   const texts = [mr.title, mr.branch, mr.repo, ...mr.people]

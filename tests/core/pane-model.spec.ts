@@ -390,6 +390,16 @@ test('a search lists what matches in place of the list, past the repo picked and
   expect(modelOf(cards, { search: 'order' }, () => 1_000, 1_500).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
 })
 
+test('MRs a search finds that match as well come in the order the list puts them, most pressing first', () => {
+  const plain = toCard(HOST, rawMr(1, { title: 'Retry one', headPipeline: pipe('SUCCESS') }))
+  const failing = toCard(HOST, rawMr(2, { title: 'Retry two', headPipeline: pipe('FAILED') }))
+  const ready = { ...toCard(HOST, rawMr(3, { title: 'Retry three', headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() }
+  const cards = [plain, failing, ready]
+  const listed = modelOf(cards).mine.rows.map(row => row.key)
+  expect(listed).not.toEqual(cards.map(card => card.key))
+  expect(modelOf(cards, { search: 'retry' }).found?.rows.map(row => row.key)).toEqual(listed)
+})
+
 test("a search finds the user's merged MRs and others' in the inbox as links, leaving the cards the room their rows take", () => {
   const cards = [51, 52, 53, 54, 55].map(iid => toCard(HOST, rawMr(iid, { title: `fix: Retry ${iid}` })))
   const landed = [landedOf(61, { title: 'fix: Retry payments' }), landedOf(62, { title: 'feat: Other' })]

@@ -5,7 +5,7 @@ import { toCard } from '../../hooks/gitlab.ts'
 import { cardKey } from '../../hooks/hosts.ts'
 import { queryOf } from '../../hooks/search.ts'
 import type { Query } from '../../hooks/search.ts'
-import { HOST, NOW, rawMr } from '../fixtures.ts'
+import { HOST, NOW, SELF_MANAGED, rawMr } from '../fixtures.ts'
 
 import type { InboxMr, Landed, MrCard } from '../../types'
 
@@ -65,10 +65,18 @@ test('an MR the search shows as a card or a merged row is not listed again from 
   expect(found.inbox.map(row => row.key)).toEqual([cardKey(HOST, 'g/shop', 7)])
 })
 
-test('the inbox lists the few that match best, the inbox tab holding the rest', () => {
+test('the inbox lists the few that match best, counts the rest and says the inbox tab holds them', () => {
   const many = Array.from({ length: INBOX_FOUND_SHOWN + 3 }, (_, i) => inboxOf(100 + i, `Retry ${i}`))
-  expect(matchesOf(query('retry'), held({ inbox: many })).inbox).toHaveLength(INBOX_FOUND_SHOWN)
+  const matches = matchesOf(query('retry'), held({ inbox: many }))
+  expect(matches.inbox).toHaveLength(INBOX_FOUND_SHOWN)
+  expect(foundList(matches, () => [])).toMatchObject({ heading: `Found · ${INBOX_FOUND_SHOWN + 3}`, inboxMore: '+3 more in the Inbox tab', mergedMore: null })
   expect(matchesOf(query('!107'), held({ inbox: many })).inbox.map(row => row.mr.text)).toEqual(['🔀 !107 Retry 7'])
+})
+
+test('merged matches past the five shown are counted and said', () => {
+  const two = (host: string, iids: number[]) => iids.map(iid => ({ ...landedOf(iid, `Retry ${iid}`), host }))
+  const matches = matchesOf(query('retry'), held({ landed: [...two(HOST, [1, 2, 3, 4, 5]), ...two(SELF_MANAGED, [6, 7])] }))
+  expect(foundList(matches, () => [])).toMatchObject({ heading: 'Found · 7', mergedMore: '+2 more merged', inboxMore: null })
 })
 
 test('merged MRs come in the order the search ranks them, not when they merged', () => {
@@ -79,14 +87,34 @@ test('merged MRs come in the order the search ranks them, not when they merged',
   expect(matchesOf(query('retry'), held({ landed })).merged.map(row => row.key)).toEqual([cardKey(HOST, 'g/p', 19), cardKey(HOST, 'g/p', 9)])
 })
 
-test('the merged MRs a search keeps are the five that match best of those merged in the last three days, not the five newest', () => {
-  const newer = [101, 102, 103, 104, 105, 106].map(iid => landedOf(iid, `fix: 9 ${iid}`, NOW - 60_000))
-  const exact = landedOf(9, 'fix: nine', NOW - 40 * 3_600_000)
-  const old = landedOf(99, 'fix: nine again', NOW - 4 * 86_400_000)
+test('of the merged MRs the pane holds, five from each host, a search keeps the five that match best, not the five newest', () => {
+  // What the inbox's read keeps: the newest five merged on each host within three days, and what a failing host left, older.
+  const newer = [101, 102, 103, 104, 105].map(iid => landedOf(iid, `fix: 9 ${iid}`, NOW - 60_000))
+  const exact = { ...landedOf(9, 'fix: nine', NOW - 40 * 3_600_000), host: SELF_MANAGED }
+  const old = { ...landedOf(99, 'fix: nine again', NOW - 4 * 86_400_000), host: SELF_MANAGED }
   const keys = matchesOf(query('9'), held({ landed: [...newer, exact, old] })).merged.map(row => row.key)
   expect(keys).toHaveLength(5)
-  expect(keys[0]).toBe(cardKey(HOST, 'g/p', 9))
-  expect(keys).not.toContain(cardKey(HOST, 'g/p', 99))
+  expect(keys[0]).toBe(cardKey(SELF_MANAGED, 'g/p', 9))
+  expect(keys).not.toContain(cardKey(SELF_MANAGED, 'g/p', 99))
+})
+
+test('of merged MRs that match as well, from two hosts, the newest are kept and come first', () => {
+  const older = [1, 2, 3, 4, 5].map(iid => landedOf(iid, `Retry ${iid}`, NOW - (75 - iid * 10) * 3_600_000))
+  const newest = [6, 7].map(iid => ({ ...landedOf(iid, `Retry ${iid}`, NOW - (iid - 5) * 60_000), host: SELF_MANAGED }))
+  const keys = matchesOf(query('retry'), held({ landed: [...older, ...newest] })).merged.map(row => row.key)
+  expect(keys).toEqual([cardKey(SELF_MANAGED, 'g/p', 6), cardKey(SELF_MANAGED, 'g/p', 7), cardKey(HOST, 'g/p', 5), cardKey(HOST, 'g/p', 4), cardKey(HOST, 'g/p', 3)])
+})
+
+test('a merged MR still listed as a card takes none of the five merged places', () => {
+  const card = toCard(HOST, rawMr(10, { title: 'Retry ten' }))
+  const landed = [landedOf(10, 'Retry ten', NOW - 60_000), ...[1, 2, 3, 4, 5].map(iid => landedOf(iid, `Retry ${iid}`, NOW - iid * 3_600_000))]
+  expect(matchesOf(query('retry'), held({ cards: [card], landed })).merged.map(row => row.key)).toEqual([1, 2, 3, 4, 5].map(iid => cardKey(HOST, 'g/p', iid)))
+})
+
+test('an open MR is found by its author and its branch', () => {
+  const card = toCard(HOST, rawMr(5, { title: 'Other', author: { username: 'maya.ortiz' }, sourceBranch: 'feature/het-1200-totals' }))
+  expect(matchesOf(query('maya'), held({ cards: [card] })).cards.map(each => each.iid)).toEqual([5])
+  expect(matchesOf(query('het1200'), held({ cards: [card] })).cards.map(each => each.iid)).toEqual([5])
 })
 
 test('an inbox MR is found by its author’s name and its repo, a merged one by its repo', () => {
@@ -98,6 +126,14 @@ test('an inbox MR is found by its author’s name and its repo, a merged one by 
 
 test('the list counts all it found, cards, merged and inbox, and says when it found nothing', () => {
   const found = matchesOf(query('retry'), held({ cards: [toCard(HOST, rawMr(5, { title: 'Retry' }))], landed: [landedOf(6, 'Retry')], inbox: [inboxOf(7, 'Retry')] }))
-  expect(foundList(found, cards => cards.map(card => card.iid))).toEqual({ heading: 'Found · 3', isEmpty: false, rows: [5], merged: found.merged, inbox: found.inbox })
+  expect(foundList(found, cards => cards.map(card => card.iid))).toEqual({
+    heading: 'Found · 3',
+    isEmpty: false,
+    rows: [5],
+    merged: found.merged,
+    mergedMore: null,
+    inbox: found.inbox,
+    inboxMore: null,
+  })
   expect(foundList(matchesOf(query('zebra'), held({})), () => [])).toMatchObject({ heading: 'Found · 0', isEmpty: true })
 })

@@ -74,6 +74,22 @@ test("an MR's address or GitLab's reference to it, pasted, finds it by its repo 
   expect(repos('web!12')).toEqual(['g/web!12'])
   expect(repos('https://gitlab.com/g/api/-/merge_requests/1')).toEqual(['g/api!1'])
   expect(repos('https://gitlab.com/g/web/-/merge_requests/12/diffs')).toEqual(['g/web!12'])
+  // Wrapped as a message wraps them, in a Markdown link, or in GitLab's older address without its `/-/`.
+  expect(repos('<https://gitlab.com/g/api/-/merge_requests/1>')).toEqual(['g/api!1'])
+  expect(repos('[!12](https://gitlab.com/g/web/-/merge_requests/12)')).toEqual(['g/web!12'])
+  expect(repos('https://gitlab.com/g/web/merge_requests/12')).toEqual(['g/web!12'])
+  expect(repos('(g/web!12),')).toEqual(['g/web!12'])
+})
+
+test("a pasted reference's repo is the repo's whole path or its last parts, never part of another repo's name", () => {
+  const near = [mr(5, { repo: 'grp/sub/web' }), mr(5, { repo: 'grp/website' }), mr(5, { repo: 'g/web-store' })]
+  const repos = (text: string) => {
+    const query = queryOf(text)
+    return query !== null ? found(query, near, each => each).map(each => each.repo) : []
+  }
+  expect(repos('web!5')).toEqual(['grp/sub/web'])
+  expect(repos('sub/web!5')).toEqual(['grp/sub/web'])
+  expect(repos('web-store!5')).toEqual(['g/web-store'])
 })
 
 test('a ticket named by the branch alone ranks above a title word that only starts with it', () => {
