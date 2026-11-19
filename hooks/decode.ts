@@ -1,7 +1,7 @@
 // Small hand-written decoders for what the outside tools print: each takes `unknown` and gives a typed value or throws
 // with a message the pane can show. No library, since a mod's npm packages cannot be relied on at runtime.
 import { Failure } from './failure.ts'
-import type { RawResponse } from './gitlab-documents.ts'
+import type { RawResponse } from './gitlab-request.ts'
 
 import type { Usual } from '../types'
 
@@ -66,7 +66,7 @@ export const field = (value: unknown, key: string): unknown => (isRecord(value) 
 
 /**
  * GitLab's GraphQL answer: an object with `data` (an object or null) and perhaps `errors`. What is inside `data` is
- * read where it is used, by gitlab.ts, which owns the documents.
+ * read where it is used, by the `ask-*.ts` module that owns the document.
  */
 export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (!isRecord(raw)) {

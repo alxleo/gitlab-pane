@@ -4,7 +4,7 @@ import { cut } from './graphemes.ts'
 import { foreign, line, lines, NAME_ROOM, URL_ROOM } from './model-text.ts'
 import type { ModelLine } from './model-text.ts'
 
-import type { InboxBriefQuery } from './gitlab.generated.ts'
+import type { Brief } from './ask-inbox-brief.ts'
 
 /** Characters of one description, of one comment, and of all the threads of one MR that the briefing carries. */
 const DESCRIPTION_ROOM = 6_000
@@ -12,55 +12,6 @@ const NOTE_ROOM = 1_500
 const THREADS_ROOM = 20_000
 /** One line of what someone wrote. */
 const LINE_ROOM = 400
-
-type BriefNote = { id: string; author: string; at: string; body: string }
-type BriefThread = { isResolvable: boolean; isResolved: boolean; notes: BriefNote[] }
-
-/** One MR as the briefing needs it. */
-export type Brief = {
-  path: string
-  iid: number
-  title: string
-  url: string
-  state: string
-  isDraft: boolean
-  author: string
-  source: string
-  target: string
-  description: string
-  threads: BriefThread[]
-}
-
-/** The MR a `InboxBrief` answer holds, or null when GitLab found none (no such MR, or one the token cannot see). */
-export function readBrief(data: InboxBriefQuery | null): Brief | null {
-  const mr = data?.project?.mergeRequest
-  if (mr === null || mr === undefined) {
-    return null
-  }
-  const threads = (mr.discussions.nodes ?? []).flatMap((thread): BriefThread[] => {
-    if (thread === null) {
-      return []
-    }
-    // A system note ("added 2 commits") is GitLab's own bookkeeping, not what anyone wrote.
-    const notes = (thread.notes.nodes ?? []).flatMap((note): BriefNote[] =>
-      note === null || note.system ? [] : [{ id: note.id, author: note.author?.username ?? 'ghost', at: note.createdAt, body: note.body }]
-    )
-    return notes.length > 0 ? [{ isResolvable: thread.resolvable, isResolved: thread.resolved, notes }] : []
-  })
-  return {
-    path: mr.project.fullPath,
-    iid: Number(mr.iid),
-    title: mr.title,
-    url: mr.webUrl ?? '',
-    state: mr.state,
-    isDraft: mr.draft,
-    author: mr.author?.username ?? 'ghost',
-    source: mr.sourceBranch,
-    target: mr.targetBranch,
-    description: mr.description ?? '',
-    threads,
-  }
-}
 
 /** The margin every line of someone else's words carries, so none can pass for the briefing's own. */
 const MARK = '│'

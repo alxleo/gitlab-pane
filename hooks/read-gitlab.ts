@@ -1,13 +1,13 @@
 import type { EngineInterface } from 'claude-code'
 
 import { asFailure, Failure } from './failure'
-import { jobsWanted, lostIn, readMergeStatus, readPinned, readResponse } from './gitlab'
-import { AUTHORED_PAGE, authoredQuery } from './authored-request'
-import type { AuthoredScope } from './authored-request'
-import { pinnedQuery } from './gitlab-documents'
-import { mergeStatusQuery } from './merge-gitlab'
-import { threadsQuery, withThreads } from './page-documents'
+import { AUTHORED_PAGE, authoredQuery, jobsWanted, listedMrs, lostIn } from './ask-authored'
+import type { AuthoredScope } from './ask-authored'
+import { mergeStatusQuery, readMergeStatus } from './ask-merge-status'
+import { pinnedMr, pinnedQuery } from './ask-pinned'
+import { threadsQuery, withThreads } from './ask-threads'
 import { askVariant } from './graphql'
+import { toCard } from './mr-card'
 import { cursorAfter, mergeReads, movingRows, scopeFor } from './incremental'
 import { pinKey } from './mr-url'
 import { slimCard, slimChecks } from './slim'
@@ -71,7 +71,7 @@ async function readHost($: EngineInterface, input: HostAsk): Promise<HostRead> {
         return null
       }),
   ])
-  const fetched = readResponse(host, authored).map(slimCard)
+  const fetched = listedMrs(authored).map(raw => slimCard(toCard(host, raw)))
   const lost = lostIn(authored)
   // A delta that fills a page may have more behind it, which a whole read has.
   if (scope.kind === 'since' && fetched.length + lost >= AUTHORED_PAGE) {
@@ -126,7 +126,8 @@ export function readGitLab($: EngineInterface, inputs: readonly HostAsk[]): Prom
 
 /** One MR read on its own, as a shared card; none when GitLab names no such MR or project (out of reach). */
 export async function readSingle($: EngineInterface, pin: Pinned): Promise<MrCard | null> {
-  return readPinned(pin.host, await askVariant($, pin.host, features => pinnedQuery(pin, features))).map(slimCard)[0] ?? null
+  const raw = pinnedMr(await askVariant($, pin.host, features => pinnedQuery(pin, features)))
+  return raw !== null ? slimCard(toCard(pin.host, raw)) : null
 }
 
 /**
@@ -141,8 +142,8 @@ export async function readWhole($: EngineInterface, pin: Pinned): Promise<MrCard
       (error: unknown) => ({ reason: asFailure(error).message })
     ),
   ])
-  const card = readPinned(pin.host, whole)[0]
-  return card !== undefined ? withThreads(card, threads) : null
+  const raw = pinnedMr(whole)
+  return raw !== null ? withThreads(toCard(pin.host, raw), threads) : null
 }
 
 /** Each of the MRs a session raised, read one by one, for a session that draws no pane. A host that fails loses only its own. */

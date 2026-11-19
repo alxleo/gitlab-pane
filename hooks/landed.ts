@@ -2,14 +2,12 @@
 // commit each put on its target branch, and what is left to ask GitLab of each (the squash commit, the build). Pure, on plain
 // data; landed-read.ts asks. The inbox carries the list (its snapshot is the one every session already shares), so a session
 // that only draws has it without asking GitLab for anything.
-import { dataOf, isFilled, isRecord, parseJson, present, timeOf } from './decode.ts'
-import { Failure } from './failure.ts'
-import type { InboxAuthoredQuery, LandedQuery } from './gitlab.generated.ts'
-import { CI_STATUSES, ciStatusOf } from './gitlab-status.ts'
-import type { RawResponse } from './gitlab-documents.ts'
+import { mergedNodes } from './ask-inbox-authored.ts'
+import { isFilled, isRecord, timeOf } from './decode.ts'
+import type { InboxAuthoredQuery } from './gitlab.generated.ts'
+import { CI_STATUSES } from './gitlab-status.ts'
 import { cut } from './graphemes.ts'
 import { siteOf } from './hosts.ts'
-import { mergedNodes } from './inbox-gitlab.ts'
 import { TITLE_ROOM } from './inbox-rules.ts'
 import { isSettled } from './status.ts'
 
@@ -115,40 +113,6 @@ export function landingOf(merged: Pick<Merged, 'mergeCommitSha' | 'diffHeadSha'>
   }
   const sha = squash ?? diffHeadSha
   return sha !== null ? { kind: 'landed', sha } : { kind: 'unknown' }
-}
-
-/** The REST path of an MR, whose entity names its squash commit. */
-export const mergeRequestPath = (path: string, iid: number): string => `projects/${encodeURIComponent(path)}/merge_requests/${iid}`
-
-/** What GitLab's REST answer for an MR says of its squash commit: its sha, or null when it names none. One that is no entity throws. */
-export function squashShaOf(answer: { status: number; text: string }): string | null {
-  if (answer.status < 200 || answer.status >= 300) {
-    throw new Failure(answer.status >= 500 ? 'server' : 'bad-answer', `GitLab answered HTTP ${answer.status} for the merge request`)
-  }
-  let entity: unknown
-  try {
-    entity = parseJson(answer.text)
-  } catch {
-    throw new Failure('bad-answer', 'GitLab answered a merge request that is not JSON')
-  }
-  if (!isRecord(entity)) {
-    throw new Failure('bad-answer', 'GitLab answered a merge request that is not an object')
-  }
-  const sha = entity.squash_commit_sha
-  return typeof sha === 'string' && sha !== '' ? sha : null
-}
-
-/**
- * The newest pipeline GitLab ran on a commit on the target branch that no schedule started, or null when it ran none (or the
- * project is out of reach). The document asks for the newest pipelines and, beside them, for the scheduled ones among the newest:
- * a nightly pipeline runs on the branch's head, is newer than the merge's own, and says nothing of the merge (GitLab's own
- * `merge_pipeline` leaves schedules out).
- */
-export function buildOf(host: string, fallback: string, response: RawResponse<LandedQuery>): LandedBuild | null {
-  const project = dataOf(response).project
-  const scheduled = new Set(present(project?.scheduled?.nodes).map(one => one.id))
-  const pipeline = present(project?.pipelines?.nodes).find(one => !scheduled.has(one.id))
-  return pipeline !== undefined ? { status: ciStatusOf(pipeline.status), url: isFilled(pipeline.path) ? `${siteOf(host)}${pipeline.path}` : fallback } : null
 }
 
 /**
