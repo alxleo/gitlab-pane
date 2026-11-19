@@ -1,5 +1,5 @@
 import { raw, svg } from './svg.ts'
-import type { RawSvg, SvgSource } from './svg.ts'
+import type { RawSvg } from './svg.ts'
 
 import type { CiStatus } from '../types'
 
@@ -68,7 +68,7 @@ export function statusMark(status: CiStatus | undefined): { glyph: Glyph; tone: 
 /**
  * Each tone as the desktop app paints its theme key, in its light theme and its dark one. Text and borders name the key
  * and the app picks the shade; a picture (a face, the stage strip) cannot name a key, so it carries both shades
- * (`toneStyle`), and the app's theme picks between them as it switches.
+ * (`tonePaint`), and the app's theme picks between them as it switches.
  */
 export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
   success: { light: '#2c7a39', dark: '#4eba65' },
@@ -78,19 +78,19 @@ export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
   subtle: { light: '#8a8983', dark: '#6f6e69' },
 }
 
-const TONES = Object.keys(TONE_COLOURS).filter((tone): tone is Tone => tone in TONE_COLOURS)
-
-/** The class a picture's part takes to be drawn in a tone: its `fill` or `stroke` is `currentColor`. */
-export const toneClass = (tone: Tone): string => `t-${tone}`
+/**
+ * What a picture's root `<svg>` carries so the parts painted by `tonePaint` follow the app's theme: it takes the light or
+ * dark scheme the app prefers, where a picture would otherwise stay light.
+ */
+export const FOLLOWS_THEME: RawSvg = raw(svg`style='color-scheme:light dark'`)
 
 /**
- * The style a picture carries so each of `tones` is drawn in the app theme's shade: the light one, and the dark one while
- * the app is dark. Only the tones named, each once, in one order, so equal pictures stay equal.
+ * Paints a picture's part (its `fill` or `stroke`) in a tone, the light shade or the dark one as the app's theme is: the
+ * attribute holds the light shade, for a surface that knows no `light-dark()`, and the style both. About 60 characters.
  */
-export function toneStyle(tones: readonly Tone[]): SvgSource {
-  const used = TONES.filter(tone => tones.includes(tone))
-  const rules = (shade: 'light' | 'dark'): RawSvg => raw(used.map(tone => svg`.${toneClass(tone)}{color:${TONE_COLOURS[tone][shade]}}`))
-  return used.length === 0 ? svg`` : svg`<style>${rules('light')}@media(prefers-color-scheme:dark){${rules('dark')}}</style>`
+export const tonePaint = (paint: 'fill' | 'stroke', tone: Tone): RawSvg => {
+  const { light, dark } = TONE_COLOURS[tone]
+  return raw(svg`${paint}='${light}' style='${paint}:light-dark(${light},${dark})'`)
 }
 
 export function stageTone(status: CiStatus): Tone {

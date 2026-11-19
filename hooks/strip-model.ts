@@ -2,7 +2,7 @@
 // counted in the image's tooltip; any other stage is its own square with its name, state and time. A surface without
 // Svg gets a glyph per stage, from `tones`. Pure; the draw layer only puts the source in an Svg.
 import { duration, plural, ranFor } from './format.ts'
-import { stageTone, toneClass, toneStyle } from './status.ts'
+import { FOLLOWS_THEME, stageTone, tonePaint } from './status.ts'
 import type { Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { SvgSource } from './svg.ts'
@@ -46,7 +46,7 @@ const passed = (stage: Stage | undefined): boolean => stage?.status === 'success
 export function stripModel(stages: Stage[], now: number): StripModel {
   const marks = stages.map((stage, i) => {
     if (!passed(stage)) {
-      return svg`<use href='#s' x='${i * 12}' class='${toneClass(stageTone(stage.status))}' fill='currentColor'><title>${stageLine(stage, now)}</title></use>`
+      return svg`<use href='#s' x='${i * 12}' ${tonePaint('fill', stageTone(stage.status))}><title>${stageLine(stage, now)}</title></use>`
     }
     if (passed(stages[i - 1])) {
       return svg``
@@ -56,12 +56,11 @@ export function stripModel(stages: Stage[], now: number): StripModel {
   })
   const count = stages.filter(passed).length
   const width = stages.length * 12
-  const tones = stages.map(stage => stageTone(stage.status))
   return {
-    tones,
+    tones: stages.map(stage => stageTone(stage.status)),
     width,
     alt: `${stages.length} stages`,
-    // Passed runs fill with the pattern, so it is there only when a stage passed, and with it the passed tone's shades.
-    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${raw(toneStyle(tones))}${raw(count > 0 ? svg`<title>${plural(count, 'stage')} passed</title>` : svg``)}<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' class='${toneClass('success')}' fill='currentColor'/></pattern>` : svg``)}</defs>${raw(marks)}</svg>`,
+    // Passed runs fill with the pattern, so it is there only when a stage passed.
+    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10' ${FOLLOWS_THEME}>${raw(count > 0 ? svg`<title>${plural(count, 'stage')} passed</title>` : svg``)}<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>${raw(marks)}</svg>`,
   }
 }

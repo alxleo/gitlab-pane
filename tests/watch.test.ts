@@ -1263,13 +1263,16 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const faceOf = async (name: string) =>
     String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt?.toString().startsWith(name) === true)?.props?.source)
-  // The ring and the badge are in the tone's class, which the face's own style paints in the app theme's shade.
-  expect(await faceOf('Ines')).toContain(`class='t-success' stroke='currentColor' stroke-width='3'`)
-  expect(await faceOf('Ines')).toContain(`class='t-success' fill='currentColor'`)
-  expect(await faceOf('Ines')).toContain(`.t-success{color:${TONE_COLOURS.success.light}}@media(prefers-color-scheme:dark){.t-success{color:${TONE_COLOURS.success.dark}}}`)
-  expect(await faceOf('Tessa')).toContain(`class='t-error' stroke='currentColor' stroke-width='3'`)
-  expect(await faceOf('Tessa')).toContain(`class='t-error' fill='currentColor'`)
-  expect(await faceOf('Mel')).not.toContain(`fill='currentColor'`)
+  // The ring and the badge are in the tone's light shade, and its dark one while the app is dark.
+  const paint = (prop: 'fill' | 'stroke', tone: 'success' | 'error' | 'subtle') =>
+    `${prop}='${TONE_COLOURS[tone].light}' style='${prop}:light-dark(${TONE_COLOURS[tone].light},${TONE_COLOURS[tone].dark})'`
+  expect(await faceOf('Ines')).toContain("style='color-scheme:light dark'")
+  expect(await faceOf('Ines')).toContain(`${paint('stroke', 'success')} stroke-width='3'`)
+  expect(await faceOf('Ines')).toContain(paint('fill', 'success'))
+  expect(await faceOf('Tessa')).toContain(`${paint('stroke', 'error')} stroke-width='3'`)
+  expect(await faceOf('Tessa')).toContain(paint('fill', 'error'))
+  expect(await faceOf('Mel')).toContain(`${paint('stroke', 'subtle')} stroke-width='1.5'`)
+  expect(await faceOf('Mel')).not.toContain(paint('fill', 'subtle'))
   expect(await faceOf('Mel')).not.toContain("stroke-width='3'")
   const alts = elementsOf(await ui.drawn())
     .filter(element => element.type === 'Svg')
@@ -1625,8 +1628,8 @@ test('a stage strip draws its passed stages as one run, counted in its title; ot
   expect(strip).toContain('<title>cleanup · skipped')
   expect(strip).toMatch(/<title>e2e · running[^<]*<\/title>/u)
   expect(strip).not.toContain('install · passed')
-  // A square per stage, each with its own tooltip, came to 840.
-  expect(strip.length).toBeLessThan(640)
+  // A square per stage, each with its own tooltip, came to 840. Each painted square carries its light and dark shade.
+  expect(strip.length).toBeLessThan(720)
   await ui.unmount()
 })
 
@@ -1644,7 +1647,7 @@ test('a passed MR that waits on an approval is one line, its title and what it w
   await ui.unmount()
 })
 
-test('a face is one small drawing: about 360 characters, 520 with a badge', async ($, on) => {
+test('a face is one small drawing: about 410 characters, 630 with a badge, with both shades of its ring', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
@@ -1656,8 +1659,9 @@ test('a face is one small drawing: about 360 characters, 520 with a badge', asyn
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const faceOf = async (name: string) => String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && String(element.props?.alt).startsWith(name))?.props?.source)
-  expect((await faceOf('Mel')).length).toBeLessThan(370)
-  expect((await faceOf('Ines')).length).toBeLessThan(520)
+  // Each painted part carries its light and dark shade (about 60 characters), so the face follows the app's theme.
+  expect((await faceOf('Mel')).length).toBeLessThan(420)
+  expect((await faceOf('Ines')).length).toBeLessThan(640)
   expect(await faceOf('Mel')).toContain('>MN</text>')
   await ui.unmount()
 })

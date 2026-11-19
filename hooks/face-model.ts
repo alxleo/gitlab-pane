@@ -2,7 +2,7 @@
 // no Svg uses. Pure; the draw layer only puts the source in an Svg. Built once for a card, until the card or a picture changes.
 import { personTone } from './attention.ts'
 import { BOT_MARKS, discMarks } from './avatar.ts'
-import { toneClass, toneStyle } from './status.ts'
+import { FOLLOWS_THEME, tonePaint } from './status.ts'
 import type { Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { SvgSource } from './svg.ts'
@@ -45,19 +45,18 @@ export type FaceFacts = {
 export function faceFacts(person: Person, picture: string | undefined): FaceFacts {
   const tone = personTone(person)
   const badge = REVIEW_MARK[person.state]
-  // The ring and the badge are drawn in their tone's shade for the app's theme (`toneStyle`).
+  // The ring and the badge are drawn in their tone's shade for the app's theme.
   const ring =
     tone === 'subtle'
-      ? svg`<circle cx='8' cy='8' r='9' fill='none' class='${toneClass(tone)}' stroke='currentColor' stroke-width='1.5'/>`
-      : svg`<circle cx='8' cy='8' r='9.5' fill='none' class='${toneClass(tone)}' stroke='currentColor' stroke-width='3'/>`
+      ? svg`<circle cx='8' cy='8' r='9' fill='none' ${tonePaint('stroke', tone)} stroke-width='1.5'/>`
+      : svg`<circle cx='8' cy='8' r='9.5' fill='none' ${tonePaint('stroke', tone)} stroke-width='3'/>`
   const mark =
     badge !== null
-      ? svg`<circle cx='14.75' cy='14.75' r='3.75' class='${toneClass(badge.tone)}' fill='currentColor' stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
+      ? svg`<circle cx='14.75' cy='14.75' r='3.75' ${tonePaint('fill', badge.tone)} stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
       : svg``
-  const style = toneStyle(badge !== null ? [tone, badge.tone] : [tone])
   // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
   const around = (inner: SvgSource): SvgSource =>
-    svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${raw(style)}${raw(inner)}${raw(ring)}${raw(mark)}</svg>`
+    svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22' ${FOLLOWS_THEME}>${raw(inner)}${raw(ring)}${raw(mark)}</svg>`
   const disc = person.isBot ? BOT_MARKS : discMarks(person.username, 16, person.initials)
   return {
     tone,
