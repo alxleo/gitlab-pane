@@ -20,7 +20,10 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - hooks/gitlab-documents.ts
+      - hooks/ask-*.ts
+      - hooks/*-fragments.ts
+      - hooks/gitlab-document.ts
+      - hooks/gitlab-operations.ts
       - hooks/gitlab.generated.ts
       - tools/gitlab_schema.snapshot.json
       - tools/gitlab_schema.ts

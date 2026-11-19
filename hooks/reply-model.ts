@@ -1,8 +1,6 @@
 // A reply to a thread on an MR's page, on plain data: the lines of the diff the thread was left on as one hunk to draw,
-// the reply box, and what GitLab's answer to a reply means. How far a reply got is its entry in the ledger of writes
-// (write-model.ts). Pure; replies.ts holds the box and sends the reply.
-import type { RawResponse } from './gitlab-documents.ts'
-import type { ReplyMutation } from './gitlab.generated.ts'
+// and the reply box. How far a reply got is its entry in the ledger of writes (write-model.ts); what GitLab's answer to a
+// reply means is ask-reply.ts's. Pure; replies.ts holds the box and sends the reply.
 import { shorten } from './graphemes.ts'
 import { liveOf } from './write-model.ts'
 import type { Refusal } from './write-model.ts'
@@ -94,39 +92,3 @@ export function decidePost(held: Write | undefined, text: string, at: number): W
 /** Why a reply was not posted; one that may have been kept all the same says to look before posting again. */
 export const sayOf = (refusal: Refusal): string =>
   refusal.mayHaveLanded ? `${refusal.reason}. It may have reached GitLab: look in the thread before posting again.` : refusal.reason
-
-/** GitLab, answering, turned the reply down: it was not made. */
-const refused = (reason: string): Refusal => ({ reason, mayHaveLanded: false })
-
-/** GitLab's words on one line. */
-const oneLine = (words: readonly string[]): string => words.map(word => word.replace(/\s+/gu, ' ').trim()).join('; ')
-
-/**
- * What GitLab's answer to a reply means. A refusal of the whole write (a token that may only read, a thread gone) comes
- * as errors beside no payload, which never name the scope and read the same for a thread one may not answer, so the pane
- * says what a read-only token gets without claiming that is the cause; the payload's own errors say why GitLab
- * kept no note; a reply of quick actions alone runs them and keeps none. Null when GitLab kept it.
- */
-export function postedOf(host: string, response: RawResponse<ReplyMutation>): Refusal | null {
-  const made = response.data?.createNote ?? null
-  if (made === null) {
-    const errors = (response.errors ?? []).map(error => error.message)
-    return refused(
-      errors.length > 0
-        ? `${host} refused the reply: ${oneLine(errors)}. A token with only the read_api scope is refused so; replying needs api.`
-        : `${host} sent no answer to the reply`
-    )
-  }
-  if (made.note !== null) {
-    return null
-  }
-  if (made.errors.length > 0) {
-    return refused(`${host} did not post the reply: ${oneLine(made.errors)}`)
-  }
-  const quick = made.quickActionsStatus?.errorMessages ?? []
-  return refused(
-    made.quickActionsStatus?.commandsOnly === true
-      ? `${host} ran the quick actions in the reply and kept no note${quick.length > 0 ? `: ${oneLine(quick)}` : ''}`
-      : `${host} kept no note of the reply`
-  )
-}

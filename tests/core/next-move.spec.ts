@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { Failure } from '../../hooks/failure.ts'
 import type { MergeStrategyEnum } from '../../hooks/gitlab.generated.ts'
 import { afterSend, conflictsTask, decidePress, firstStep, FOLLOW_TRIES, moveId, nextMove, nextStep, pressOf } from '../../hooks/next-move.ts'

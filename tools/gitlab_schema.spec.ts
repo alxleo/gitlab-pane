@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { DOCUMENTS } from '../hooks/gitlab-documents.ts'
+import { DOCUMENTS } from '../hooks/gitlab-operations.ts'
 import { scored } from './gitlab_schema.ts'
 
 test('scoring a read adds GitLab’s own score of it and sample values for its variables', () => {

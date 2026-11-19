@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
-import { cleanBody, toCard } from '../../hooks/gitlab.ts'
+import { cleanBody, toCard } from '../../hooks/mr-card.ts'
 import { HOST, NOW, pipe, rawMr } from '../fixtures.ts'
 import type { Job, Stage } from '../../types'
 

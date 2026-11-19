@@ -3,7 +3,7 @@
 // say. What only an MR's page says (the description, the threads' words, the jobs that neither failed nor wait) is read
 // again for the one MR the person opens: `withDetail` puts it back. Pure.
 import { excerpt } from './format.ts'
-import { cleanBody } from './gitlab.ts'
+import { cleanBody } from './mr-card.ts'
 import { listedJobs } from './job-lines.ts'
 import { isSettled } from './status.ts'
 

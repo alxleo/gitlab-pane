@@ -111,115 +111,6 @@ export type TodoActionEnum =
   | 'transfer_failed'
   | 'unmergeable'
 
-export type NoteFieldsFragment = {
-  body: string
-  system: boolean
-  url: string | null
-  createdAt: string
-  author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
-  position: { filePath: string; newLine: number | null; oldLine: number | null } | null
-}
-
-export type MrFieldsFragment = {
-  iid: string
-  state: MergeRequestState
-  title: string
-  webUrl: string | null
-  draft: boolean
-  conflicts: boolean
-  shouldBeRebased: boolean
-  approvalsLeft: number | null
-  approvalsRequired: number | null
-  updatedAt: string
-  description: string | null
-  sourceBranch: string
-  targetBranch: string
-  author: { username: string } | null
-  diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
-  project: { fullPath: string; name: string; webUrl: string | null }
-  approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
-}
-
-export type PipelineFieldsFragment = {
-  id: string
-  status: PipelineStatusEnum
-  duration: number | null
-  startedAt: string | null
-  finishedAt: string | null
-  path: string | null
-  warnings: boolean
-  stages: { nodes: Array<{ name: string | null; status: string | null } | null> | null } | null
-}
-
-export type PipelineJobsFragment = {
-  id: string
-  status: PipelineStatusEnum
-  duration: number | null
-  startedAt: string | null
-  finishedAt: string | null
-  path: string | null
-  warnings: boolean
-  stages: {
-    nodes: Array<{
-      name: string | null
-      status: string | null
-      jobs: {
-        nodes: Array<{
-          name: string | null
-          status: CiJobStatus | null
-          allowFailure: boolean
-          startedAt: string | null
-          finishedAt: string | null
-          webPath: string | null
-        } | null> | null
-      } | null
-    } | null> | null
-  } | null
-}
-
-export type CommentFieldsFragment = {
-  notes: {
-    nodes: Array<{
-      body: string
-      system: boolean
-      url: string | null
-      createdAt: string
-      discussion: { id: string; resolvable: boolean; resolved: boolean } | null
-      author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
-      position: { filePath: string; newLine: number | null; oldLine: number | null } | null
-    } | null> | null
-  }
-}
-
-export type ThreadFieldsFragment = {
-  discussions: {
-    nodes: Array<{
-      resolvable: boolean
-      resolved: boolean
-      notes: {
-        nodes: Array<{
-          body: string
-          system: boolean
-          url: string | null
-          createdAt: string
-          author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
-          position: { filePath: string; newLine: number | null; oldLine: number | null } | null
-        } | null> | null
-      }
-    } | null> | null
-  }
-}
-
-export type ReviewerFieldsFragment = {
-  username: string
-  name: string
-  bot: boolean
-  avatarUrl: string | null
-  mergeRequestInteraction: { reviewState: MergeRequestReviewState | null } | null
-}
-
-export type ReviewerPlainFragment = { username: string; name: string; bot: boolean; avatarUrl: string | null }
-
 export type AuthoredQueryVariables = Exact<{
   state?: MergeRequestState | null | undefined
   after?: string | null | undefined
@@ -335,6 +226,354 @@ export type AuthoredPlainQuery = {
           } | null> | null
         }
       } | null> | null
+    } | null
+  } | null
+}
+
+export type FailuresQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type FailuresQuery = {
+  project: {
+    mergeRequest: { headPipeline: { jobs: { nodes: Array<{ webPath: string | null; allowFailure: boolean; failureMessage: string | null } | null> | null } | null } | null } | null
+  } | null
+}
+
+export type InboxAuthoredQueryVariables = Exact<{
+  since: string
+}>
+
+export type InboxAuthoredQuery = {
+  currentUser: {
+    username: string
+    opened: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        notes: {
+          pageInfo: { hasPreviousPage: boolean }
+          nodes: Array<{
+            id: string
+            body: string
+            system: boolean
+            createdAt: string
+            author: { username: string; name: string; bot: boolean } | null
+            systemNoteMetadata: { action: string | null } | null
+          } | null> | null
+        }
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+      } | null> | null
+    } | null
+    merged: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        mergedAt: string | null
+        targetBranch: string
+        mergeCommitSha: string | null
+        diffHeadSha: string | null
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+        mergeUser: { username: string; name: string } | null
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type InboxBriefQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type InboxBriefQuery = {
+  project: {
+    mergeRequest: {
+      description: string | null
+      sourceBranch: string
+      targetBranch: string
+      iid: string
+      state: MergeRequestState
+      title: string
+      webUrl: string | null
+      draft: boolean
+      createdAt: string
+      discussions: {
+        nodes: Array<{
+          resolvable: boolean
+          resolved: boolean
+          notes: { nodes: Array<{ id: string; body: string; system: boolean; createdAt: string; author: { username: string; name: string; bot: boolean } | null } | null> | null }
+        } | null> | null
+      }
+      author: { username: string; name: string } | null
+      project: { fullPath: string }
+    } | null
+  } | null
+}
+
+export type InboxFollowUserQueryVariables = Exact<{
+  username: string
+  since: string
+}>
+
+export type InboxFollowUserQuery = {
+  currentUser: { username: string } | null
+  user: {
+    opened: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        notes: {
+          pageInfo: { hasPreviousPage: boolean }
+          nodes: Array<{
+            id: string
+            body: string
+            system: boolean
+            createdAt: string
+            author: { username: string; name: string; bot: boolean } | null
+            systemNoteMetadata: { action: string | null } | null
+          } | null> | null
+        }
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+      } | null> | null
+    } | null
+    merged: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        mergedAt: string | null
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+        mergeUser: { username: string; name: string } | null
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type InboxFollowProjectQueryVariables = Exact<{
+  path: string
+  since: string
+}>
+
+export type InboxFollowProjectQuery = {
+  currentUser: { username: string } | null
+  project: {
+    opened: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        notes: {
+          pageInfo: { hasPreviousPage: boolean }
+          nodes: Array<{
+            id: string
+            body: string
+            system: boolean
+            createdAt: string
+            author: { username: string; name: string; bot: boolean } | null
+            systemNoteMetadata: { action: string | null } | null
+          } | null> | null
+        }
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+      } | null> | null
+    } | null
+    merged: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        mergedAt: string | null
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+        mergeUser: { username: string; name: string } | null
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type InboxQueueQueryVariables = Exact<{ [key: string]: never }>
+
+export type InboxQueueQuery = {
+  currentUser: {
+    username: string
+    reviewRequestedMergeRequests: {
+      nodes: Array<{
+        iid: string
+        state: MergeRequestState
+        title: string
+        webUrl: string | null
+        draft: boolean
+        createdAt: string
+        approvedBy: { nodes: Array<{ username: string } | null> | null } | null
+        notes: {
+          pageInfo: { hasPreviousPage: boolean }
+          nodes: Array<{
+            id: string
+            body: string
+            system: boolean
+            createdAt: string
+            author: { username: string; name: string; bot: boolean } | null
+            systemNoteMetadata: { action: string | null } | null
+          } | null> | null
+        }
+        author: { username: string; name: string } | null
+        project: { fullPath: string }
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type InboxTodosQueryVariables = Exact<{ [key: string]: never }>
+
+export type InboxTodosQuery = {
+  currentUser: {
+    username: string
+    todos: {
+      nodes: Array<{
+        action: TodoActionEnum
+        createdAt: string
+        body: string
+        targetUrl: string | null
+        author: { username: string; name: string }
+        targetEntity:
+          | { webUrl: string }
+          | {
+              webUrl: string | null
+              iid: string
+              state: MergeRequestState
+              title: string
+              draft: boolean
+              createdAt: string
+              author: { username: string; name: string } | null
+              project: { fullPath: string }
+            }
+          | { webUrl: string }
+          | { webUrl: string }
+          | { webUrl: string | null }
+          | { webUrl: string }
+          | null
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type InboxTodosPlainQueryVariables = Exact<{ [key: string]: never }>
+
+export type InboxTodosPlainQuery = {
+  currentUser: {
+    username: string
+    todos: {
+      nodes: Array<{
+        action: TodoActionEnum
+        createdAt: string
+        body: string
+        targetUrl: string | null
+        author: { username: string; name: string }
+        target:
+          | { webUrl: string }
+          | {
+              webUrl: string | null
+              iid: string
+              state: MergeRequestState
+              title: string
+              draft: boolean
+              createdAt: string
+              author: { username: string; name: string } | null
+              project: { fullPath: string }
+            }
+          | { webUrl: string }
+          | { webUrl: string }
+          | { webUrl: string | null }
+          | { webUrl: string }
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type LandedQueryVariables = Exact<{
+  path: string
+  sha: string
+  ref: string
+}>
+
+export type LandedQuery = {
+  project: {
+    pipelines: { nodes: Array<{ id: string; status: PipelineStatusEnum; path: string | null } | null> | null } | null
+    scheduled: { nodes: Array<{ id: string } | null> | null } | null
+  } | null
+}
+
+export type MergeStatusQueryVariables = Exact<{ [key: string]: never }>
+
+export type MergeStatusQuery = {
+  currentUser: {
+    authoredMergeRequests: {
+      nodes: Array<{
+        iid: string
+        diffHeadSha: string | null
+        rebaseInProgress: boolean
+        autoMergeEnabled: boolean
+        project: { fullPath: string }
+        mergeabilityChecks: Array<{ identifier: MergeabilityCheckIdentifier; status: MergeabilityCheckStatus }>
+        userPermissions: { canMerge: boolean; pushToSourceBranch: boolean }
+      } | null> | null
+    } | null
+  } | null
+}
+
+export type MergeMutationVariables = Exact<{
+  path: string
+  iid: string
+  sha: string
+  strategy?: MergeStrategyEnum | null | undefined
+  squash: boolean
+}>
+
+export type MergeMutation = { mergeRequestAccept: { errors: Array<string>; mergeRequest: { state: MergeRequestState; mergeError: string | null } | null } | null }
+
+export type MoveStateQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type MoveStateQuery = {
+  project: {
+    mergeRequest: {
+      state: MergeRequestState
+      detailedMergeStatus: DetailedMergeStatus | null
+      diffHeadSha: string | null
+      rebaseCommitSha: string | null
+      rebaseInProgress: boolean
+      autoMergeEnabled: boolean
+      mergeError: string | null
+      availableAutoMergeStrategies: Array<string> | null
+      squashOnMerge: boolean
     } | null
   } | null
 }
@@ -484,385 +723,15 @@ export type PinnedPlainQuery = {
   } | null
 }
 
-export type FailuresQueryVariables = Exact<{
-  path: string
-  iid: string
-}>
-
-export type FailuresQuery = {
-  project: {
-    mergeRequest: { headPipeline: { jobs: { nodes: Array<{ webPath: string | null; allowFailure: boolean; failureMessage: string | null } | null> | null } | null } | null } | null
-  } | null
-}
-
-export type UsualQueryVariables = Exact<{
-  path: string
-}>
-
-export type UsualQuery = { project: { pipelines: { nodes: Array<{ duration: number | null } | null> | null } | null } | null }
-
-export type InboxMrFieldsFragment = {
-  iid: string
-  state: MergeRequestState
-  title: string
-  webUrl: string | null
-  draft: boolean
-  createdAt: string
-  author: { username: string; name: string } | null
-  project: { fullPath: string }
-}
-
-export type InboxNoteFieldsFragment = {
-  id: string
+export type ReplyMutationVariables = Exact<{
+  mr: string
+  thread: string
   body: string
-  system: boolean
-  createdAt: string
-  author: { username: string; name: string; bot: boolean } | null
-  systemNoteMetadata: { action: string | null } | null
-}
-
-export type InboxNoteActionFieldsFragment = { systemNoteMetadata: { action: string | null } | null }
-
-export type InboxMergedByFieldsFragment = { mergedAt: string | null; mergeUser: { username: string; name: string } | null }
-
-export type InboxLandedFieldsFragment = { targetBranch: string; mergeCommitSha: string | null; diffHeadSha: string | null }
-
-export type InboxTodosQueryVariables = Exact<{ [key: string]: never }>
-
-export type InboxTodosQuery = {
-  currentUser: {
-    username: string
-    todos: {
-      nodes: Array<{
-        action: TodoActionEnum
-        createdAt: string
-        body: string
-        targetUrl: string | null
-        author: { username: string; name: string }
-        targetEntity:
-          | { webUrl: string }
-          | {
-              webUrl: string | null
-              iid: string
-              state: MergeRequestState
-              title: string
-              draft: boolean
-              createdAt: string
-              author: { username: string; name: string } | null
-              project: { fullPath: string }
-            }
-          | { webUrl: string }
-          | { webUrl: string }
-          | { webUrl: string | null }
-          | { webUrl: string }
-          | null
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type InboxTodosPlainQueryVariables = Exact<{ [key: string]: never }>
-
-export type InboxTodosPlainQuery = {
-  currentUser: {
-    username: string
-    todos: {
-      nodes: Array<{
-        action: TodoActionEnum
-        createdAt: string
-        body: string
-        targetUrl: string | null
-        author: { username: string; name: string }
-        target:
-          | { webUrl: string }
-          | {
-              webUrl: string | null
-              iid: string
-              state: MergeRequestState
-              title: string
-              draft: boolean
-              createdAt: string
-              author: { username: string; name: string } | null
-              project: { fullPath: string }
-            }
-          | { webUrl: string }
-          | { webUrl: string }
-          | { webUrl: string | null }
-          | { webUrl: string }
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type InboxQueueQueryVariables = Exact<{ [key: string]: never }>
-
-export type InboxQueueQuery = {
-  currentUser: {
-    username: string
-    reviewRequestedMergeRequests: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        approvedBy: { nodes: Array<{ username: string } | null> | null } | null
-        notes: {
-          pageInfo: { hasPreviousPage: boolean }
-          nodes: Array<{
-            id: string
-            body: string
-            system: boolean
-            createdAt: string
-            author: { username: string; name: string; bot: boolean } | null
-            systemNoteMetadata: { action: string | null } | null
-          } | null> | null
-        }
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type InboxAuthoredQueryVariables = Exact<{
-  since: string
 }>
 
-export type InboxAuthoredQuery = {
-  currentUser: {
-    username: string
-    opened: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        notes: {
-          pageInfo: { hasPreviousPage: boolean }
-          nodes: Array<{
-            id: string
-            body: string
-            system: boolean
-            createdAt: string
-            author: { username: string; name: string; bot: boolean } | null
-            systemNoteMetadata: { action: string | null } | null
-          } | null> | null
-        }
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-      } | null> | null
-    } | null
-    merged: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        mergedAt: string | null
-        targetBranch: string
-        mergeCommitSha: string | null
-        diffHeadSha: string | null
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-        mergeUser: { username: string; name: string } | null
-      } | null> | null
-    } | null
-  } | null
+export type ReplyMutation = {
+  createNote: { errors: Array<string>; note: { id: string } | null; quickActionsStatus: { commandsOnly: boolean | null; errorMessages: Array<string> | null } | null } | null
 }
-
-export type InboxFollowUserQueryVariables = Exact<{
-  username: string
-  since: string
-}>
-
-export type InboxFollowUserQuery = {
-  currentUser: { username: string } | null
-  user: {
-    opened: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        notes: {
-          pageInfo: { hasPreviousPage: boolean }
-          nodes: Array<{
-            id: string
-            body: string
-            system: boolean
-            createdAt: string
-            author: { username: string; name: string; bot: boolean } | null
-            systemNoteMetadata: { action: string | null } | null
-          } | null> | null
-        }
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-      } | null> | null
-    } | null
-    merged: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        mergedAt: string | null
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-        mergeUser: { username: string; name: string } | null
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type InboxFollowProjectQueryVariables = Exact<{
-  path: string
-  since: string
-}>
-
-export type InboxFollowProjectQuery = {
-  currentUser: { username: string } | null
-  project: {
-    opened: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        notes: {
-          pageInfo: { hasPreviousPage: boolean }
-          nodes: Array<{
-            id: string
-            body: string
-            system: boolean
-            createdAt: string
-            author: { username: string; name: string; bot: boolean } | null
-            systemNoteMetadata: { action: string | null } | null
-          } | null> | null
-        }
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-      } | null> | null
-    } | null
-    merged: {
-      nodes: Array<{
-        iid: string
-        state: MergeRequestState
-        title: string
-        webUrl: string | null
-        draft: boolean
-        createdAt: string
-        mergedAt: string | null
-        author: { username: string; name: string } | null
-        project: { fullPath: string }
-        mergeUser: { username: string; name: string } | null
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type InboxBriefQueryVariables = Exact<{
-  path: string
-  iid: string
-}>
-
-export type InboxBriefQuery = {
-  project: {
-    mergeRequest: {
-      description: string | null
-      sourceBranch: string
-      targetBranch: string
-      iid: string
-      state: MergeRequestState
-      title: string
-      webUrl: string | null
-      draft: boolean
-      createdAt: string
-      discussions: {
-        nodes: Array<{
-          resolvable: boolean
-          resolved: boolean
-          notes: { nodes: Array<{ id: string; body: string; system: boolean; createdAt: string; author: { username: string; name: string; bot: boolean } | null } | null> | null }
-        } | null> | null
-      }
-      author: { username: string; name: string } | null
-      project: { fullPath: string }
-    } | null
-  } | null
-}
-
-export type LandedQueryVariables = Exact<{
-  path: string
-  sha: string
-  ref: string
-}>
-
-export type LandedQuery = {
-  project: {
-    pipelines: { nodes: Array<{ id: string; status: PipelineStatusEnum; path: string | null } | null> | null } | null
-    scheduled: { nodes: Array<{ id: string } | null> | null } | null
-  } | null
-}
-
-export type MergeStatusQueryVariables = Exact<{ [key: string]: never }>
-
-export type MergeStatusQuery = {
-  currentUser: {
-    authoredMergeRequests: {
-      nodes: Array<{
-        iid: string
-        diffHeadSha: string | null
-        rebaseInProgress: boolean
-        autoMergeEnabled: boolean
-        project: { fullPath: string }
-        mergeabilityChecks: Array<{ identifier: MergeabilityCheckIdentifier; status: MergeabilityCheckStatus }>
-        userPermissions: { canMerge: boolean; pushToSourceBranch: boolean }
-      } | null> | null
-    } | null
-  } | null
-}
-
-export type MoveStateQueryVariables = Exact<{
-  path: string
-  iid: string
-}>
-
-export type MoveStateQuery = {
-  project: {
-    mergeRequest: {
-      state: MergeRequestState
-      detailedMergeStatus: DetailedMergeStatus | null
-      diffHeadSha: string | null
-      rebaseCommitSha: string | null
-      rebaseInProgress: boolean
-      autoMergeEnabled: boolean
-      mergeError: string | null
-      availableAutoMergeStrategies: Array<string> | null
-      squashOnMerge: boolean
-    } | null
-  } | null
-}
-
-export type MergeMutationVariables = Exact<{
-  path: string
-  iid: string
-  sha: string
-  strategy?: MergeStrategyEnum | null | undefined
-  squash: boolean
-}>
-
-export type MergeMutation = { mergeRequestAccept: { errors: Array<string>; mergeRequest: { state: MergeRequestState; mergeError: string | null } | null } | null }
 
 export type ThreadsQueryVariables = Exact<{
   path: string
@@ -897,12 +766,143 @@ export type ThreadsPlainQuery = {
 
 export type ThreadLinesFragment = { truncatedDiffLines: Array<{ oldLine: number | null; newLine: number | null; type: string | null; text: string | null }> | null }
 
-export type ReplyMutationVariables = Exact<{
-  mr: string
-  thread: string
-  body: string
+export type UsualQueryVariables = Exact<{
+  path: string
 }>
 
-export type ReplyMutation = {
-  createNote: { errors: Array<string>; note: { id: string } | null; quickActionsStatus: { commandsOnly: boolean | null; errorMessages: Array<string> | null } | null } | null
+export type UsualQuery = { project: { pipelines: { nodes: Array<{ duration: number | null } | null> | null } | null } | null }
+
+export type InboxMrFieldsFragment = {
+  iid: string
+  state: MergeRequestState
+  title: string
+  webUrl: string | null
+  draft: boolean
+  createdAt: string
+  author: { username: string; name: string } | null
+  project: { fullPath: string }
+}
+
+export type InboxNoteFieldsFragment = {
+  id: string
+  body: string
+  system: boolean
+  createdAt: string
+  author: { username: string; name: string; bot: boolean } | null
+  systemNoteMetadata: { action: string | null } | null
+}
+
+export type InboxNoteActionFieldsFragment = { systemNoteMetadata: { action: string | null } | null }
+
+export type InboxMergedByFieldsFragment = { mergedAt: string | null; mergeUser: { username: string; name: string } | null }
+
+export type InboxLandedFieldsFragment = { targetBranch: string; mergeCommitSha: string | null; diffHeadSha: string | null }
+
+export type MrFieldsFragment = {
+  iid: string
+  state: MergeRequestState
+  title: string
+  webUrl: string | null
+  draft: boolean
+  conflicts: boolean
+  shouldBeRebased: boolean
+  approvalsLeft: number | null
+  approvalsRequired: number | null
+  updatedAt: string
+  description: string | null
+  sourceBranch: string
+  targetBranch: string
+  author: { username: string } | null
+  diffStatsSummary: { additions: number; deletions: number; fileCount: number } | null
+  project: { fullPath: string; name: string; webUrl: string | null }
+  approvedBy: { nodes: Array<{ username: string; name: string; bot: boolean; avatarUrl: string | null } | null> | null } | null
+}
+
+export type CommentFieldsFragment = {
+  notes: {
+    nodes: Array<{
+      body: string
+      system: boolean
+      url: string | null
+      createdAt: string
+      discussion: { id: string; resolvable: boolean; resolved: boolean } | null
+      author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
+      position: { filePath: string; newLine: number | null; oldLine: number | null } | null
+    } | null> | null
+  }
+}
+
+export type ThreadFieldsFragment = {
+  discussions: {
+    nodes: Array<{
+      resolvable: boolean
+      resolved: boolean
+      notes: {
+        nodes: Array<{
+          body: string
+          system: boolean
+          url: string | null
+          createdAt: string
+          author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
+          position: { filePath: string; newLine: number | null; oldLine: number | null } | null
+        } | null> | null
+      }
+    } | null> | null
+  }
+}
+
+export type PipelineFieldsFragment = {
+  id: string
+  status: PipelineStatusEnum
+  duration: number | null
+  startedAt: string | null
+  finishedAt: string | null
+  path: string | null
+  warnings: boolean
+  stages: { nodes: Array<{ name: string | null; status: string | null } | null> | null } | null
+}
+
+export type PipelineJobsFragment = {
+  id: string
+  status: PipelineStatusEnum
+  duration: number | null
+  startedAt: string | null
+  finishedAt: string | null
+  path: string | null
+  warnings: boolean
+  stages: {
+    nodes: Array<{
+      name: string | null
+      status: string | null
+      jobs: {
+        nodes: Array<{
+          name: string | null
+          status: CiJobStatus | null
+          allowFailure: boolean
+          startedAt: string | null
+          finishedAt: string | null
+          webPath: string | null
+        } | null> | null
+      } | null
+    } | null> | null
+  } | null
+}
+
+export type ReviewerFieldsFragment = {
+  username: string
+  name: string
+  bot: boolean
+  avatarUrl: string | null
+  mergeRequestInteraction: { reviewState: MergeRequestReviewState | null } | null
+}
+
+export type ReviewerPlainFragment = { username: string; name: string; bot: boolean; avatarUrl: string | null }
+
+export type NoteFieldsFragment = {
+  body: string
+  system: boolean
+  url: string | null
+  createdAt: string
+  author: { username: string; name: string; bot: boolean; avatarUrl: string | null } | null
+  position: { filePath: string; newLine: number | null; oldLine: number | null } | null
 }
