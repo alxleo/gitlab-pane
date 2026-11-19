@@ -10,7 +10,7 @@ export const README = {
 export const DESIGN = {
   colours: [
     ['success', { light: '#2c7a39', dark: '#4eba65' }],
-    ['error', { light: '#ab2b3f', dark: '#ff6b80' }],
+    ['error', { light: '#a42628', dark: '#ff6b80' }],
     ['warning', { light: '#966c1e', dark: '#ffc107' }],
     ['suggestion', { light: '#3d5fe0', dark: '#b1b9f9' }],
     ['subtle', { light: '#8a8983', dark: '#6f6e69' }],

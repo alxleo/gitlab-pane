@@ -32,14 +32,18 @@
   --c-suggestion: #3d5fe0;
   --c-remember: #3d5fe0;
   --c-success: #2c7a39;
-  --c-error: #ab2b3f;
+  --c-error: #a42628;
   --c-warning: #966c1e;
   --c-merged: #8700ff;
   --c-claude: #d77757;
   --c-permission: #3d5fe0;
 }
 
-/* The app's dark theme: the page is photographed in it when the browser prefers dark, as the app does when set to dark. */
+/*
+ * The app's dark theme: the page is photographed in it when the browser prefers dark, as the app does when set to dark.
+ * The theme keys are the engine's dark theme (subtle lifted off the dark card) and the surfaces are Claude's dark ones,
+ * until a shot of the app in dark mode is sampled.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
     --page: #1f1e1d;

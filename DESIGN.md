@@ -22,7 +22,7 @@ Each tone is a key of the app's theme, so it follows the desktop app's light or 
 | Tone | Light | Dark | Means |
 |---|---|---|---|
 | `success` | `#2c7a39` green | `#4eba65` green | passed, approved |
-| `error` | `#ab2b3f` red | `#ff6b80` red | failed, changes requested, conflicts |
+| `error` | `#a42628` red | `#ff6b80` red | failed, changes requested, conflicts |
 | `warning` | `#966c1e` amber | `#ffc107` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
 | `suggestion` | `#3d5fe0` blue | `#b1b9f9` blue | running, reviewed |
 | `subtle` | `#8a8983` grey | `#6f6e69` grey | skipped, canceled, not started, waiting on a review |

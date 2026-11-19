@@ -68,11 +68,13 @@ export function statusMark(status: CiStatus | undefined): { glyph: Glyph; tone: 
 /**
  * Each tone as the desktop app paints its theme key, in its light theme and its dark one. Text and borders name the key
  * and the app picks the shade; a picture (a face, the stage strip) cannot name a key, so it carries both shades
- * (`tonePaint`), and the app's theme picks between them as it switches.
+ * (`tonePaint`), and the app's theme picks between them as it switches. Light `error` is sampled from the desktop app;
+ * the other light shades are the screen renderer's (`tools/screens/pane.css`); the dark shades are the engine's dark
+ * theme, with `subtle` lifted off a dark card, until a shot of the app in dark mode is sampled.
  */
 export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
   success: { light: '#2c7a39', dark: '#4eba65' },
-  error: { light: '#ab2b3f', dark: '#ff6b80' },
+  error: { light: '#a42628', dark: '#ff6b80' },
   warning: { light: '#966c1e', dark: '#ffc107' },
   suggestion: { light: '#3d5fe0', dark: '#b1b9f9' },
   subtle: { light: '#8a8983', dark: '#6f6e69' },
