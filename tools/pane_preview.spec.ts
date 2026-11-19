@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { Script } from 'node:vm'
 
 import { expect, test } from 'vitest'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
-import { DEFAULT_PORT, decodeAction, isOwnRequest, pageShell, parseCommand } from './pane_preview.ts'
+import { DEFAULT_PORT, Measurements, decodeAction, isOwnRequest, keepsTyping, pageShell, parseCommand, policyFor } from './pane_preview.ts'
 
 test('with no arguments it serves the default port at the pane’s own width, with the log in a temporary folder', () => {
   expect(parseCommand([], '/work')).toEqual({ kind: 'serve', options: { port: DEFAULT_PORT, width: null, log: null } })
@@ -85,6 +86,58 @@ test('a press from another site’s page, from no page, or not sent as JSON is r
   expect(isOwnRequest('POST', { host, 'content-type': 'application/json' }, 4780)).toBe(false)
   expect(isOwnRequest('POST', { host, origin: `http://${host}`, 'content-type': 'text/plain' }, 4780)).toBe(false)
   expect(isOwnRequest('PUT', { host, origin: `http://${host}`, 'content-type': 'application/json' }, 4780)).toBe(false)
+})
+
+test('a redraw keeps the typing when it draws the text it drew before or the mod echoes text the page sent', () => {
+  expect(keepsTyping('abc', 'abc', [])).toBe(true)
+  expect(keepsTyping('abc', 'abcdef', ['abcd', 'abcdef'])).toBe(true)
+})
+
+test('a redraw with text of the mod’s own replaces the typing, as after Enter clears the field', () => {
+  expect(keepsTyping('hello', '', [])).toBe(false)
+  expect(keepsTyping('abc', 'xyz', ['abcd'])).toBe(false)
+})
+
+const measuredRows = (rows: number) => ({ rows, keyed: [] })
+
+test('a drawing that waits takes the first measurement of it, and a second page’s is stale', async () => {
+  const measurements = new Measurements()
+  const draw = measurements.drawn()
+  const waited = measurements.wait(draw, 1000)
+  expect(measurements.take(draw, measuredRows(51))).toBe('waited')
+  expect(measurements.take(draw, measuredRows(70))).toBe('stale')
+  expect(await waited).toEqual(measuredRows(51))
+})
+
+test('the first measurement of the latest drawing that nothing waited for is unasked, so it is handed over', async () => {
+  const measurements = new Measurements()
+  expect(measurements.take(measurements.drawn(), measuredRows(51))).toBe('unasked')
+  const late = measurements.drawn()
+  expect(await measurements.wait(late, 5)).toBeNull()
+  expect(measurements.take(late, measuredRows(40))).toBe('unasked')
+})
+
+test('a measurement of an older drawing changes nothing', () => {
+  const measurements = new Measurements()
+  const old = measurements.drawn()
+  measurements.drawn()
+  expect(measurements.take(old, measuredRows(51))).toBe('stale')
+})
+
+test('the page runs only its own script, talks only to the server, and no other page may frame it', () => {
+  const policy = policyFor('n0nce')
+  expect(policy).toContain("script-src 'nonce-n0nce';")
+  expect(policy).toContain("default-src 'none'")
+  expect(policy).toContain("connect-src 'self'")
+  expect(policy).toContain("frame-ancestors 'none'")
+  expect(policy).toContain("form-action 'none'")
+  expect(policy).toContain("base-uri 'none'")
+})
+
+test('the page’s script, with the typing rule written into it, is valid JavaScript', () => {
+  const script = /<script nonce="n0nce">([\s\S]*)<\/script>/u.exec(pageShell('/work', null, 'n0nce'))?.[1] ?? ''
+  expect(script).toContain('const keepsTyping = function keepsTyping(')
+  expect(() => new Script(script)).not.toThrow()
 })
 
 test('the page names its checkout, sets the width asked for, and runs only the script its nonce allows', () => {

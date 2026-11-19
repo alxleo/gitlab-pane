@@ -57,7 +57,7 @@ export class Engine {
   readonly #responses = new Map<string, Json>()
   #ids = 0
   #debugSeen = 0
-  #exited: number | null = null
+  #exited: string | null = null
 
   constructor(cwd: string, debugFile: string) {
     this.#debugFile = debugFile
@@ -81,7 +81,11 @@ export class Engine {
       { stdio: ['pipe', 'pipe', 'ignore'], cwd }
     )
     this.#proc.on('exit', code => {
-      this.#exited = code ?? -1
+      this.#exited = `exited (${code ?? -1})`
+    })
+    // A `claude` that cannot be started is said so by the next ask, not thrown where nothing catches it.
+    this.#proc.on('error', error => {
+      this.#exited = `could not start (${error.message})`
     })
     createInterface({ input: this.#proc.stdout }).on('line', line => {
       let message: unknown
@@ -118,7 +122,7 @@ export class Engine {
         return record(response['response'])
       }
       if (this.#exited !== null) {
-        throw new RigError(`the engine exited (${this.#exited}) during ${subtype}`)
+        throw new RigError(`the engine ${this.#exited} during ${subtype}`)
       }
       await sleep(20)
     }
@@ -279,6 +283,15 @@ export class Desktop {
   /** The window is now `bodyRows` tall; the next ask says so. */
   resize(bodyRows: number): void {
     this.#bodyRows = bodyRows
+  }
+
+  /**
+   * The drawing on screen was measured after its drawing stopped waiting (a page that opened late): the engine is handed
+   * it with a new ask, as the desktop hands over a measurement that changed.
+   */
+  async remeasured(measured: Measured): Promise<void> {
+    this.#measured = measured
+    await this.#handOver()
   }
 
   async draw(): Promise<void> {

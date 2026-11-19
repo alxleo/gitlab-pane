@@ -12,7 +12,7 @@
 // It listens on 127.0.0.1 only and answers only pages it served: a press here is a press in GitLab.
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -37,7 +37,7 @@ export const USAGE = `pane-preview: the GitLab pane as this checkout draws it, l
 Options:
   --port N        the port on 127.0.0.1 to serve (default ${DEFAULT_PORT}); it stops if the port is taken
   --width PX      the pane's width (default pane.css's)
-  --log FILE      keep the engine's debug log there (default: a temporary folder, deleted on exit)
+  --log FILE      keep the engine's debug log there (default: the port's temporary folder, cleared on exit and next start)
   -h, --help      this
 
 A headless \`claude -p\` runs this checkout's mod over any installed copy and reads GitLab with your settings. The page
@@ -104,6 +104,75 @@ export type Action =
 
 /** What a page asks of the engine, which waits its turn; a measurement does not. */
 type Asked = Exclude<Action, { readonly kind: 'measured' }>
+
+/** What waits its turn with the engine: a page's ask, or a measurement of the drawing on screen that nothing waited for. */
+type Queued = Asked | { readonly kind: 'remeasured'; readonly measured: Measured }
+
+/**
+ * How a measurement was taken: `waited`, by the drawing waiting for it; `unasked`, the first for the latest drawing when
+ * none waited (a page that opened late, or answered after the wait), to be handed over; `stale`, for an older drawing or
+ * one already measured, which changes nothing.
+ */
+export type Taken = 'waited' | 'unasked' | 'stale'
+
+/**
+ * The drawings sent to pages and their measurements: each drawing is numbered, may wait for its first measurement, and
+ * takes only that one, so two pages of different sizes cannot set each other off.
+ */
+export class Measurements {
+  readonly #waiting = new Map<number, (measured: Measured | null) => void>()
+  #latest = 0
+  #answered = 0
+
+  /** Numbers a new drawing. */
+  drawn(): number {
+    this.#latest += 1
+    return this.#latest
+  }
+
+  /** The first measurement of drawing `draw`, or null if none comes within `ms`. */
+  wait(draw: number, ms: number): Promise<Measured | null> {
+    return new Promise(done => {
+      this.#waiting.set(draw, done)
+      setTimeout(() => {
+        this.#waiting.delete(draw)
+        done(null)
+      }, ms)
+    })
+  }
+
+  /** Takes a page's measurement of drawing `draw`. */
+  take(draw: number, measured: Measured): Taken {
+    if (draw !== this.#latest || draw === this.#answered) {
+      return 'stale'
+    }
+    this.#answered = draw
+    const waiting = this.#waiting.get(draw)
+    if (waiting === undefined) {
+      return 'unasked'
+    }
+    this.#waiting.delete(draw)
+    waiting(measured)
+    return 'waited'
+  }
+}
+
+/**
+ * Whether a redraw keeps what the person has typed in a field rather than the text it draws: when it draws what it drew
+ * before, or text this page sent it since (the mod's echo of typing, which arrives while more is typed). Any other text is
+ * the mod's own, which replaces the typing, as the desktop's field does. The page runs this very function.
+ */
+export function keepsTyping(was: string, now: string, sent: readonly string[]): boolean {
+  return now === was || sent.includes(now)
+}
+
+/**
+ * The page's content security policy: only its own script runs (it draws other people's words), it talks only to this
+ * server, and no other page may frame it, since a click in a frame would be a press in GitLab.
+ */
+export function policyFor(nonce: string): string {
+  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'`
+}
 
 const keyIn = (value: Json): string => {
   const key = value['key']
@@ -202,7 +271,15 @@ const PAGE_SCRIPT = `(() => {
   const hush = () => { quietUntil = performance.now() + 150 }
   let scrollTimer = 0
   let typeTimer = 0
+  let resizeTimer = 0
   let stopped = false
+  const keepsTyping = ${keepsTyping.toString()}
+  // What this page has sent each field since its last Enter, so the mod's echo of it does not take back newer typing.
+  const sent = new Map()
+  const send = (key, value, submit) => {
+    sent.set(key, submit ? [] : [...(sent.get(key) || []), value].slice(-50))
+    act({ kind: 'input', key, value, submit })
+  }
   const act = action => fetch('/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(action) })
     .then(answer => answer.ok ? null : answer.text().then(said => { note.textContent = said }))
     .catch(() => undefined)
@@ -236,7 +313,7 @@ const PAGE_SCRIPT = `(() => {
     const again = kept === null ? undefined : [...body.querySelectorAll('[data-press-key]')].find(element => element.dataset.pressKey === kept.key)
     const field = again === undefined ? null : again.matches('button') ? again : again.querySelector('input, textarea, select')
     if (field !== null) {
-      if (kept.typed !== null && field.dataset.drawn === kept.was) field.value = kept.typed
+      if (kept.typed !== null && keepsTyping(kept.was, field.dataset.drawn, sent.get(kept.key) || [])) field.value = kept.typed
       field.focus({ preventScroll: true })
       if (kept.typed !== null && kept.start !== null && field.setSelectionRange) field.setSelectionRange(kept.start, kept.end)
     }
@@ -269,21 +346,25 @@ const PAGE_SCRIPT = `(() => {
     const field = holderOf(event.target, 'input')
     if (field === null) return
     clearTimeout(typeTimer)
-    typeTimer = setTimeout(() => act({ kind: 'input', key: field.dataset.pressKey, value: event.target.value, submit: false }), 150)
+    typeTimer = setTimeout(() => send(field.dataset.pressKey, event.target.value, false), 150)
   })
   body.addEventListener('keydown', event => {
     const field = holderOf(event.target, 'input')
-    if (field === null || event.key !== 'Enter' || event.shiftKey) return
+    // Enter that confirms what an input method was composing is not the person's Enter.
+    if (field === null || event.key !== 'Enter' || event.shiftKey || event.isComposing) return
     event.preventDefault()
     clearTimeout(typeTimer)
-    act({ kind: 'input', key: field.dataset.pressKey, value: event.target.value, submit: true })
+    send(field.dataset.pressKey, event.target.value, true)
   })
   body.addEventListener('scroll', () => {
     if (performance.now() < quietUntil) return
     clearTimeout(scrollTimer)
     scrollTimer = setTimeout(() => act({ kind: 'scroll', offset: Math.round(body.scrollTop / row()) }), 120)
   })
-  window.addEventListener('resize', () => { if (drawn > 0) measure() })
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => { if (drawn > 0) measure() }, 200)
+  })
 })()`
 
 /** The page: which checkout it shows, the pane with its title and scrolling body, and a line for what the engine said. */
@@ -317,11 +398,10 @@ body { display: flex; flex-direction: column; gap: 8px; }
 /** The engine's pane, and every page watching it: what each is sent, and what each asks, one at a time. */
 class Preview {
   readonly #pages = new Set<ServerResponse>()
-  readonly #queue: Asked[] = []
-  readonly #waiting = new Map<number, (measured: Measured) => void>()
+  readonly #queue: Queued[] = []
+  readonly #measurements = new Measurements()
   #desktop: Desktop | null = null
   #frame: Json | null = null
-  #draws = 0
   #title = ''
   #stopped: string | null = null
 
@@ -342,21 +422,24 @@ class Preview {
     }
   }
 
-  /** Takes what a page sent: a measurement answers the drawing waiting for it at once; anything else waits its turn. */
+  /**
+   * Takes what a page sent: a measurement answers the drawing waiting for it at once, or, the first of the latest drawing
+   * when none waited, is handed over in its turn; anything else waits its turn.
+   */
   take(action: Action): void {
     if (action.kind !== 'measured') {
       this.#queue.push(action)
       return
     }
     this.#desktop?.resize(action.bodyRows)
-    this.#waiting.get(action.draw)?.(action.measured)
-    this.#waiting.delete(action.draw)
+    if (this.#measurements.take(action.draw, action.measured) === 'unasked') {
+      this.#queue.push({ kind: 'remeasured', measured: action.measured })
+    }
   }
 
   /** Measures a fresh drawing: every page draws it, and the first to measure it answers; with no page, the rig's estimate. */
   readonly measure = async (tree: Json): Promise<Measured> => {
-    this.#draws += 1
-    const draw = this.#draws
+    const draw = this.#measurements.drawn()
     const { html, unknown } = liveHtml(decodeNode(tree))
     this.#frame = { draw, html, title: this.#title }
     this.send('frame', this.#frame)
@@ -366,15 +449,14 @@ class Preview {
     if (this.#pages.size === 0) {
       return estimate(tree)
     }
-    const measured = await new Promise<Measured | null>(done => {
-      this.#waiting.set(draw, done)
-      setTimeout(() => done(null), MEASURE_MS)
-    })
-    this.#waiting.delete(draw)
-    return measured ?? estimate(tree)
+    return (await this.#measurements.wait(draw, MEASURE_MS)) ?? estimate(tree)
   }
 
-  async #perform(desktop: Desktop, action: Asked): Promise<string> {
+  async #perform(desktop: Desktop, action: Queued): Promise<string> {
+    if (action.kind === 'remeasured') {
+      await desktop.remeasured(action.measured)
+      return `measured the pane again: ${action.measured.rows} rows`
+    }
     if (action.kind === 'press') {
       return desktop.pressKey(action.key)
     }
@@ -424,9 +506,11 @@ class Preview {
     }
   }
 
+  /** Tells every page why the engine stopped, and lets each go, so the server can close. */
   stop(reason: string): void {
     this.#stopped = reason
     this.send('stopped', { reason })
+    this.#pages.forEach(page => page.end())
   }
 }
 
@@ -465,13 +549,23 @@ async function holderOf(port: number): Promise<string> {
 }
 
 async function serve(options: Options): Promise<number> {
-  const folder = mkdtempSync(join(tmpdir(), 'pane-preview-'))
   const preview = new Preview()
   const where = whereFrom(ROOT)
   const nonce = randomUUID()
   const fonts = new Set(readdirSync(join(SCREENS, 'fonts')).filter(name => name.endsWith('.woff2')))
   const page = pageShell(where, options.width, nonce)
-  const policy = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'`
+  const policy = policyFor(nonce)
+  /** A file the page loads, read before anything is answered, so one that cannot be read is a 404, not a broken answer. */
+  const file = (response: ServerResponse, path: string, type: string): void => {
+    let body: Buffer
+    try {
+      body = readFileSync(path)
+    } catch {
+      response.writeHead(404, NO_STORE).end()
+      return
+    }
+    response.writeHead(200, { ...NO_STORE, 'content-type': type }).end(body)
+  }
 
   const answer = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const method = request.method ?? 'GET'
@@ -482,11 +576,11 @@ async function serve(options: Options): Promise<number> {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
     const font = path.startsWith('/fonts/') ? path.slice('/fonts/'.length) : ''
     if (method === 'GET' && path === '/') {
-      response.writeHead(200, { ...NO_STORE, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': policy }).end(page)
+      response.writeHead(200, { ...NO_STORE, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': policy, 'x-frame-options': 'DENY' }).end(page)
     } else if (method === 'GET' && path === '/pane.css') {
-      response.writeHead(200, { ...NO_STORE, 'content-type': 'text/css; charset=utf-8' }).end(readFileSync(join(SCREENS, 'pane.css')))
+      file(response, join(SCREENS, 'pane.css'), 'text/css; charset=utf-8')
     } else if (method === 'GET' && fonts.has(font)) {
-      response.writeHead(200, { 'content-type': 'font/woff2' }).end(readFileSync(join(SCREENS, 'fonts', font)))
+      file(response, join(SCREENS, 'fonts', font), 'font/woff2')
     } else if (method === 'GET' && path === '/about') {
       response.writeHead(200, { ...NO_STORE, 'content-type': 'application/json' }).end(JSON.stringify({ where }))
     } else if (method === 'GET' && path === '/events') {
@@ -504,7 +598,14 @@ async function serve(options: Options): Promise<number> {
     }
   }
   const server = createServer((request, response) => {
-    answer(request, response).catch((error: unknown) => response.writeHead(500, NO_STORE).end(messageOf(error)))
+    answer(request, response).catch((error: unknown) => {
+      // An answer already begun cannot become an error: it is cut off instead, and the server carries on.
+      if (response.headersSent) {
+        response.destroy()
+      } else {
+        response.writeHead(500, NO_STORE).end(messageOf(error))
+      }
+    })
   })
   const listening = await new Promise<boolean>(done => {
     server.once('error', () => done(false))
@@ -512,9 +613,13 @@ async function serve(options: Options): Promise<number> {
   })
   if (!listening) {
     console.error(`pane-preview: port ${options.port} is taken, by ${await holderOf(options.port)}; stop it, or pass --port`)
-    rmSync(folder, { recursive: true, force: true })
     return 1
   }
+  // The engine's folder (its working directory and log) is the port's own: the Claude app stops a preview with a kill no
+  // handler sees, so whatever that one left behind is cleared by the next on the same port, not piled up.
+  const folder = join(tmpdir(), `pane-preview-${options.port}`)
+  rmSync(folder, { recursive: true, force: true })
+  mkdirSync(folder)
   console.log(`pane-preview: http://127.0.0.1:${options.port} shows ${where}`)
 
   const engine = new Engine(folder, options.log ?? join(folder, 'debug.log'))

@@ -110,6 +110,13 @@ const SIZES = new Set(['caption', 'footnote', 'body', 'heading', 'title'])
 const WEIGHTS = new Set(['regular', 'medium', 'semibold', 'bold'])
 const BORDER_STYLES = new Set(['single', 'double', 'round', 'bold', 'singleDouble', 'doubleSingle', 'classic', 'arrow', 'dashed', 'quote'])
 const MARKDOWN = new MarkdownIt('commonmark', { html: false, linkify: false }).enable('table')
+/** Markdown as a live page draws it: a link opens beside the page, as the desktop opens it in the browser, not over the pane. */
+const LIVE_MARKDOWN = new MarkdownIt('commonmark', { html: false, linkify: false }).enable('table')
+LIVE_MARKDOWN.renderer.rules['link_open'] = (tokens, at, options, _env, renderer) => {
+  tokens[at]?.attrSet('target', '_blank')
+  tokens[at]?.attrSet('rel', 'noopener noreferrer')
+  return renderer.renderToken(tokens, at, options)
+}
 
 // What each element may carry. A tree with any other prop stops the run, so a prop the pane starts to use is drawn on
 // purpose or ignored on purpose, never dropped by accident. `DRAWN` is what the renderer draws; `KEPT` is accepted and not
@@ -525,7 +532,7 @@ function draw(node: Node | string, drawing: Drawing, key: string | null = null):
       return undrawn(node, drawing.unknown)
     }
     case 'Markdown':
-      return `<div class="md${props['dimColor'] === true ? ' dim' : ''}${marked}">${MARKDOWN.render(text(props['text']))}</div>`
+      return `<div class="md${props['dimColor'] === true ? ' dim' : ''}${marked}">${(drawing.live ? LIVE_MARKDOWN : MARKDOWN).render(text(props['text']))}</div>`
     case 'Code':
       return `<div class="code${props['wrap'] === 'truncate-end' ? ' cut' : ''}${marked}">${codeRows(text(props['source']), props['format'] === 'diff', props['startLine'])}</div>`
     default:

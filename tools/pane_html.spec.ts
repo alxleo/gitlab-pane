@@ -56,6 +56,39 @@ test('a picture marks nothing and draws the picker closed and the field as text,
   )
 })
 
+test('a link in live Markdown opens beside the page, and a picture’s does not', () => {
+  const said = el('Markdown', { text: 'see [the job](https://gitlab.example/j)' })
+  expect(liveHtml(said).html).toContain('<a href="https://gitlab.example/j" target="_blank" rel="noopener noreferrer">the job</a>')
+  expect(pageHtml({ ...scene, tree: said }, null).document).toContain('<a href="https://gitlab.example/j">the job</a>')
+})
+
+test('HTML written in Markdown is drawn as its text on both pages', () => {
+  const said = el('Markdown', { text: '<img src=x onerror=alert(1)>' })
+  expect(liveHtml(said).html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  expect(liveHtml(said).html).not.toContain('<img')
+  expect(pageHtml({ ...scene, tree: said }, null).document).not.toContain('<img')
+})
+
+test('a key, a placeholder, a drawn text and an address cannot leave their attribute', () => {
+  const odd = el('Box', {}, [
+    el('Button', { key: 'a"><b', label: 'x' }),
+    el('Input', { key: 'f', placeholder: '"><i>', value: 'say "hi"' }),
+    el('Select', { key: 's', options: [{ value: '"v"', label: 'v' }] }),
+    el('Link', { href: 'https://gitlab.example/"><u>', label: 'go' }),
+  ])
+  const { html } = liveHtml(odd)
+  expect(html).toContain('data-press-key="a&quot;&gt;&lt;b"')
+  expect(html).toContain('placeholder="&quot;&gt;&lt;i&gt;" data-drawn="say &quot;hi&quot;" value="say &quot;hi&quot;"')
+  expect(html).toContain('<option value="&quot;v&quot;" selected>v</option>')
+  expect(html).toContain('href="https://gitlab.example/&quot;&gt;&lt;u&gt;"')
+  expect(html).not.toMatch(/<[biu]>/u)
+})
+
+test('an Svg the mod drew is drawn as it is, at its size in pixels', () => {
+  const picture = el('Svg', { source: '<svg viewBox="0 0 4 4"></svg>', alt: 'pipeline', width: 40.6, height: 12 })
+  expect(liveHtml(picture).html).toBe('<div class="svg" role="img" aria-label="pipeline" style="width: 40px; height: 12px"><svg viewBox="0 0 4 4"></svg></div>')
+})
+
 test('what the renderer was not taught is named by both pages', () => {
   const odd = el('Box', {}, [el('Gauge'), el('Text', { glow: true }, ['x'])])
   expect([...liveHtml(odd).unknown].toSorted()).toEqual(['Gauge', 'Text.glow'])
