@@ -67,7 +67,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 ## Before you open a pull request
 
-- However it opens (`gh pr create`, the GitHub connector, `gh api`), a separate agent reviews the committed change first, as [AGENTS.md](../AGENTS.md#review) says, and nobody needs to ask for it. Read that section now if you have not.
+- However it opens (`gh pr create`, the GitHub connector, `gh api`), a separate agent reviews the committed change first, as [AGENTS.md](../AGENTS.md#review) says, and nobody needs to ask for it. The only exception is a change made of Markdown files alone, none of them an instruction file. Read that section now if you have not.
 - The description follows [AGENTS.md](../AGENTS.md#pull-requests): `Was | Is`, then the recommendation with what was rejected, then `Before | After | Delta` pictures pinned on `pr-screens` whenever the drawing changes, then the review's answers.
 
 ## Tests
