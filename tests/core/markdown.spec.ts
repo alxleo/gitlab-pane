@@ -311,19 +311,31 @@ const HOSTILE: [string, (size: number) => string][] = [
   ['lines of a form feed alone, then a callout', size => `x\n${over('\f\n', size)}> [!NOTE]`],
 ]
 
-/** The fastest of five readings of `body`: the one least slowed by collecting garbage or a cold start. */
-const fastestRead = (body: string): number => Math.min(...[0, 1, 2, 3, 4].map(() => msToRead(body)))
+/** The middle one of `values`. */
+const median = (values: readonly number[]): number => values.toSorted((a, b) => a - b)[Math.floor(values.length / 2)] ?? Number.NaN
 
-/** How many times longer `large` takes to read than `small`. */
+/**
+ * How many times longer `large` takes to read than `small`: pairs of readings, the small then the large, and the middle of
+ * five pairs' ratios, after two pairs that are not counted, whose first readings of a text are up to twice as slow as the
+ * rest. The two readings of a pair meet the machine in the same state, so a spell in which it runs everything slower slows
+ * both; one pair that a collection of garbage skews is outvoted by the rest.
+ */
 const slowdown = (small: string, large: string): number => {
-  const ofSmall = fastestRead(small)
-  return fastestRead(large) / ofSmall
+  const ratios = [0, 1, 2, 3, 4, 5, 6].map(() => {
+    const ofSmall = msToRead(small)
+    return msToRead(large) / ofSmall
+  })
+  return median(ratios.slice(2))
 }
 
 // Each took minutes on a megabyte before it was made linear. A reading in proportion to the text takes about four times as
 // long on four times the text, and one that is quadratic again sixteen times. Eight is where a reading that grows as the
-// text's length to the power 1.5 would sit, so it catches anything that grows that fast or faster, on any machine, however
-// fast or busy. It does not catch a milder slide, such as a sort that makes a reading n log n.
+// text's length to the power 1.5 would sit, so it catches anything that grows that fast or faster. Processor time alone does
+// not hold the bar on a shared runner, where a core can take about twice the processor time for the same work for a spell
+// (a busy twin on the same core, a lower clock): when one fell between the small readings and the large ones, a linear
+// reading measured 8.009 (main, 20 November). In pairs, a spell slows both readings of a pair or neither, but for a pair it
+// begins or ends in, and the middle of five outvotes those two. It does not catch a milder slide, such as a sort that makes
+// a reading n log n.
 test.each(HOSTILE)('%s takes about four times as long to read at four times the length, and under eight', (_, make) => {
   expect(slowdown(make(MEGABYTE / 32), make(MEGABYTE / 8))).toBeLessThan(8)
 })
