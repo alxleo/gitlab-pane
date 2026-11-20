@@ -5,32 +5,12 @@ import { cut } from './graphemes.ts'
 import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
 import { foreign } from './model-text.ts'
 
+import type { InboxMrFieldsFragment, InboxNoteFieldsFragment } from './gitlab.generated.ts'
+
 import type { InboxKind, InboxMr, InboxSignal } from '../types'
 
 /** What a document gave of the inbox: who is signed in, and the MRs it named. */
 export type Found = { user: string | null; mrs: InboxMr[] }
-
-type Person = { username: string; name: string } | null
-
-/** An MR as `InboxMrFields` gives it. */
-export type MrFields = {
-  iid: string
-  state: string
-  title: string
-  webUrl: string | null
-  draft: boolean
-  author: Person
-  project: { fullPath: string }
-}
-
-type NoteFields = {
-  id: string
-  body: string
-  system: boolean
-  createdAt: string
-  author: { username: string; name: string; bot: boolean } | null
-  systemNoteMetadata: { action: string | null } | null
-}
 
 /** What a system note's action says happened. Other actions (a title change, a branch) are not the inbox's news. */
 const SYSTEM_KIND: Readonly<Record<string, InboxKind | undefined>> = {
@@ -60,7 +40,7 @@ type Why = { inQueue: boolean; isFollowed: boolean; cutoff: number | null }
 
 export const PLAIN: Why = { inQueue: false, isFollowed: false, cutoff: null }
 
-export function mrOf(host: string, me: string, fields: MrFields, signals: InboxSignal[], why: Why): InboxMr {
+export function mrOf(host: string, me: string, fields: InboxMrFieldsFragment, signals: InboxSignal[], why: Why): InboxMr {
   const path = fields.project.fullPath
   const iid = Number(fields.iid)
   return {
@@ -83,7 +63,7 @@ export function mrOf(host: string, me: string, fields: MrFields, signals: InboxS
  * The events in an MR's latest notes that the rules count, within the horizon, by someone other than the user and not a
  * bot: a comment, an approval, a push. Newest first.
  */
-export function noteSignals(notes: readonly (NoteFields | null)[], me: string, isMine: boolean, isFollowed: boolean, now: number): InboxSignal[] {
+export function noteSignals(notes: readonly (InboxNoteFieldsFragment | null)[], me: string, isMine: boolean, isFollowed: boolean, now: number): InboxSignal[] {
   const wanted = wantedKinds(isMine, isFollowed)
   return notes.flatMap((note): InboxSignal[] => {
     const at = timeOf(note?.createdAt ?? null)
@@ -101,7 +81,7 @@ export function noteSignals(notes: readonly (NoteFields | null)[], me: string, i
 }
 
 /** The notes GitLab sent of an MR, and whether it kept older ones back. */
-type Notes = { pageInfo: { hasPreviousPage: boolean }; nodes: readonly (NoteFields | null)[] | null }
+type Notes = { pageInfo: { hasPreviousPage: boolean }; nodes: readonly (InboxNoteFieldsFragment | null)[] | null }
 
 /** When the oldest note sent was written, if GitLab kept older ones back: nothing before it is counted, so counts are lower bounds. */
 export function cutoffOf(notes: Notes): number | null {
