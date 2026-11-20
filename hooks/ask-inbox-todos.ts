@@ -1,11 +1,11 @@
 // What was addressed to the user and is still pending in GitLab's own to-do list; the pane never marks one done.
-import type { InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
+import type { InboxMrFieldsFragment, InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
 import { present, timeOf } from './decode.ts'
 import { documentOf } from './gitlab-document.ts'
 import type { Request } from './gitlab-request.ts'
 import { INBOX_FRAGMENTS } from './inbox-fragments.ts'
 import { actorOf, excerptOf, mrOf, PLAIN } from './inbox-signals.ts'
-import type { Found, MrFields } from './inbox-signals.ts'
+import type { Found } from './inbox-signals.ts'
 
 import type { HostFeatures, InboxKind, InboxMr, InboxSignal } from '../types'
 
@@ -98,7 +98,7 @@ type Todo = {
   body: string
   targetUrl: string | null
   author: { username: string }
-  target: MrFields | { webUrl: string | null } | null
+  target: InboxMrFieldsFragment | { webUrl: string | null } | null
 }
 
 /** The MRs that wait on the user's to-dos, with who asked or said what. */
