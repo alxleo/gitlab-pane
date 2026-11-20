@@ -1,5 +1,5 @@
 // What was addressed to the user and is still pending in GitLab's own to-do list; the pane never marks one done.
-import type { InboxMrFieldsFragment, InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
+import type { InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
 import { present, timeOf } from './decode.ts'
 import { documentOf } from './gitlab-document.ts'
 import type { Request } from './gitlab-request.ts'
@@ -92,14 +92,10 @@ function todoKind(action: string): InboxKind | null {
 const noteOfUrl = (url: string | null): string | null => /#note_(\d+)$/u.exec(url ?? '')?.[1] ?? null
 
 /** A to-do as either document gives it: what it was about is `targetEntity` (GitLab 17.4 and newer) or `target`. */
-type Todo = {
-  action: string
-  createdAt: string
-  body: string
-  targetUrl: string | null
-  author: { username: string }
-  target: InboxMrFieldsFragment | { webUrl: string | null } | null
-}
+type Todo = Omit<EntityTodo, 'targetEntity'> & { target: EntityTodo['targetEntity'] | PlainTodo['target'] }
+
+type EntityTodo = NonNullable<NonNullable<NonNullable<NonNullable<InboxTodosQuery['currentUser']>['todos']>['nodes']>[number]>
+type PlainTodo = NonNullable<NonNullable<NonNullable<NonNullable<InboxTodosPlainQuery['currentUser']>['todos']>['nodes']>[number]>
 
 /** The MRs that wait on the user's to-dos, with who asked or said what. */
 function mrsOfTodos(host: string, me: string | null, todos: readonly Todo[]): Found {
@@ -115,9 +111,6 @@ function mrsOfTodos(host: string, me: string | null, todos: readonly Todo[]): Fo
   })
   return { user: me, mrs }
 }
-
-type EntityTodo = NonNullable<NonNullable<NonNullable<NonNullable<InboxTodosQuery['currentUser']>['todos']>['nodes']>[number]>
-type PlainTodo = NonNullable<NonNullable<NonNullable<NonNullable<InboxTodosPlainQuery['currentUser']>['todos']>['nodes']>[number]>
 
 /** The MRs that wait on the user's to-dos, from whichever document the host was sent. */
 export function todoMrs(host: string, data: InboxTodosQuery | InboxTodosPlainQuery | null): Found {
