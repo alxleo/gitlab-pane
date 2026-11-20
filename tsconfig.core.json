@@ -51,6 +51,7 @@
     "hooks/graphemes.ts",
     "hooks/hosts.ts",
     "hooks/identity.ts",
+    "hooks/in-flight.ts",
     "hooks/inbox-brief.ts",
     "hooks/inbox-follow.ts",
     "hooks/inbox-fragments.ts",

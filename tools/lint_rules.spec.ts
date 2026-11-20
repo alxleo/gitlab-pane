@@ -40,6 +40,15 @@ tester.run('core-imports', ruleNamed('core-imports'), {
     { name: 'a core file re-exports a core file', filename: CORE_FILE, code: "export { isRecord } from './decode.ts'" },
     { name: 'a package other than the engine is left to tsconfig.core.json', filename: CORE_FILE, code: "import { parse } from 'graphql'" },
     { name: 'a file outside the core imports what it likes', filename: ENGINE_FILE, code: "import { h } from 'claude-code'\nimport { cardOf } from './card'" },
+    { name: 'a hooks file outside the core that imports the engine stays out', filename: HOOK, code: "import type { Ui } from 'claude-code'\nimport { isRecord } from './decode'" },
+    {
+      name: 'a hooks file outside the core that imports a file outside the core stays out',
+      filename: HOOK,
+      code: "import { isRecord } from './decode.ts'\nimport { cardOf } from './card'",
+    },
+    { name: 'a hooks file outside the core that computes an import() stays out', filename: HOOK, code: 'export const late = (name: string) => import(name)' },
+    { name: 'a pure-looking .tsx file stays out, its JSX being the engine’s', filename: join(ROOT, 'hooks', 'made-up.tsx'), code: "import { isRecord } from './decode.ts'" },
+    { name: 'a pure file outside hooks/ is left alone', filename: join(ROOT, 'tests', 'core', 'made-up.spec.ts'), code: "import { isRecord } from '../../hooks/decode.ts'" },
   ],
   invalid: [
     { name: 'a core file imports a file outside the core', filename: CORE_FILE, code: "import { paneOf } from './pane'", errors: [{ messageId: 'outside' }] },
@@ -59,6 +68,19 @@ tester.run('core-imports', ruleNamed('core-imports'), {
       errors: [{ messageId: 'outside' }],
     },
     { name: 'a core file names a type from the engine', filename: CORE_FILE, code: "export type Ui = typeof import('claude-code')", errors: [{ messageId: 'engine' }] },
+    {
+      name: 'a hooks file outside the core that imports only core files is pure, so it must join the core',
+      filename: HOOK,
+      code: "import { isRecord } from './decode'\nimport type { Mr } from '../types'",
+      errors: [{ messageId: 'pure' }],
+    },
+    { name: 'a hooks file outside the core that imports nothing is pure', filename: HOOK, code: 'export const two = 2', errors: [{ messageId: 'pure' }] },
+    {
+      name: 'a hooks file outside the core that imports only packages and core files is pure',
+      filename: HOOK,
+      code: "import { parse } from 'graphql'\nexport { isRecord } from './decode.ts'",
+      errors: [{ messageId: 'pure' }],
+    },
   ],
 })
 

@@ -15,7 +15,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 | Rule | Detail |
 | --- | --- |
-| The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed. |
+| The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed, and a `.ts` file in `hooks/` that imports nothing of the engine and no file outside the core must be (`local/core-imports`). |
 | Imports | A core file imports core files by their `.ts` path, and `../types`. Other files import without extensions. `tools/*.ts` import `gitlab-operations.ts` and `decode.ts` under plain Node. |
 | New logic | On plain data goes in the core, with a test on plain data. Engine-facing files stay thin: `pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `replies.ts`, `register.tsx`. |
 | `fromGitLab` (`markdown.ts`) | Turns text into GitLab's Markdown to draw; only `mr-card.ts` imports it (`local/only-importers`). Anything else gets such text from `cleanBody`. |

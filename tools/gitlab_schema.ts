@@ -52,7 +52,7 @@ import {
 } from 'graphql'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join, matchesGlob, relative } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
@@ -73,11 +73,19 @@ const MARKER = '/* GraphQL */'
  * The files graphql-codegen reads documents from: every module of the plugin that holds one, found by the marker, so a
  * question added in a file of its own needs no list to be named in.
  */
-const documentFiles = (): string[] =>
+export const documentFiles = (): string[] =>
   readdirSync(HOOKS)
     .filter(name => name.endsWith('.ts') && readFileSync(join(HOOKS, name), 'utf8').includes(MARKER))
     .toSorted()
     .map(name => join(HOOKS, name))
+
+/**
+ * The files, relative to the root, that none of a workflow's `paths` filter takes in: GitHub's rule, where the last pattern
+ * that matches a file decides, and a `!` pattern leaves it out. The canary's pull_request filter names the document files by
+ * their names, and this by the marker; a document file it misses would change without its schema check running.
+ */
+export const unwatched = (files: readonly string[], paths: readonly string[]): string[] =>
+  files.filter(file => !paths.reduce((taken, path) => (path.startsWith('!') ? taken && !matchesGlob(file, path.slice(1)) : taken || matchesGlob(file, path)), false))
 const ENDPOINT = 'https://gitlab.com/api/graphql'
 /**
  * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has

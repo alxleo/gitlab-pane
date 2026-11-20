@@ -564,12 +564,41 @@ const onlyImporters = defineRule({
   },
 })
 
+/** What a module name in an import reaches: the engine, a package, a core file (by its `.ts` path or without it), the types contract, or another file. */
+type Reached = 'engine' | 'package' | 'core-by-path' | 'core-unextended' | 'contract' | 'other'
+
+function reached(include: readonly string[], importer: string, specifier: string): Reached {
+  if (specifier === 'claude-code' || specifier.startsWith('claude-code/')) {
+    return 'engine'
+  }
+  if (!specifier.startsWith('.')) {
+    return 'package'
+  }
+  const target = relative(ROOT, resolve(dirname(importer), specifier))
+    .split(sep)
+    .join('/')
+  if (specifier.endsWith('.ts') && include.includes(target)) {
+    return 'core-by-path'
+  }
+  if (/\.[a-z]+$/u.test(specifier)) {
+    return 'other'
+  }
+  if (include.includes(`${target}/index.d.ts`)) {
+    return 'contract'
+  }
+  return include.includes(`${target}.ts`) ? 'core-unextended' : 'other'
+}
+
 /**
  * What the core may import: core files, each by its `.ts` path (tools/gitlab_schema.ts runs gitlab-operations.ts under plain
  * Node, which needs the extension), the types contract (`../types`), and no part of the engine (`claude-code`). The core is
- * what tsconfig.core.json includes, read when the rule starts; a file outside it is not checked. Every way a module is
- * named counts: `import`, `export … from`, `export * from`, `import x = require()`, a type's `import('…')`, and `import()`,
- * whose argument must then be written out.
+ * what tsconfig.core.json includes, read when the rule starts. Every way a module is named counts: `import`, `export … from`,
+ * `export * from`, `import x = require()`, a type's `import('…')`, and `import()`, whose argument must then be written out.
+ *
+ * And the other way round: a `.ts` file in hooks/ that imports nothing of the engine and no file outside the core is pure,
+ * so it is in the core, where the core's compiler, rules and plain-Node specs hold it to that. Without this, a pure module
+ * that only engine files import could leave the list and nothing would notice. A `.tsx` file is the engine's by its JSX,
+ * which compiles to the engine's runtime without an import naming it.
  */
 const coreImports = defineRule({
   meta: {
@@ -579,32 +608,36 @@ const coreImports = defineRule({
       engine: 'The core runs on plain data and imports nothing from the engine. Put engine code in a file outside the core.',
       outside: 'The core imports only core files, each with its .ts extension, and ../types. If this module is pure, add it to tsconfig.core.json.',
       unnamed: 'An `import()` in the core names its module as a string, so the core-imports rule can check it.',
+      pure: 'This module imports nothing of the engine and only core files, so it is pure: add it to tsconfig.core.json, and import core files by their .ts path.',
     },
   },
   create(context) {
     const include = coreInclude()
     const file = fileOf(context)
-    if (!include.includes(file)) {
+    const isCore = include.includes(file)
+    if (!isCore && !(file.startsWith('hooks/') && file.endsWith('.ts') && !file.endsWith('.d.ts'))) {
       return {}
     }
+    // Outside the core: whether a module named so far keeps this file out of it (the engine, or a file outside the core).
+    let leansOnEngine = false
     const check = (node: Node, specifier: string): void => {
-      if (specifier === 'claude-code' || specifier.startsWith('claude-code/')) {
+      const reaches = reached(include, context.filename, specifier)
+      if (!isCore) {
+        leansOnEngine ||= reaches === 'engine' || reaches === 'other'
+        return
+      }
+      if (reaches === 'engine') {
         context.report({ node, messageId: 'engine' })
-        return
-      }
-      if (!specifier.startsWith('.')) {
-        return
-      }
-      const target = relative(ROOT, resolve(dirname(context.filename), specifier))
-        .split(sep)
-        .join('/')
-      const isCoreFile = specifier.endsWith('.ts') && include.includes(target)
-      const isContract = !/\.[a-z]+$/u.test(specifier) && include.includes(`${target}/index.d.ts`)
-      if (!isCoreFile && !isContract) {
+      } else if (reaches === 'core-unextended' || reaches === 'other') {
         context.report({ node, messageId: 'outside' })
       }
     }
     return {
+      'Program:exit'(program) {
+        if (!isCore && !leansOnEngine) {
+          context.report({ node: program, messageId: 'pure' })
+        }
+      },
       ImportDeclaration: node => check(node, node.source.value),
       ExportAllDeclaration: node => check(node, node.source.value),
       ExportNamedDeclaration(node) {
@@ -615,8 +648,11 @@ const coreImports = defineRule({
       ImportExpression(node) {
         if (node.source.type === 'Literal' && typeof node.source.value === 'string') {
           check(node, node.source.value)
-        } else {
+        } else if (isCore) {
           context.report({ node, messageId: 'unnamed' })
+        } else {
+          // A module it cannot name may be the engine's, so the file is not taken for pure.
+          leansOnEngine = true
         }
       },
       TSImportEqualsDeclaration(node) {
