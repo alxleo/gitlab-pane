@@ -13,7 +13,7 @@ const repos = el('Select', {
     { value: 'b', label: 'web <app>' },
   ],
 })
-const search = el('Input', { key: 'search', label: '🔍', placeholder: 'find', value: 'het', submitLabel: 'find' })
+const search = el('Input', { key: 'search', label: '🔍', placeholder: 'find', value: 'abc', submitLabel: 'find' })
 const tree = el('Box', { flexDirection: 'column' }, [
   el('Button', { key: 'tab-mine', label: 'Mine · 2' }),
   el('Button', { label: 'unkeyed' }),
@@ -39,7 +39,7 @@ test('a live picker opens on its options, the picked one selected and every labe
 })
 
 test('a live field holds the text it was drawn with and notes it, and a field of several rows is a text area', () => {
-  expect(liveHtml(tree).html).toContain('<input class="field" placeholder="find" data-drawn="het" value="het">')
+  expect(liveHtml(tree).html).toContain('<input class="field" placeholder="find" data-drawn="abc" value="abc">')
   expect(liveHtml(el('Input', { key: 'reply', value: 'a\nb', rows: 3 })).html).toContain('<textarea class="field" placeholder="" data-drawn="a\nb" rows="3">a\nb</textarea>')
 })
 
@@ -52,7 +52,7 @@ test('a picture marks nothing and draws the picker closed and the field as text,
   expect(document).not.toContain('data-press-key')
   expect(document).not.toContain('target=')
   expect(document).toContain(
-    '<button class="btn">Mine · 2</button><button class="btn">unkeyed</button><span class="select">📁 web &lt;app&gt;<span class="caret">▾</span></span><span class="input"><span>🔍</span><span class="field" style="min-height: 1.5em">het</span></span><a class="link" href="https://gitlab.example/x">open</a>'
+    '<button class="btn">Mine · 2</button><button class="btn">unkeyed</button><span class="select">📁 web &lt;app&gt;<span class="caret">▾</span></span><span class="input"><span>🔍</span><span class="field" style="min-height: 1.5em">abc</span></span><a class="link" href="https://gitlab.example/x">open</a>'
   )
 })
 

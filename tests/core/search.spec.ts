@@ -14,10 +14,10 @@ const mr = (iid: number, over: Partial<Findable> = {}): Findable => ({
 })
 
 const MRS: Findable[] = [
-  mr(1398, { title: 'feat: [HET-1074] Add order history to the account page', branch: 'feature/het-1074-order-history', repo: 'web-store' }),
-  mr(13980, { title: 'fix: Retry payment authorisation once', branch: 'fix/payment-retry', repo: 'payments', people: ['sam', 'Sam Lee'] }),
+  mr(512, { title: 'feat: [ABC-123] Add order history to the account page', branch: 'feature/abc-123-order-history', repo: 'web-store' }),
+  mr(5120, { title: 'fix: Retry payment authorisation once', branch: 'fix/payment-retry', repo: 'payments', people: ['sam', 'Sam Lee'] }),
   mr(42, { title: 'chore: Bump the Node image', branch: 'renovate/node-26', repo: 'platform', people: ['renovate-bot'] }),
-  mr(77, { title: 'Draft: [HET-1100] Show the delivery window', branch: 'het_1100_delivery', repo: 'web-store' }),
+  mr(77, { title: 'Draft: [ABC-150] Show the delivery window', branch: 'abc_150_delivery', repo: 'web-store' }),
 ]
 
 /** The numbers of the MRs a search finds, best first. */
@@ -33,26 +33,26 @@ test('a blank search, or one of punctuation alone, looks for nothing and leaves 
 })
 
 test("an MR is found by its number with or without GitLab's !, and the exact number comes before one that only contains it", () => {
-  expect(find('!1398')).toEqual([1398])
-  expect(find('1398')).toEqual([1398, 13980])
-  expect(find('!139')).toEqual([])
+  expect(find('!512')).toEqual([512])
+  expect(find('512')).toEqual([512, 5120])
+  expect(find('!51')).toEqual([])
 })
 
 test('a ticket is found however it is spelled: its case, its hyphen, an underscore, or none', () => {
-  for (const typed of ['HET-1074', 'het-1074', 'het1074', 'HET1074', 'het_1074']) {
-    expect(find(typed)).toEqual([1398])
+  for (const typed of ['ABC-123', 'abc-123', 'abc123', 'ABC123', 'abc_123']) {
+    expect(find(typed)).toEqual([512])
   }
   // A branch named for the ticket finds it too, where the title does not name it.
-  expect(find('het1100')).toEqual([77])
+  expect(find('abc150')).toEqual([77])
 })
 
 test('words of the title, branch, repo and author are found by their start or any part, in any case', () => {
-  expect(find('order hist')).toEqual([1398])
-  expect(find('PAYMENT')).toEqual([13980])
+  expect(find('order hist')).toEqual([512])
+  expect(find('PAYMENT')).toEqual([5120])
   expect(find('renovate')).toEqual([42])
-  expect(find('web-store')).toEqual([1398, 77])
-  expect(find('sam lee')).toEqual([13980])
-  expect(find('thoris')).toEqual([13980])
+  expect(find('web-store')).toEqual([512, 77])
+  expect(find('sam lee')).toEqual([5120])
+  expect(find('thoris')).toEqual([5120])
 })
 
 test('accents, strokes, a capital of two letters and a final sigma fold away, so a word typed plain or cut short still finds it', () => {
@@ -93,9 +93,9 @@ test("a pasted reference's repo is the repo's whole path or its last parts, neve
 })
 
 test('a ticket named by the branch alone ranks above a title word that only starts with it', () => {
-  const branch = mr(1, { title: 'Other', branch: 'het-1100-delivery' })
-  const title = mr(2, { title: 'the het11000 thing', branch: 'two' })
-  expect(find('HET-1100', [title, branch])).toEqual([1, 2])
+  const branch = mr(1, { title: 'Other', branch: 'abc-150-delivery' })
+  const title = mr(2, { title: 'the abc1500 thing', branch: 'two' })
+  expect(find('ABC-150', [title, branch])).toEqual([1, 2])
 })
 
 test('a search is kept to its first 200 characters, none cut in half', () => {
@@ -187,9 +187,9 @@ test('another word never finds more', () => {
 
 test('a score is the sum over the words, so a search of one word scores what that word does', () => {
   const query = (text: string): Query => queryOf(text) ?? { words: [] }
-  const one = mr(1398, { title: 'feat: [HET-1074] Add order history' })
-  expect(scoreOf(query('1398'), one)).toBe(8)
-  expect(scoreOf(query('het1074'), one)).toBe(4)
-  expect(scoreOf(query('1398 het1074'), one)).toBe(12)
-  expect(scoreOf(query('1398 zebra'), one)).toBeNull()
+  const one = mr(512, { title: 'feat: [ABC-123] Add order history' })
+  expect(scoreOf(query('512'), one)).toBe(8)
+  expect(scoreOf(query('abc123'), one)).toBe(4)
+  expect(scoreOf(query('512 abc123'), one)).toBe(12)
+  expect(scoreOf(query('512 zebra'), one)).toBeNull()
 })
