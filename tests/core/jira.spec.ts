@@ -30,6 +30,21 @@ test('a ticket read whole is its assignee and its description as plain lines, a 
     'ABC-2': { assignee: '', description: 'Plain text.' },
     'ABC-3': { assignee: '', description: '' },
   })
+  // A mention, an emoji, a status or a link is its words; a table row is a line, its cells joined; a control character,
+  // which a drawing refuses, is a space.
+  const inline = (node: object) => ({ type: 'paragraph', content: [{ type: 'text', text: 'Ask ' }, node, { type: 'text', text: ' now' }] })
+  const cell = (words: string) => ({ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: words }] }] })
+  const rich = {
+    type: 'doc',
+    content: [
+      inline({ type: 'mention', attrs: { id: '1', text: '@Ines' } }),
+      inline({ type: 'inlineCard', attrs: { url: 'https://example.com/x' } }),
+      inline({ type: 'emoji', attrs: { shortName: ':tada:' } }),
+      { type: 'table', content: [{ type: 'tableRow', content: [cell('one'), cell('two')] }] },
+    ],
+  }
+  expect(readTicketDetails([{ key: 'ABC-5', fields: { description: rich } }])['ABC-5']?.description).toBe('Ask @Ines now\nAsk https://example.com/x now\nAsk :tada: now\none · two')
+  expect(readTicketDetails([{ key: 'ABC-6', fields: { description: 'line1\r\nline2\u001b[31m red\u0007' } }])['ABC-6']?.description).toBe('line1\nline2 [31m red')
   // A long description is cut, whole characters only, and says so.
   const long = readTicketDetails([{ key: 'ABC-4', fields: { description: '👍'.repeat(700) } }])['ABC-4']?.description ?? ''
   expect(long).toBe(`${'👍'.repeat(600)}…`)

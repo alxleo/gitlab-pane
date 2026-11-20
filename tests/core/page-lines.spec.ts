@@ -75,13 +75,27 @@ test('a person opened under a card leads with their newest comment, whatever is 
 
 test('a ticket opened under a card says what the quarter-hourly read knows at once, and what reading it whole adds once in', () => {
   const ticket = { type: 'Story', status: 'In Review', isDone: false, summary: 'Order history' }
-  expect(ticketUnder('ABC-1', ticket, undefined)).toEqual({ kind: 'ticket', heading: 'ABC-1 · Story · In Review', lines: ['Order history'], isReading: true })
-  expect(ticketUnder('ABC-1', ticket, { assignee: 'Ines Mendel', description: '' })).toEqual({
+  const read = { isFound: true, at: 0 }
+  expect(ticketUnder('ABC-1', ticket, undefined, false)).toEqual({ kind: 'ticket', heading: 'ABC-1 · Story · In Review', lines: ['Order history'], isReading: true })
+  expect(ticketUnder('ABC-1', ticket, { assignee: 'Ines Mendel', description: '', ...read }, false)).toEqual({
     kind: 'ticket',
     heading: 'ABC-1 · Story · In Review',
     lines: ['Order history', 'Assigned to Ines Mendel', 'No description.'],
     isReading: false,
   })
   // A ticket the read has not reached is its key alone, and nobody assigned says nothing.
-  expect(ticketUnder('ABC-2', undefined, { assignee: '', description: 'Do it.' })).toEqual({ kind: 'ticket', heading: 'ABC-2', lines: ['Do it.'], isReading: false })
+  expect(ticketUnder('ABC-2', undefined, { assignee: '', description: 'Do it.', ...read }, false)).toEqual({
+    kind: 'ticket',
+    heading: 'ABC-2',
+    lines: ['Do it.'],
+    isReading: false,
+  })
+  // Never "reading" for good: a ticket Jira answered without says so, and a Jira that cannot be read points at /gitlab.
+  expect(ticketUnder('ABC-3', undefined, { assignee: '', description: '', isFound: false, at: 0 }, false)).toEqual({
+    kind: 'ticket',
+    heading: 'ABC-3',
+    lines: ['Jira says nothing of this ticket to you.'],
+    isReading: false,
+  })
+  expect(ticketUnder('ABC-3', undefined, undefined, true)).toEqual({ kind: 'ticket', heading: 'ABC-3', lines: ['Jira could not be read; /gitlab says why.'], isReading: false })
 })

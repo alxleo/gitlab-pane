@@ -98,11 +98,25 @@ function change($: EngineInterface, how: (choices: Choices) => Choices): Promise
   return update($, choicesAtom, how).then(() => undefined)
 }
 
-export function setTab($: EngineInterface, tab: 'mine' | 'inbox'): Promise<void> {
+/**
+ * Leaving the list for a page or the inbox: the box comes back drawn holding what is searched for, as typing paused on it,
+ * a new box under a new key. Typing not yet paused on goes with the box.
+ */
+async function settleBox($: EngineInterface): Promise<void> {
+  typed('search')
+  const search = await read($, searchAtom)
+  await update($, searchBoxAtom, box => (box.drawn === search ? box : { drawn: search, round: box.round + 1 }))
+}
+
+export async function setTab($: EngineInterface, tab: 'mine' | 'inbox'): Promise<void> {
+  if (tab !== 'mine') {
+    await settleBox($)
+  }
   return change($, choices => ({ ...choices, tab }))
 }
 /** Opens the page of the MR `key`, on the comments of `username` alone, or whole when that is empty. */
-export function setPage($: EngineInterface, key: string, username: string): Promise<void> {
+export async function setPage($: EngineInterface, key: string, username: string): Promise<void> {
+  await settleBox($)
   return change($, choices => ({ ...choices, reading: key, person: username !== '' ? { [key]: username } : {} }))
 }
 
@@ -120,7 +134,8 @@ export function closePage($: EngineInterface, key: string): Promise<void> {
 }
 
 /** Shows the Inbox tab, leaving any MR's page, with the person it was on and the folds it had open. */
-export function showInbox($: EngineInterface): Promise<void> {
+export async function showInbox($: EngineInterface): Promise<void> {
+  await settleBox($)
   return change($, choices => ({ ...choices, tab: 'inbox', reading: '', person: {}, folds: choices.folds.filter(id => !id.startsWith(`${choices.reading}#`)) }))
 }
 

@@ -487,8 +487,11 @@ export type SearchBox = { drawn: string; round: number }
 /** What is open under one card, in place of a page: a person's say on it, or its ticket. One at a time; null for none. */
 export type Under = { card: string; kind: 'person' | 'ticket'; id: string } | null
 
-/** What a ticket says beyond its line on the card, read from Jira when it is first opened under one. */
-export type TicketDetail = { assignee: string; description: string }
+/**
+ * What a ticket says beyond its line on the card, read from Jira when it is opened under one, and when (`at`); `isFound`
+ * false when Jira answered without it (a key it does not know, or one hidden from you).
+ */
+export type TicketDetail = { assignee: string; description: string; isFound: boolean; at: number }
 
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }

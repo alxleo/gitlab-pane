@@ -117,15 +117,22 @@ export function personUnder(card: MrCard, username: string): UnderBlock | null {
   }
 }
 
-/** A ticket's say: what the quarter-hourly read knows at once, and what reading it whole adds, once that is in. */
-export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined): UnderBlock {
+/**
+ * A ticket's say: what the quarter-hourly read knows at once, and what reading it whole adds, once that is in. While none
+ * is in, it is being read, unless Jira's last read failed (`isJiraDown`), which `/gitlab` says.
+ */
+export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined, isJiraDown: boolean): UnderBlock {
   const heading = ticket !== undefined ? `${key} · ${ticket.type} · ${ticket.status}` : key
-  const lines = [
-    ...(ticket !== undefined && ticket.summary !== '' ? [ticket.summary] : []),
-    ...(detail !== undefined && detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []),
-    ...(detail !== undefined ? [detail.description !== '' ? detail.description : 'No description.'] : []),
-  ]
-  return { kind: 'ticket', heading, lines, isReading: detail === undefined }
+  const said =
+    detail === undefined
+      ? isJiraDown
+        ? ['Jira could not be read; /gitlab says why.']
+        : []
+      : !detail.isFound
+        ? ['Jira says nothing of this ticket to you.']
+        : [...(detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []), detail.description !== '' ? detail.description : 'No description.']
+  const lines = [...(ticket !== undefined && ticket.summary !== '' ? [ticket.summary] : []), ...said]
+  return { kind: 'ticket', heading, lines, isReading: detail === undefined && !isJiraDown }
 }
 
 /** `bot`, `@handle`, or nothing where the name is written like the handle ("Mel.Northcote") and would say it twice. */

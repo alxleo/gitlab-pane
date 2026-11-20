@@ -83,49 +83,78 @@ const DESCRIPTION_ROOM = 600
 /** Blocks of Jira's document format that end a line of their own. */
 const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'codeBlock', 'blockquote', 'rule', 'tableRow'])
 
+/** Inline nodes whose words are in their attributes, and which attribute: a mention's name, an emoji, a status, a link. */
+const WORDS_IN: Readonly<Record<string, readonly string[]>> = { mention: ['text'], emoji: ['text', 'shortName'], status: ['text'], inlineCard: ['url'] }
+
 /**
- * Jira's description as plain lines: the text of its document format (ADF), a block a line, list items as `• `, blank
- * lines dropped; a description written as a plain string is taken as it is.
+ * A line as a drawing takes it: a control character (a carriage return, an escape) is refused in drawn text and can blank
+ * the whole pane, so each is a space, and runs of spaces are one.
+ */
+const drawable = (line: string): string =>
+  line
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/ {2,}/gu, ' ')
+    .trim()
+
+/**
+ * Jira's description as plain lines: the text of its document format (ADF), a block a line, list items as `• `, a table
+ * row's cells joined by ` · `, a mention or a link by its words; blank lines dropped. A description written as a plain
+ * string keeps its lines.
  */
 function adfText(node: unknown): string {
-  if (typeof node === 'string') {
-    return node.trim()
-  }
   const lines: string[] = []
-  let line = ''
-  const walk = (each: unknown): void => {
-    const kind = text(field(each, 'type'))
-    if (kind === 'text') {
-      line += text(field(each, 'text'))
-      return
+  if (typeof node === 'string') {
+    lines.push(...node.split(/\r?\n/u))
+  } else {
+    let line = ''
+    // Inside a table cell a paragraph ends no line: the row does.
+    let inCell = 0
+    const walk = (each: unknown): void => {
+      const kind = text(field(each, 'type'))
+      if (kind === 'text') {
+        line += text(field(each, 'text'))
+        return
+      }
+      if (kind === 'hardBreak') {
+        lines.push(line)
+        line = ''
+        return
+      }
+      const attrs = field(each, 'attrs')
+      const words = (WORDS_IN[kind] ?? []).map(name => text(field(attrs, name))).find(said => said !== '')
+      if (words !== undefined) {
+        line += words
+        return
+      }
+      if (kind === 'listItem') {
+        line += '• '
+      }
+      const isCell = kind === 'tableCell' || kind === 'tableHeader'
+      if (isCell && line.trim() !== '') {
+        line += ' · '
+      }
+      inCell += isCell ? 1 : 0
+      const content = field(each, 'content')
+      if (Array.isArray(content)) {
+        content.forEach(walk)
+      }
+      inCell -= isCell ? 1 : 0
+      if (BLOCKS.has(kind) && inCell === 0 && line.trim() !== '' && line.trim() !== '•') {
+        lines.push(line)
+        line = ''
+      }
     }
-    if (kind === 'hardBreak') {
-      lines.push(line)
-      line = ''
-      return
-    }
-    if (kind === 'listItem') {
-      line += '• '
-    }
-    const content = field(each, 'content')
-    if (Array.isArray(content)) {
-      content.forEach(walk)
-    }
-    if (BLOCKS.has(kind) && line.trim() !== '' && line.trim() !== '•') {
-      lines.push(line)
-      line = ''
-    }
+    walk(node)
+    lines.push(line)
   }
-  walk(node)
-  lines.push(line)
   return lines
-    .map(each => each.trim())
+    .map(drawable)
     .filter(each => each !== '' && each !== '•')
     .join('\n')
 }
 
 /** `acli`'s answer for tickets read whole: each one's assignee by name and its description, cut, by key. */
-export function readTicketDetails(raw: unknown): Record<string, TicketDetail> {
+export function readTicketDetails(raw: unknown): Record<string, Pick<TicketDetail, 'assignee' | 'description'>> {
   if (!Array.isArray(raw)) {
     throw new Error('acli answered something other than a list of tickets')
   }

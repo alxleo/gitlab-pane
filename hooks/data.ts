@@ -57,14 +57,23 @@ export async function drawnData($: EngineInterface) {
   return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, tickets, ticketDetails, usual, poll, isReading, browse }
 }
 
-/** Whether the ticket `key` has been read whole. */
-export async function isTicketHeld($: EngineInterface, key: string): Promise<boolean> {
-  return (await read($, ticketDetailsAtom))[key] !== undefined
+/** What reading the ticket `key` whole last gave, if it has been. */
+export async function heldTicket($: EngineInterface, key: string): Promise<TicketDetail | undefined> {
+  return (await read($, ticketDetailsAtom))[key]
 }
 
-/** Keeps what Jira said of tickets read whole. */
-export async function knowTicketDetails($: EngineInterface, found: Record<string, TicketDetail>): Promise<void> {
-  await update($, ticketDetailsAtom, previous => ({ ...previous, ...found }))
+/** The most tickets read whole kept: every drawing reads them all, so the oldest read go. */
+const TICKETS_HELD = 30
+
+/** Keeps what Jira said of a ticket read whole, letting go of the oldest read past `TICKETS_HELD`. */
+export async function knowTicketDetail($: EngineInterface, key: string, detail: TicketDetail): Promise<void> {
+  await update($, ticketDetailsAtom, previous =>
+    Object.fromEntries(
+      Object.entries({ ...previous, [key]: detail })
+        .toSorted(([, a], [, b]) => b.at - a.at)
+        .slice(0, TICKETS_HELD)
+    )
+  )
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {

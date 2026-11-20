@@ -80,7 +80,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       return known
     }
     const card = cards.find(each => each.key === row.key)
-    const block = under.kind === 'ticket' ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id]) : card !== undefined ? personUnder(card, under.id) : null
+    const block =
+      under.kind === 'ticket'
+        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id], failures.jira !== undefined)
+        : card !== undefined
+          ? personUnder(card, under.id)
+          : null
     if (block === null) {
       return null
     }
