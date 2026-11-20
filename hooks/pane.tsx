@@ -3,7 +3,7 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 import { drawFound, drawMerged, drawPart, drawUnder } from './card'
 import type { RowPart } from './card'
 import { clearSearch, filterRepo, submitSearch, toggle, toggleWake, typeSearch } from './choices'
-import { CHROME_SIZE, DRAWING_BUDGET, measure } from './drawing'
+import { CHROME_SIZE, DRAWING_BUDGET, FILTERED, measure } from './drawing'
 import { quietly } from './failures'
 import { inboxNews } from './inbox'
 import { drawInbox } from './inbox-pane'
@@ -168,13 +168,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ...fold('drafts', drafts),
         ]
       : []
-  // A filter holds its own row inside a frame, grey while it hides nothing and blue while it does, so a list narrowed by a
-  // search or a repo says so where it is narrowed. The frame is always there, so turning a filter on moves nothing.
-  const framed = (isOn: boolean, child: RenderChildren) => (
-    <Box borderStyle="round" borderColor={isOn ? 'suggestion' : 'subtle'} borderDimColor={!isOn} paddingX={1}>
-      {child}
-    </Box>
-  )
+  // A filter that narrows the list says so where it was narrowed: `⧩ filtered` beside it, in the theme's blue, a glyph and a
+  // word with the colour, as no colour says anything alone.
+  const filtered = <Text color="suggestion">{FILTERED}</Text>
   // The repos are one picker, a row however many there are; a phone, which may not draw one, has a button for each.
   const { repos } = model
   const { Select } = kit
@@ -182,7 +178,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     repos === null
       ? []
       : Select !== undefined
-        ? [framed(repoFilter !== '', <Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />)]
+        ? [
+            <Box flexDirection="row" columnGap={1} alignItems="center">
+              <Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />
+              {repoFilter !== '' && filtered}
+            </Box>,
+          ]
         : [
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
               <Text>{repos.mark}</Text>
@@ -194,6 +195,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
                   onPress={() => filterRepo($, pickedRepo(choice.value))}
                 />
               ))}
+              {repoFilter !== '' && filtered}
             </Box>,
           ]
   // The search box tops Mine. The list follows the typing once it pauses, and Enter at once; ✕ ends the search. The box is
@@ -201,23 +203,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const searchRow =
     Input !== undefined
       ? [
-          framed(
-            search !== '',
-            <Box flexDirection="row" columnGap={1} alignItems="center">
-              <Box flexGrow={1} flexShrink={1}>
-                <Input
-                  key={`search-${searchBox.round}`}
-                  label="🔍"
-                  placeholder="!iid, ticket, title, branch or author"
-                  value={searchBox.drawn}
-                  submitLabel="find"
-                  onInput={text => typeSearch($, text)}
-                  onSubmit={text => submitSearch($, text)}
-                />
-              </Box>
-              {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => clearSearch($)} />}
+          <Box flexDirection="row" columnGap={1} alignItems="center">
+            <Box flexGrow={1} flexShrink={1}>
+              <Input
+                key={`search-${searchBox.round}`}
+                label="🔍"
+                placeholder="!iid, ticket, title, branch or author"
+                value={searchBox.drawn}
+                submitLabel="find"
+                onInput={text => typeSearch($, text)}
+                onSubmit={text => submitSearch($, text)}
+              />
             </Box>
-          ),
+            {search !== '' && filtered}
+            {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => clearSearch($)} />}
+          </Box>,
         ]
       : []
   const { found } = model

@@ -728,8 +728,9 @@ test('the list follows the search box once typing pauses, and Enter at once, pas
     (await ui.find({ type: 'Text', text: start }))?.text
   // Each ✕ draws a new box under a new key, so a box is found by its type.
   const box = async (ui: { findAll: (query: { type: 'Input' }) => Promise<{ key?: string; props: { value?: string } }[]> }) => (await ui.findAll({ type: 'Input' }))[0]
-  // A filter's frame is blue while it hides something.
-  const blue = async (ui: { drawn: () => Promise<unknown> }) => boxesOf(await ui.drawn()).filter(each => each.props?.['borderColor'] === 'suggestion').length
+  // A filter that hides something says so beside it, in blue.
+  const blue = async (ui: { findAll: (query: { type: 'Text'; text: string }) => Promise<{ props: { color?: unknown } }[]> }) =>
+    (await ui.findAll({ type: 'Text', text: '⧩ filtered' })).filter(each => each.props.color === 'suggestion').length
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await blue(ui)).toBe(0)
