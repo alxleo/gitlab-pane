@@ -109,7 +109,7 @@ export type Action =
 type Asked = Exclude<Action, { readonly kind: 'measured' }>
 
 /** What waits its turn with the engine: a page's ask, or a measurement of the drawing on screen that nothing waited for. */
-type Queued = Asked | { readonly kind: 'remeasured'; readonly measured: Measured }
+type Queued = Asked | { readonly kind: 'remeasured'; readonly draw: number; readonly measured: Measured }
 
 /**
  * How a measurement was taken: `waited`, by the drawing waiting for it; `unasked`, the first for the latest drawing when
@@ -131,6 +131,11 @@ export class Measurements {
   drawn(): number {
     this.#latest += 1
     return this.#latest
+  }
+
+  /** Whether drawing `draw` is still the one on screen. */
+  isLatest(draw: number): boolean {
+    return draw === this.#latest
   }
 
   /** The first measurement of drawing `draw`, or null if none comes within `ms`. */
@@ -253,12 +258,17 @@ export function decodeAction(value: unknown, run: string): Action {
 
 /**
  * Whether a request comes from a page this server served: its Host is this server by name (not a name another site
- * rebound to 127.0.0.1), and a POST is sent as JSON by a page of this origin. A press here is a press in GitLab, so a page
- * of any other site may not make one.
+ * rebound to 127.0.0.1), no other site's page sent it, and a POST is sent as JSON by a page of this origin. A press here
+ * is a press in GitLab, so a page of any other site may not make one, nor hold the events open (each drawing would wait
+ * for its measurement).
  */
 export function isOwnRequest(method: string, headers: IncomingHttpHeaders, port: number): boolean {
   const host = headers.host ?? ''
   if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
+    return false
+  }
+  // A browser names the page's origin on a request from another site's page, the event stream's included.
+  if (headers.origin !== undefined && headers.origin !== `http://${host}`) {
     return false
   }
   if (method === 'GET') {
@@ -289,8 +299,10 @@ const pageScript = (run: string): string => `(() => {
   let quietUntil = 0
   const hush = () => { quietUntil = performance.now() + 150 }
   let scrollTimer = 0
-  let typeTimer = 0
   let resizeTimer = 0
+  // Typing not yet sent, by field: each field waits on its own, and a press or pick sends it first, as the desktop's
+  // field has told the mod its text by then.
+  const typing = new Map()
   let stopped = false
   const keepsTyping = ${keepsTyping.toString()}
   // What this page has sent each field since its last Enter, so the mod's echo of it does not take back newer typing.
@@ -298,6 +310,16 @@ const pageScript = (run: string): string => `(() => {
   const send = (key, value, submit) => {
     sent.set(key, submit ? [] : [...(sent.get(key) || []), value].slice(-50))
     act({ kind: 'input', key, value, submit })
+  }
+  const unsent = key => {
+    const waiting = typing.get(key)
+    if (waiting !== undefined) clearTimeout(waiting.timer)
+    typing.delete(key)
+  }
+  const flush = () => {
+    const waiting = [...typing]
+    typing.clear()
+    waiting.forEach(([key, { timer, value }]) => { clearTimeout(timer); send(key, value, false) })
   }
   const act = action => fetch('/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...action, run }) })
     .then(answer => answer.ok ? null : answer.text().then(said => { note.textContent = said }))
@@ -356,25 +378,30 @@ const pageScript = (run: string): string => `(() => {
     const button = holderOf(event.target, 'button')
     if (button !== null) {
       event.preventDefault()
+      flush()
       act({ kind: 'press', key: button.dataset.pressKey })
     }
   })
   body.addEventListener('change', event => {
     const picker = holderOf(event.target, 'select')
-    if (picker !== null) act({ kind: 'select', key: picker.dataset.pressKey, value: event.target.value })
+    if (picker === null) return
+    flush()
+    act({ kind: 'select', key: picker.dataset.pressKey, value: event.target.value })
   })
   body.addEventListener('input', event => {
     const field = holderOf(event.target, 'input')
     if (field === null) return
-    clearTimeout(typeTimer)
-    typeTimer = setTimeout(() => send(field.dataset.pressKey, event.target.value, false), 150)
+    const key = field.dataset.pressKey
+    const value = event.target.value
+    unsent(key)
+    typing.set(key, { value, timer: setTimeout(() => { typing.delete(key); send(key, value, false) }, 150) })
   })
   body.addEventListener('keydown', event => {
     const field = holderOf(event.target, 'input')
     // Enter that confirms what an input method was composing is not the person's Enter.
     if (field === null || event.key !== 'Enter' || event.shiftKey || event.isComposing) return
     event.preventDefault()
-    clearTimeout(typeTimer)
+    unsent(field.dataset.pressKey)
     send(field.dataset.pressKey, event.target.value, true)
   })
   body.addEventListener('scroll', () => {
@@ -469,9 +496,14 @@ export class Preview {
       this.#queue.push(action)
       return
     }
+    const taken = this.#measurements.take(action.draw, action.measured, action.resized)
+    if (taken === 'stale') {
+      return
+    }
+    // Only the measurement taken sets the window's height, so one tab's height never meets another's rows.
     this.#desktop?.resize(action.bodyRows)
-    if (this.#measurements.take(action.draw, action.measured, action.resized) === 'unasked') {
-      this.#queue.push({ kind: 'remeasured', measured: action.measured })
+    if (taken === 'unasked') {
+      this.#queue.push({ kind: 'remeasured', draw: action.draw, measured: action.measured })
     }
   }
 
@@ -491,6 +523,10 @@ export class Preview {
 
   async #perform(desktop: Desktop, action: Queued): Promise<string> {
     if (action.kind === 'remeasured') {
+      // The engine redrew while it waited its turn: its rows and keys belong to a tree no longer on screen.
+      if (!this.#measurements.isLatest(action.draw)) {
+        return 'left a measurement of a drawing the engine has since replaced'
+      }
       await desktop.remeasured(action.measured)
       return `measured the pane again: ${action.measured.rows} rows`
     }
@@ -653,19 +689,23 @@ export function answerOf(method: string, url: string, headers: IncomingHttpHeade
   return reply(404)
 }
 
-async function serve(options: Options): Promise<number> {
-  const run = randomUUID()
-  const preview = new Preview(run)
-  const where = whereFrom(ROOT)
+/** What run `run` serves on `port`: its page and the policy that lets the page's script, and only it, run. */
+export function siteFor(port: number, where: string, width: number | null, run: string): Site {
   const nonce = randomUUID()
-  const site: Site = {
-    port: options.port,
+  return {
+    port,
     where,
-    page: pageShell(where, options.width, nonce, run),
+    page: pageShell(where, width, nonce, run),
     policy: policyFor(nonce),
     screens: SCREENS,
     fonts: new Set(readdirSync(join(SCREENS, 'fonts')).filter(name => name.endsWith('.woff2'))),
   }
+}
+
+async function serve(options: Options): Promise<number> {
+  const run = randomUUID()
+  const preview = new Preview(run)
+  const site = siteFor(options.port, whereFrom(ROOT), options.width, run)
 
   const answer = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const answered = answerOf(request.method ?? 'GET', request.url ?? '/', request.headers, site)
@@ -706,7 +746,7 @@ async function serve(options: Options): Promise<number> {
   const folder = join(tmpdir(), `pane-preview-${options.port}`)
   rmSync(folder, { recursive: true, force: true })
   mkdirSync(folder)
-  console.log(`pane-preview: http://127.0.0.1:${options.port} shows ${where}`)
+  console.log(`pane-preview: http://127.0.0.1:${options.port} shows ${site.where}`)
 
   const log = options.log ?? join(folder, 'debug.log')
   const engine = new Engine(spawnWire(folder, log), log)

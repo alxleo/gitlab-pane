@@ -17,6 +17,7 @@ import {
   pageShell,
   parseCommand,
   policyFor,
+  siteFor,
   type Answer,
   type Site,
   type Watcher,
@@ -99,6 +100,7 @@ test('an action with no key, an empty key, no text, a row that is no row or an u
 test('a page this server served may watch and act', () => {
   expect(isOwnRequest('GET', { host: '127.0.0.1:4780' }, 4780)).toBe(true)
   expect(isOwnRequest('GET', { host: 'localhost:4780' }, 4780)).toBe(true)
+  expect(isOwnRequest('GET', { host: 'localhost:4780', origin: 'http://localhost:4780' }, 4780)).toBe(true)
   expect(isOwnRequest('POST', { host: 'localhost:4780', origin: 'http://localhost:4780', 'content-type': 'application/json' }, 4780)).toBe(true)
 })
 
@@ -106,6 +108,11 @@ test('a request to another name that resolves here is refused, so a rebound site
   expect(isOwnRequest('GET', { host: 'evil.example:4780' }, 4780)).toBe(false)
   expect(isOwnRequest('GET', { host: '127.0.0.1:4781' }, 4780)).toBe(false)
   expect(isOwnRequest('GET', {}, 4780)).toBe(false)
+})
+
+test('another site’s page may not hold the events open, which would keep each drawing waiting for its measurement', () => {
+  expect(isOwnRequest('GET', { host: '127.0.0.1:4780', origin: 'https://evil.example' }, 4780)).toBe(false)
+  expect(isOwnRequest('GET', { host: '127.0.0.1:4780', origin: 'null' }, 4780)).toBe(false)
 })
 
 test('a press from another site’s page, from no page, or not sent as JSON is refused', () => {
@@ -140,6 +147,7 @@ test('the page is served with its policy and refuses to be framed', () => {
 test('a forged Host, another site’s press and a press not sent as JSON are refused before anything is served', () => {
   expect(statusOf(answerOf('GET', '/', { host: 'evil.example:4780' }, site))).toBe(403)
   expect(statusOf(answerOf('GET', '/events', { host: 'evil.example:4780' }, site))).toBe(403)
+  expect(statusOf(answerOf('GET', '/events', { ...own, origin: 'https://evil.example' }, site))).toBe(403)
   expect(statusOf(answerOf('POST', '/act', { ...posted, origin: 'https://evil.example' }, site))).toBe(403)
   expect(statusOf(answerOf('POST', '/act', { ...posted, 'content-type': 'text/plain' }, site))).toBe(403)
 })
@@ -208,15 +216,24 @@ const TREE = {
   children: [{ type: 'Button', props: { key: 'tab-mine', label: 'Mine · 2' }, press: { plugin: 'gitlab-pane', handle: 1 } }],
 }
 
-/** An engine in this process: it answers each ask as a quiet pane would, and goes when told, or when asked `dieOn`. */
-function standIn(dieOn: string | null = null): { readonly engine: Engine; readonly die: (how: string) => void } {
+/**
+ * An engine in this process: it answers each ask as a quiet pane would, and keeps what it was asked. It goes when told,
+ * or when asked `dieOn`, and redraws after answering `redrawOn`, as the mod does after a press.
+ */
+function standIn({ dieOn = null, redrawOn = null }: { readonly dieOn?: string | null; readonly redrawOn?: string | null } = {}): {
+  readonly engine: Engine
+  readonly die: (how: string) => void
+  readonly asked: Json[]
+} {
   let heard: (line: string) => void = () => undefined
   let gone: (how: string) => void = () => undefined
+  const asked: Json[] = []
   const answers: Record<string, Json> = { ui_render: { tree: TREE }, ui_panes: { panes: [{ id: 'gitlab-pane', title: 'GitLab · Mine' }] } }
   const wire: Wire = {
     send: line => {
       const message: unknown = parseJson(line)
       const request = isRecord(message) && isRecord(message['request']) ? message['request'] : {}
+      asked.push(request)
       const subtype = text(request['subtype'])
       if (subtype === dieOn) {
         setTimeout(() => gone('exited (1)'), 0)
@@ -225,6 +242,9 @@ function standIn(dieOn: string | null = null): { readonly engine: Engine; readon
       const id = isRecord(message) ? message['request_id'] : ''
       const response = { subtype: 'success', request_id: id, response: answers[subtype] ?? {} }
       setTimeout(() => heard(JSON.stringify({ type: 'control_response', response })), 0)
+      if (subtype === redrawOn) {
+        setTimeout(() => heard(JSON.stringify({ type: 'system', subtype: 'ui_invalidate', event: 'ui.render' })), 0)
+      }
     },
     onLine: listen => {
       heard = listen
@@ -234,8 +254,37 @@ function standIn(dieOn: string | null = null): { readonly engine: Engine; readon
     },
     close: () => gone('closed'),
   }
-  return { engine: new Engine(wire, null), die: how => gone(how) }
+  return { engine: new Engine(wire, null), die: how => gone(how), asked }
 }
+
+/** The drawing number in an event a page heard, if it is a frame. */
+function drawIn(said: string): number | null {
+  const frame: unknown = said.startsWith('event: frame\n') ? parseJson(said.slice(said.indexOf('data: ') + 'data: '.length)) : null
+  return isRecord(frame) && typeof frame['draw'] === 'number' ? frame['draw'] : null
+}
+
+/** A page that measures every drawing it is sent as `bodyRows` tall, as the real one does, and hears the rest. */
+function measuring(preview: Preview, bodyRows: number, hear: (said: string, latest: number) => void): void {
+  let latest = 0
+  preview.watch({
+    write: said => {
+      const draw = drawIn(said)
+      if (draw !== null) {
+        latest = draw
+        preview.take({ kind: 'measured', draw, measured: { rows: 3, keyed: [] }, bodyRows, resized: false })
+      }
+      hear(said, latest)
+    },
+    end: () => undefined,
+    on: () => undefined,
+  })
+}
+
+/** How tall the window was, as each drawing asked the engine said. */
+const heightsAsked = (asked: readonly Json[]): unknown[] =>
+  asked
+    .filter(request => request['subtype'] === 'ui_render')
+    .map(request => (isRecord(request['props']) && isRecord(request['props']['scroll']) ? request['props']['scroll']['bodyRows'] : null))
 
 /** A page watching: what it heard, by event, and whether it was let go. */
 function watcher(): { readonly page: Watcher; readonly heard: string[]; readonly ended: () => boolean } {
@@ -252,7 +301,7 @@ function watcher(): { readonly page: Watcher; readonly heard: string[]; readonly
 }
 
 test('an engine that exits during a press ends the run, so the preview stops rather than serve a frozen pane', async () => {
-  const { engine } = standIn('ui_press')
+  const { engine } = standIn({ dieOn: 'ui_press' })
   const preview = new Preview(RUN)
   const running = preview.run(engine, 40)
   preview.take({ kind: 'press', key: 'tab-mine' })
@@ -272,25 +321,53 @@ test('a press the engine refuses is a note, and the run goes on', async () => {
   const preview = new Preview(RUN)
   const running = preview.run(engine, 40)
   const notes: string[] = []
-  // A page measures each drawing it is sent, as the real one does, so no drawing waits out its time.
-  const measures = (said: string): void => {
-    const frame: unknown = said.startsWith('event: frame\n') ? parseJson(said.slice(said.indexOf('data: ') + 'data: '.length)) : null
-    if (isRecord(frame) && typeof frame['draw'] === 'number') {
-      preview.take({ kind: 'measured', draw: frame['draw'], measured: { rows: 3, keyed: [] }, bodyRows: 40, resized: false })
-    }
-  }
-  preview.watch({
-    write: said => {
-      notes.push(said)
-      measures(said)
-    },
-    end: () => undefined,
-    on: () => undefined,
-  })
+  measuring(preview, 40, said => notes.push(said))
   preview.take({ kind: 'press', key: 'no-such-button' })
   setTimeout(() => die('exited (0)'), 300)
   await expect(running).rejects.toBeInstanceOf(EngineGone)
   expect(notes.some(said => said.includes("refused: no Button 'no-such-button' in the drawing"))).toBe(true)
+})
+
+test('another tab’s measurement of a drawing already measured leaves the window as tall as it was', async () => {
+  const { engine, die, asked } = standIn({ redrawOn: 'ui_press' })
+  const preview = new Preview(RUN)
+  const running = preview.run(engine, 40)
+  let pressedAt = -1
+  measuring(preview, 40, (said, latest) => {
+    if (said.startsWith('event: title\n') && pressedAt < 0) {
+      // A tab a fifth as tall answers the drawing on screen after this one did, then a press redraws.
+      preview.take({ kind: 'measured', draw: latest, measured: { rows: 9, keyed: [] }, bodyRows: 8, resized: false })
+      pressedAt = asked.length
+      preview.take({ kind: 'press', key: 'tab-mine' })
+    }
+    if (said.includes('pressed tab-mine')) {
+      setTimeout(() => die('exited (0)'), 300)
+    }
+  })
+  await expect(running).rejects.toBeInstanceOf(EngineGone)
+  expect(heightsAsked(asked.slice(pressedAt)).length).toBeGreaterThan(0)
+  expect(new Set(heightsAsked(asked))).toEqual(new Set([40]))
+})
+
+test('a measurement that waited its turn while the engine redrew is left, since its rows belong to a drawing gone', async () => {
+  const { engine, die, asked } = standIn({ redrawOn: 'ui_press' })
+  const preview = new Preview(RUN)
+  const running = preview.run(engine, 40)
+  const notes: string[] = []
+  measuring(preview, 40, (said, latest) => {
+    notes.push(said)
+    if (said.startsWith('event: title\n') && notes.filter(each => each.startsWith('event: title\n')).length === 1) {
+      preview.take({ kind: 'press', key: 'tab-mine' })
+      // A tab resized while the press waits: its measurement of the drawing on screen waits behind the press, which redraws.
+      preview.take({ kind: 'measured', draw: latest, measured: { rows: 99, keyed: [] }, bodyRows: 40, resized: true })
+    }
+    if (said.includes('since replaced') || said.includes('measured the pane again')) {
+      setTimeout(() => die('exited (0)'), 50)
+    }
+  })
+  await expect(running).rejects.toBeInstanceOf(EngineGone)
+  expect(notes.some(said => said.includes('left a measurement of a drawing the engine has since replaced'))).toBe(true)
+  expect(asked.some(request => request['content_rows'] === 99)).toBe(false)
 })
 
 test('a page first hears which run serves it, and one that comes after the engine stopped hears why and is let go', () => {
@@ -334,6 +411,13 @@ test('the page’s script names its run and holds the typing rule, and is valid 
   expect(script).toContain('const run = "run-1"')
   expect(script).toContain('const keepsTyping = function keepsTyping(')
   expect(() => new Script(script)).not.toThrow()
+})
+
+test('the page’s script carries the nonce its policy allows, and each run has its own', () => {
+  const served = siteFor(4780, '/work', null, RUN)
+  const nonce = /script-src 'nonce-([^']+)'/u.exec(served.policy)?.[1] ?? 'none in the policy'
+  expect(served.page).toContain(`<script nonce="${nonce}">`)
+  expect(siteFor(4780, '/work', null, RUN).policy).not.toBe(served.policy)
 })
 
 test('the page names its checkout, sets the width asked for, and runs only the script its nonce allows', () => {
