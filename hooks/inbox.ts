@@ -215,11 +215,17 @@ export async function sharedInboxAt($: EngineInterface): Promise<number | null> 
  * session is reading the inbox now, which dims the pane's ↻; and the user's MRs merged lately, which Mine folds under
  * `▸ N merged`. One read of the inbox's atom serves all.
  */
-export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[]; isSyncing: boolean; landed: Landed[] }> {
+export async function inboxNews($: EngineInterface): Promise<{ count: number; keys: string[]; isSyncing: boolean; landed: Landed[]; mrs: InboxMr[] }> {
   const { snapshot, seen, isSyncing } = await read($, inboxAtom)
   const newsIn = (sections: ReturnType<typeof sectionsOf>) => new Set(sections.flatMap(section => section.items.filter(item => item.unseen > 0).map(item => item.key)))
   // The atom outlives a reload, so a snapshot an older version kept has no merged MRs, or ones in another shape.
-  return { count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size, keys: [...newsIn(sectionsOf(snapshot, seen))], isSyncing, landed: keptLanded(snapshot.landed) }
+  return {
+    count: newsIn(sectionsOf(snapshot, seen, await contextOf($))).size,
+    keys: [...newsIn(sectionsOf(snapshot, seen))],
+    isSyncing,
+    landed: keptLanded(snapshot.landed),
+    mrs: snapshot.mrs,
+  }
 }
 
 export async function inboxView($: EngineInterface) {

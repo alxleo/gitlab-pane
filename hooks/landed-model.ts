@@ -14,6 +14,9 @@ import type { Landed } from '../types'
 /** Letters of a merged MR's title its link says: enough to know it, short enough that a link, which cannot wrap, fits a narrow pane. It is not the room the snapshot keeps of a title (`TITLE_ROOM`). */
 const LINK_TITLE_ROOM = 36
 
+/** What a row's link to an MR says: its mark, its number and the start of its title. */
+export const mrLinkText = (iid: number, title: string): string => `${LINK.mr} !${iid} ${shorten(shortTitle(title), LINK_TITLE_ROOM)}`
+
 /**
  * The most characters an open row draws to, which the list leaves room for in the drawing budget for each: five rows of the
  * longest title and addresses the model allows measured 3,440 in all, under 700 each.
@@ -81,7 +84,7 @@ export function mergedModel(landed: readonly Landed[], shown: { cardKeys: Readon
       ? listed.map(each => ({
           key: cardKey(each.host, each.path, each.iid),
           boxKey: `merged-${shortHash(cardKey(each.host, each.path, each.iid))}`,
-          mr: { href: each.url, text: `${LINK.mr} !${each.iid} ${shorten(shortTitle(each.title), LINK_TITLE_ROOM)}` },
+          mr: { href: each.url, text: mrLinkText(each.iid, each.title) },
           ago: ago(new Date(each.mergedAt).toISOString(), shown.now),
           build: buildOf(each),
         }))

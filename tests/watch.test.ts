@@ -694,6 +694,46 @@ test('a repo picked until its MRs all closed is forgotten, so the repo coming ba
   await ui.unmount()
 })
 
+test('Enter in the search box lists what matches in place of the list, past the repo picked; ✕ ends it, and a phone has no box', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const ticketed = rawMr(1398, { title: 'feat: [HET-1074] Order history', project: project('g/q') })
+  engine(on, { mrs: [ticketed, rawMr(2, { title: 'fix: Totals' }), rawMr(3, { title: 'fix: Order totals' })], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const text = async (ui: { find: (query: { type: 'Text'; text: RegExp }) => Promise<{ text: string } | undefined> }, start: RegExp) =>
+    (await ui.find({ type: 'Text', text: start }))?.text
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.select({ key: 'repo', value: 'gitlab.com/g/p' })
+    expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
+    // Typing alone searches nothing; Enter does.
+    await ui.input({ key: 'search', text: 'het1074', kind: 'change' })
+    expect(await text(ui, /^Found · /u)).toBeUndefined()
+    await ui.input({ key: 'search', text: 'het1074' })
+    expect(await text(ui, /^Found · /u)).toBe('Found · 1')
+    expect(await text(ui, /^Ready · /u)).toBeUndefined()
+    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('het1074')
+    expect(await ui.find({ type: 'Select', key: 'repo' })).toBeUndefined()
+    await ui.press({ key: 'search-clear' })
+    expect(await text(ui, /^Found · /u)).toBeUndefined()
+    expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
+    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('')
+    await ui.select({ key: 'repo', value: 'all' })
+    await ui.unmount()
+  }
+  // A search left on where there is a box is not drawn on a phone, which has none to end it with.
+  const desk = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await desk.input({ key: 'search', text: '!1398' })
+  expect(await text(desk, /^Found · /u)).toBe('Found · 1')
+  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect(await phone.find({ type: 'Input', key: 'search' })).toBeUndefined()
+  expect(await phone.find({ type: 'Button', key: 'search-clear' })).toBeUndefined()
+  expect(await text(phone, /^Found · /u)).toBeUndefined()
+  expect(await text(phone, /^Ready · /u)).toBe('Ready · 3')
+  await phone.unmount()
+  await desk.unmount()
+})
+
 test('an avatar kept by an earlier session is drawn without fetching it again', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'APPROVED')] } })], isDown: false }
@@ -2013,9 +2053,9 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
-  // (Sixteen since the inbox's own atoms, the problems the leader reported, whether a read is out and this session's presses
-  // on merges, rebases and conflicts are read by the same drawing.)
-  expect(reads).toBeLessThanOrEqual(16)
+  // (Seventeen since the inbox's own atoms, the problems the leader reported, whether a read is out, this session's presses
+  // on merges, rebases and conflicts, and what was searched for are read by the same drawing.)
+  expect(reads).toBeLessThanOrEqual(17)
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)

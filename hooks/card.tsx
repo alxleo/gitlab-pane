@@ -1,6 +1,7 @@
 import type { EngineInterface, RenderChildren } from 'claude-code'
 
 import { face } from './faces'
+import type { InboxRow } from './found-model'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
@@ -144,6 +145,21 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
       ) : null
     }
   }
+}
+
+/** An inbox MR a search found: its link, then its repo and who wrote it, dim. */
+export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
+  const { Box, Text, Link } = kit
+  return (
+    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+      <Box flexShrink={0}>
+        <Link href={row.mr.href}>{row.mr.text}</Link>
+      </Box>
+      <Text dimColor size="footnote">
+        {row.about}
+      </Text>
+    </Box>
+  )
 }
 
 /**

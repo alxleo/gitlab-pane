@@ -506,6 +506,8 @@ declare module 'claude-code' {
       avatars: Record<string, string>
       /** What the person chose in the pane. */
       choices: Choices
+      /** What was searched for in the box above Mine, as Enter left it; empty while no search is on. */
+      search: string
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
       poll: PollState
