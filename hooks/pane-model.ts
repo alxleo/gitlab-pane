@@ -7,6 +7,8 @@ import { LINK, titleKey } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
+import { foundList, matchesOf } from './found-model.ts'
+import type { FoundList } from './found-model.ts'
 import { ticketUrl } from './jira.ts'
 import { MERGED_ROW_SIZE, mergedModel } from './landed-model.ts'
 import type { MergedModel } from './landed-model.ts'
@@ -18,13 +20,14 @@ import type { PaneLine } from './pane-status.ts'
 import { keptRepo, repoFilterOf } from './repo-filter.ts'
 import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
+import { queryOf } from './search.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
 import type { Tone } from './status.ts'
 import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { Landed, MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
+import type { InboxMr, Landed, MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
@@ -113,6 +116,10 @@ export type PaneInput = {
   news: { count: number; keys: readonly string[] }
   /** The user's MRs merged lately, as the inbox's read kept them: not cards, so nothing that orders or counts the list sees them. */
   landed: readonly Landed[]
+  /** What was searched for in the box above Mine; empty, or nothing but spaces and punctuation, shows the list as it is. */
+  search: string
+  /** The MRs the inbox's read kept, anyone's, which a search finds too. */
+  inbox: readonly InboxMr[]
   poll: PollState
   /** Whether this session is reading GitLab now; the cards drawn meanwhile are those of the last read. */
   isReading: boolean
@@ -129,8 +136,10 @@ export type PaneInput = {
 
 export type PaneModel = {
   tabs: { mine: string; inbox: string; isInbox: boolean }
-  /** None with fewer than two repos to pick between. */
+  /** None with fewer than two repos to pick between, or while a search, which looks in every repo, is on. */
   repos: RepoFilter | null
+  /** What a search found, in place of the list and its folds; none while there is no search. */
+  found: FoundList<RowModel> | null
   /** The MRs this session raised, watched or was given a pin, in the order they came. */
   session: RowModel[]
   /** While this session holds MRs, every other one folds behind this line; none when nothing folds. */
@@ -303,20 +312,27 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   // What folds is counted by what can be finished there and what has news, so neither is out of sight unsaid.
   const told = [[rest.filter(card => isMergeable(card.mergeStatus)).length, 'can merge'] as const, [newOthers, 'new'] as const].filter(([count]) => count > 0)
 
-  const wanted = input.view === 'mine' ? [...session, ...mineShown, ...(showParked ? parked : []), ...(showDrafts ? drafts : [])] : []
+  // A search looks in every repo, past the pick and the folds, and its list stands in place of the list and its folds; it
+  // ranks what matches equally by how pressing it is.
+  const query = input.view === 'mine' ? queryOf(input.search) : null
+  const matches = query !== null ? matchesOf(query, { cards: rows.toSorted(byAttention), landed: input.landed, inbox: input.inbox, now }) : null
+  const wanted = input.view !== 'mine' ? [] : matches !== null ? matches.cards : [...session, ...mineShown, ...(showParked ? parked : []), ...(showDrafts ? drafts : [])]
+  // What a search finds is from any repo, so each card names its own, as with no repo picked.
+  const rowInput = matches !== null ? { ...input, repoFilter: '' } : input
   const built = wanted.map(card => {
     const facts = cardFacts(card, input.avatars)
-    return { card, facts, row: headOf(card, facts, input, home, surface.hasSvg, now) }
+    return { card, facts, row: headOf(card, facts, rowInput, home, surface.hasSvg, now) }
   })
 
   const merged =
-    input.view === 'mine'
+    input.view === 'mine' && matches === null
       ? mergedModel(input.landed, { cardKeys: new Set(rows.map(row => row.key)), repoFilter: input.repoFilter, isOpen: input.expanded.includes('merged'), now })
       : null
 
-  // Each piece is measured at most once, and a row not tried is never drawn. An open merged section is drawn after the list,
-  // so the list leaves it the room its rows may take.
-  let room = budget.room - (merged?.rows.length ?? 0) * MERGED_ROW_SIZE
+  // Each piece is measured at most once, and a row not tried is never drawn. An open merged section, or what a search found
+  // past the open MRs, is drawn after the cards, so the cards leave it the room its rows may take.
+  const linkRows = (merged?.rows.length ?? 0) + (matches !== null ? matches.merged.length + matches.inbox.length : 0)
+  let room = budget.room - linkRows * MERGED_ROW_SIZE
   const fits = (size: number, instead = 0): boolean => {
     const need = size - instead
     if (need > room) {
@@ -351,7 +367,8 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
       inbox: inboxLabel(input.news.count),
       isInbox,
     },
-    repos: repoFilterOf(rows, repos, input.repoFilter),
+    repos: matches === null ? repoFilterOf(rows, repos, input.repoFilter) : null,
+    found: matches !== null ? foundList(matches, rowsOf) : null,
     firstRun: firstRunLines(input.failures, input.poll.fetchedAt !== null || rows.length > 0),
     session: rowsOf(session),
     others: isFolding
@@ -371,7 +388,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     drafts: drafts.length > 0 ? { label: `${showDrafts ? '▾' : '▸'} Drafts · ${drafts.length}`, isOpen: showDrafts, rows: showDrafts ? rowsOf(drafts) : [] } : null,
     leftOut:
       built.length - finished.size > 0
-        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 && input.repoFilter === '' ? '; pick a repo above to see them' : ''}.`
+        ? `${plural(built.length - finished.size, 'more MR')} left out to stay within what the app draws${repos.length > 1 && input.repoFilter === '' && matches === null ? '; pick a repo above to see them' : ''}.`
         : null,
     merged,
     status: statusOf(input.poll, now),

@@ -280,8 +280,14 @@ export type ReadClock = {
   attemptedAt: number | null
   /** Reads in a row that failed on every host. */
   failures: number
+  /** When Jira was last asked about the tickets the titles name. */
   ticketsAt: number | null
+  /** The ticket keys it was asked about; absent from a clock an older version kept. */
+  ticketsAsked?: string[]
+  /** When the last pass over the projects' usual run times ended. */
   usualAt: number | null
+  /** The projects that pass asked, as `host/group/project`; absent from a clock an older version kept. */
+  usualAsked?: string[]
   /** The version of the snapshot this session last drew from; empty before the first. */
   adopted: string
   /** How many refresh requests this session has seen the store count. */
@@ -500,6 +506,8 @@ declare module 'claude-code' {
       avatars: Record<string, string>
       /** What the person chose in the pane. */
       choices: Choices
+      /** What was searched for in the box above Mine, as Enter left it; empty while no search is on. */
+      search: string
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
       poll: PollState

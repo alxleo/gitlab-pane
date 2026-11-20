@@ -14,7 +14,7 @@ import { slimCard } from '../../hooks/slim.ts'
 import { readCardArb } from './arbitrary.ts'
 import { HOST, NOW, gitlabSays, pipe, project, rawMr, thread } from '../fixtures.ts'
 import type { Mr } from '../fixtures.ts'
-import type { CheckStatus, Landed, Merging, MrCard, Pressed } from '../../types'
+import type { CheckStatus, InboxMr, Landed, Merging, MrCard, Pressed } from '../../types'
 
 /** GitLab says the person may merge and push, on this head. */
 const CAN: Merging = { head: 'abc123', isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true }
@@ -33,6 +33,8 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       view: 'mine',
       news: { count: 0, keys: [] },
       landed: [],
+      search: '',
+      inbox: [],
       poll: { fetchedAt: NOW, error: null, hosts: {} },
       isReading: false,
       isSyncing: false,
@@ -356,6 +358,70 @@ test('an MR the list still draws is not also said merged, and the section follow
     cardKey(HOST, 'g/p', 43),
     cardKey(HOST, 'g/q', 44),
   ])
+})
+
+test('a search lists what matches in place of the list, past the repo picked and every fold, with no picker while it is on', () => {
+  const inRepo = (path: string, iid: number, over: Partial<Mr> = {}) => toCard(HOST, rawMr(iid, { project: project(path), ...over }))
+  const pinnedHere = inRepo('g/web', 1, { title: 'feat: [HET-1074] Order history' })
+  const parked = inRepo('g/web', 1398, { title: 'fix: Order totals', updatedAt: '2026-10-01T15:00:00Z', headPipeline: null })
+  const draft = inRepo('g/api', 7, { title: 'Draft: Order export', draft: true })
+  const other = inRepo('g/api', 8, { title: 'chore: Bump Node' })
+  const cards = [pinnedHere, parked, draft, other]
+  const folded = { pinned: [pinOf(pinnedHere)], repoFilter: projectOf(HOST, 'g/api') }
+  const model = modelOf(cards, { ...folded, search: 'order' })
+  expect(model.found?.heading).toBe('Found · 3')
+  expect(model.found?.rows.map(row => row.key).toSorted()).toEqual([pinnedHere.key, parked.key, draft.key].toSorted())
+  expect(model.found?.rows.every(row => row.fit.isDrawn)).toBe(true)
+  // Found in any repo, a card names its repo as with none picked: all but the home repo of this session's MRs.
+  expect(model.found?.rows.map(row => [row.key, row.repo?.text ?? null])).toContainEqual([draft.key, '📁 api'])
+  expect(model.found?.rows.map(row => [row.key, row.repo?.text ?? null])).toContainEqual([parked.key, null])
+  // What the list would draw is not built; the picker, which a search looks past, is not drawn.
+  expect(model.session).toEqual([])
+  expect(model.repos).toBeNull()
+  expect(modelOf(cards, { ...folded, search: '!1398' }).found?.rows.map(row => row.key)).toEqual([parked.key])
+  expect(modelOf(cards, { ...folded, search: 'het1074' }).found?.rows.map(row => row.key)).toEqual([pinnedHere.key])
+  expect(modelOf(cards, { search: 'zebra' }).found).toMatchObject({ heading: 'Found · 0', isEmpty: true, rows: [] })
+  // No search, or one of nothing to look for, is the list as it was; the inbox and an MR's page never search.
+  for (const over of [{ search: '' }, { search: ' !- ' }, { search: 'order', view: 'inbox' as const }, { search: 'order', view: 'reading' as const }]) {
+    expect(modelOf(cards, { ...folded, ...over }).found).toBeNull()
+  }
+  expect(modelOf(cards, folded).repos).not.toBeNull()
+  // Rows a search leaves out are counted, with no word of a picker that is not drawn.
+  expect(modelOf(cards, { search: 'order' }, () => 1_000, 1_500).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
+})
+
+test('MRs a search finds that match as well come in the order the list puts them, most pressing first', () => {
+  const plain = toCard(HOST, rawMr(1, { title: 'Retry one', headPipeline: pipe('SUCCESS') }))
+  const failing = toCard(HOST, rawMr(2, { title: 'Retry two', headPipeline: pipe('FAILED') }))
+  const ready = { ...toCard(HOST, rawMr(3, { title: 'Retry three', headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() }
+  const cards = [plain, failing, ready]
+  const listed = modelOf(cards).mine.rows.map(row => row.key)
+  expect(listed).not.toEqual(cards.map(card => card.key))
+  expect(modelOf(cards, { search: 'retry' }).found?.rows.map(row => row.key)).toEqual(listed)
+})
+
+test("a search finds the user's merged MRs and others' in the inbox as links, leaving the cards the room their rows take", () => {
+  const cards = [51, 52, 53, 54, 55].map(iid => toCard(HOST, rawMr(iid, { title: `fix: Retry ${iid}` })))
+  const landed = [landedOf(61, { title: 'fix: Retry payments' }), landedOf(62, { title: 'feat: Other' })]
+  const inbox: InboxMr[] = [
+    { host: HOST, path: 'g/p', iid: 71, title: 'Retry the queue', url: `https://${HOST}/g/p/-/merge_requests/71`, author: 'sam', authorName: 'Sam', isMine: false },
+  ].map(each => ({ ...each, state: 'opened', isDraft: false, inQueue: false, isFollowed: false, cutoff: null, signals: [] }))
+  const model = modelOf(cards, { landed, inbox, search: 'retry', expanded: ['merged'] }, () => 1_000, 5_000)
+  expect(model.found?.heading).toBe('Found · 7')
+  expect(model.found?.merged.map(row => row.key)).toEqual([cardKey(HOST, 'g/p', 61)])
+  expect(model.found?.inbox).toEqual([
+    {
+      key: cardKey(HOST, 'g/p', 71),
+      boxKey: `found-${shortHash(cardKey(HOST, 'g/p', 71))}`,
+      mr: { href: `https://${HOST}/g/p/-/merge_requests/71`, text: '🔀 !71 Retry the queue' },
+      about: 'p · Sam',
+    },
+  ])
+  // The merged section is what the search found of it, so it is not drawn again below.
+  expect(model.merged).toBeNull()
+  // Two link rows take what two merged rows do (1,400 of 5,000), leaving three cards of 1,000.
+  expect(model.found?.rows.filter(row => row.fit.isDrawn)).toHaveLength(3)
+  expect(model.leftOut).toBe('2 more MRs left out to stay within what the app draws.')
 })
 
 test('the repo filter is 📁 with All and each repo with its count, the picked one current: one repo, or a pick whose MRs are gone, filters nothing', () => {

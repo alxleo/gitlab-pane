@@ -38,6 +38,7 @@ import { REPLY_MOST } from '../hooks/reply-model'
 import { LOST, SENT_HOLDS_MS } from '../hooks/write-model'
 import { slimCard } from '../hooks/slim'
 import { FULL_EVERY_MS } from '../hooks/incremental'
+import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
 import { nextSnapshot, readSnapshot } from '../hooks/snapshot'
 import type { ReadResult } from '../hooks/snapshot'
 import { TONE_COLOURS } from '../hooks/status'
@@ -109,7 +110,14 @@ type Fake = {
   strategies?: string[]
   /** What GitLab answers a reply; it refuses one unless a test sets this. */
   reply?: (variables: ReplyMutationVariables) => RawResponse<ReplyMutation>
+  /** How long, in seconds, the project's recent successful MR pipelines ran; six of 10 to 15 minutes unless set. */
+  runs?: number[]
 }
+
+const SIX_RUNS = [600, 660, 720, 780, 840, 900]
+
+/** GitLab's answer to `Usual`: the project's recent successful MR pipelines, each with how long it ran. */
+const pipelinesRan = (durations: readonly number[]) => ({ data: { project: { pipelines: { nodes: durations.map(duration => ({ duration })) } } } })
 
 /** Whether every check GitLab holds for the MR has passed or is off. */
 const isMergeableNow = (mr: Mr) => (mr.mergeabilityChecks ?? []).every(check => check.status === 'SUCCESS' || check.status === 'INACTIVE')
@@ -228,7 +236,7 @@ function answersFor(
     return fake().find(mr => mr.iid === iid && mr.project.fullPath === path) ?? null
   }
   return {
-    Usual: () => ({ data: { project: { pipelines: { nodes: [600, 660, 720, 780, 840, 900].map(duration => ({ duration })) } } } }),
+    Usual: () => pipelinesRan(SIX_RUNS),
     MergeStatus: () => {
       reads.push('MergeStatus')
       return mergeStatuses(fake().filter(mr => mr.state === 'opened'))
@@ -309,6 +317,7 @@ function engine(
             variables => (fake.reply ?? NO_REPLY)(variables),
             () => fake.timedOut ?? []
           ),
+          Usual: () => pipelinesRan(fake.runs ?? SIX_RUNS),
           ...moveAnswers(
             () => fake.mrs,
             () => fake.strategies ?? [],
@@ -685,6 +694,46 @@ test('a repo picked until its MRs all closed is forgotten, so the repo coming ba
   await ui.unmount()
 })
 
+test('Enter in the search box lists what matches in place of the list, past the repo picked; ✕ ends it, and a phone has no box', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const ticketed = rawMr(1398, { title: 'feat: [HET-1074] Order history', project: project('g/q') })
+  engine(on, { mrs: [ticketed, rawMr(2, { title: 'fix: Totals' }), rawMr(3, { title: 'fix: Order totals' })], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const text = async (ui: { find: (query: { type: 'Text'; text: RegExp }) => Promise<{ text: string } | undefined> }, start: RegExp) =>
+    (await ui.find({ type: 'Text', text: start }))?.text
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.select({ key: 'repo', value: 'gitlab.com/g/p' })
+    expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
+    // Typing alone searches nothing; Enter does.
+    await ui.input({ key: 'search', text: 'het1074', kind: 'change' })
+    expect(await text(ui, /^Found · /u)).toBeUndefined()
+    await ui.input({ key: 'search', text: 'het1074' })
+    expect(await text(ui, /^Found · /u)).toBe('Found · 1')
+    expect(await text(ui, /^Ready · /u)).toBeUndefined()
+    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('het1074')
+    expect(await ui.find({ type: 'Select', key: 'repo' })).toBeUndefined()
+    await ui.press({ key: 'search-clear' })
+    expect(await text(ui, /^Found · /u)).toBeUndefined()
+    expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
+    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('')
+    await ui.select({ key: 'repo', value: 'all' })
+    await ui.unmount()
+  }
+  // A search left on where there is a box is not drawn on a phone, which has none to end it with.
+  const desk = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await desk.input({ key: 'search', text: '!1398' })
+  expect(await text(desk, /^Found · /u)).toBe('Found · 1')
+  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect(await phone.find({ type: 'Input', key: 'search' })).toBeUndefined()
+  expect(await phone.find({ type: 'Button', key: 'search-clear' })).toBeUndefined()
+  expect(await text(phone, /^Found · /u)).toBeUndefined()
+  expect(await text(phone, /^Ready · /u)).toBe('Ready · 3')
+  await phone.unmount()
+  await desk.unmount()
+})
+
 test('an avatar kept by an earlier session is drawn without fetching it again', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const fake: Fake = { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'APPROVED')] } })], isDown: false }
@@ -731,6 +780,64 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
   expect(jiraReads.length).toBeGreaterThan(1)
   expect(answer.text).toBe('GitLab pane open')
+  await ui.unmount()
+})
+
+test(
+  'a ticket Jira does not know, or a search that fails, waits for the quarter-hour pace, while a ticket newly named is asked about at once',
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    // The made-up Jira knows ABC-1 alone.
+    const others = [rawMr(13, { title: '[XYZ-9] thing 13' })]
+    const fake: Fake = { mrs: [rawMr(12, SHOWN), ...others], isDown: false }
+    const { jiraReads } = engine(on, fake)
+    const searches = () => jiraReads.length
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    // Each read finds something new, so the pane takes in a new snapshot each time, which is when it looks at the tickets.
+    const takes = async (count: number) => {
+      for (let take = 0; take < count; take += 1) {
+        fake.mrs = [rawMr(12, { ...SHOWN, title: `[ABC-1] thing 12, take ${String(stamp(clock))}`, updatedAt: stamp(clock) }), ...others]
+        await clock.advance(2 * 60_000)
+      }
+    }
+    await takes(5)
+    expect(searches()).toBe(1)
+    others.push(rawMr(14, { title: '[NEW-1] thing 14', updatedAt: stamp(clock) }))
+    await takes(1)
+    expect(searches()).toBe(2)
+    // Jira cannot be asked: the search for a newly named ticket fails, and is not made again at every snapshot.
+    fake.isJiraMissing = true
+    others.push(rawMr(15, { title: '[NEW-2] thing 15', updatedAt: stamp(clock) }))
+    await takes(1)
+    expect(searches()).toBe(3)
+    await takes(TICKETS_EVERY_MS / (2 * 60_000) - 1)
+    expect(searches()).toBe(3)
+    await takes(1)
+    expect(searches()).toBe(4)
+    await ui.unmount()
+  }
+)
+
+test('a project with too few pipelines to say how long one usually runs is asked again at the half-hour pace, not at every read', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const { gitlab } = engine(on, { mrs: [rawMr(12, { headPipeline: pipe('RUNNING') })], isDown: false, runs: [600] })
+  const asked = (name: string) => operations(gitlab.requests).filter(one => one === name).length
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await clock.advance(20 * 60_000)
+  // The running pipeline has the MR read many times over; its project's run times were asked once.
+  expect(asked('Authored')).toBeGreaterThan(3)
+  expect(asked('Usual')).toBe(1)
+  await clock.advance(USUAL_EVERY_MS - 20 * 60_000 - 60_000)
+  expect(asked('Usual')).toBe(1)
+  await clock.advance(60_000)
+  expect(asked('Usual')).toBe(2)
   await ui.unmount()
 })
 
@@ -1957,9 +2064,9 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
-  // (Sixteen since the inbox's own atoms, the problems the leader reported, whether a read is out and this session's presses
-  // on merges, rebases and conflicts are read by the same drawing.)
-  expect(reads).toBeLessThanOrEqual(16)
+  // (Seventeen since the inbox's own atoms, the problems the leader reported, whether a read is out, this session's presses
+  // on merges, rebases and conflicts, and what was searched for are read by the same drawing.)
+  expect(reads).toBeLessThanOrEqual(17)
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
