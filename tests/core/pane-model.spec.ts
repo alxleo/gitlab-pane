@@ -11,7 +11,6 @@ import { buildPane, inboxBand, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { pickedRepo, REPO_ALL } from '../../hooks/repo-filter.ts'
 import { slimCard } from '../../hooks/slim.ts'
-import { STAGE_COLOURS } from '../../hooks/status.ts'
 import { readCardArb } from './arbitrary.ts'
 import { HOST, NOW, gitlabSays, pipe, project, rawMr, thread } from '../fixtures.ts'
 import type { Mr } from '../fixtures.ts'
@@ -86,7 +85,7 @@ test('the band above the prompt says the inbox news only while the pane shows no
   )
 })
 
-test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
+test('each MR is a card in the order of what needs you, its worst blocker in words', async () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const botThread = { nodes: [thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)] }
   const cards = [
@@ -97,13 +96,6 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     { ...toCard(HOST, rawMr(16)), mergeStatus: gitlabSays({ NOT_OPEN: 'failed' }) },
   ]
   const { mine, tabs } = modelOf(cards)
-  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
-  expect(Object.fromEntries(mine.rows.map(row => [row.mr.text, [row.border.style, row.border.colour]]))).toEqual({
-    '🔀 !12': ['bold', STAGE_COLOURS.error],
-    '🔀 !13': ['round', STAGE_COLOURS.subtle],
-    '🔀 !14': ['round', STAGE_COLOURS.success],
-    '🔀 !15': ['round', STAGE_COLOURS.success],
-  })
   // The one GitLab says can merge comes first, so finishing comes before the rest; then the failed one, which needs you.
   expect(mine.rows.map(row => row.mr.text)).toEqual(['🔀 !14', '🔀 !12', '🔀 !15', '🔀 !13'])
   // GitLab says one is no longer open, so it leaves Mine before the next full read.

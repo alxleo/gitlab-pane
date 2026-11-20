@@ -9,7 +9,7 @@ What each colour, border and mark in the pane means, and the code that holds it.
 | Rule | Means | Code |
 |---|---|---|
 | What you can finish comes first | what GitLab says can merge, then failing or blocked, then running, then waiting on others, then passed | `byAttention`, `hooks/attention.ts` |
-| Colour means the same everywhere | one palette for stages, card borders and reviewer rings | `STAGE_COLOURS`, `hooks/status.ts` |
+| Never colour alone | a colour always rides with a glyph or words that say the same; one meaning keeps one colour in either theme, and cards draw no border | `TONE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
 | Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
 | Nothing waits for the pointer | no part of a card shows or hides on a hover, so nothing moves under it; the rest of an MR is on its page, a press away | `card.tsx` |
@@ -17,24 +17,24 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 ## Colour
 
-The same in light and dark. Hovering a card turns its border the theme's `claude` colour.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
 
-| Tone | Colour | Means |
-|---|---|---|
-| `success` | `#2da44e` green | passed, approved |
-| `error` | `#cf222e` red | failed, changes requested, conflicts |
-| `warning` | `#bf8700` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
-| `suggestion` | `#0969da` blue | running, reviewed |
-| `subtle` | `#8c959f` grey | skipped, canceled, not started, waiting on a review |
+The dark shades are the app's own dark keys, sampled from shots of it. The light ones are vivid fill shades: the app paints its light keys in dark text shades (`#016d11`, `#a42628`, `#895903`, `#1757ac`, `#666666`), which turn muddy on a small mark beside an avatar. The screen renderer's `pane.css` paints text in the app's keys and its pane in `PAGE` (`tools/pane_screens.spec.ts`).
+
+| Tone | Light | Dark | Means |
+|---|---|---|---|
+| `success` | `#1f883d` green | `#53c656` green | passed, approved |
+| `error` | `#cf222e` red | `#fa8181` red | failed, changes requested, conflicts |
+| `warning` | `#bf8700` amber | `#e59c08` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
+| `suggestion` | `#0969da` blue | `#6aacf1` blue | running, reviewed |
+| `subtle` | `#6e7781` grey | `#9c9c9c` grey | skipped, canceled, not started, waiting on a review, looked without a verdict |
 
 ## MR cards
 
 | Part | Shows | Code |
 |---|---|---|
-| Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
-| Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
 | Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
-| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, an approver's face badged ✓; a name opens the page on what that person wrote | `row-facts.ts` |
+| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, each face badged for where they stand; a name opens the page on what that person wrote | `row-facts.ts` |
 | Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is grey and that quotes no one; its links and faces are on its page. One GitLab says can merge is a decision, so never quiet | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
 
@@ -124,14 +124,20 @@ The one press that moves an MR along, where GitLab's checks name it and you may 
 
 A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot.
 
-- **Ring** (`personTone`): red for changes requested, else amber for open threads, else green for approved, else grey. Heavy once they have a say, thin while they have none.
-- **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below.
-- **Without images** (the terminal): a coloured `●`, `◉` for the person whose comments are open, or the badge's glyph.
+- **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below: where they stand, said by its glyph, never by a colour alone, so there is no ring. It is cut out of the avatar by an edge in the pane's background (`PAGE`), and its glyph is drawn in that background too, white on the light shades and near black on the dark ones, which keeps 4.5:1 in either theme.
+- **Without images** (the terminal): the badge's glyph, in its tone.
+- **Faded** is kept for a face that is not a reviewer yet, such as someone the pane suggests adding.
 
 | Badge | Means |
 |---|---|
 | ✓ | approved |
 | ✕ | requested changes |
+| ? | reviewing |
+| ? | commented |
+| ◌ | not reviewed yet |
+| 💬 | holds an open thread |
+
+Someone holding an open thread wears 💬 (`THREAD_MARK`, `markOf`), an amber speech bubble, in place of ✓, ? or ◌: the MR waits on their discussion, which its verdict says of the MR as a whole and the bubble says of the person. ✕ outranks it. The count beside their name says how many threads.
 
 ## Links
 
@@ -177,7 +183,7 @@ The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's na
 | On my MRs | `on-my-mrs` | changes requested, approvals and their withdrawal, reviews, comments, pushes and merges on yours |
 | Following | `following` | the same on MRs of the people and projects `inboxFollow` names |
 
-- A card with news has an amber border and says `N new`; one without is grey.
+- A card with news says `N new`.
 - An MR can show under several tabs; the Inbox tab's count counts it once.
 - The band above the prompt says the Inbox tab's words in amber, `Inbox · N new`, only while there is news and the tabs are out of sight: the pane closed or undrawn, or an MR's page in their place. It never repeats the tab beside it, gives way to a survey, and opens the Inbox tab when pressed (`inboxBand`, `hooks/pane-model.ts`).
 - `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.

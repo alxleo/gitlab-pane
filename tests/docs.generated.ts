@@ -9,11 +9,11 @@ export const README = {
 
 export const DESIGN = {
   colours: [
-    ['success', '#2da44e'],
-    ['error', '#cf222e'],
-    ['warning', '#bf8700'],
-    ['suggestion', '#0969da'],
-    ['subtle', '#8c959f'],
+    ['success', { light: '#1f883d', dark: '#53c656' }],
+    ['error', { light: '#cf222e', dark: '#fa8181' }],
+    ['warning', { light: '#bf8700', dark: '#e59c08' }],
+    ['suggestion', { light: '#0969da', dark: '#6aacf1' }],
+    ['subtle', { light: '#6e7781', dark: '#9c9c9c' }],
   ],
   checkTones: [
     [
@@ -35,6 +35,10 @@ export const DESIGN = {
   badges: [
     ['✓', 'approved'],
     ['✕', 'requested changes'],
+    ['?', 'reviewing'],
+    ['?', 'commented'],
+    ['◌', 'not reviewed yet'],
+    ['💬', 'holds an open thread'],
   ],
   links: ['🔀', '🎫', '📁', '🚦', '💬', '📍'],
   inboxEvents: [

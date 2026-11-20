@@ -1,6 +1,6 @@
 // pane-screens: the README's screenshots of the GitLab pane, drawn by the mod's own code and photographed headless.
 //
-//   node tools/pane_screens.ts render                      write docs/screens/<scene>.png for every scene
+//   node tools/pane_screens.ts render                      write docs/screens/<scene>.png (light) and <scene>-dark.png for every scene
 //   node tools/pane_screens.ts render --scene inbox        one scene
 //   node tools/pane_screens.ts render --out /tmp/shots     somewhere else, to compare two runs
 //   node tools/pane_screens.ts render --verify             draw twice, fail unless both are byte-identical
@@ -222,21 +222,34 @@ async function glyphsMissing(page: Page): Promise<string[]> {
   return Array.isArray(found) ? found.filter((one): one is string => typeof one === 'string') : []
 }
 
-async function photograph(pages: ReadonlyMap<string, string>, out: string, scale: number): Promise<void> {
+/** A page to photograph: the file, and the app theme it is seen in (pane.css and the faces' own styles follow it). */
+type Sitting = { readonly path: string; readonly theme: Theme }
+
+async function photograph(pages: ReadonlyMap<string, Sitting>, out: string, scale: number): Promise<void> {
   mkdirSync(out, { recursive: true })
   const browser = await chromium.launch({ args: ['--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb'] }).catch((error: unknown) => {
     throw new ScreensError(`Chromium would not start (${messageOf(error)}); install it with: npm run screens -- setup`)
   })
   try {
-    const context = await browser.newContext({
-      viewport: { width: 700, height: 900 },
-      deviceScaleFactor: scale,
-      colorScheme: 'light',
-      locale: 'en-GB',
-      timezoneId: 'UTC',
-      reducedMotion: 'reduce',
-    })
-    for (const [name, path] of pages) {
+    const contexts = new Map<Theme, BrowserContext>()
+    for (const theme of THEMES) {
+      contexts.set(
+        theme,
+        await browser.newContext({
+          viewport: { width: 700, height: 900 },
+          deviceScaleFactor: scale,
+          colorScheme: theme,
+          locale: 'en-GB',
+          timezoneId: 'UTC',
+          reducedMotion: 'reduce',
+        })
+      )
+    }
+    for (const [name, { path, theme }] of pages) {
+      const context = contexts.get(theme)
+      if (context === undefined) {
+        throw new ScreensError(`no browser for the ${theme} theme`)
+      }
       const page = await context.newPage()
       await page.goto(pathToFileURL(path).href)
       await page.evaluate('document.fonts.ready.then(() => true)')
@@ -273,18 +286,33 @@ type Options = {
   readonly deltaAgainst: string | null
 }
 
+/** The desktop app's two themes; every scene is photographed in each, as the app draws the pane in either. */
+const THEMES = ['light', 'dark'] as const
+type Theme = (typeof THEMES)[number]
+
+/** A scene's picture in a theme: `mine.png` in light, `mine-dark.png` in dark. */
+const pictureName = (scene: string, theme: Theme): string => (theme === 'light' ? scene : `${scene}-${theme}`)
+
+/** The pictures a scene is in docs/screens: one per theme. */
+const scenePictures = (scene: Scene): string[] => THEMES.map(theme => pictureName(scene.name, theme))
+
+type Picture = ReturnType<typeof pageHtml> & { readonly theme: Theme }
+
 /**
- * The pages to photograph for `scenes`, by picture name: each scene, and with `base` (the same scenes drawn at another
- * version) the scene as it was there and the delta between them, for a scene `base` also draws.
+ * The pages to photograph for `scenes`, by picture name: each scene in each theme, and with `base` (the same scenes drawn
+ * at another version) the scene as it was there and the delta between them, for a scene `base` also draws.
  */
-function picturesOf(scenes: readonly Scene[], base: readonly Scene[] | null, width: number | null): Map<string, ReturnType<typeof pageHtml>> {
-  const pictures = new Map<string, ReturnType<typeof pageHtml>>()
-  for (const each of scenes) {
-    pictures.set(each.name, pageHtml(each, width))
-    const before = base?.find(scene => scene.name === each.name)
-    if (before !== undefined) {
-      pictures.set(`${each.name}-before`, pageHtml(before, width))
-      pictures.set(`${each.name}-delta`, pageHtml(each, width, deltaMarks(each.tree, before.tree)))
+function picturesOf(scenes: readonly Scene[], base: readonly Scene[] | null, width: number | null): Map<string, Picture> {
+  const pictures = new Map<string, Picture>()
+  for (const theme of THEMES) {
+    for (const each of scenes) {
+      const name = pictureName(each.name, theme)
+      pictures.set(name, { ...pageHtml(each, width), theme })
+      const before = base?.find(scene => scene.name === each.name)
+      if (before !== undefined) {
+        pictures.set(`${name}-before`, { ...pageHtml(before, width), theme })
+        pictures.set(`${name}-delta`, { ...pageHtml(each, width, deltaMarks(each.tree, before.tree)), theme })
+      }
     }
   }
   return pictures
@@ -318,15 +346,16 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
     const site = join(work, 'site')
     cpSync(join(SCREENS, 'fonts'), join(site, 'fonts'), { recursive: true })
     copyFileSync(join(SCREENS, 'pane.css'), join(site, 'pane.css'))
-    const pages = new Map<string, string>()
+    const pages = new Map<string, Sitting>()
     const unknownIn = new Map<string, Set<string>>()
     for (const [name, page] of picturesOf(scenes, base, options.width)) {
-      if (page.unknown.size > 0) {
+      // The same tree draws the same elements in either theme, so the light picture alone says what is unknown.
+      if (page.unknown.size > 0 && page.theme === 'light') {
         unknownIn.set(name, page.unknown)
       }
       const path = join(site, `${name}.html`)
       writeFileSync(path, page.document, 'utf8')
-      pages.set(name, path)
+      pages.set(name, { path, theme: page.theme })
     }
     const shots = join(work, 'shots')
     await photograph(pages, shots, options.scale)
@@ -378,31 +407,32 @@ async function render(values: {
     // --check draws into a scratch folder and compares with `out`; it writes nothing there.
     const target = values.check ? join(scratch, 'now') : out
     const scenes = await produce(options, target)
-    const others = existsSync(out) ? readdirSync(out).filter(name => name.endsWith('.png') && !scenes.some(scene => `${scene.name}.png` === name)) : []
+    const pictures = scenes.flatMap(scenePictures).map(name => `${name}.png`)
+    const others = existsSync(out) ? readdirSync(out).filter(name => name.endsWith('.png') && !pictures.includes(name)) : []
     if (others.length > 0 && options.scenes.length === 0 && options.deltaAgainst === null) {
       console.error(`note: ${others.join(', ')} in ${out} is no scene (any more); delete it if it is stale`)
     }
     if (values.verify) {
       const again = join(scratch, 'again')
       await produce({ ...options, keep: null }, again)
-      const differing = scenes.filter(scene => !same(join(target, `${scene.name}.png`), join(again, `${scene.name}.png`)))
+      const differing = pictures.filter(name => !same(join(target, name), join(again, name)))
       if (differing.length > 0) {
-        throw new ScreensError(`two draws of the same commit gave different PNGs: ${differing.map(scene => scene.name).join(', ')}`)
+        throw new ScreensError(`two draws of the same commit gave different PNGs: ${differing.join(', ')}`)
       }
-      console.error(`verified: two draws, ${scenes.length} identical PNGs`)
+      console.error(`verified: two draws, ${pictures.length} identical PNGs`)
     }
     if (values.check) {
-      const stale = scenes.filter(scene => !same(join(target, `${scene.name}.png`), join(out, `${scene.name}.png`)))
+      const stale = pictures.filter(name => !same(join(target, name), join(out, name)))
       if (stale.length > 0) {
         // The fresh render is kept where asked, so the difference can be looked at.
         if (values.fresh !== null) {
           cpSync(target, values.fresh, { recursive: true })
         }
-        throw new ScreensError(`${stale.map(scene => `${scene.name}.png`).join(', ')} is stale: run npm run screens -- render and commit docs/screens`)
+        throw new ScreensError(`${stale.join(', ')} is stale: run npm run screens -- render and commit docs/screens`)
       }
-      console.error(`checked: ${scenes.length} PNGs in ${out} are what the pane draws`)
+      console.error(`checked: ${pictures.length} PNGs in ${out} are what the pane draws`)
     }
-    scenes.forEach(scene => console.log(join(out, `${scene.name}.png`)))
+    pictures.forEach(name => console.log(join(out, name)))
     return 0
   } finally {
     rmSync(scratch, { recursive: true, force: true })

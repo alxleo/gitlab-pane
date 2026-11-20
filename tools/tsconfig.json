@@ -19,5 +19,5 @@
     "moduleResolution": "bundler",
     "types": ["node"]
   },
-  "include": ["*.ts", "../oxlint.config.ts", "../hooks/decode.ts", "../hooks/gitlab-operations.ts", "../types/index.d.ts"]
+  "include": ["*.ts", "../oxlint.config.ts", "../hooks/decode.ts", "../hooks/gitlab-operations.ts", "../hooks/status.ts", "../types/index.d.ts"]
 }

@@ -15,28 +15,61 @@
   --font: "Pane Sans", "Pane Symbols", "Pane Emoji", sans-serif;
   --mono: "Pane Mono", "Pane Symbols", "Pane Emoji", monospace;
 
+  /* The pane's background, text, dim text, links and the theme keys below as the desktop app paints them, sampled from
+     shots of it in light; the page around the pane, its edges and chips are by eye. */
   --page: #f0eee6;
-  --surface: #faf9f5;
+  --surface: #ffffff;
   --edge: #e3e0d3;
-  --ink: #1f1e1d;
-  --faint: #6b6a65;
-  --link: #2b5fd0;
+  --ink: #191919;
+  --faint: #666666;
+  --link: #1757ac;
   --chip: #ece9de;
   --chip-edge: #d9d5c5;
 
   /* The theme keys a tree may name, in the app's light theme. */
   --c-text: var(--ink);
   --c-inverseText: #ffffff;
-  --c-inactive: #6b6a65;
-  --c-subtle: #8a8983;
-  --c-suggestion: #3d5fe0;
+  --c-inactive: #666666;
+  --c-subtle: #666666;
+  --c-suggestion: #1757ac;
   --c-remember: #3d5fe0;
-  --c-success: #2c7a39;
-  --c-error: #ab2b3f;
-  --c-warning: #966c1e;
+  --c-success: #016d11;
+  --c-error: #a42628;
+  --c-warning: #895903;
   --c-merged: #8700ff;
   --c-claude: #d77757;
   --c-permission: #3d5fe0;
+}
+
+/*
+ * The app's dark theme: the page is photographed in it when the browser prefers dark, as the app does when set to dark.
+ * The pane's background, text, dim text, links and the theme keys are sampled from shots of the app in dark; the page
+ * around the pane, its edges and chips are by eye.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #262624;
+    --surface: #191919;
+    --edge: #3d3c38;
+    --ink: #efefef;
+    --faint: #9c9c9c;
+    --link: #6aacf1;
+    --chip: #30302e;
+    --chip-edge: #45443f;
+
+    --c-text: var(--ink);
+    --c-inverseText: #000000;
+    --c-inactive: #9c9c9c;
+    --c-subtle: #9c9c9c;
+    --c-suggestion: #6aacf1;
+    --c-remember: #b1b9f9;
+    --c-success: #53c656;
+    --c-error: #fa8181;
+    --c-warning: #e59c08;
+    --c-merged: #af87ff;
+    --c-claude: #d77757;
+    --c-permission: #b1b9f9;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -89,7 +122,7 @@ button.btn { font: inherit; color: inherit; background: none; border: 0; text-al
 button.btn.plain { padding: 0; }
 button.btn.plain.dim { opacity: 0.6; }
 button.btn:not(.plain) { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--chip-edge); background: var(--chip); font-weight: 500; font-size: 12px; white-space: nowrap; }
-button.btn.primary:not(.plain) { background: var(--ink); border-color: var(--ink); color: #fff; }
+button.btn.primary:not(.plain) { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 
 .select { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 3px 8px 3px 10px; border-radius: 6px; border: 1px solid var(--chip-edge); background: var(--chip); font-weight: 500; font-size: 12px; white-space: nowrap; }
 .select .caret { opacity: 0.6; }
@@ -124,8 +157,8 @@ button.btn.primary:not(.plain) { background: var(--ink); border-color: var(--ink
 .code-row .gutter { flex: 0 0 auto; min-width: 3ch; padding: 0 6px; text-align: right; color: var(--faint); opacity: 0.8; }
 .code-row .src { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .code.cut .code-row .src { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
-.code-row.add { background: #2c7a3922; }
-.code-row.del { background: #ab2b3f1f; }
+.code-row.add { background: color-mix(in srgb, var(--c-success) 13%, transparent); }
+.code-row.del { background: color-mix(in srgb, var(--c-error) 12%, transparent); }
 
 /* An element this renderer has no look for: said out loud, so it is never mistaken for part of the pane. */
 .unknown { border: 1px dashed #c0392b; color: #c0392b; padding: 2px 6px; font: 11px/1.3 var(--mono); }

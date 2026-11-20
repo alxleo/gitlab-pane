@@ -22,7 +22,7 @@ import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
 import { queryOf } from './search.ts'
 import type { CardFacts, PersonFacts } from './row-facts.ts'
-import { STAGE_COLOURS, type Tone } from './status.ts'
+import type { Tone } from './status.ts'
 import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
 import type { SvgSource } from './svg.ts'
@@ -66,7 +66,6 @@ export type RowModel = {
   titleKey: string
   /** `<iid>-<repo hash>`, which every key of the row ends on. */
   suffix: string
-  border: { style: 'bold' | 'round'; colour: string }
   title: string
   ago: string
   mr: Link
@@ -215,7 +214,6 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     boxKey: shortHash(card.key),
     titleKey: titleKey(card),
     suffix,
-    border: { style: facts.rank === 0 ? 'bold' : 'round', colour: STAGE_COLOURS[facts.tone] },
     title: facts.title,
     ago: ago(card.updatedAt, now),
     mr: { href: card.url, text: `${LINK.mr} !${card.iid}` },
@@ -239,7 +237,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
       username: person.username,
       label: `${callOf(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`,
       tone: person.face.tone,
-      glyph: person.face.badge ?? '●',
+      glyph: person.face.glyph,
       alt: person.face.alt,
       plain: person.face.plain,
       picture: person.face.picture,
