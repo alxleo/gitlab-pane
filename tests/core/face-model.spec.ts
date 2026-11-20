@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { faceFacts, REVIEW_MARK } from '../../hooks/face-model.ts'
+import { faceFacts, REVIEW_MARK, THREAD_MARK } from '../../hooks/face-model.ts'
 import type { Note, Person, PersonState } from '../../types'
 
 const STATES = Object.keys(REVIEW_MARK).filter((state): state is PersonState => state in REVIEW_MARK)
@@ -29,7 +29,8 @@ test('every face, with or without a picture, draws its badge in both shades insi
         expect(themed).toContain('light-dark(')
         expect(source.replace(themed, '')).not.toContain('light-dark(')
       }
-      expect(face.glyph).toBe(REVIEW_MARK[person.state].glyph)
+      // An open thread is the badge unless they asked for changes, which outranks it.
+      expect(face.glyph).toBe(person.state !== 'requested_changes' && person.openThreads > 0 ? THREAD_MARK.glyph : REVIEW_MARK[person.state].glyph)
       expect(face.alt).toContain(person.name)
     })
   )

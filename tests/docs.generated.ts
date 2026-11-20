@@ -38,6 +38,7 @@ export const DESIGN = {
     ['?', 'reviewing'],
     ['?', 'commented'],
     ['◌', 'not reviewed yet'],
+    ['💬', 'holds an open thread'],
   ],
   links: ['🔀', '🎫', '📁', '🚦', '💬', '📍'],
   inboxEvents: [

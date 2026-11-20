@@ -135,6 +135,9 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 | ? | reviewing |
 | ? | commented |
 | ◌ | not reviewed yet |
+| 💬 | holds an open thread |
+
+Someone holding an open thread wears 💬 (`THREAD_MARK`, `markOf`), an amber speech bubble, in place of ✓, ? or ◌: the MR waits on their discussion, which its verdict says of the MR as a whole and the bubble says of the person. ✕ outranks it. The count beside their name says how many threads.
 
 ## Links
 

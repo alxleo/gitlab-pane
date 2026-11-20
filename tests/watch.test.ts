@@ -1794,7 +1794,7 @@ test("a bot is a face like a person's: its own picture or a robot, badged for it
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).not.toMatch(/bots hold the merge|asked for changes|🤖/iu)
   const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && /^(GitLabDuo|cursor)/u.test(String(element.props?.alt)))
-  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor, commented'])
+  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor, commented, 1 open thread'])
   // Without a picture of its own, a bot is a robot rather than a disc of initials.
   expect(String(faces[1]?.props?.source)).not.toMatch(/<image|>[A-Z]{2}<\/text>/u)
   const names = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
