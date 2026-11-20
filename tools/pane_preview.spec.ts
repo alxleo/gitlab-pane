@@ -61,7 +61,7 @@ const from = (action: Json): Json => ({ ...action, run: RUN })
 test('a click, a pick, typing, Enter, a scroll and a measurement each read back as the action the page meant', () => {
   expect(decodeAction(from({ kind: 'press', key: 'tab-mine' }), RUN)).toEqual({ kind: 'press', key: 'tab-mine' })
   expect(decodeAction(from({ kind: 'select', key: 'repo', value: 'all' }), RUN)).toEqual({ kind: 'select', key: 'repo', value: 'all' })
-  expect(decodeAction(from({ kind: 'input', key: 'search', value: 'het', submit: false }), RUN)).toEqual({ kind: 'input', key: 'search', value: 'het', submit: false })
+  expect(decodeAction(from({ kind: 'input', key: 'search', value: 'abc', submit: false }), RUN)).toEqual({ kind: 'input', key: 'search', value: 'abc', submit: false })
   expect(decodeAction(from({ kind: 'input', key: 'search', value: '', submit: true }), RUN)).toEqual({ kind: 'input', key: 'search', value: '', submit: true })
   expect(decodeAction(from({ kind: 'scroll', offset: 25 }), RUN)).toEqual({ kind: 'scroll', offset: 25 })
   expect(decodeAction(from({ kind: 'measured', draw: 3, rows: 80, bodyRows: 30, keyed: [{ key: 'tab-mine', top: 0, bottom: 1 }], resized: true }), RUN)).toEqual({
@@ -86,7 +86,7 @@ test('an action with no key, an empty key, no text, a row that is no row or an u
   expect(() => decodeAction(from({ kind: 'press' }), RUN)).toThrow('names no element key')
   expect(() => decodeAction(from({ kind: 'press', key: '' }), RUN)).toThrow('names no element key')
   expect(() => decodeAction(from({ kind: 'select', key: 'repo' }), RUN)).toThrow('a pick has no value')
-  expect(() => decodeAction(from({ kind: 'input', key: 'search', value: 'het' }), RUN)).toThrow('Enter')
+  expect(() => decodeAction(from({ kind: 'input', key: 'search', value: 'abc' }), RUN)).toThrow('Enter')
   expect(() => decodeAction(from({ kind: 'scroll', offset: -1 }), RUN)).toThrow('offset is not a row')
   expect(() => decodeAction(from({ kind: 'scroll', offset: 2.5 }), RUN)).toThrow('offset is not a row')
   expect(() => decodeAction(from({ kind: 'measured', draw: 1, rows: 3, bodyRows: 3, keyed: [{ key: 'a', top: 4, bottom: 2 }] }), RUN)).toThrow('ends above')

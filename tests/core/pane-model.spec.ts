@@ -362,8 +362,8 @@ test('an MR the list still draws is not also said merged, and the section follow
 
 test('a search lists what matches in place of the list, past the repo picked and every fold, with no picker while it is on', () => {
   const inRepo = (path: string, iid: number, over: Partial<Mr> = {}) => toCard(HOST, rawMr(iid, { project: project(path), ...over }))
-  const pinnedHere = inRepo('g/web', 1, { title: 'feat: [HET-1074] Order history' })
-  const parked = inRepo('g/web', 1398, { title: 'fix: Order totals', updatedAt: '2026-10-01T15:00:00Z', headPipeline: null })
+  const pinnedHere = inRepo('g/web', 1, { title: 'feat: [ABC-123] Order history' })
+  const parked = inRepo('g/web', 512, { title: 'fix: Order totals', updatedAt: '2026-10-01T15:00:00Z', headPipeline: null })
   const draft = inRepo('g/api', 7, { title: 'Draft: Order export', draft: true })
   const other = inRepo('g/api', 8, { title: 'chore: Bump Node' })
   const cards = [pinnedHere, parked, draft, other]
@@ -378,8 +378,8 @@ test('a search lists what matches in place of the list, past the repo picked and
   // What the list would draw is not built; the picker, which a search looks past, is not drawn.
   expect(model.session).toEqual([])
   expect(model.repos).toBeNull()
-  expect(modelOf(cards, { ...folded, search: '!1398' }).found?.rows.map(row => row.key)).toEqual([parked.key])
-  expect(modelOf(cards, { ...folded, search: 'het1074' }).found?.rows.map(row => row.key)).toEqual([pinnedHere.key])
+  expect(modelOf(cards, { ...folded, search: '!512' }).found?.rows.map(row => row.key)).toEqual([parked.key])
+  expect(modelOf(cards, { ...folded, search: 'abc123' }).found?.rows.map(row => row.key)).toEqual([pinnedHere.key])
   expect(modelOf(cards, { search: 'zebra' }).found).toMatchObject({ heading: 'Found · 0', isEmpty: true, rows: [] })
   // No search, or one of nothing to look for, is the list as it was; the inbox and an MR's page never search.
   for (const over of [{ search: '' }, { search: ' !- ' }, { search: 'order', view: 'inbox' as const }, { search: 'order', view: 'reading' as const }]) {

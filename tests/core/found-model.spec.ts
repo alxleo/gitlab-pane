@@ -112,9 +112,9 @@ test('a merged MR still listed as a card takes none of the five merged places', 
 })
 
 test('an open MR is found by its author and its branch', () => {
-  const card = toCard(HOST, rawMr(5, { title: 'Other', author: { username: 'maya.ortiz' }, sourceBranch: 'feature/het-1200-totals' }))
+  const card = toCard(HOST, rawMr(5, { title: 'Other', author: { username: 'maya.ortiz' }, sourceBranch: 'feature/abc-180-totals' }))
   expect(matchesOf(query('maya'), held({ cards: [card] })).cards.map(each => each.iid)).toEqual([5])
-  expect(matchesOf(query('het1200'), held({ cards: [card] })).cards.map(each => each.iid)).toEqual([5])
+  expect(matchesOf(query('abc180'), held({ cards: [card] })).cards.map(each => each.iid)).toEqual([5])
 })
 
 test('an inbox MR is found by its author’s name and its repo, a merged one by its repo', () => {

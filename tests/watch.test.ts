@@ -696,7 +696,7 @@ test('a repo picked until its MRs all closed is forgotten, so the repo coming ba
 
 test('Enter in the search box lists what matches in place of the list, past the repo picked; ✕ ends it, and a phone has no box', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const ticketed = rawMr(1398, { title: 'feat: [HET-1074] Order history', project: project('g/q') })
+  const ticketed = rawMr(512, { title: 'feat: [ABC-123] Order history', project: project('g/q') })
   engine(on, { mrs: [ticketed, rawMr(2, { title: 'fix: Totals' }), rawMr(3, { title: 'fix: Order totals' })], isDown: false })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -707,12 +707,12 @@ test('Enter in the search box lists what matches in place of the list, past the 
     await ui.select({ key: 'repo', value: 'gitlab.com/g/p' })
     expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
     // Typing alone searches nothing; Enter does.
-    await ui.input({ key: 'search', text: 'het1074', kind: 'change' })
+    await ui.input({ key: 'search', text: 'abc123', kind: 'change' })
     expect(await text(ui, /^Found · /u)).toBeUndefined()
-    await ui.input({ key: 'search', text: 'het1074' })
+    await ui.input({ key: 'search', text: 'abc123' })
     expect(await text(ui, /^Found · /u)).toBe('Found · 1')
     expect(await text(ui, /^Ready · /u)).toBeUndefined()
-    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('het1074')
+    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('abc123')
     expect(await ui.find({ type: 'Select', key: 'repo' })).toBeUndefined()
     await ui.press({ key: 'search-clear' })
     expect(await text(ui, /^Found · /u)).toBeUndefined()
@@ -723,7 +723,7 @@ test('Enter in the search box lists what matches in place of the list, past the 
   }
   // A search left on where there is a box is not drawn on a phone, which has none to end it with.
   const desk = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await desk.input({ key: 'search', text: '!1398' })
+  await desk.input({ key: 'search', text: '!512' })
   expect(await text(desk, /^Found · /u)).toBe('Found · 1')
   const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
   expect(await phone.find({ type: 'Input', key: 'search' })).toBeUndefined()

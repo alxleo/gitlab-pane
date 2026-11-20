@@ -1,5 +1,5 @@
-// What the search box finds among the MRs the pane already holds: an MR by its number (`!1398`, `1398`), a ticket however
-// it is spelled (`HET-1074`, `het1074`), or words of its title, branch, repo or author. Pure, on plain data; the pane says
+// What the search box finds among the MRs the pane already holds: an MR by its number (`!512`, `512`), a ticket however
+// it is spelled (`ABC-123`, `abc123`), or words of its title, branch, repo or author. Pure, on plain data; the pane says
 // what each MR is called, and this says which match and in what order.
 import { cut } from './graphemes.ts'
 
@@ -48,7 +48,7 @@ const wordsOf = (text: string): string[] =>
     .map(fold)
     .filter(word => word !== '')
 
-/** The ticket keys a text names, `HET-1074`, `het_1074` or `het1074`, folded. */
+/** The ticket keys a text names, `ABC-123`, `abc_123` or `abc123`, folded. */
 const ticketsOf = (text: string): string[] => [...text.matchAll(/\p{L}+[-_ ]?\p{N}+/gu)].map(([match]) => fold(match))
 
 /**
