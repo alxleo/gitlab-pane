@@ -3,7 +3,7 @@ import fc from 'fast-check'
 
 import { HOST, NOW, checks, job, pipe, rawMr, stage } from '../fixtures.ts'
 
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { advance } from '../../hooks/wake.ts'
 import { reconcile } from '../../hooks/reconcile.ts'
 import type { FailureReader } from '../../hooks/reconcile.ts'

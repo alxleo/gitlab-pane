@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest'
 
 import { INBOX_FOUND_SHOWN, foundList, matchesOf } from '../../hooks/found-model.ts'
-import { toCard } from '../../hooks/gitlab.ts'
 import { cardKey } from '../../hooks/hosts.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { queryOf } from '../../hooks/search.ts'
 import type { Query } from '../../hooks/search.ts'
 import { HOST, NOW, SELF_MANAGED, rawMr } from '../fixtures.ts'
