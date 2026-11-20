@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 
 import { HOST, NOW, SELF_MANAGED, project, rawMr, reviewer } from '../fixtures.ts'
 
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import {
   MOVE_PREFIX,
   RETRY_MS,

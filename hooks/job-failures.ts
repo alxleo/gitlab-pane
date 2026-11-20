@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { ask, askRest, mayBeCut } from './graphql'
-import { failuresQuery } from './gitlab-documents'
+import { failureReasons, failuresQuery } from './ask-failures'
 import { jobIdOf, tailOf } from './job-tail'
 import { foreign } from './model-text'
 import type { Failures, JobFailure } from './wake'
@@ -24,14 +24,7 @@ const TAIL_BYTES = 64 * 1024
 /** GitLab's message on why each failed job failed, by the job's number; none when the host cannot say. */
 async function reasonsOf($: EngineInterface, card: MrCard): Promise<Map<number, string>> {
   try {
-    const answer = await ask($, card.host, failuresQuery(card.path, card.iid))
-    const jobs = answer.data?.project?.mergeRequest?.headPipeline?.jobs?.nodes ?? []
-    return new Map(
-      jobs.flatMap(job => {
-        const id = job !== null && job.webPath !== null ? jobIdOf(job.webPath) : null
-        return job !== null && id !== null && job.failureMessage !== null && job.failureMessage !== '' ? [[id, job.failureMessage] as const] : []
-      })
-    )
+    return failureReasons(await ask($, card.host, failuresQuery(card.path, card.iid)))
   } catch {
     return new Map()
   }

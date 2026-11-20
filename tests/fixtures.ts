@@ -11,7 +11,7 @@ import type {
 } from '../hooks/gitlab.generated.ts'
 import type { CheckStatus, MergeStatus } from '../types'
 import { present } from '../hooks/decode.ts'
-import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/gitlab.ts'
+import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/mr-fragments.ts'
 
 /** The host the made-up GitLab answers as, unless a test says another. */
 export const HOST = 'gitlab.com'

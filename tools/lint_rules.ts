@@ -565,7 +565,7 @@ const onlyImporters = defineRule({
 })
 
 /**
- * What the core may import: core files, each by its `.ts` path (tools/gitlab_schema.ts runs gitlab-documents.ts under plain
+ * What the core may import: core files, each by its `.ts` path (tools/gitlab_schema.ts runs gitlab-operations.ts under plain
  * Node, which needs the extension), the types contract (`../types`), and no part of the engine (`claude-code`). The core is
  * what tsconfig.core.json includes, read when the rule starts; a file outside it is not checked. Every way a module is
  * named counts: `import`, `export … from`, `export * from`, `import x = require()`, a type's `import('…')`, and `import()`,

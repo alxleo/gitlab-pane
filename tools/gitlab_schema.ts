@@ -15,7 +15,7 @@
 //   * the schema moving under the types: a field turning nullable, an enum gaining a value (the snapshot differs from live)
 //
 // The tests cannot catch these: their GitLab answers are made up, in the shape the code expects. The queries are
-// DOCUMENTS in hooks/gitlab-documents.ts, imported as they are sent. GitLab answers the schema without a sign-in, so this reads no
+// DOCUMENTS in hooks/gitlab-operations.ts, imported as they are sent. GitLab answers the schema without a sign-in, so this reads no
 // token and sends nothing of yours.
 //
 // It also asks gitlab.com what each document costs: the document is sent with `queryComplexity { score limit }` added, which
@@ -50,23 +50,34 @@ import {
   type IntrospectionTypeRef,
   type SelectionNode,
 } from 'graphql'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
-import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS } from '../hooks/gitlab-documents.ts'
-import { WRITES } from '../hooks/merge-gitlab.ts'
+import { COMPLEXITY, COMPLEXITY_SHARE, DOCUMENTS, WRITES } from '../hooks/gitlab-operations.ts'
 import { isRecord, isSome, parseJson } from '../hooks/decode.ts'
 import { formatted } from './format.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const SNAPSHOT = join(ROOT, 'tools', 'gitlab_schema.snapshot.json')
 const TYPES = join(ROOT, 'hooks', 'gitlab.generated.ts')
-const QUERIES = join(ROOT, 'hooks', 'gitlab-documents.ts')
-/** The files graphql-codegen reads documents from: DOCUMENTS's, and those on merging an MR, an MR's page and the inbox, kept apart. */
-const DOCUMENT_FILES = [QUERIES, join(ROOT, 'hooks', 'merge-gitlab.ts'), join(ROOT, 'hooks', 'page-documents.ts'), join(ROOT, 'hooks', 'inbox-documents.ts')]
+const HOOKS = join(ROOT, 'hooks')
+/** The file that gathers every document (DOCUMENTS) and its cost (COMPLEXITY) from the modules that own them. */
+const QUERIES = join(HOOKS, 'gitlab-operations.ts')
+/** The marker before a GraphQL text, by which graphql-codegen finds it. */
+const MARKER = '/* GraphQL */'
+
+/**
+ * The files graphql-codegen reads documents from: every module of the plugin that holds one, found by the marker, so a
+ * question added in a file of its own needs no list to be named in.
+ */
+const documentFiles = (): string[] =>
+  readdirSync(HOOKS)
+    .filter(name => name.endsWith('.ts') && readFileSync(join(HOOKS, name), 'utf8').includes(MARKER))
+    .toSorted()
+    .map(name => join(HOOKS, name))
 const ENDPOINT = 'https://gitlab.com/api/graphql'
 /**
  * The deprecated fields a document may still use, each for its own document alone: the variant sent to a host that has
@@ -517,13 +528,13 @@ const dump = (pruned: unknown): string => formatted(`${JSON.stringify(sorted(pru
 
 // ---- the generated types ------------------------------------------------------------------------------------------------
 
-/** What graphql-codegen writes for the queries in hooks/gitlab-documents.ts against the schema in the file. */
+/** What graphql-codegen writes for the documents in hooks/ against the schema in the file. */
 async function generate(schemaFile: string): Promise<string> {
   const { result, error } = await executeCodegen({
     cwd: ROOT,
     silent: true,
     schema: schemaFile,
-    documents: DOCUMENT_FILES,
+    documents: documentFiles(),
     generates: {
       [TYPES]: {
         plugins: ['typescript-operations'],

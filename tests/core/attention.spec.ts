@@ -5,7 +5,7 @@ import { badges, byAttention, rank, reviewTone, rowBadges, verdictOf } from '../
 import { failedCount } from '../../hooks/format.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
 import { checkStatusOf } from '../../hooks/gitlab-status.ts'
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { readCardArb } from './arbitrary.ts'
 import { HOST, gitlabSays, job, pipe, rawMr, reviewer, stage, thread } from '../fixtures.ts'
 import type { MergeStatus, MrCard } from '../../types'

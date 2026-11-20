@@ -13,7 +13,7 @@ import type { GitLabMarkdown } from '../types'
 export type MarkdownText = string & { readonly __brand: 'MarkdownText' }
 
 /**
- * GitLab's own Markdown, as it came: made by the GitLab read (`gitlab.ts`) from a description or a note body, and by
+ * GitLab's own Markdown, as it came: made by the card of an MR (`mr-card.ts`) from a description or a note body, and by
  * nothing else, so a title or a name can never be read as Markdown to draw. Not for text from anywhere but GitLab's
  * description and note fields.
  */

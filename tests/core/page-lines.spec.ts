@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { pageHead, personPage } from '../../hooks/page-lines.ts'
 import { HOST, gitlabSays, job, note, pipe, rawMr, reviewer, stage, thread } from '../fixtures.ts'
 
