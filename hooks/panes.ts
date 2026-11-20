@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
-import { closePage, readPage, readTab, setPage, setTab, showInbox } from './choices'
+import { closePage, readPage, readTab, setPage, setTab, showInbox, toggleUnder } from './choices'
 import { readRows } from './data'
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
@@ -11,6 +11,7 @@ import type { RingScroll } from './inbox-ring'
 import { ownedSections } from './inbox-rules'
 import { cardsDrawn, nextDraw, rowDrawn } from './in-flight'
 import { putAwayReply } from './replies'
+import { ensureTicket } from './side-reads'
 import { titleKey } from './drawing'
 import { inboxBand } from './pane-model'
 
@@ -186,6 +187,17 @@ export function openReading($: EngineInterface, key: string, username = ''): voi
       .then(() => setPage($, key, username))
       .then(() => openPane($))
       .then(() => ensureDetail($, key))
+  )
+}
+
+/**
+ * Opens a person's say on an MR, or its ticket, under its card, in place of a page, so the list stays where it was; a second
+ * press closes it. A person's comments need the MR's threads, which the shared card leaves out, and a ticket its description.
+ */
+export function openUnder($: EngineInterface, card: string, kind: 'person' | 'ticket', id: string): void {
+  quietly(
+    $,
+    toggleUnder($, card, kind, id).then(open => (open === null ? undefined : open.kind === 'person' ? ensureDetail($, card) : ensureTicket($, open.id)))
   )
 }
 

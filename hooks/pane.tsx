@@ -1,8 +1,8 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { drawFound, drawMerged, drawPart } from './card'
+import { drawFound, drawMerged, drawPart, drawUnder } from './card'
 import type { RowPart } from './card'
-import { filterRepo, setSearch, toggle, toggleWake } from './choices'
+import { clearSearch, filterRepo, submitSearch, toggle, toggleWake, typeSearch } from './choices'
 import { CHROME_SIZE, DRAWING_BUDGET, measure } from './drawing'
 import { quietly } from './failures'
 import { inboxNews } from './inbox'
@@ -10,7 +10,8 @@ import { drawInbox } from './inbox-pane'
 import { kitOf } from './kit'
 import { buildPane } from './pane-model'
 import type { Piece, RowModel } from './pane-model'
-import { pageHead } from './page-lines'
+import { pageHead, personUnder, ticketUnder } from './page-lines'
+import { ticketUrl } from './jira'
 import { leaveReading, openTab } from './panes'
 import { refresh } from './poll'
 import { drawReading } from './reading'
@@ -34,6 +35,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     folds,
     repoFilter,
     search,
+    searchBox,
+    under,
+    ticketDetails,
     tab,
     page,
     poll,
@@ -66,11 +70,30 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     drawnParts.set(key, made)
     return made
   }
+  // What is open under one card, drawn once and sized once, so the card's room in the list counts it.
+  const underOf = (row: RowModel): { element: RenderChildren; size: number } | null => {
+    if (under === null || under.card !== row.key) {
+      return null
+    }
+    const known = drawnParts.get(`${row.key}|under`)
+    if (known !== undefined) {
+      return known
+    }
+    const card = cards.find(each => each.key === row.key)
+    const block = under.kind === 'ticket' ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id]) : card !== undefined ? personUnder(card, under.id) : null
+    if (block === null) {
+      return null
+    }
+    const element = drawUnder($, kit, row, block, under, under.kind === 'ticket' ? ticketUrl(browse, under.id) : null)
+    const made = { element, size: measure(element) }
+    drawnParts.set(`${row.key}|under`, made)
+    return made
+  }
   const sizeOf = (row: RowModel, piece: Piece): number => {
     // A JSON array of three costs the three and four characters between and around them.
     switch (piece) {
       case 'head':
-        return row.isQuiet ? partOf(row, 'line1').size : partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4
+        return (row.isQuiet ? partOf(row, 'line1').size : partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4) + (underOf(row)?.size ?? 0)
       case 'line2':
         return partOf(row, 'line2').size
       case 'faces':
@@ -120,6 +143,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {partOf(row, 'line1').element}
         {!row.isQuiet && (fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element)}
         {!row.isQuiet && partOf(row, 'said').element}
+        {underOf(row)?.element}
       </Box>
     )
   }
@@ -139,6 +163,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ...fold('drafts', drafts),
         ]
       : []
+  // A filter holds its own row inside a frame, grey while it hides nothing and blue while it does, so a list narrowed by a
+  // search or a repo says so where it is narrowed. The frame is always there, so turning a filter on moves nothing.
+  const framed = (isOn: boolean, child: RenderChildren) => (
+    <Box borderStyle="round" borderColor={isOn ? 'suggestion' : 'subtle'} borderDimColor={!isOn} paddingX={1}>
+      {child}
+    </Box>
+  )
   // The repos are one picker, a row however many there are; a phone, which may not draw one, has a button for each.
   const { repos } = model
   const { Select } = kit
@@ -146,7 +177,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     repos === null
       ? []
       : Select !== undefined
-        ? [<Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />]
+        ? [framed(repoFilter !== '', <Select key="repo" label={repos.mark} options={repos.choices} value={repos.value} onSelect={value => filterRepo($, pickedRepo(value))} />)]
         : [
             <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
               <Text>{repos.mark}</Text>
@@ -160,16 +191,28 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
               ))}
             </Box>,
           ]
-  // The search box tops Mine; Enter searches, so typing redraws nothing, and ✕ ends the search.
+  // The search box tops Mine. The list follows the typing once it pauses, and Enter at once; ✕ ends the search. The box is
+  // drawn holding what Enter or ✕ left (SearchBox), never what is being typed, so a redraw while typing keeps every key.
   const searchRow =
     Input !== undefined
       ? [
-          <Box flexDirection="row" columnGap={1} alignItems="center">
-            <Box flexGrow={1} flexShrink={1}>
-              <Input key="search" label="🔍" placeholder="!iid, ticket, title, branch or author" value={search} submitLabel="find" onSubmit={text => setSearch($, text)} />
+          framed(
+            search !== '',
+            <Box flexDirection="row" columnGap={1} alignItems="center">
+              <Box flexGrow={1} flexShrink={1}>
+                <Input
+                  key={`search-${searchBox.round}`}
+                  label="🔍"
+                  placeholder="!iid, ticket, title, branch or author"
+                  value={searchBox.drawn}
+                  submitLabel="find"
+                  onInput={text => typeSearch($, text)}
+                  onSubmit={text => submitSearch($, text)}
+                />
+              </Box>
+              {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => clearSearch($)} />}
             </Box>
-            {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => setSearch($, '')} />}
-          </Box>,
+          ),
         ]
       : []
   const { found } = model

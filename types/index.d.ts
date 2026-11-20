@@ -477,6 +477,19 @@ export type Choices = {
   wake: boolean
 }
 
+/**
+ * What the search box is drawn holding, apart from what is searched for: the desktop keeps what is typed through a redraw
+ * while the box is drawn holding the same text as before, so this changes on Enter and ✕ alone, never while typing. `round`
+ * counts the ✕ presses: each draws a new box, empty, whatever was typed into the one before.
+ */
+export type SearchBox = { drawn: string; round: number }
+
+/** What is open under one card, in place of a page: a person's say on it, or its ticket. One at a time; null for none. */
+export type Under = { card: string; kind: 'person' | 'ticket'; id: string } | null
+
+/** What a ticket says beyond its line on the card, read from Jira when it is first opened under one. */
+export type TicketDetail = { assignee: string; description: string }
+
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }
 
@@ -506,8 +519,14 @@ declare module 'claude-code' {
       avatars: Record<string, string>
       /** What the person chose in the pane. */
       choices: Choices
-      /** What was searched for in the box above Mine, as Enter left it; empty while no search is on. */
+      /** What is searched for in the box above Mine, as typing last paused on it or Enter left it; empty while no search is on. */
       search: string
+      /** What the search box is drawn holding, and how many times ✕ has emptied it. */
+      searchBox: SearchBox
+      /** What is open under one card of the list. */
+      under: Under
+      /** Tickets' descriptions and assignees by key, read when each was first opened under a card. */
+      ticketDetails: Record<string, TicketDetail>
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
       poll: PollState

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
 import { toCard } from '../../hooks/mr-card.ts'
-import { pageHead, personPage } from '../../hooks/page-lines.ts'
+import { pageHead, personPage, personUnder, ticketUnder } from '../../hooks/page-lines.ts'
 import { HOST, gitlabSays, job, note, pipe, rawMr, reviewer, stage, thread } from '../fixtures.ts'
 
 const JIRA = { tickets: {}, browse: 'https://jira.example.com/browse/', failures: {} }
@@ -54,4 +54,34 @@ test('a page opened on one person heads their comments with where they stand, an
   // The open thread leads, though the settled comment is newer.
   expect(page?.notes.map(each => each.label)).toEqual(['open thread', 'comment'])
   expect(personPage(card, 'nobody')).toBeNull()
+})
+
+test('a person opened under a card leads with their newest comment, whatever is open, and the way on to all of them', () => {
+  const settled = { resolvable: true, resolved: true, notes: { nodes: [note('Thanks, fixed.', 'tim', { createdAt: '2026-10-23T15:00:00Z' })] } }
+  const card = toCard(HOST, rawMr(10, { reviewers: { nodes: [reviewer('tim', 'REQUESTED_CHANGES')] }, discussions: { nodes: [thread('Please look again.', 'tim'), settled] } }))
+  expect(personUnder(card, 'tim')).toEqual({
+    kind: 'person',
+    heading: 'Tim · requested changes · 1 open thread · 2 comments',
+    latest: { label: 'comment', text: 'Thanks, fixed.' },
+    more: 'all 2 comments ›',
+  })
+  // One comment, which the excerpt may cut short, is read whole a press further; someone who wrote nothing has no way on.
+  const once = toCard(HOST, rawMr(11, { reviewers: { nodes: [reviewer('tim', 'APPROVED')] }, discussions: { nodes: [thread('Please look again.', 'tim')] } }))
+  expect(personUnder(once, 'tim')).toMatchObject({ latest: { label: 'open thread' }, more: 'read it whole ›' })
+  const quiet = toCard(HOST, rawMr(12, { reviewers: { nodes: [reviewer('tim', 'APPROVED')] } }))
+  expect(personUnder(quiet, 'tim')).toMatchObject({ latest: null, more: null })
+  expect(personUnder(card, 'nobody')).toBeNull()
+})
+
+test('a ticket opened under a card says what the quarter-hourly read knows at once, and what reading it whole adds once in', () => {
+  const ticket = { type: 'Story', status: 'In Review', isDone: false, summary: 'Order history' }
+  expect(ticketUnder('ABC-1', ticket, undefined)).toEqual({ kind: 'ticket', heading: 'ABC-1 · Story · In Review', lines: ['Order history'], isReading: true })
+  expect(ticketUnder('ABC-1', ticket, { assignee: 'Ines Mendel', description: '' })).toEqual({
+    kind: 'ticket',
+    heading: 'ABC-1 · Story · In Review',
+    lines: ['Order history', 'Assigned to Ines Mendel', 'No description.'],
+    isReading: false,
+  })
+  // A ticket the read has not reached is its key alone, and nobody assigned says nothing.
+  expect(ticketUnder('ABC-2', undefined, { assignee: '', description: 'Do it.' })).toEqual({ kind: 'ticket', heading: 'ABC-2', lines: ['Do it.'], isReading: false })
 })

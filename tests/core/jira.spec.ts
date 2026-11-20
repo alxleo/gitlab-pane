@@ -1,6 +1,45 @@
 import { expect, test } from 'vitest'
 
-import { readTickets, readTransition, reviewedArgs, searchArgs, ticketQuery, transitionArgs } from '../../hooks/jira.ts'
+import { detailArgs, readTicketDetails, readTickets, readTransition, reviewedArgs, searchArgs, ticketChip, ticketQuery, transitionArgs } from '../../hooks/jira.ts'
+
+test('a ticket read whole is its assignee and its description as plain lines, a block a line and list items marked', () => {
+  expect(detailArgs('ABC-1')).toEqual(['jira', 'workitem', 'search', '--json', '--fields', 'key,description,assignee', '--limit', '1', '--jql', 'key in (ABC-1)'])
+  const description = {
+    type: 'doc',
+    content: [
+      { type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text: 'Why' }] },
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Orders show ' },
+          { type: 'text', text: 'their history.', marks: [{ type: 'strong' }] },
+        ],
+      },
+      { type: 'paragraph', content: [] },
+      { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Newest first' }] }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'one' }, { type: 'hardBreak' }, { type: 'text', text: 'two' }] },
+    ],
+  }
+  const answer = [
+    { key: 'ABC-1', fields: { description, assignee: { displayName: 'Ines Mendel' } } },
+    { key: 'ABC-2', fields: { description: '  Plain text.  ', assignee: null } },
+    { key: 'ABC-3', fields: { description: null } },
+  ]
+  expect(readTicketDetails(answer)).toEqual({
+    'ABC-1': { assignee: 'Ines Mendel', description: 'Why\nOrders show their history.\n• Newest first\none\ntwo' },
+    'ABC-2': { assignee: '', description: 'Plain text.' },
+    'ABC-3': { assignee: '', description: '' },
+  })
+  // A long description is cut, whole characters only, and says so.
+  const long = readTicketDetails([{ key: 'ABC-4', fields: { description: '👍'.repeat(700) } }])['ABC-4']?.description ?? ''
+  expect(long).toBe(`${'👍'.repeat(600)}…`)
+  expect(() => readTicketDetails({})).toThrow('acli answered something other than a list of tickets')
+})
+
+test('a ticket key is a link the pane answers while a Jira site is set, and its words alone while none is', () => {
+  expect(ticketChip('https://jira.example.com/browse/', 'ABC-1')).toEqual({ key: 'ABC-1', text: 'ABC-1', link: '[🎫 ABC-1](https://jira.example.com/browse/ABC-1)' })
+  expect(ticketChip('', 'ABC-1')).toEqual({ key: 'ABC-1', text: 'ABC-1', link: null })
+})
 
 test('Jira is asked which tickets have ever been in a review status, each name quoted as JQL reads it', () => {
   expect(reviewedArgs(['ABC-1', 'x) or 1=1'], ['In Review', 'Code "Review" \\ 2'])).toEqual([

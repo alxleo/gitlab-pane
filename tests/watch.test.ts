@@ -384,9 +384,26 @@ function engine(
       if (fake.isJiraMissing === true) {
         return ran('', 127, 'zsh: command not found: acli')
       }
+      // A ticket read whole has its assignee and its description, in Jira's document format, besides.
+      const whole = e.argv.includes('key,description,assignee')
+      const description = {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Orders show ' },
+              { type: 'text', text: 'their history.' },
+            ],
+          },
+          { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Newest first' }] }] }] },
+        ],
+      }
       const row = (key: string) => ({
         key,
-        fields: { issuetype: { name: 'Task' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, summary: 'Make the thing work' },
+        fields: whole
+          ? { description, assignee: { displayName: 'Ines Mendel' } }
+          : { issuetype: { name: 'Task' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, summary: 'Make the thing work' },
       })
       // Asked which tickets have been in review: those the test says have.
       if ((e.argv.at(-1) ?? '').includes(' WAS IN ')) {
@@ -694,7 +711,7 @@ test('a repo picked until its MRs all closed is forgotten, so the repo coming ba
   await ui.unmount()
 })
 
-test('Enter in the search box lists what matches in place of the list, past the repo picked; ✕ ends it, and a phone has no box', async ($, on) => {
+test('the list follows the search box once typing pauses, and Enter at once, past the repo picked; ✕ ends it with a new box, and a phone has no box', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const ticketed = rawMr(512, { title: 'feat: [ABC-123] Order history', project: project('g/q') })
   engine(on, { mrs: [ticketed, rawMr(2, { title: 'fix: Totals' }), rawMr(3, { title: 'fix: Order totals' })], isDown: false })
@@ -702,31 +719,49 @@ test('Enter in the search box lists what matches in place of the list, past the 
   await clock.settle()
   const text = async (ui: { find: (query: { type: 'Text'; text: RegExp }) => Promise<{ text: string } | undefined> }, start: RegExp) =>
     (await ui.find({ type: 'Text', text: start }))?.text
+  // Each ✕ draws a new box under a new key, so a box is found by its type.
+  const box = async (ui: { findAll: (query: { type: 'Input' }) => Promise<{ key?: string; props: { value?: string } }[]> }) => (await ui.findAll({ type: 'Input' }))[0]
+  // A filter's frame is blue while it hides something.
+  const blue = async (ui: { drawn: () => Promise<unknown> }) => boxesOf(await ui.drawn()).filter(each => each.props?.['borderColor'] === 'suggestion').length
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await blue(ui)).toBe(0)
     await ui.select({ key: 'repo', value: 'gitlab.com/g/p' })
     expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
-    // Typing alone searches nothing; Enter does.
-    await ui.input({ key: 'search', text: 'abc123', kind: 'change' })
+    expect(await blue(ui)).toBe(1)
+    // Typing searches once it pauses, for what was typed last.
+    const typing = (await box(ui))?.key ?? ''
+    await ui.input({ key: typing, text: 'abc', kind: 'change' })
+    await clock.advance(100)
+    await ui.input({ key: typing, text: 'abc123', kind: 'change' })
     expect(await text(ui, /^Found · /u)).toBeUndefined()
-    await ui.input({ key: 'search', text: 'abc123' })
+    await clock.advance(250)
     expect(await text(ui, /^Found · /u)).toBe('Found · 1')
     expect(await text(ui, /^Ready · /u)).toBeUndefined()
-    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('abc123')
+    expect(await blue(ui)).toBe(1)
+    // The box is drawn holding what Enter or ✕ left, never what is typed, so a redraw while typing keeps every key.
+    expect((await box(ui))?.props.value).toBe('')
+    // Enter searches at once, and the box holds it.
+    await ui.input({ key: typing, text: '!2' })
+    expect(await text(ui, /^Found · /u)).toBe('Found · 1')
+    expect((await box(ui))?.props.value).toBe('!2')
     expect(await ui.find({ type: 'Select', key: 'repo' })).toBeUndefined()
     await ui.press({ key: 'search-clear' })
     expect(await text(ui, /^Found · /u)).toBeUndefined()
     expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
-    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('')
+    // ✕ draws a new box, empty, whatever was typed into the last.
+    expect((await box(ui))?.key).not.toBe(typing)
+    expect((await box(ui))?.props.value).toBe('')
     await ui.select({ key: 'repo', value: 'all' })
+    expect(await blue(ui)).toBe(0)
     await ui.unmount()
   }
   // A search left on where there is a box is not drawn on a phone, which has none to end it with.
   const desk = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await desk.input({ key: 'search', text: '!512' })
+  await desk.input({ key: (await box(desk))?.key ?? '', text: '!512' })
   expect(await text(desk, /^Found · /u)).toBe('Found · 1')
   const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
-  expect(await phone.find({ type: 'Input', key: 'search' })).toBeUndefined()
+  expect(await phone.find({ type: 'Input' })).toBeUndefined()
   expect(await phone.find({ type: 'Button', key: 'search-clear' })).toBeUndefined()
   expect(await text(phone, /^Found · /u)).toBeUndefined()
   expect(await text(phone, /^Ready · /u)).toBe('Ready · 3')
@@ -770,7 +805,7 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Link', text: '🎫 ABC-1' }))?.props.href).toBe('https://jira.example.com/browse/ABC-1')
+  expect((await ui.findAll({ type: 'Markdown' })).map(element => element.props.text)).toContain('[🎫 ABC-1](https://jira.example.com/browse/ABC-1)')
   expect(jiraReads).toEqual(['key in (ABC-1)'])
   // The session's $SHELL is a path that is gone, so the tools run through sh rather than fail as not installed.
   expect(shells[0]).toBe('/bin/sh')
@@ -782,6 +817,39 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   expect(answer.text).toBe('GitLab pane open')
   await ui.unmount()
 })
+
+test(
+  'a click on a ticket opens it under its card, read whole from Jira once, with the way to Jira; a second click closes it',
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const { jiraReads } = engine(on, { mrs: [rawMr(12, SHOWN)], isDown: false })
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const ticket = (await ui.findAll({ type: 'Markdown' })).find(element => String(element.key).startsWith('ticket-'))
+    const link = { key: String(ticket?.key), link: { href: 'https://jira.example.com/browse/ABC-1' } }
+    await ui.press(link)
+    await clock.settle()
+    // What the quarter-hourly read knows heads it; what reading it whole adds follows, the list staying where it was.
+    expect(await ui.find({ type: 'Text', text: 'ABC-1 · Task · In Progress' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Make the thing work' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Orders show their history.\n• Newest first' })).toBeDefined()
+    expect((await ui.find({ type: 'Link', text: '🎫 open in Jira' }))?.props.href).toBe('https://jira.example.com/browse/ABC-1')
+    expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
+    const wholeReads = () => jiraReads.filter((_, i) => i > 0).length
+    expect(wholeReads()).toBe(1)
+    // Closed and opened again, it is not read again.
+    await ui.press(link)
+    expect(await ui.find({ type: 'Text', text: 'ABC-1 · Task · In Progress' })).toBeUndefined()
+    await ui.press(link)
+    await clock.settle()
+    expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    expect(wholeReads()).toBe(1)
+    await ui.unmount()
+  }
+)
 
 test(
   'a ticket Jira does not know, or a search that fails, waits for the quarter-hour pace, while a ticket newly named is asked about at once',
@@ -1345,14 +1413,15 @@ test('someone without a picture is their initials on a disc, beside their first 
   expect(String(disc?.props?.source)).toContain('>IM</text>')
   const labels = (await ui.findAll({ type: 'Button' })).map(button => button.props.label)
   expect(labels).toContain('Ines')
-  // A name written like a handle still gives a first name, and the page opened on them says it once.
+  // A name written like a handle still gives a first name, and what opens under the card on them says it once. Opening one
+  // person closes the other.
   expect(labels).toContain('Mel')
   const opensOn = async (username: string) => ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed(`person-${username}-12-`))?.key ?? '' })
   await opensOn('ines.mendel')
   expect(await ui.find({ type: 'Text', text: 'Ines Mendel @ines.mendel · approved · 0 comments' })).toBeDefined()
-  await ui.press({ key: 'back-top' })
   await opensOn('mel.northcote')
   expect(await ui.find({ type: 'Text', text: 'Mel.Northcote · not reviewed yet · 0 comments' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Ines Mendel @ines.mendel · approved · 0 comments' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -1802,8 +1871,10 @@ test("a bot is a face like a person's: its own picture or a robot, badged for it
   expect(names).toContain('GitLabDuo')
   expect(names).toContain('cursor 1')
 
-  // Its name opens its comments, whole, as anyone's does.
+  // Its name opens its newest comment under the card, as anyone's does, and the way on reads its comments whole.
   await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.props.label === 'cursor 1')?.key ?? '' })
+  expect(await ui.find({ type: 'Text', text: /What the bot wrote/u })).toBeDefined()
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.props.label === 'read it whole ›')?.key ?? '' })
   expect((await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text))).toContain('### What the bot wrote')
   await ui.unmount()
 })
@@ -2065,9 +2136,10 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   bytes = 0
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // A drawing reads each atom once and, as the cards are slim, not megabytes: it read 3.2 MB across ten reads before.
-  // (Seventeen since the inbox's own atoms, the problems the leader reported, whether a read is out, this session's presses
-  // on merges, rebases and conflicts, and what was searched for are read by the same drawing.)
-  expect(reads).toBeLessThanOrEqual(17)
+  // (Twenty since the inbox's own atoms, the problems the leader reported, whether a read is out, this session's presses
+  // on merges, rebases and conflicts, what was searched for, what the search box holds, what is open under a card and the
+  // tickets read whole are read by the same drawing.)
+  expect(reads).toBeLessThanOrEqual(20)
   expect(bytes).toBeLessThan(SNAPSHOT_BUDGET + 50_000)
   // The desktop app draws nothing for a tree past 100,000 characters serialized; the harness only cuts its text short.
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
@@ -2156,26 +2228,27 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     ).toBe(true)
     expect(await ui.find({ text: '🚦 20m · usually 11–14m' })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: '🔀 !103' })).toBeDefined()
-    expect(await ui.find({ type: 'Link', text: '🎫 ABC-1' })).toBeDefined()
+    // The ticket is a link the pane answers: a plain click opens it under the card, a modified one opens Jira.
+    const ticketLinks = (await ui.findAll({ type: 'Markdown' })).filter(element => String(element.key).startsWith('ticket-'))
+    expect(ticketLinks.map(element => element.props.text)).toContain('[🎫 ABC-1](https://jira.example.com/browse/ABC-1)')
     // The desktop app refuses a whole drawing for a Link or Button holding an element, so they hold strings only.
     const controls = elementsOf(await ui.drawn()).filter(element => element.type === 'Link' || element.type === 'Button')
     expect(controls.length).toBeGreaterThan(0)
     expect(controls.filter(element => (element.children ?? []).some(child => typeof child !== 'string'))).toEqual([])
-    // A name opens the MR's page on that person's comments alone, which leads on to the whole MR. Keys are short, as
-    // each costs the drawing its length on every row.
+    // A name opens what that person says under the card, the list staying where it is; a second press closes it. Keys are
+    // short, as each costs the drawing its length on every row.
     const keys = (await ui.findAll({ type: 'Button' })).map(button => button.key ?? '')
     const timKey = keys.find(key => /^person-tim-103-\w+$/u.test(key)) ?? ''
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeUndefined()
-    await ui.press({ key: 'page-whole' })
+    expect(await ui.find({ type: 'Text', text: 'Please look at line 3' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
+    await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
-    // What the MR is, its ticket and what stands before a merge head its page.
+    // The title opens the whole MR: what it is, its ticket and what stands before a merge head its page.
+    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.key ?? '' })
     expect(await ui.find({ type: 'Link', text: '🎫 ABC-1 · Task · In Progress: Make the thing work' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'fix/thing-103 → main · +10 −2 · 1 file' })).toBeDefined()
-    await ui.press({ key: 'back-top' })
-    // Back on the list, the title opens the whole MR: the narrowing left with the page.
-    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.key ?? '' })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
     await ui.press({ key: 'back-top' })
     // The title is a plain button, not a link: it opens the MR's page, while 🔀 !iid leaves for GitLab.

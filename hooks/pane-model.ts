@@ -9,7 +9,8 @@ import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
 import { foundList, matchesOf } from './found-model.ts'
 import type { FoundList } from './found-model.ts'
-import { ticketUrl } from './jira.ts'
+import { ticketChip } from './jira.ts'
+import type { TicketChip } from './jira.ts'
 import { MERGED_ROW_SIZE, mergedModel } from './landed-model.ts'
 import type { MergedModel } from './landed-model.ts'
 import { pinKey } from './mr-url.ts'
@@ -69,7 +70,7 @@ export type RowModel = {
   title: string
   ago: string
   mr: Link
-  ticket: { text: string; href: string | null } | null
+  ticket: TicketChip | null
   repo: Link | null
   strip: StripModel | null
   pipeline: Link | null
@@ -197,7 +198,6 @@ function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowMod
 function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string | undefined, hasSvg: boolean, now: number): RowModel {
   const suffix = `${card.iid}-${shortHash(card.project)}`
   const pipeline = card.pipeline
-  const ticketLink = facts.ticket !== null ? ticketUrl(input.browse, facts.ticket) : null
   const [blocker] = facts.row
   const move = nextMove(card, input.pressed[card.key], input.here === card.project)
   // A move needs GitLab's checks, so a row with a move has a verdict to say it in or beside.
@@ -217,7 +217,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     title: facts.title,
     ago: ago(card.updatedAt, now),
     mr: { href: card.url, text: `${LINK.mr} !${card.iid}` },
-    ticket: facts.ticket !== null ? { text: ticketLink !== null ? `${LINK.jira} ${facts.ticket}` : facts.ticket, href: ticketLink } : null,
+    ticket: facts.ticket !== null ? ticketChip(input.browse, facts.ticket) : null,
     repo: input.repoFilter === '' && card.project !== home ? { href: card.repo.url, text: `${LINK.repo} ${card.repo.name}` } : null,
     strip: pipeline !== undefined && pipeline.stages.length > 0 ? stripModel(pipeline.stages, now) : null,
     pipeline: pipeline !== undefined ? { href: pipeline.url, text: `${LINK.pipeline} ${time}` } : null,

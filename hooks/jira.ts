@@ -1,12 +1,27 @@
 import { field, records, text } from './decode.ts'
+import { LINK } from './drawing.ts'
+import { cut } from './graphemes.ts'
+import { linkMarkdown } from './markdown.ts'
+import type { MarkdownText } from './markdown.ts'
 
-import type { Ticket } from '../types'
+import type { Ticket, TicketDetail } from '../types'
 
 /** The start of a ticket's link for the `jiraUrl` setting, `<site>/browse/`; empty for anything but an http(s) address, so ticket keys are not linked or read. */
 export const browseUrl = (site: unknown): string => (typeof site === 'string' && /^https?:\/\/\S+$/u.test(site.trim()) ? `${site.trim().replace(/\/+$/u, '')}/browse/` : '')
 
 /** Where a ticket key links, or null while no Jira site is set (`browse` is empty). */
 export const ticketUrl = (browse: string, key: string): string | null => (browse === '' ? null : `${browse}${key}`)
+
+/**
+ * A ticket key as a card draws it: its words, and with a Jira site set the link drawn, whose plain click opens the ticket
+ * under the card and whose ⌘, ctrl or alt click opens it in Jira.
+ */
+export type TicketChip = { key: string; text: string; link: MarkdownText | null }
+
+export const ticketChip = (browse: string, key: string): TicketChip => {
+  const href = ticketUrl(browse, key)
+  return { key, text: key, link: href !== null ? linkMarkdown(`${LINK.jira} ${key}`, href) : null }
+}
 
 const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/u
 
@@ -57,6 +72,79 @@ export function readTransition(raw: unknown, ticket: string): Transition {
   }
   const message = text(result.message)
   return /no allowed transitions/iu.test(message) ? { kind: 'no-step' } : { kind: 'refused', message: message !== '' ? message : 'Jira did not move it' }
+}
+
+/** The argv after `acli` that reads one ticket's description and assignee, as JSON, when it is opened under a card. */
+export const detailArgs = (key: string): string[] => ['jira', 'workitem', 'search', '--json', '--fields', 'key,description,assignee', '--limit', '1', '--jql', ticketQuery([key])]
+
+/** The most of a description kept: what opens under a card is a glance, and the whole is a ⌘-click away in Jira. */
+const DESCRIPTION_ROOM = 600
+
+/** Blocks of Jira's document format that end a line of their own. */
+const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'codeBlock', 'blockquote', 'rule', 'tableRow'])
+
+/**
+ * Jira's description as plain lines: the text of its document format (ADF), a block a line, list items as `• `, blank
+ * lines dropped; a description written as a plain string is taken as it is.
+ */
+function adfText(node: unknown): string {
+  if (typeof node === 'string') {
+    return node.trim()
+  }
+  const lines: string[] = []
+  let line = ''
+  const walk = (each: unknown): void => {
+    const kind = text(field(each, 'type'))
+    if (kind === 'text') {
+      line += text(field(each, 'text'))
+      return
+    }
+    if (kind === 'hardBreak') {
+      lines.push(line)
+      line = ''
+      return
+    }
+    if (kind === 'listItem') {
+      line += '• '
+    }
+    const content = field(each, 'content')
+    if (Array.isArray(content)) {
+      content.forEach(walk)
+    }
+    if (BLOCKS.has(kind) && line.trim() !== '' && line.trim() !== '•') {
+      lines.push(line)
+      line = ''
+    }
+  }
+  walk(node)
+  lines.push(line)
+  return lines
+    .map(each => each.trim())
+    .filter(each => each !== '' && each !== '•')
+    .join('\n')
+}
+
+/** `acli`'s answer for tickets read whole: each one's assignee by name and its description, cut, by key. */
+export function readTicketDetails(raw: unknown): Record<string, TicketDetail> {
+  if (!Array.isArray(raw)) {
+    throw new Error('acli answered something other than a list of tickets')
+  }
+  return Object.fromEntries(
+    records(raw)
+      .filter(row => text(row.key) !== '')
+      .map(row => {
+        const fields = field(row, 'fields')
+        const description = adfText(field(fields, 'description'))
+        const kept = cut(description, DESCRIPTION_ROOM, DESCRIPTION_ROOM * 2)
+        return [
+          text(row.key),
+          {
+            assignee: text(field(field(fields, 'assignee'), 'displayName')),
+            description: kept === description ? description : `${kept.trimEnd()}…`,
+          },
+        ]
+      })
+  )
 }
 
 /** `acli jira workitem search --json` rows, Jira's own issue shape, by key; throws when the answer is not a list. */

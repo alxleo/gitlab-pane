@@ -1,6 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
 import {
+  isTicketHeld,
+  knowTicketDetails,
   knowTickets,
   markTicketsRead,
   markUnreachable,
@@ -21,7 +23,7 @@ import { joined } from './in-flight'
 import { moveTickets } from './jira-mover'
 import { readUsual, usualQuery } from './ask-usual'
 import { ask } from './graphql'
-import { readTickets, searchArgs } from './jira'
+import { detailArgs, readTicketDetails, readTickets, searchArgs } from './jira'
 import { ticketOf } from './format'
 import { pictureUri, sizedAvatar } from './picture'
 import { isPassDue } from './snapshot'
@@ -58,6 +60,24 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
   }
   await clear($, 'jira')
   await knowTickets($, found.value)
+}
+
+/**
+ * A ticket opened under a card, read whole once: its description and assignee, which the quarter-hourly read leaves out.
+ * Kept for the session; a failure is recorded as Jira's, and the next opening asks again.
+ */
+export function ensureTicket($: EngineInterface, key: string): Promise<void> {
+  return joined(`ticket:${key}`, async () => {
+    if ((await readBrowse($)) === '' || (await isTicketHeld($, key))) {
+      return
+    }
+    const found = await runJson($, 'acli', detailArgs(key), readTicketDetails, { timeoutMs: 60_000 })
+    if (!found.ok) {
+      await record($, 'jira', failureOf(found))
+      return
+    }
+    await knowTicketDetails($, found.value)
+  })
 }
 
 /**

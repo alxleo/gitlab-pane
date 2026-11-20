@@ -6,7 +6,7 @@ import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { keptCards, keptCardsByKey } from './snapshot.ts'
 
-import type { MrCard, Pinned, PollState, ReadClock, Role, Ticket, Usual } from '../types'
+import type { MrCard, Pinned, PollState, ReadClock, Role, Ticket, TicketDetail, Usual } from '../types'
 
 // What GitLab, Jira and avatar fetches gave, and the polling's bookkeeping. The engine reads an atom only in the file that
 // declares it, so everything that reads or writes these goes through the functions below.
@@ -15,6 +15,7 @@ const hostsAtom = atom({ plugin: 'gitlab-pane', key: 'hosts' } as const, ['gitla
 const rowsAtom = atom({ plugin: 'gitlab-pane', key: 'rows' } as const, [])
 const detailsAtom = atom({ plugin: 'gitlab-pane', key: 'details' } as const, {})
 const ticketsAtom = atom({ plugin: 'gitlab-pane', key: 'tickets' } as const, {})
+const ticketDetailsAtom = atom({ plugin: 'gitlab-pane', key: 'ticketDetails' } as const, {})
 const usualAtom = atom({ plugin: 'gitlab-pane', key: 'usual' } as const, {})
 const avatarsAtom = atom({ plugin: 'gitlab-pane', key: 'avatars' } as const, {})
 const announcedAtom = atom({ plugin: 'gitlab-pane', key: 'announced' } as const, {})
@@ -40,19 +41,30 @@ const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnData($: EngineInterface) {
-  const [pinned, rows, details, avatars, tickets, usual, poll, isReading, browse] = await Promise.all([
+  const [pinned, rows, details, avatars, tickets, ticketDetails, usual, poll, isReading, browse] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, detailsAtom),
     read($, avatarsAtom),
     read($, ticketsAtom),
+    read($, ticketDetailsAtom),
     read($, usualAtom),
     read($, pollAtom),
     read($, readingAtom),
     read($, jiraAtom),
   ])
   // The cards outlive a reload, so new code meets cards an older version kept: those in another shape are left out.
-  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, tickets, usual, poll, isReading, browse }
+  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, tickets, ticketDetails, usual, poll, isReading, browse }
+}
+
+/** Whether the ticket `key` has been read whole. */
+export async function isTicketHeld($: EngineInterface, key: string): Promise<boolean> {
+  return (await read($, ticketDetailsAtom))[key] !== undefined
+}
+
+/** Keeps what Jira said of tickets read whole. */
+export async function knowTicketDetails($: EngineInterface, found: Record<string, TicketDetail>): Promise<void> {
+  await update($, ticketDetailsAtom, previous => ({ ...previous, ...found }))
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
