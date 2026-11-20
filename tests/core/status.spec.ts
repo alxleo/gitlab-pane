@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { CI_STATUSES } from '../../hooks/gitlab-status.ts'
-import { TONE_COLOURS, followingTheme, stageTone, tonePaint } from '../../hooks/status.ts'
+import { PAGE, TONE_COLOURS, followingTheme, stageTone, themePaint, tonePaint } from '../../hooks/status.ts'
 import { stripModel } from '../../hooks/strip-model.ts'
 import { raw, svg } from '../../hooks/svg.ts'
 import type { CiStatus } from '../../types'
@@ -10,6 +10,13 @@ import type { CiStatus } from '../../types'
 test("a picture's part is painted in its tone's light shade, and its dark one while the app is dark", () => {
   const { light, dark } = TONE_COLOURS.error
   expect(svg`<circle ${tonePaint('stroke', 'error')}/>`).toBe(`<circle stroke='${light}' style='stroke:light-dark(${light},${dark})'/>`)
+  // A fill and a stroke share one style: an element with two style attributes is not drawn at all.
+  expect(
+    svg`<circle ${themePaint([
+      ['fill', TONE_COLOURS.error],
+      ['stroke', PAGE],
+    ])}/>`
+  ).toBe(`<circle fill='${light}' stroke='${PAGE.light}' style='fill:light-dark(${light},${dark});stroke:light-dark(${PAGE.light},${PAGE.dark})'/>`)
   // On a group, so the picture's root stays transparent where it is drawn in a frame.
   expect(svg`<svg>${followingTheme(raw(svg`<circle/>`))}</svg>`).toBe(`<svg><g style='color-scheme:light dark'><circle/></g></svg>`)
 })

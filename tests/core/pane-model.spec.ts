@@ -85,7 +85,7 @@ test('the band above the prompt says the inbox news only while the pane shows no
   )
 })
 
-test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
+test('each MR is a card in the order of what needs you, its worst blocker in words', async () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const botThread = { nodes: [thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)] }
   const cards = [
@@ -96,14 +96,6 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     { ...toCard(HOST, rawMr(16)), mergeStatus: gitlabSays({ NOT_OPEN: 'failed' }) },
   ]
   const { mine, tabs } = modelOf(cards)
-  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green. Each is the
-  // theme's key, so the app paints it in its light or dark shade as its theme switches.
-  expect(Object.fromEntries(mine.rows.map(row => [row.mr.text, [row.border.style, row.border.tone]]))).toEqual({
-    '🔀 !12': ['bold', 'error'],
-    '🔀 !13': ['round', 'subtle'],
-    '🔀 !14': ['round', 'success'],
-    '🔀 !15': ['round', 'success'],
-  })
   // The one GitLab says can merge comes first, so finishing comes before the rest; then the failed one, which needs you.
   expect(mine.rows.map(row => row.mr.text)).toEqual(['🔀 !14', '🔀 !12', '🔀 !15', '🔀 !13'])
   // GitLab says one is no longer open, so it leaves Mine before the next full read.

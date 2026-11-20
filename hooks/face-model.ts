@@ -1,8 +1,7 @@
 // A person's face as plain data: the Svg source for it with and without their picture, and the mark a surface that draws
 // no Svg uses. Pure; the draw layer only puts the source in an Svg. Built once for a card, until the card or a picture changes.
-import { personTone } from './attention.ts'
 import { BOT_MARKS, discMarks } from './avatar.ts'
-import { followingTheme, tonePaint } from './status.ts'
+import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status.ts'
 import type { Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { SvgSource } from './svg.ts'
@@ -17,19 +16,25 @@ export const REVIEW_STATE: Record<PersonState, string> = {
   unreviewed: 'not reviewed yet',
 }
 
-/** The corner badge on a reviewer's face, and their mark where no Svg is drawn. */
-export const REVIEW_MARK: Record<PersonState, { glyph: string; tone: Tone; path: string } | null> = {
-  approved: { glyph: '✓', tone: 'success', path: 'M13.1 14.9l1.1 1.1 2.1-2.2' },
-  requested_changes: { glyph: '✕', tone: 'error', path: 'M13.5 13.5l2.5 2.5m0-2.5l-2.5 2.5' },
-  reviewing: null,
-  commented: null,
-  unreviewed: null,
+/** What a badge draws on its disc: a stroked path (✓, ✕), a question mark, or nothing on an empty dashed dot. */
+type BadgeDrawing = { kind: 'stroke'; path: string } | { kind: 'question' } | { kind: 'empty' }
+
+/**
+ * The corner badge on a reviewer's face, saying where they stand by its glyph and not by colour alone, and their mark
+ * where no Svg is drawn: approved, asked for changes, looked without a verdict, or not looked yet.
+ */
+export const REVIEW_MARK: Record<PersonState, { glyph: string; tone: Tone; drawing: BadgeDrawing }> = {
+  approved: { glyph: '✓', tone: 'success', drawing: { kind: 'stroke', path: 'M12.6 14.6l1.3 1.3 2.6-2.7' } },
+  requested_changes: { glyph: '✕', tone: 'error', drawing: { kind: 'stroke', path: 'M13 13l3 3m0-3l-3 3' } },
+  reviewing: { glyph: '?', tone: 'subtle', drawing: { kind: 'question' } },
+  commented: { glyph: '?', tone: 'subtle', drawing: { kind: 'question' } },
+  unreviewed: { glyph: '◌', tone: 'subtle', drawing: { kind: 'empty' } },
 }
 
 export type FaceFacts = {
   tone: Tone
-  /** The badge's glyph, the person's mark where no Svg is drawn; null for someone without a badge. */
-  badge: string | null
+  /** The badge's glyph, the person's mark where no Svg is drawn. */
+  glyph: string
   alt: string
   /** Their initials on a disc, or a robot. */
   plain: SvgSource
@@ -38,30 +43,46 @@ export type FaceFacts = {
 }
 
 /**
- * Their avatar, else their initials on a disc (a bot's, a robot), ringed in the colour of where they stand: heavy
- * once they have a say, thin while they have none, with a ✓ or ✕ badge for an approval or a request for changes. A disc
- * costs about 450 characters (650 with a badge), each with its tone's two shades, a picture about 1,400.
+ * The badge in the face's corner, cut out of the avatar by an edge in the pane's background. On a filled disc the glyph is
+ * drawn in the background colour too: white on the vivid light shades, near black on the bright dark ones, so it keeps
+ * 4.5:1 in either theme where a white glyph on a bright dark shade would not.
+ */
+function badgeOf({ tone, drawing }: (typeof REVIEW_MARK)[PersonState]): SvgSource {
+  switch (drawing.kind) {
+    case 'stroke':
+      return svg`<circle cx='14.5' cy='14.5' r='4.5' ${themePaint([
+        ['fill', TONE_COLOURS[tone]],
+        ['stroke', PAGE],
+      ])} stroke-width='1.2'/><path d='${drawing.path}' fill='none' ${themePaint([['stroke', PAGE]])} stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/>`
+    case 'question':
+      return svg`<circle cx='14.5' cy='14.5' r='4.5' ${themePaint([
+        ['fill', TONE_COLOURS[tone]],
+        ['stroke', PAGE],
+      ])} stroke-width='1.2'/><text x='14.5' y='16.8' font-family='system-ui' font-size='6.5' font-weight='800' text-anchor='middle' ${themePaint([['fill', PAGE]])}>?</text>`
+    case 'empty':
+    default:
+      return svg`<circle cx='14.5' cy='14.5' r='3.6' ${themePaint([
+        ['fill', PAGE],
+        ['stroke', TONE_COLOURS[tone]],
+      ])} stroke-width='1.3' stroke-dasharray='1.6 1.2'/>`
+  }
+}
+
+/**
+ * Their avatar, else their initials on a disc (a bot's, a robot), with a badge in its corner for where they stand. A
+ * disc costs about 600 characters with its badge's two shades, a picture about 1,500.
  */
 export function faceFacts(person: Person, picture: string | undefined): FaceFacts {
-  const tone = personTone(person)
-  const badge = REVIEW_MARK[person.state]
-  // The ring and the badge are drawn in their tone's shade for the app's theme.
-  const ring =
-    tone === 'subtle'
-      ? svg`<circle cx='8' cy='8' r='9' fill='none' ${tonePaint('stroke', tone)} stroke-width='1.5'/>`
-      : svg`<circle cx='8' cy='8' r='9.5' fill='none' ${tonePaint('stroke', tone)} stroke-width='3'/>`
-  const mark =
-    badge !== null
-      ? svg`<circle cx='14.75' cy='14.75' r='3.75' ${tonePaint('fill', badge.tone)} stroke='#fff'/><path d='${badge.path}' fill='none' stroke='#fff' stroke-width='1.3' stroke-linecap='round'/>`
-      : svg``
-  // The face is 16 pixels at the origin; the view's 3-pixel margin holds the ring and the badge.
+  const mark = REVIEW_MARK[person.state]
+  const badge = badgeOf(mark)
+  // The face is 16 pixels at the origin; the view's 3-pixel margin holds the badge.
   const around = (inner: SvgSource): SvgSource =>
-    svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${followingTheme(raw([inner, ring, mark]))}</svg>`
+    svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${followingTheme(raw([inner, badge]))}</svg>`
   const disc = person.isBot ? BOT_MARKS : discMarks(person.username, 16, person.initials)
   return {
-    tone,
-    badge: badge?.glyph ?? null,
-    alt: badge !== null ? `${person.name}, ${REVIEW_STATE[person.state]}` : person.name,
+    tone: mark.tone,
+    glyph: mark.glyph,
+    alt: `${person.name}, ${REVIEW_STATE[person.state]}`,
     plain: around(disc),
     picture:
       picture !== undefined && picture !== ''

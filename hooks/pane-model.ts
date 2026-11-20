@@ -66,8 +66,6 @@ export type RowModel = {
   titleKey: string
   /** `<iid>-<repo hash>`, which every key of the row ends on. */
   suffix: string
-  /** The tone is the theme's key, so the app paints the border in its light or dark shade. */
-  border: { style: 'bold' | 'round'; tone: Tone }
   title: string
   ago: string
   mr: Link
@@ -216,7 +214,6 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     boxKey: shortHash(card.key),
     titleKey: titleKey(card),
     suffix,
-    border: { style: facts.rank === 0 ? 'bold' : 'round', tone: facts.tone },
     title: facts.title,
     ago: ago(card.updatedAt, now),
     mr: { href: card.url, text: `${LINK.mr} !${card.iid}` },
@@ -240,7 +237,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
       username: person.username,
       label: `${callOf(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`,
       tone: person.face.tone,
-      glyph: person.face.badge ?? '●',
+      glyph: person.face.glyph,
       alt: person.face.alt,
       plain: person.face.plain,
       picture: person.face.picture,

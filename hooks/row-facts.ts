@@ -1,7 +1,7 @@
 // What an MR card says that depends on the card alone, not on the time: its badges, verdict, words, the one comment it
 // quotes and the head a merge would take. It is the costly part of a row, so `buildPane` works it out for the rows it draws and no others. Pure, on plain
 // data.
-import { isMergeable, rank, reviewTone, rowBadges, trailingOf, verdictOf } from './attention.ts'
+import { isMergeable, rank, rowBadges, trailingOf, verdictOf } from './attention.ts'
 import type { Badge, Verdict } from './attention.ts'
 import { LINK } from './drawing.ts'
 import { faceFacts } from './face-model.ts'
@@ -9,7 +9,6 @@ import type { FaceFacts } from './face-model.ts'
 import { excerpt, shortTitle, ticketOf } from './format.ts'
 import { shorten } from './graphemes.ts'
 import { firstName } from './identity.ts'
-import type { Tone } from './status.ts'
 
 import type { MrCard, Person } from '../types'
 
@@ -34,7 +33,6 @@ type Said = { username: string; who: string; words: string }
 export type CardFacts = {
   key: string
   rank: number
-  tone: Tone
   title: string
   ticket: string | null
   /** The markers on the row: what stands before a merge, less what people's icons speak for. */
@@ -101,7 +99,6 @@ export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>
   return {
     key: card.key,
     rank: rank(card),
-    tone: reviewTone(card),
     title: shortTitle(card.title),
     ticket: ticketOf(card.title),
     row: list,

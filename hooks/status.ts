@@ -65,20 +65,26 @@ export function statusMark(status: CiStatus | undefined): { glyph: Glyph; tone: 
   }
 }
 
+/** A colour in the app's light theme and its dark one. */
+export type Shades = { light: string; dark: string }
+
 /**
- * Each tone as the desktop app paints its theme key, in its light theme and its dark one. Text and borders name the key
- * and the app picks the shade; a picture (a face, the stage strip) cannot name a key, so it carries both shades
- * (`tonePaint`), and the app's theme picks between them as it switches. Light `error` is sampled from the desktop app;
- * the other light shades are the screen renderer's (`tools/screens/pane.css`); the dark shades are the engine's dark
- * theme, with `subtle` lifted off a dark card, until a shot of the app in dark mode is sampled.
+ * Each tone as the pictures paint it (a face's badge, the stage strip), in the app's light theme and its dark one; text
+ * names the theme key and the app paints it. A picture cannot name a key, so it carries both shades (`tonePaint`) and the
+ * app's theme picks one as it switches. Dark: the app's own dark key shades, sampled from the desktop app. Light: the
+ * vivid fill shades, since the app's light keys are dark text shades that turn muddy on a small mark beside an avatar;
+ * each meets 3:1 on white, and those under a white glyph 4.5:1.
  */
-export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
-  success: { light: '#2c7a39', dark: '#4eba65' },
-  error: { light: '#a42628', dark: '#ff6b80' },
-  warning: { light: '#966c1e', dark: '#ffc107' },
-  suggestion: { light: '#3d5fe0', dark: '#b1b9f9' },
-  subtle: { light: '#8a8983', dark: '#6f6e69' },
+export const TONE_COLOURS: Record<Tone, Shades> = {
+  success: { light: '#1f883d', dark: '#53c656' },
+  error: { light: '#cf222e', dark: '#fa8181' },
+  warning: { light: '#bf8700', dark: '#e59c08' },
+  suggestion: { light: '#0969da', dark: '#6aacf1' },
+  subtle: { light: '#6e7781', dark: '#9c9c9c' },
 }
+
+/** The pane's background in either theme, sampled from the desktop app: a badge's edge in it cuts the badge out of the avatar. */
+export const PAGE: Shades = { light: '#ffffff', dark: '#191919' }
 
 /**
  * Wraps a picture's parts so those painted by `tonePaint` follow the app's theme: they take the light or dark scheme the
@@ -88,13 +94,18 @@ export const TONE_COLOURS: Record<Tone, { light: string; dark: string }> = {
 export const followingTheme = (parts: RawSvg): RawSvg => raw(svg`<g style='color-scheme:light dark'>${parts}</g>`)
 
 /**
- * Paints a picture's part (its `fill` or `stroke`) in a tone, the light shade or the dark one as the app's theme is: the
- * attribute holds the light shade, for a surface that knows no `light-dark()`, and the style both. About 60 characters.
+ * Paints a picture's part (its `fill`, its `stroke`, or both) in the light shade or the dark one as the app's theme is:
+ * each attribute holds the light shade, for a surface that knows no `light-dark()`, and one style holds both, since an
+ * element with two `style` attributes is not drawn at all. About 60 characters a paint.
  */
-export const tonePaint = (paint: 'fill' | 'stroke', tone: Tone): RawSvg => {
-  const { light, dark } = TONE_COLOURS[tone]
-  return raw(svg`${paint}='${light}' style='${paint}:light-dark(${light},${dark})'`)
+export const themePaint = (paints: readonly (readonly ['fill' | 'stroke', Shades])[]): RawSvg => {
+  const attributes = paints.map(([paint, { light }]) => svg`${paint}='${light}' `)
+  const style = paints.map(([paint, { light, dark }]) => `${paint}:light-dark(${light},${dark})`).join(';')
+  return raw(svg`${raw(attributes)}style='${style}'`)
 }
+
+/** Paints a picture's part in a tone (`themePaint`). */
+export const tonePaint = (paint: 'fill' | 'stroke', tone: Tone): RawSvg => themePaint([[paint, TONE_COLOURS[tone]]])
 
 export function stageTone(status: CiStatus): Tone {
   switch (status) {

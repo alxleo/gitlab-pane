@@ -41,7 +41,7 @@ import { FULL_EVERY_MS } from '../hooks/incremental'
 import { TICKETS_EVERY_MS, USUAL_EVERY_MS } from '../hooks/side-reads'
 import { nextSnapshot, readSnapshot } from '../hooks/snapshot'
 import type { ReadResult } from '../hooks/snapshot'
-import { TONE_COLOURS } from '../hooks/status'
+import { PAGE, TONE_COLOURS } from '../hooks/status'
 
 const PINNED_URL = 'https://gitlab.com/g/p/-/merge_requests/12'
 
@@ -1356,12 +1356,13 @@ test('someone without a picture is their initials on a disc, beside their first 
   await ui.unmount()
 })
 
-test('an approval or a request for changes is a heavy ring with a ✓ or ✕ badge; someone yet to review keeps a thin one', async ($, on) => {
+test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed badge, with no ring, on a card with no border', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
     { ...reviewer('tessa.r', 'REQUESTED_CHANGES'), avatarUrl: null },
     { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null },
+    { ...reviewer('cal.voss', 'REVIEW_STARTED'), avatarUrl: null },
   ]
   engine(on, { mrs: [rawMr(12, { ...SHOWN, reviewers: { nodes: people } })], isDown: false })
 
@@ -1370,34 +1371,33 @@ test('an approval or a request for changes is a heavy ring with a ✓ or ✕ bad
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const faceOf = async (name: string) =>
     String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt?.toString().startsWith(name) === true)?.props?.source)
-  // The ring and the badge are in the tone's light shade, and its dark one while the app is dark.
-  const paint = (prop: 'fill' | 'stroke', tone: 'success' | 'error' | 'subtle') =>
-    `${prop}='${TONE_COLOURS[tone].light}' style='${prop}:light-dark(${TONE_COLOURS[tone].light},${TONE_COLOURS[tone].dark})'`
+  // The badge's disc is in its tone's light shade, and its dark one while the app is dark; its edge and glyph are the page's.
+  const both = ({ light, dark }: { light: string; dark: string }) => `light-dark(${light},${dark})`
+  const disc = (tone: 'success' | 'error' | 'subtle') => `style='fill:${both(TONE_COLOURS[tone])};stroke:${both(PAGE)}'`
   expect(await faceOf('Ines')).toContain("style='color-scheme:light dark'")
-  expect(await faceOf('Ines')).toContain(`${paint('stroke', 'success')} stroke-width='3'`)
-  expect(await faceOf('Ines')).toContain(paint('fill', 'success'))
-  expect(await faceOf('Tessa')).toContain(`${paint('stroke', 'error')} stroke-width='3'`)
-  expect(await faceOf('Tessa')).toContain(paint('fill', 'error'))
-  expect(await faceOf('Mel')).toContain(`${paint('stroke', 'subtle')} stroke-width='1.5'`)
-  expect(await faceOf('Mel')).not.toContain(paint('fill', 'subtle'))
-  expect(await faceOf('Mel')).not.toContain("stroke-width='3'")
+  expect(await faceOf('Ines')).toContain(disc('success'))
+  expect(await faceOf('Ines')).toContain("<path d='M12.6 14.6")
+  expect(await faceOf('Tessa')).toContain(disc('error'))
+  expect(await faceOf('Cal')).toContain(disc('subtle'))
+  expect(await faceOf('Cal')).toContain('>?</text>')
+  expect(await faceOf('Mel')).toContain(`style='fill:${both(PAGE)};stroke:${both(TONE_COLOURS.subtle)}'`)
+  expect(await faceOf('Mel')).toContain('stroke-dasharray')
+  for (const name of ['Ines', 'Tessa', 'Mel', 'Cal']) {
+    expect(await faceOf(name)).not.toContain("r='9.5'")
+  }
   const alts = elementsOf(await ui.drawn())
     .filter(element => element.type === 'Svg')
     .map(element => element.props?.alt)
   expect(alts).toContain('Ines Mendel, approved')
   expect(alts).toContain('Tessa R, requested changes')
-  expect(alts).toContain('Mel Northcote')
-  // The card's border is the theme's own key for the review, so the app paints it in its light or dark shade, as the ring is.
-  const borders = boxesOf(await ui.drawn())
-    .filter(box => box.props?.borderStyle !== undefined)
-    .map(box => box.props?.borderColor)
-  expect(borders).toEqual(['error'])
+  expect(alts).toContain('Mel Northcote, not reviewed yet')
+  // Where the MR stands is in its marks and words: no card draws a border.
+  expect(boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle !== undefined)).toEqual([])
 
   await ui.unmount()
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const marks = (await terminal.findAll({ type: 'Text' })).map(text => text.text)
-  expect(marks).toContain('✓')
-  expect(marks).toContain('✕')
+  expect(marks).toEqual(expect.arrayContaining(['✓', '✕', '◌', '?']))
   await terminal.unmount()
 })
 
@@ -1759,7 +1759,7 @@ test('a passed MR that waits on an approval is one line, its title and what it w
   await ui.unmount()
 })
 
-test('a face is one small drawing: about 410 characters, 630 with a badge, with both shades of its ring', async ($, on) => {
+test('a face is one small drawing: about 490 characters with an empty badge, 640 with a filled one, in both shades', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
@@ -1772,13 +1772,13 @@ test('a face is one small drawing: about 410 characters, 630 with a badge, with 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const faceOf = async (name: string) => String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && String(element.props?.alt).startsWith(name))?.props?.source)
   // Each painted part carries its light and dark shade (about 60 characters), so the face follows the app's theme.
-  expect((await faceOf('Mel')).length).toBeLessThan(420)
-  expect((await faceOf('Ines')).length).toBeLessThan(640)
+  expect((await faceOf('Mel')).length).toBeLessThan(500)
+  expect((await faceOf('Ines')).length).toBeLessThan(650)
   expect(await faceOf('Mel')).toContain('>MN</text>')
   await ui.unmount()
 })
 
-test("a bot is a face like a person's: its own picture or a robot, ringed for its review, its threads counted; no bots line", async ($, on) => {
+test("a bot is a face like a person's: its own picture or a robot, badged for its review, its threads counted; no bots line", async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const identicon = 'https://secure.gravatar.com/avatar/ab12?s=80&d=identicon'
   const cursor = { ...user('project_1_bot_ab', true), name: 'cursor', avatarUrl: identicon }
@@ -1794,9 +1794,9 @@ test("a bot is a face like a person's: its own picture or a robot, ringed for it
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).not.toMatch(/bots hold the merge|asked for changes|🤖/iu)
   const faces = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg' && /^(GitLabDuo|cursor)/u.test(String(element.props?.alt)))
-  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor'])
+  expect(faces.map(face => face.props?.alt)).toEqual(['GitLabDuo, requested changes', 'cursor, commented'])
   // Without a picture of its own, a bot is a robot rather than a disc of initials.
-  expect(String(faces[1]?.props?.source)).not.toMatch(/<text|<image/u)
+  expect(String(faces[1]?.props?.source)).not.toMatch(/<image|>[A-Z]{2}<\/text>/u)
   const names = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
   expect(names).toContain('GitLabDuo')
   expect(names).toContain('cursor 1')

@@ -15,25 +15,27 @@
   --font: "Pane Sans", "Pane Symbols", "Pane Emoji", sans-serif;
   --mono: "Pane Mono", "Pane Symbols", "Pane Emoji", monospace;
 
+  /* The pane's background, text, dim text, links and the theme keys below as the desktop app paints them, sampled from
+     shots of it in light; the page around the pane, its edges and chips are by eye. */
   --page: #f0eee6;
-  --surface: #faf9f5;
+  --surface: #ffffff;
   --edge: #e3e0d3;
-  --ink: #1f1e1d;
-  --faint: #6b6a65;
-  --link: #2b5fd0;
+  --ink: #191919;
+  --faint: #666666;
+  --link: #1757ac;
   --chip: #ece9de;
   --chip-edge: #d9d5c5;
 
   /* The theme keys a tree may name, in the app's light theme. */
   --c-text: var(--ink);
   --c-inverseText: #ffffff;
-  --c-inactive: #6b6a65;
-  --c-subtle: #8a8983;
-  --c-suggestion: #3d5fe0;
+  --c-inactive: #666666;
+  --c-subtle: #666666;
+  --c-suggestion: #1757ac;
   --c-remember: #3d5fe0;
-  --c-success: #2c7a39;
+  --c-success: #016d11;
   --c-error: #a42628;
-  --c-warning: #966c1e;
+  --c-warning: #895903;
   --c-merged: #8700ff;
   --c-claude: #d77757;
   --c-permission: #3d5fe0;
@@ -41,29 +43,29 @@
 
 /*
  * The app's dark theme: the page is photographed in it when the browser prefers dark, as the app does when set to dark.
- * The theme keys are the engine's dark theme (subtle lifted off the dark card) and the surfaces are Claude's dark ones,
- * until a shot of the app in dark mode is sampled.
+ * The pane's background, text, dim text, links and the theme keys are sampled from shots of the app in dark; the page
+ * around the pane, its edges and chips are by eye.
  */
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #1f1e1d;
-    --surface: #262624;
+    --page: #262624;
+    --surface: #191919;
     --edge: #3d3c38;
-    --ink: #faf9f5;
-    --faint: #a3a19a;
-    --link: #7fa7f5;
+    --ink: #efefef;
+    --faint: #9c9c9c;
+    --link: #6aacf1;
     --chip: #30302e;
     --chip-edge: #45443f;
 
     --c-text: var(--ink);
     --c-inverseText: #000000;
-    --c-inactive: #999999;
-    --c-subtle: #6f6e69;
-    --c-suggestion: #b1b9f9;
+    --c-inactive: #9c9c9c;
+    --c-subtle: #9c9c9c;
+    --c-suggestion: #6aacf1;
     --c-remember: #b1b9f9;
-    --c-success: #4eba65;
-    --c-error: #ff6b80;
-    --c-warning: #ffc107;
+    --c-success: #53c656;
+    --c-error: #fa8181;
+    --c-warning: #e59c08;
     --c-merged: #af87ff;
     --c-claude: #d77757;
     --c-permission: #b1b9f9;

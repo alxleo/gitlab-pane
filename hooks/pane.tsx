@@ -113,10 +113,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       return null
     }
     const { fit } = row
-    // The colour is the review, the theme's own key, so the app paints it in its light or dark shade; the heavier line is
-    // an MR that needs you.
+    // No border: where the MR stands is said by its marks and words, never by a colour alone.
     return (
-      <Box key={row.boxKey} flexDirection="column" borderStyle={row.border.style} borderColor={row.border.tone} hover={{ borderColor: 'claude' }} paddingX={1}>
+      <Box key={row.boxKey} flexDirection="column" paddingX={1}>
         {partOf(row, 'line1').element}
         {!row.isQuiet && (fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element)}
         {!row.isQuiet && partOf(row, 'said').element}

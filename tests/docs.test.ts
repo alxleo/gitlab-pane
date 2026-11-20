@@ -99,7 +99,7 @@ test("DESIGN's merge-check tones are CHECK_TONE's, every check once", () => {
 
 test("DESIGN's badges, link marks and inbox events are the code's, in its order", () => {
   const states = Object.keys(REVIEW_STATE).filter((state): state is PersonState => state in REVIEW_STATE)
-  expect(DESIGN.badges).toEqual(states.flatMap(state => (REVIEW_MARK[state] !== null ? [[REVIEW_MARK[state].glyph, REVIEW_STATE[state]]] : [])))
+  expect(DESIGN.badges).toEqual(states.map(state => [REVIEW_MARK[state].glyph, REVIEW_STATE[state]]))
   expect(DESIGN.links).toEqual(Object.values(LINK))
   expect(DESIGN.inboxEvents).toEqual(Object.values(VERB).map(verb => [verb.glyph, verb.word]))
   expect(DESIGN.inboxTabs).toEqual(RULES.map(rule => [rule.title, rule.name]))
