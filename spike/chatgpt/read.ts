@@ -4,17 +4,20 @@
 import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
 
-import { authoredQuery } from '../../hooks/authored-request.ts'
+import { authoredQuery, jobsWanted, listedMrs } from '../../hooks/ask-authored.ts'
+import { mergeStatusQuery, readMergeStatus } from '../../hooks/ask-merge-status.ts'
+import type { GitLabVerdict } from '../../hooks/ask-merge-status.ts'
+import { pinnedMr, pinnedQuery } from '../../hooks/ask-pinned.ts'
 import { decodeGraphql } from '../../hooks/decode.ts'
 import { Failure } from '../../hooks/failure.ts'
-import type { RawResponse, Request } from '../../hooks/gitlab-documents.ts'
+import { missingFeatures } from '../../hooks/gitlab-features.ts'
+import type { RawResponse, Request } from '../../hooks/gitlab-request.ts'
 import type { AuthoredPlainQuery, AuthoredQuery, MergeStatusQuery } from '../../hooks/gitlab.generated.ts'
-import { missingFeatures, readMergeStatus, readResponse } from '../../hooks/gitlab.ts'
-import type { GitLabVerdict } from '../../hooks/gitlab.ts'
 import { redact } from '../../hooks/hosts.ts'
 import { mergeReads } from '../../hooks/incremental.ts'
-import { mergeStatusQuery } from '../../hooks/merge-gitlab.ts'
 import { lines } from '../../hooks/model-text.ts'
+import { toCard } from '../../hooks/mr-card.ts'
+import { pinKey } from '../../hooks/mr-url.ts'
 import { conflictsTask, nextMove } from '../../hooks/next-move.ts'
 import { buildPane } from '../../hooks/pane-model.ts'
 import type { RowModel } from '../../hooks/pane-model.ts'
@@ -84,7 +87,7 @@ export function connect(host: string): GitLab {
 
 /** The user's open MRs with GitLab's merge verdicts, read side by side as the mod's `read-gitlab.ts` reads them. */
 export async function openMrs(gitlab: GitLab): Promise<MrCard[]> {
-  let features: HostFeatures = { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true }
+  let features: HostFeatures = { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true }
   let authored = await gitlab.graphql(authoredQuery(features, { kind: 'open' }))
   const lacking = missingFeatures(authored)
   if (lacking.length > 0) {
@@ -93,14 +96,37 @@ export async function openMrs(gitlab: GitLab): Promise<MrCard[]> {
   }
   const asked = mergeStatusQuery(features)
   const status = asked === null ? null : await gitlab.graphql(asked).catch(() => null)
-  return cardsFrom(gitlab.host, authored, status)
+  // The list leaves out the jobs; an MR whose row draws from them is read again on its own, as `read-gitlab.ts` does.
+  const withoutJobs = new Set<string>()
+  const singles = await Promise.all(
+    jobsWanted(gitlab.host, authored).map(pin =>
+      gitlab
+        .graphql(pinnedQuery(pin, features))
+        .then(answer => pinnedMr(answer) ?? Promise.reject(new Failure('bad-answer', 'GitLab sent no MR')))
+        .then(
+          raw => [slimCard(toCard(gitlab.host, raw))],
+          () => {
+            withoutJobs.add(pinKey(pin))
+            return []
+          }
+        )
+    )
+  )
+  return cardsFrom(gitlab.host, authored, status, singles.flat(), withoutJobs)
 }
 
-/** GitLab's two answers as cards with their verdicts: a failed verdict read leaves every card without one, as in the mod. */
-export function cardsFrom(host: string, authored: RawResponse<AuthoredQuery | AuthoredPlainQuery>, status: RawResponse<MergeStatusQuery> | null): MrCard[] {
+/** GitLab's answers as cards with their verdicts: a failed verdict read leaves every card without one, as in the mod. */
+export function cardsFrom(
+  host: string,
+  authored: RawResponse<AuthoredQuery | AuthoredPlainQuery>,
+  status: RawResponse<MergeStatusQuery> | null,
+  singles: readonly MrCard[] = [],
+  withoutJobs: ReadonlySet<string> = new Set()
+): MrCard[] {
   const verdicts: Map<string, GitLabVerdict> | null =
     status === null ? null : new Map([...readMergeStatus(host, status)].map(([key, verdict]) => [key, { ...verdict, checks: slimChecks(verdict.checks) ?? verdict.checks }]))
-  return mergeReads({ scope: 'open', base: [], fetched: readResponse(host, authored).map(slimCard), singles: [], pinned: new Set(), verdicts })
+  const fetched = listedMrs(authored).map(raw => slimCard(toCard(host, raw)))
+  return mergeReads({ scope: 'open', base: [], fetched, singles, pinned: new Set(), verdicts, withoutJobs })
 }
 
 /**
@@ -122,6 +148,9 @@ export function panelOf(cards: readonly MrCard[], held: ReadonlyMap<string, Pres
       repoFilter: '',
       view: 'mine',
       news: { count: 0, keys: [] },
+      landed: [],
+      search: '',
+      inbox: [],
       poll: { fetchedAt: now, error: null, hosts: {} },
       isReading: false,
       isSyncing: false,

@@ -3,7 +3,9 @@
 // GitLab until the move is done. The presses live in this server's memory, one per MR, as the mod keeps them in its ledger.
 import { messageOf } from '../../hooks/failure.ts'
 import { Failure } from '../../hooks/failure.ts'
-import { mergeRefusal, mergeWrite, moveStateQuery, readMoveState, rebasePath, rebaseRefusal } from '../../hooks/merge-gitlab.ts'
+import { mergeRefusal, mergeWrite } from '../../hooks/ask-merge.ts'
+import { moveStateQuery, readMoveState } from '../../hooks/ask-move-state.ts'
+import { rebasePath, rebaseRefusal } from '../../hooks/ask-rebase.ts'
 import { afterSend, ARMED_MS, decidePress, firstStep, FOLLOW_MS, nextStep } from '../../hooks/next-move.ts'
 import type { Fresh, Step } from '../../hooks/next-move.ts'
 import { refusalOf, why } from '../../hooks/write-model.ts'

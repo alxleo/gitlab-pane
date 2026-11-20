@@ -27,7 +27,11 @@
       ul { list-style: none; margin: 0; padding: 0; }
       /* A row as card.tsx lays it out: the title line, then links, strip, verdict and move, and people; then the quote. */
       .card { margin: 8px 10px; padding: 6px 10px; border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; }
-      .card.bold { border-left-width: 5px; }
+      .card.edge-success { border-left-color: var(--success); }
+      .card.edge-error { border-left-color: var(--error); }
+      .card.edge-warning { border-left-color: var(--warning); }
+      .card.edge-suggestion { border-left-color: var(--suggestion); }
+      .card.edge-subtle { border-left-color: var(--soft); }
       .section { margin: 14px 12px 4px; color: var(--soft); font-size: 12px; }
       .line1 { display: flex; gap: 8px; align-items: baseline; }
       .title { flex: 1; font-weight: 500; overflow-wrap: anywhere; }

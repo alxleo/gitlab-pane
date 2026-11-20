@@ -1,7 +1,7 @@
 // A made-up GitLab for the harness and the move check: the repo's fixtures as MRs, and a merge that GitLab carries out
 // on the next look, so a press is followed the way it is against the real one. No request leaves the process.
 import { decodeGraphql } from '../../hooks/decode.ts'
-import type { Request } from '../../hooks/gitlab-documents.ts'
+import type { Request } from '../../hooks/gitlab-request.ts'
 import { checks, mergeStatuses, pipe, rawMr, reviewer, thread, user } from '../../tests/fixtures.ts'
 import type { Mr } from '../../tests/fixtures.ts'
 

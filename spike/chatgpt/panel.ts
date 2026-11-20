@@ -80,10 +80,9 @@ function verdictParts(row: RowModel): HTMLElement[] {
 
 function rowOf(row: RowModel): HTMLLIElement {
   const card = el('li', 'card')
-  card.style.borderLeftColor = row.border.colour
-  if (row.border.style === 'bold') {
-    card.classList.add('bold')
-  }
+  // The left edge repeats in colour what the row's verdict, else its blocker, says in words: the core's row model no
+  // longer carries a colour for the card, since the mod's cards draw no border.
+  card.classList.add(`edge-${row.verdict?.tone ?? row.blocker?.tone ?? 'subtle'}`)
   const line1 = el('div', 'line1')
   const title = el('button', 'title', row.title)
   title.addEventListener('click', () => void app.openLink({ url: row.mr.href }))
