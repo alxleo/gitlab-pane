@@ -72,8 +72,9 @@ export default defineConfig({
             },
           },
         ],
-        // The core imports core files by their .ts path, the types contract, and nothing of the engine. The rule reads the
-        // core from tsconfig.core.json and leaves every other file alone.
+        // The core imports core files by their .ts path, the types contract, and nothing of the engine; and a .ts module in
+        // hooks/ that leans on nothing of the engine (no engine import, package, or module that leans) must be in the core.
+        // The rule reads the core from tsconfig.core.json.
         'local/core-imports': 'error',
         // The type-aware rules.
         'typescript/switch-exhaustiveness-check': 'error',

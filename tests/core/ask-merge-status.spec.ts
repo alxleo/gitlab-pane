@@ -11,14 +11,26 @@ test('each MR with merge checks is read with its checks and what GitLab says of 
       merging: { diffHeadSha: 'abc', rebaseInProgress: true, userPermissions: { canMerge: false, pushToSourceBranch: true } },
     }),
     rawMr(2, { mergeabilityChecks: [] }),
-    rawMr(3, { mergeabilityChecks: [{ identifier: 'NEED_REBASE', status: 'FAILED' }] }),
   ])
+  // Another project's MR, its head unknown, set to merge when its pipeline passes, which the user may merge but not push to.
+  const other = {
+    iid: '3',
+    project: { fullPath: 'g/q' },
+    mergeabilityChecks: [{ identifier: 'NEED_REBASE' as const, status: 'FAILED' as const }],
+    diffHeadSha: null,
+    rebaseInProgress: false,
+    autoMergeEnabled: true,
+    userPermissions: { canMerge: true, pushToSourceBranch: false },
+  }
   const nodes = answer.data.currentUser.authoredMergeRequests.nodes
-  const read = readMergeStatus(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [...nodes, null] } } } })
-  expect([...read.keys()]).toEqual([cardKey(HOST, 'g/p', 1), cardKey(HOST, 'g/p', 3)])
+  const read = readMergeStatus(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [...nodes, other, null] } } } })
+  expect([...read.keys()]).toEqual([cardKey(HOST, 'g/p', 1), cardKey(HOST, 'g/q', 3)])
   expect(read.get(cardKey(HOST, 'g/p', 1))).toEqual({
     checks: gitlabSays({ CONFLICT: 'failed' }),
     merging: { head: 'abc', isRebasing: true, isAutoMerging: false, canMerge: false, canPush: true },
   })
-  expect(read.get(cardKey(HOST, 'g/p', 3))?.checks).toEqual([{ id: 'NEED_REBASE', status: 'failed' }])
+  expect(read.get(cardKey(HOST, 'g/q', 3))).toEqual({
+    checks: [{ id: 'NEED_REBASE', status: 'failed' }],
+    merging: { head: '', isRebasing: false, isAutoMerging: true, canMerge: true, canPush: false },
+  })
 })

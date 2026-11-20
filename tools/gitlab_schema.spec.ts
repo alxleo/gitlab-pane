@@ -34,6 +34,12 @@ test('a document file that no canary path names, or that a later ! path leaves o
   expect(unwatched(['hooks/ask-old.ts'], [...paths, 'hooks/ask-old.ts'])).toEqual([])
 })
 
+test('a path in glob syntax GitHub reads otherwise than Node is refused, not misread', () => {
+  for (const path of ['hooks/{ask,mr}-*.ts', 'hooks/@(ask|mr)-*.ts', 'hooks/ask-?.ts', 'hooks/ask-[ab].ts', 'hooks/ask+.ts', 'hooks/ask-!x.ts']) {
+    expect(() => unwatched(['hooks/ask-x.ts'], ['hooks/*.ts', path])).toThrow(`glob syntax GitHub reads otherwise than Node: ${path}`)
+  }
+})
+
 test('scoring a read adds GitLab’s own score of it and sample values for its variables', () => {
   const { query, variables } = scored(DOCUMENTS.MoveState)
   expect(query).toContain('queryComplexity')

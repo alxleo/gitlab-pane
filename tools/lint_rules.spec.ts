@@ -28,6 +28,10 @@ const HOOK = join(ROOT, 'hooks', 'made-up.ts')
 // tools/lint-fixtures/guards.ts holds guards written each way a guard is exported, and look-alikes that are not guards. The
 // made-up file that imports them sits beside it; the rule reads guards.ts from disk, so it is committed, not written here.
 const IMPORTER = join(ROOT, 'tools', 'lint-fixtures', 'importer.ts')
+// pure-a.ts and pure-b.ts import each other and core files; leaning-a.ts and leaning-b.ts do too, and leaning-b.ts a package.
+// Pure modules outside the core cannot sit in hooks/ (the rule would fail them), so `modules` points the rule at the fixtures.
+const FIXTURE = join(ROOT, 'tools', 'lint-fixtures', 'made-up.ts')
+const FIXTURES = [{ modules: 'tools/lint-fixtures/' }]
 const guardOf = (imported: string, local: string) => `${imported}\nexport function isBox(value: unknown): value is string { return ${local}(value) }`
 
 // The one assertion `no-type-assertion` allows here: inside the private function `brand`.
@@ -49,6 +53,17 @@ tester.run('core-imports', ruleNamed('core-imports'), {
     { name: 'a hooks file outside the core that computes an import() stays out', filename: HOOK, code: 'export const late = (name: string) => import(name)' },
     { name: 'a pure-looking .tsx file stays out, its JSX being the engine’s', filename: join(ROOT, 'hooks', 'made-up.tsx'), code: "import { isRecord } from './decode.ts'" },
     { name: 'a pure file outside hooks/ is left alone', filename: join(ROOT, 'tests', 'core', 'made-up.spec.ts'), code: "import { isRecord } from '../../hooks/decode.ts'" },
+    {
+      name: 'a hooks file outside the core that imports a package stays out, as the core is compiled with no host’s types',
+      filename: HOOK,
+      code: "import { readFileSync } from 'node:fs'\nexport { isRecord } from './decode.ts'",
+    },
+    {
+      name: 'a module outside the core that imports a cycle outside it, one of which imports a package, stays out',
+      filename: FIXTURE,
+      options: FIXTURES,
+      code: "import { isYamlRecord } from './leaning-a.ts'\nexport const yes = isYamlRecord",
+    },
   ],
   invalid: [
     { name: 'a core file imports a file outside the core', filename: CORE_FILE, code: "import { paneOf } from './pane'", errors: [{ messageId: 'outside' }] },
@@ -76,9 +91,17 @@ tester.run('core-imports', ruleNamed('core-imports'), {
     },
     { name: 'a hooks file outside the core that imports nothing is pure', filename: HOOK, code: 'export const two = 2', errors: [{ messageId: 'pure' }] },
     {
-      name: 'a hooks file outside the core that imports only packages and core files is pure',
-      filename: HOOK,
-      code: "import { parse } from 'graphql'\nexport { isRecord } from './decode.ts'",
+      name: 'a module outside the core that imports a cycle of modules outside it, pure together, is pure',
+      filename: FIXTURE,
+      options: FIXTURES,
+      code: "import { isFilled } from './pure-a.ts'\nexport const full = isFilled",
+      errors: [{ messageId: 'pure' }],
+    },
+    {
+      name: 'a module of a pure cycle outside the core is pure itself, though each of it imports a file outside the core',
+      filename: join(ROOT, 'tools', 'lint-fixtures', 'pure-b.ts'),
+      options: FIXTURES,
+      code: "import { isFilled } from './pure-a.ts'\nexport const isEmpty = (value: unknown): boolean => !isFilled(value)",
       errors: [{ messageId: 'pure' }],
     },
   ],
