@@ -527,10 +527,18 @@ test('the cut is read from the notes GitLab sent: the oldest, when older ones we
   expect(read(false)).toBeNull()
 })
 
-test('followed people and projects: their open MRs with activity, flagged, and what was merged by someone else', () => {
+test('followed people and projects: their open MRs with activity, flagged, and what someone else is known to have merged, not you', () => {
   const group = {
     opened: { nodes: [{ ...fields(1, 'alice'), notes: { pageInfo: { hasPreviousPage: false }, nodes: [note(1, 10, 'bob', 'nice'), note(2, 11, 'me', 'mine')] } }] },
-    merged: { nodes: [{ ...fields(2, 'alice'), mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } }] },
+    merged: {
+      nodes: [
+        { ...fields(2, 'alice'), mergedAt: ISO(5), mergeUser: { username: 'dave', name: 'Dave' } },
+        { ...fields(3, 'alice'), mergedAt: ISO(6), mergeUser: { username: 'me', name: 'Me' } },
+        // GitLab names no one who merged it, or no time it was merged: nothing to say of it.
+        { ...fields(4, 'alice'), mergedAt: ISO(7), mergeUser: null },
+        { ...fields(5, 'alice'), mergedAt: null, mergeUser: { username: 'dave', name: 'Dave' } },
+      ],
+    },
   }
   const found = followedUserMrs('gitlab.com', { currentUser: { username: 'me' }, user: group }, NOW)
   expect(found.mrs.map(one => [one.iid, one.isFollowed, one.signals.map(each => each.kind)])).toEqual([

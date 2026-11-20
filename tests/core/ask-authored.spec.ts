@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { jobsWanted, needsJobs } from '../../hooks/ask-authored.ts'
+import { jobsWanted, lostIn, needsJobs } from '../../hooks/ask-authored.ts'
 import type { RawPipeline } from '../../hooks/mr-fragments.ts'
 import { HOST, commented, listed, pipe, project, rawMr, stage } from '../fixtures.ts'
 
@@ -22,4 +22,12 @@ test('an MR whose row draws from its jobs is asked for one by one: a pipeline no
     { url: 'https://gitlab.com/g/p/-/merge_requests/2', host: HOST, path: 'g/p', iid: 2 },
     { url: 'https://gitlab.com/g/p/-/merge_requests/4', host: HOST, path: 'g/q', iid: 4 },
   ])
+})
+
+test('the authored MRs GitLab sent back null are counted as lost, and the ones it sent are not', () => {
+  const sent = (iid: number) => listed(commented(rawMr(iid)))
+  const answer = (nodes: Array<ReturnType<typeof sent> | null>) => ({ data: { currentUser: { authoredMergeRequests: { nodes } } } })
+  expect(lostIn(answer([sent(1), null, sent(2), null, sent(3)]))).toBe(2)
+  expect(lostIn(answer([sent(1)]))).toBe(0)
+  expect(lostIn({ data: null })).toBe(0)
 })
