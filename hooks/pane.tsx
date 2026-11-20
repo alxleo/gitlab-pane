@@ -113,9 +113,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       return null
     }
     const { fit } = row
-    // No border: where the MR stands is said by its marks and words, never by a colour alone.
+    // No border: where the MR stands is said by its marks and words, never by a colour alone. A blank line below each card
+    // keeps one card's lines together and apart from the next.
     return (
-      <Box key={row.boxKey} flexDirection="column" paddingX={1}>
+      <Box key={row.boxKey} flexDirection="column" paddingX={1} marginBottom={1}>
         {partOf(row, 'line1').element}
         {!row.isQuiet && (fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element)}
         {!row.isQuiet && partOf(row, 'said').element}

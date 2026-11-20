@@ -116,7 +116,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const isOpen = canOpen && cards.includes(item.key)
     const buttons = cardButtons(item.key)
     return (
-      <Box key={`ib-${shortHash(item.key)}`} flexDirection="column" paddingX={1}>
+      <Box key={`ib-${shortHash(item.key)}`} flexDirection="column" paddingX={1} marginBottom={1}>
         <Box flexDirection="row" gap={1}>
           <Box flexGrow={1} flexShrink={1}>
             {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}
