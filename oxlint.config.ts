@@ -63,17 +63,18 @@ export default defineConfig({
           { allowedModules: { 'hooks/in-flight.ts': 'promises and callbacks cannot be stored in an atom, and the render hook cannot write one' } },
         ],
         // Only GitLab's own text may become Markdown to draw (it is what the Markdown view trusts as GitLab's), so
-        // `fromGitLab` is reached from the one file that reads GitLab's answers; a test makes its text by reading an answer too.
+        // `fromGitLab` is reached from the one file that makes cards of GitLab's answers; a test makes its text by reading an answer too.
         'local/only-importers': [
           'error',
           {
             restricted: {
-              fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: "it stamps text as GitLab's, which only the reader of GitLab's answers can say" },
+              fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: "it stamps text as GitLab's, which only the reader of GitLab's answers can say" },
             },
           },
         ],
-        // The core imports core files by their .ts path, the types contract, and nothing of the engine. The rule reads the
-        // core from tsconfig.core.json and leaves every other file alone.
+        // The core imports core files by their .ts path, the types contract, and nothing of the engine; and a .ts module in
+        // hooks/ that leans on nothing of the engine (no engine import, package, or module that leans) must be in the core.
+        // The rule reads the core from tsconfig.core.json.
         'local/core-imports': 'error',
         // The type-aware rules.
         'typescript/switch-exhaustiveness-check': 'error',

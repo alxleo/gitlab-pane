@@ -1,23 +1,24 @@
+import fc from 'fast-check'
 import { expect, test } from 'vitest'
 
 import { badges, rank, rowBadges } from '../../hooks/attention.ts'
 import { describe } from '../../hooks/wake.ts'
 import { discMarks, discSource } from '../../hooks/avatar.ts'
 import { ciStatusOf } from '../../hooks/gitlab-status.ts'
-import { cleanBody, missingFeatures, readPinned, readResponse, readUsual, toCard } from '../../hooks/gitlab.ts'
+import { listedMrs, needsJobs } from '../../hooks/ask-authored.ts'
+import { pinnedMr } from '../../hooks/ask-pinned.ts'
+import { cleanBody, toCard } from '../../hooks/mr-card.ts'
+import { passedMrArb, rawMrArb } from './arbitrary.ts'
 import { slimCard } from '../../hooks/slim.ts'
-import { authoredQuery } from '../../hooks/authored-request.ts'
-import { pinnedQuery, usualQuery } from '../../hooks/gitlab-documents.ts'
-import { mergeStatusQuery } from '../../hooks/merge-gitlab.ts'
-import { threadsQuery, withThreads } from '../../hooks/page-documents.ts'
 import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
 import type { PinnedQuery } from '../../hooks/gitlab.generated.ts'
-import { featuresOf, forgetProbed, learnLack } from '../../hooks/in-flight.ts'
 import { excerpt } from '../../hooks/format.ts'
 import { flatOf } from '../../hooks/markdown.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
-import { undefinedField } from '../gitlab_fake.ts'
-import { HOST, NOW, SELF_MANAGED, job, note, pipe, project, rawMr, reviewer, stage, thread, user } from '../fixtures.ts'
+import { HOST, NOW, SELF_MANAGED, commented, job, listed, note, pipe, project, rawMr, reviewer, stage, thread, user } from '../fixtures.ts'
+
+/** The cards of a list read from `host`, as the leader makes them. */
+const listedCards = (host: string, response: Parameters<typeof listedMrs>[0]) => listedMrs(response).map(raw => toCard(host, raw))
 
 test('each person who reviewed or commented gets one icon; the author gets none, and a bot none unless it holds the merge', async () => {
   const card = toCard(
@@ -56,6 +57,57 @@ test('each person who reviewed or commented gets one icon; the author gets none,
   ])
   expect(card.people[1]?.notes.map(one => one.body)).toEqual(['Fair', 'Why this?'])
   expect(rowBadges(card).map(badge => badge.kind)).toEqual(['approvals'])
+})
+
+test('comments sent in the order written go back into their threads, and make the card the threads make', () => {
+  const at = (minute: number) => `2026-10-23T13:${String(minute).padStart(2, '0')}:00Z`
+  const mr = rawMr(1, {
+    discussions: {
+      nodes: [
+        { resolvable: true, resolved: false, notes: { nodes: [note('Rename this', 'tim', { createdAt: at(0) }), note('Still?', 'tim', { createdAt: at(20) })] } },
+        { resolvable: true, resolved: true, notes: { nodes: [note('Why this?', 'mel', { createdAt: at(10) }), note('Because', 'alex', { createdAt: at(30) })] } },
+        { resolvable: false, resolved: false, notes: { nodes: [note('Nice work', 'mel', { createdAt: at(40) })] } },
+      ],
+    },
+  })
+  const comments = commented(mr)
+  expect(comments.notes.nodes?.map(one => one?.body)).toEqual(['Rename this', 'Why this?', 'Still?', 'Because', 'Nice work'])
+  const card = toCard(HOST, comments)
+  expect(card).toEqual(toCard(HOST, mr))
+  expect(card.openThreads.map(open => [open.body, (open.replies ?? []).map(reply => reply.body)])).toEqual([['Rename this', ['Still?']]])
+  expect(card.people.map(person => [person.username, person.notes.map(one => [one.body, one.isOpen])])).toEqual([
+    [
+      'tim',
+      [
+        ['Rename this', true],
+        ['Still?', true],
+      ],
+    ],
+    [
+      'mel',
+      [
+        ['Nice work', false],
+        ['Why this?', false],
+      ],
+    ],
+  ])
+})
+
+test('any MR read as comments is the card read as threads', () => {
+  fc.assert(
+    fc.property(rawMrArb, raw => {
+      expect(toCard(HOST, commented(raw))).toEqual(toCard(HOST, raw))
+    })
+  )
+})
+
+test('a list read of an MR whose pipeline passed with no warning shares the card a read with its jobs shares', () => {
+  fc.assert(
+    fc.property(passedMrArb, raw => {
+      expect(needsJobs(listed(raw).headPipeline)).toBe(false)
+      expect(slimCard(toCard(HOST, listed(raw)))).toEqual(slimCard(toCard(HOST, raw)))
+    })
+  )
 })
 
 test('two people with the same initials are told apart', async () => {
@@ -125,18 +177,6 @@ test("a bot's request for changes and its open threads are its icon's; only what
   expect(describe(card, NOW)).toContain('bots hold the merge: 1 open thread, GitLabDuo requested changes')
 })
 
-test('the usual run time is the middle half of recent successful MR pipelines, per project', async () => {
-  const { operation, query, variables } = usualQuery('g/p')
-  expect(operation).toBe('Usual')
-  expect(query).toContain('pipelines(source: "merge_request_event", status: SUCCESS, first: 20)')
-  expect(query).not.toContain('g/p')
-  expect(variables).toEqual({ path: 'g/p' })
-  const durations = [540, 600, 660, 700, 720, 780, 840, 900, 1000, 1200]
-  const pipelines = (list: number[]) => ({ data: { project: { pipelines: { nodes: list.map(duration => ({ duration })) } } } })
-  expect(readUsual(pipelines(durations))).toEqual({ low: 660, high: 900 })
-  expect(readUsual(pipelines([60]))).toBeNull()
-})
-
 test('a review bot body draws as Markdown and reads as one line in a hover', async () => {
   const body = [
     '### Locate test timeout undercuts ready wait',
@@ -179,10 +219,11 @@ test('a status GitLab adds later reads as unknown, drawn as such, and a known on
   const wire = {
     data: { project: { mergeRequest: { ...rawMr(1), headPipeline: { ...pipe('RUNNING'), status: unseen, stages: { nodes: [unseenStage('build'), unseenStage('test')] } } } } },
   }
-  const [card] = readPinned(HOST, decodeGraphql<PinnedQuery>(parseJson(JSON.stringify(wire))))
-  if (card === undefined) {
+  const raw = pinnedMr(decodeGraphql<PinnedQuery>(parseJson(JSON.stringify(wire))))
+  if (raw === null) {
     throw new Error('the pinned MR was not read')
   }
+  const card = toCard(HOST, raw)
   expect(card.pipeline?.status).toBe('unknown')
   expect(card.pipeline?.stages.map(each => [each.status, each.jobs.map(one => one.status)])).toEqual([
     ['unknown', ['unknown']],
@@ -198,7 +239,7 @@ test("a bot's approval does not count", async () => {
 
 test('a description written to break reading leaves every card in the read, the others as they were', () => {
   const hostile = `${'<details>'.repeat(6_000)}${'</details>'.repeat(6_000)}`
-  const cards = readResponse(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1, { description: hostile }), rawMr(2)] } } } })
+  const cards = listedCards(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1, { description: hostile }), rawMr(2)] } } } })
   expect(cards.map(card => card.iid)).toEqual([1, 2])
   // Read, not skipped: the folds past sixteen deep are words, so the description leads with its outer fold, closed.
   expect(cards[0]?.lead).toBe('▸ Details')
@@ -206,10 +247,10 @@ test('a description written to break reading leaves every card in the read, the 
 })
 
 test('a partial GraphQL answer keeps what came back, and what the schema lets be null reads as absent; no data at all throws', async () => {
-  const cards = readResponse(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1), null] } } }, errors: [{ message: 'no access' }] })
+  const cards = listedCards(HOST, { data: { currentUser: { authoredMergeRequests: { nodes: [rawMr(1), null] } } }, errors: [{ message: 'no access' }] })
   expect(cards.map(card => card.iid)).toEqual([1])
-  expect(readPinned(HOST, { data: { project: null }, errors: [{ message: 'no access' }] })).toEqual([])
-  expect(() => readResponse(HOST, { errors: [{ message: 'bad token' }] })).toThrow('bad token')
+  expect(pinnedMr({ data: { project: null }, errors: [{ message: 'no access' }] })).toBeNull()
+  expect(() => listedCards(HOST, { errors: [{ message: 'bad token' }] })).toThrow('bad token')
 
   // What the schema lets be null reads as absent, or as the MR's own address: nodes, an address, a name, a status.
   const nameless = { ...job('x', 'FAILED'), name: null, status: null, webPath: null }
@@ -247,94 +288,7 @@ test('a partial GraphQL answer keeps what came back, and what the schema lets be
   expect(card.openThreads.map(open => open.url)).toEqual([mr])
 })
 
-test("a host that answers a field as undefined is remembered to lack it, read from the error's extensions, and gets the documents without it", async () => {
-  const said = (typeName: string, fieldName: string) => missingFeatures(decodeGraphql(parseJson(JSON.stringify(undefinedField(typeName, fieldName)))))
-  expect(said('UserMergeRequestInteraction', 'reviewState')).toEqual(['hasReviewStates'])
-  expect(said('MergeRequest', 'mergeabilityChecks')).toEqual(['hasMergeVerdict'])
-  expect(said('Todo', 'targetEntity')).toEqual(['hasTodoEntity'])
-  expect(said('Discussion', 'truncatedDiffLines')).toEqual(['hasDiffLines'])
-  // Another type's field of the same name, another field, and the words of the message alone are not it.
-  expect(said('Project', 'reviewState')).toEqual([])
-  expect(said('Query', '__type')).toEqual([])
-  expect(missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"Field reviewState doesn\'t exist on type UserMergeRequestInteraction"}]}')))).toEqual([])
-  expect(
-    missingFeatures(decodeGraphql(parseJson('{"errors":[{"message":"x","extensions":{"code":"INTERNAL","typeName":"MergeRequest","fieldName":"mergeabilityChecks"}}]}')))
-  ).toEqual([])
-  forgetProbed()
-  const current = featuresOf('git.corp.com')
-  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true })
-  learnLack('git.corp.com', 'hasReviewStates')
-  learnLack('git.corp.com', 'hasDiffLines')
-  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false, hasTodoEntity: true, hasDiffLines: false })
-  const older = featuresOf('git.corp.com')
-  expect(featuresOf('gitlab.com')).toEqual(current)
-  forgetProbed()
-  expect(featuresOf('git.corp.com')).toEqual(current)
-  expect(authoredQuery(current, { kind: 'open' }).operation).toBe('Authored')
-  expect(authoredQuery(current, { kind: 'open' }).query).toContain('reviewState')
-  expect(authoredQuery(older, { kind: 'open' }).operation).toBe('AuthoredPlain')
-  expect(authoredQuery(older, { kind: 'open' }).query).not.toContain('reviewState')
-  // A whole read asks for the open MRs; a delta for MRs of any state changed after a moment.
-  expect(authoredQuery(current, { kind: 'open' }).variables).toEqual({ state: 'opened' })
-  expect(authoredQuery(current, { kind: 'since', after: '2026-10-23T15:00:00.000Z' }).variables).toEqual({ after: '2026-10-23T15:00:00.000Z' })
-  expect(authoredQuery(current, { kind: 'since', after: 'x' }).query).toContain('updatedAfter: $after')
-  expect(mergeStatusQuery(current)?.operation).toBe('MergeStatus')
-  expect(mergeStatusQuery(older)).toBeNull()
-  const pin = { url: 'https://git.corp.com/g/p/-/merge_requests/3', host: SELF_MANAGED, path: 'g/p', iid: 3 }
-  expect([pinnedQuery(pin, current).operation, pinnedQuery(pin, older).operation]).toEqual(['Pinned', 'PinnedPlain'])
-  expect(pinnedQuery(pin, older).variables).toEqual({ path: 'g/p', iid: '3' })
-  // A page's threads are asked without their diff lines of a host that has none.
-  expect([threadsQuery('g/p', 3, current).operation, threadsQuery('g/p', 3, older).operation]).toEqual(['Threads', 'ThreadsPlain'])
-  expect(threadsQuery('g/p', 3, older).query).not.toContain('truncatedDiffLines')
-  // A reviewer with no review state yet to be read is not yet reviewed, and the MR still reads.
-  const [card] = readResponse(SELF_MANAGED, { data: { currentUser: { authoredMergeRequests: { nodes: [{ ...rawMr(1), reviewers: { nodes: [user('tim')] } }] } } } })
+test('a reviewer with no review state yet to be read is not yet reviewed, and the MR still reads', () => {
+  const [card] = listedCards(SELF_MANAGED, { data: { currentUser: { authoredMergeRequests: { nodes: [{ ...rawMr(1), reviewers: { nodes: [user('tim')] } }] } } } })
   expect(card?.reviewers).toEqual([{ username: 'tim', isBot: false, state: 'unreviewed' }])
-})
-
-test("a page's threads gain where a reply goes and the lines they were left on, joined by their first note's address; a shared card keeps neither", () => {
-  const onDiff = thread('Rename this, please.', 'tim')
-  const general = { ...thread('Why?', 'mel'), notes: { nodes: [note('Why?', 'mel', { position: null })] } }
-  const card = toCard(HOST, rawMr(12, { discussions: { nodes: [onDiff, general] } }))
-  const [first, second] = card.openThreads
-  if (first === undefined || second === undefined) {
-    throw new Error('no threads')
-  }
-  const lines = [
-    { oldLine: 7, newLine: 7, type: null, text: ' const a = 1' },
-    { oldLine: null, newLine: 8, type: 'new', text: '+const b = 2' },
-  ]
-  const threads = {
-    data: {
-      project: {
-        mergeRequest: {
-          id: 'gid://gitlab/MergeRequest/912',
-          discussions: {
-            nodes: [
-              { replyId: 'gid://gitlab/Discussion/a1', truncatedDiffLines: lines, notes: { nodes: [{ url: first.url }] } },
-              { replyId: 'gid://gitlab/Discussion/b2', truncatedDiffLines: null, notes: { nodes: [{ url: second.url }] } },
-              // A thread the whole read does not hold (resolved since, or a bot's) answers nothing.
-              { replyId: 'gid://gitlab/Discussion/c3', truncatedDiffLines: lines, notes: { nodes: [{ url: 'https://gitlab.com/elsewhere' }] } },
-              null,
-            ],
-          },
-        },
-      },
-    },
-  }
-  const read = withThreads(card, { response: threads })
-  expect(read.openThreads.map(open => open.answer)).toEqual([
-    { mr: 'gid://gitlab/MergeRequest/912', thread: 'gid://gitlab/Discussion/a1' },
-    { mr: 'gid://gitlab/MergeRequest/912', thread: 'gid://gitlab/Discussion/b2' },
-  ])
-  expect(read.openThreads.map(open => open.excerpt)).toEqual([{ path: 'src/a.ts', hunk: '@@ -7,1 +7,2 @@\n const a = 1\n+const b = 2' }, undefined])
-  // Everything else on the card is as the whole read left it.
-  expect({ ...read, openThreads: card.openThreads }).toEqual(card)
-  // An MR GitLab no longer names leaves the threads as they were; a read that failed, or came back as errors alone, says why.
-  expect(withThreads(card, { response: { data: { project: null } } })).toEqual(card)
-  expect(withThreads(card, { reason: 'gitlab.com answered HTTP 400' })).toEqual({ ...card, repliesOff: 'gitlab.com answered HTTP 400' })
-  expect(withThreads(card, { response: { errors: [{ message: 'Timeout on validation of query' }] } })).toEqual({ ...card, repliesOff: 'Timeout on validation of query' })
-  expect(slimCard(read).openThreads.map(open => [open.answer, open.excerpt])).toEqual([
-    [undefined, undefined],
-    [undefined, undefined],
-  ])
 })

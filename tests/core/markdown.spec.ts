@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { excerpt, lead } from '../../hooks/format.ts'
-import { cleanBody } from '../../hooks/gitlab.ts'
+import { cleanBody } from '../../hooks/mr-card.ts'
 import { MAX_ROUNDS, cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
 import type { Part } from '../../hooks/markdown.ts'
 import { HOST } from '../fixtures.ts'
@@ -235,21 +235,29 @@ test('an <a> whose attribute holds a < keeps its words but not its link', () => 
 // ---- a strip takes time in proportion to the text, however hostile it is ------------------------------------------------
 
 /**
- * What reading a body costs, in milliseconds: the slowest of what a poll runs on it (its lead, or a note's first line) and
+ * Node's count of the processor time this process has spent, which the specs here run under. The core's specs compile
+ * without Node's types, so the one function this file calls is declared here.
+ */
+declare const process: { cpuUsage(since?: { user: number; system: number }): { user: number; system: number } }
+
+/**
+ * What reading a body costs, in milliseconds of processor time, which a busy machine does not inflate as it does the time
+ * on the clock: the slowest of what a poll runs on it (its lead, or a note's first line) and
  * what an MR's page runs on it (its parts), each from the body as GitLab sends it.
  */
 function msToRead(body: string): number {
   const reads = [() => lead(cleanBody(body, HOST, 'g/p'), 240), () => excerpt(cleanBody(body, HOST, 'g/p')), () => partsOf(cleanBody(body, HOST, 'g/p'))]
   return Math.max(
     ...reads.map(read => {
-      const start = performance.now()
+      const start = process.cpuUsage()
       read()
-      return performance.now() - start
+      const { user, system } = process.cpuUsage(start)
+      return (user + system) / 1000
     })
   )
 }
 
-/** A megabyte of text, which GitLab takes as one description or one comment. */
+/** A megabyte of text, which GitLab takes as one description or one comment; the timings read fractions of it. */
 const MEGABYTE = 1_000_000
 
 /** `open` as many times as `size` characters allow, then `close` as many times: markup nested as deep as it can be. */
@@ -258,52 +266,78 @@ const nestedTo = (open: string, close: string, size: number): string => {
   return `${open.repeat(depth)}${close.repeat(depth)}`
 }
 
-/** `piece` over and over, a megabyte of it. */
-const over = (piece: string): string => piece.repeat(Math.floor(MEGABYTE / piece.length))
+/** `piece` over and over, `size` characters of it. */
+const over = (piece: string, size: number): string => piece.repeat(Math.floor(size / piece.length))
 
-/** `piece` run one longer each time, each ended by `end`, a megabyte of runs: no two runs the same length. */
-const runsOf = (piece: string, end: string): string => Array.from({ length: Math.ceil(Math.sqrt(2 * MEGABYTE)) }, (_, at) => `${piece.repeat(at + 1)}${end}`).join('')
+/** `piece` run one longer each time, each ended by `end`, `size` characters of runs: no two runs the same length. */
+const runsOf = (piece: string, end: string, size: number): string => Array.from({ length: Math.ceil(Math.sqrt(2 * size)) }, (_, at) => `${piece.repeat(at + 1)}${end}`).join('')
 
 /**
  * Written to make a reading slow: each is quadratic in the text, or worse, for a pattern that reads to the end of the text
  * from every opener it finds, or a strip that repeats whole passes, or a fold read once for each fold around it.
  */
-const HOSTILE: [string, string][] = [
-  ['tags nested in tags', nestedTo('<', 'b>', MEGABYTE)],
-  ['tags that each leave a < behind when cut out', over('a<<b>')],
-  ['comments nested in comments', `${'<!-'.repeat(MEGABYTE / 8)}<!-- a -->${'- -->'.repeat(MEGABYTE / 8)}`],
-  ['a tag opened over and over and never closed', over('<a')],
-  ['a tag name of hyphens, never closed', `<${over('a-')}`],
-  ['a comment opened over and over and never closed', over('<!--')],
-  ['a comment closed once, then opened over and over', `<!-- a -->${over('<!--')}`],
-  ['a summary of < and nothing else', `<details><summary>${over('<')}</summary>x</details>`],
-  ...['p', 'li', 'img', 'details'].map((name): [string, string] => [`<${name} opened over and over and never closed`, over(`<${name}`)]),
-  ...['b', 'strong', 'i', 'em', 's', 'code', 'kbd', 'picture', 'a href="x"'].map((tag): [string, string] => [`<${tag}> opened over and over and never closed`, over(`<${tag}>`)]),
-  ['<b> closed only by </i>', over('<b>x</i>')],
-  ['an <a> that says href over and over', `<a${over(' href="x"')}`],
-  ['folds nested in folds', nestedTo('<details>', '</details>', MEGABYTE)],
-  ['a fold opened over and over and never closed', over('<details>')],
-  ['a fold with a summary opened over and over and never closed', over('<details><summary>')],
-  ['a link opened over and over and never closed', over('[a](')],
-  ['a picture opened over and over and never closed', over('![a](')],
-  ['[ and nothing else', over('[')],
-  ['![ and nothing else', over('![')],
-  ['a fence opened over and over and never closed', over('```x\n')],
-  ['fences of every length, none closed', runsOf('`', 'x\n').replace(/^`{1,2}x\n/gmu, '')],
-  ['backtick runs of every length on one line', runsOf('`', 'x')],
-  ['one fence a megabyte long, of backticks', `${over('`')}\nx\n`],
-  ['one fence a megabyte long, of tildes', `${over('~')}\nx\n`],
-  ['spaces inside a line', `x${over(' ')}y`],
-  ['tabs inside a line', `x${over('\t')}y`],
-  ['form feeds inside a line', `x${over('\f')}y`],
-  ['lines of a form feed alone, then a task', `x\n${over('\f\n')}- [x] y`],
-  ['lines of a form feed alone, then a callout', `x\n${over('\f\n')}> [!NOTE]`],
+const HOSTILE: [string, (size: number) => string][] = [
+  ['tags nested in tags', size => nestedTo('<', 'b>', size)],
+  ['tags that each leave a < behind when cut out', size => over('a<<b>', size)],
+  ['comments nested in comments', size => `${'<!-'.repeat(size / 8)}<!-- a -->${'- -->'.repeat(size / 8)}`],
+  ['a tag opened over and over and never closed', size => over('<a', size)],
+  ['a tag name of hyphens, never closed', size => `<${over('a-', size)}`],
+  ['a comment opened over and over and never closed', size => over('<!--', size)],
+  ['a comment closed once, then opened over and over', size => `<!-- a -->${over('<!--', size)}`],
+  ['a summary of < and nothing else', size => `<details><summary>${over('<', size)}</summary>x</details>`],
+  ...['p', 'li', 'img', 'details'].map((name): [string, (size: number) => string] => [`<${name} opened over and over and never closed`, size => over(`<${name}`, size)]),
+  ...['b', 'strong', 'i', 'em', 's', 'code', 'kbd', 'picture', 'a href="x"'].map((tag): [string, (size: number) => string] => [
+    `<${tag}> opened over and over and never closed`,
+    size => over(`<${tag}>`, size),
+  ]),
+  ['<b> closed only by </i>', size => over('<b>x</i>', size)],
+  ['an <a> that says href over and over', size => `<a${over(' href="x"', size)}`],
+  ['folds nested in folds', size => nestedTo('<details>', '</details>', size)],
+  ['a fold opened over and over and never closed', size => over('<details>', size)],
+  ['a fold with a summary opened over and over and never closed', size => over('<details><summary>', size)],
+  ['a link opened over and over and never closed', size => over('[a](', size)],
+  ['a picture opened over and over and never closed', size => over('![a](', size)],
+  ['[ and nothing else', size => over('[', size)],
+  ['![ and nothing else', size => over('![', size)],
+  ['a fence opened over and over and never closed', size => over('```x\n', size)],
+  ['fences of every length, none closed', size => runsOf('`', 'x\n', size).replace(/^`{1,2}x\n/gmu, '')],
+  ['backtick runs of every length on one line', size => runsOf('`', 'x', size)],
+  ['one fence as long as the text, of backticks', size => `${over('`', size)}\nx\n`],
+  ['one fence as long as the text, of tildes', size => `${over('~', size)}\nx\n`],
+  ['spaces inside a line', size => `x${over(' ', size)}y`],
+  ['tabs inside a line', size => `x${over('\t', size)}y`],
+  ['form feeds inside a line', size => `x${over('\f', size)}y`],
+  ['lines of a form feed alone, then a task', size => `x\n${over('\f\n', size)}- [x] y`],
+  ['lines of a form feed alone, then a callout', size => `x\n${over('\f\n', size)}> [!NOTE]`],
 ]
 
-// Each is read in well under 100 ms on a laptop, and took minutes before it was made linear: half a second leaves room for a
-// slow machine and none for a reading that is quadratic again.
-test.each(HOSTILE)('a megabyte of %s is read in under half a second', (_, body) => {
-  expect(msToRead(body)).toBeLessThan(500)
+/** The middle one of `values`. */
+const median = (values: readonly number[]): number => values.toSorted((a, b) => a - b)[Math.floor(values.length / 2)] ?? Number.NaN
+
+/**
+ * How many times longer `large` takes to read than `small`: pairs of readings, the small then the large, and the middle of
+ * five pairs' ratios, after two pairs that are not counted, whose first readings of a text are up to twice as slow as the
+ * rest. The two readings of a pair meet the machine in the same state, so a spell in which it runs everything slower slows
+ * both; one pair that a collection of garbage skews is outvoted by the rest.
+ */
+const slowdown = (small: string, large: string): number => {
+  const ratios = [0, 1, 2, 3, 4, 5, 6].map(() => {
+    const ofSmall = msToRead(small)
+    return msToRead(large) / ofSmall
+  })
+  return median(ratios.slice(2))
+}
+
+// Each took minutes on a megabyte before it was made linear. A reading in proportion to the text takes about four times as
+// long on four times the text, and one that is quadratic again sixteen times. Eight is where a reading that grows as the
+// text's length to the power 1.5 would sit, so it catches anything that grows that fast or faster. Processor time alone does
+// not hold the bar on a shared runner, where a core can take about twice the processor time for the same work for a spell
+// (a busy twin on the same core, a lower clock): when one fell between the small readings and the large ones, a linear
+// reading measured 8.009 (main, 20 November). In pairs, a spell slows both readings of a pair or neither, but for a pair it
+// begins or ends in, and the middle of five outvotes those two. It does not catch a milder slide, such as a sort that makes
+// a reading n log n.
+test.each(HOSTILE)('%s takes about four times as long to read at four times the length, and under eight', (_, make) => {
+  expect(slowdown(make(MEGABYTE / 32), make(MEGABYTE / 8))).toBeLessThan(8)
 })
 
 // ---- a fold nested past reading -----------------------------------------------------------------------------------------

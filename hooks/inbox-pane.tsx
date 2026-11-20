@@ -105,7 +105,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   }
 
   /**
-   * A card per MR, bordered while something on it is new: its title, its ref with what the rule counted, then the
+   * A card per MR, saying `N new` while something on it is new: its title, its ref with what the rule counted, then the
    * newest event. A press on the title opens every event kept, with what each said.
    */
   const itemCard = (item: InboxItem) => {
@@ -116,14 +116,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const isOpen = canOpen && cards.includes(item.key)
     const buttons = cardButtons(item.key)
     return (
-      <Box
-        key={`ib-${shortHash(item.key)}`}
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={item.unseen > 0 ? 'warning' : 'subtle'}
-        hover={canOpen ? { borderColor: 'claude' } : undefined}
-        paddingX={1}
-      >
+      <Box key={`ib-${shortHash(item.key)}`} flexDirection="column" paddingX={1} marginBottom={1}>
         <Box flexDirection="row" gap={1}>
           <Box flexGrow={1} flexShrink={1}>
             {/* A link-blue title read as a way out to GitLab; the ref on the next line is that way. */}

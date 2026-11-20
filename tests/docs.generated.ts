@@ -4,16 +4,16 @@
 export const README = {
   commands: ['gitlab', 'mrs'],
   tools: ['watch_mr'],
-  runs: [[30000, 60000, 120000, 600000, 300000], [], [], [300000], [1800000], [60000], [], [900000], [900000], [], [], [2000, 15000, 45000], [3000, 120000]],
+  runs: [[30000, 60000, 120000, 600000, 300000], [], [], [300000], [1800000], [60000], [60000, 600000], [], [900000], [900000], [], [], [2000, 15000, 45000], [3000, 120000]],
 } as const
 
 export const DESIGN = {
   colours: [
-    ['success', '#2da44e'],
-    ['error', '#cf222e'],
-    ['warning', '#bf8700'],
-    ['suggestion', '#0969da'],
-    ['subtle', '#8c959f'],
+    ['success', { light: '#1f883d', dark: '#53c656' }],
+    ['error', { light: '#cf222e', dark: '#fa8181' }],
+    ['warning', { light: '#bf8700', dark: '#e59c08' }],
+    ['suggestion', { light: '#0969da', dark: '#6aacf1' }],
+    ['subtle', { light: '#6e7781', dark: '#9c9c9c' }],
   ],
   checkTones: [
     [
@@ -35,8 +35,12 @@ export const DESIGN = {
   badges: [
     ['✓', 'approved'],
     ['✕', 'requested changes'],
+    ['?', 'reviewing'],
+    ['?', 'commented'],
+    ['◌', 'not reviewed yet'],
+    ['💬', 'holds an open thread'],
   ],
-  links: ['🔀', '🎫', '📁', '🚦', '💬'],
+  links: ['🔀', '🎫', '📁', '🚦', '💬', '📍'],
   inboxEvents: [
     ['✗', 'requested changes'],
     ['↺', 'withdrew approval'],

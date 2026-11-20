@@ -1,7 +1,7 @@
 // Small hand-written decoders for what the outside tools print: each takes `unknown` and gives a typed value or throws
 // with a message the pane can show. No library, since a mod's npm packages cannot be relied on at runtime.
 import { Failure } from './failure.ts'
-import type { RawResponse } from './gitlab-documents.ts'
+import type { RawResponse } from './gitlab-request.ts'
 
 import type { Usual } from '../types'
 
@@ -21,6 +21,15 @@ export const dataOf = <Data>(response: RawResponse<Data>): Data => {
     throw reason === '' ? new Failure('bad-answer', 'GitLab sent no data') : new Failure('server', reason)
   }
   return data
+}
+
+/** The nodes of a GraphQL list without the nulls GitLab leaves where it could not read one; none for a list it did not send. */
+export const present = <T>(nodes: readonly (T | null)[] | null | undefined): T[] => (nodes ?? []).filter(node => node !== null)
+
+/** An ISO time as epoch milliseconds; null for none, and for a text that is no time. */
+export const timeOf = (iso: string | null): number | null => {
+  const at = iso === null ? Number.NaN : Date.parse(iso)
+  return Number.isNaN(at) ? null : at
 }
 
 /** A string with something in it; null, undefined and the empty string are none. */
@@ -57,7 +66,7 @@ export const field = (value: unknown, key: string): unknown => (isRecord(value) 
 
 /**
  * GitLab's GraphQL answer: an object with `data` (an object or null) and perhaps `errors`. What is inside `data` is
- * read where it is used, by gitlab.ts, which owns the documents.
+ * read where it is used, by the `ask-*.ts` module that owns the document.
  */
 export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (!isRecord(raw)) {
@@ -67,17 +76,16 @@ export function decodeGraphql<Data>(raw: unknown): RawResponse<Data> {
   if (data !== undefined && data !== null && !isRecord(data)) {
     throw new Failure('bad-answer', 'GitLab answered data that is not an object')
   }
+  // What an error says of where it is: the field or argument a schema lacks, by name (`missingFeatures`).
   const errors = records(raw.errors).map(error => {
     const extensions = isRecord(error.extensions) ? error.extensions : {}
-    const code = textOrNull(extensions.code)
-    const typeName = textOrNull(extensions.typeName)
-    const fieldName = textOrNull(extensions.fieldName)
-    return {
-      message: text(error.message),
-      ...(code !== null || typeName !== null || fieldName !== null
-        ? { extensions: { ...(code !== null ? { code } : {}), ...(typeName !== null ? { typeName } : {}), ...(fieldName !== null ? { fieldName } : {}) } }
-        : {}),
-    }
+    const said = Object.fromEntries(
+      (['code', 'typeName', 'fieldName', 'name', 'argumentName'] as const).flatMap(key => {
+        const value = textOrNull(extensions[key])
+        return value !== null ? [[key, value]] : []
+      })
+    )
+    return { message: text(error.message), ...(Object.keys(said).length > 0 ? { extensions: said } : {}) }
   })
   // The one cast at the GraphQL boundary: GitLab validated this answer against the document and the schema the types
   // were generated from, so `data` has the shape of `Data`, nulls where the schema allows them.

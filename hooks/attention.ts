@@ -27,20 +27,13 @@ export function rank(card: MrCard): number {
 /** Bots with an open thread or a request for changes, either of which holds the merge. */
 const botsHolding = (card: MrCard): Person[] => card.people.filter(person => person.isBot && (person.openThreads > 0 || person.state === 'requested_changes'))
 
-export const byAttention = (a: MrCard, b: MrCard): number => firstDifference(rank(a) - rank(b), b.updatedAt.localeCompare(a.updatedAt))
-
 /**
- * An MR card's border colour, its review: red while someone asked for changes or it cannot merge as it is (conflicts,
- * a failed pipeline, or a job that failed in one still running), green once approved, grey while it waits on a review.
- * Whether it needs you is the line's weight.
+ * The order of the MR list: what GitLab says can merge first, so finishing comes before starting more; then what needs you
+ * (`rank`), then the latest. Readiness is GitLab's own verdict, the green one the card says, not a rank: a project may let an
+ * MR with an open thread merge, and that MR is both.
  */
-export function reviewTone(card: MrCard): Tone {
-  if (card.changesRequestedBy.length > 0 || card.hasConflicts || card.pipeline?.status === 'failed' || (card.pipeline !== undefined && failedCount(card.pipeline) > 0)) {
-    return 'error'
-  }
-  // With no approvals required, approved means someone did approve.
-  return card.approvalsLeft === 0 && (card.approvalsRequired > 0 || card.approvers.length > 0) ? 'success' : 'subtle'
-}
+export const byAttention = (a: MrCard, b: MrCard): number =>
+  firstDifference(Number(isMergeable(b.mergeStatus)) - Number(isMergeable(a.mergeStatus)), rank(a) - rank(b), b.updatedAt.localeCompare(a.updatedAt))
 
 type BadgeKind = 'failed' | 'check' | 'conflicts' | 'changes' | 'threads' | 'rebase' | 'manual' | 'amber' | 'bots' | 'approvals' | 'ready'
 
@@ -225,7 +218,3 @@ export function verdictOf(card: MrCard): Verdict | null {
 /** The row's markers that trail the verdict: those it does not already say, and none that repeats a passed check. */
 export const trailingOf = (verdict: Verdict, row: readonly Badge[]): Badge[] =>
   row.filter(badge => badge.kind !== 'ready' && (verdict.check === null ? badge.kind === 'check' || badge.check === undefined : badge.check !== verdict.check))
-
-/** A person's icon colour: asked for changes, open threads, approved, or nothing pending. */
-export const personTone = (person: Person): Tone =>
-  person.state === 'requested_changes' ? 'error' : person.openThreads > 0 ? 'warning' : person.state === 'approved' ? 'success' : 'subtle'

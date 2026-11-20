@@ -3,7 +3,8 @@
 import fc from 'fast-check'
 
 import { HOST, job, pipe, rawMr, reviewer, stage, thread } from '../fixtures.ts'
-import { toCard } from '../../hooks/gitlab.ts'
+import type { Mr } from '../fixtures.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 
 import type { CiJobStatus, MergeRequestReviewState, PipelineStatusEnum } from '../../hooks/gitlab.generated.ts'
 import type { CheckStatus, MergeStatus, MrCard } from '../../types'
@@ -38,38 +39,64 @@ const rawArb = fc.record({
   updatedAt: fc.constantFrom('2026-10-23T15:00:00Z', '2026-10-23T16:00:00Z', '2026-10-24T09:30:00Z'),
 })
 
-/** The card GitLab's answer reads into. No merge checks yet (null), as the authored list gives it. */
-const cardArb: fc.Arbitrary<MrCard> = rawArb.map(spec =>
-  toCard(
-    HOST,
-    rawMr(spec.iid, {
-      conflicts: spec.conflicts,
-      shouldBeRebased: spec.shouldBeRebased,
-      draft: spec.draft,
-      approvalsLeft: spec.approvalsLeft,
-      approvalsRequired: spec.approvalsRequired,
-      description: spec.description,
-      updatedAt: spec.updatedAt,
-      headPipeline:
-        spec.pipeline !== undefined
-          ? pipe(spec.pipeline.status, {
-              id: `gid://gitlab/Ci::Pipeline/${spec.pipeline.id}`,
-              stages: {
-                nodes: spec.pipeline.stages.map(each =>
-                  stage(
-                    each.name,
-                    'SUCCESS',
-                    each.jobs.map(one => job(one.name, one.status, { allowFailure: one.allowFailure }))
-                  )
-                ),
-              },
-            })
-          : null,
-      reviewers: { nodes: spec.reviewers.map(one => reviewer(one.name, one.state, one.bot)) },
-      discussions: { nodes: spec.threads.map(one => thread(one.body, one.author, one.resolved, true, one.bot)) },
-    })
-  )
+/** The MR GitLab's answer holds, its pipeline whole and its threads as threads. */
+export const rawMrArb: fc.Arbitrary<Mr> = rawArb.map(spec =>
+  rawMr(spec.iid, {
+    conflicts: spec.conflicts,
+    shouldBeRebased: spec.shouldBeRebased,
+    draft: spec.draft,
+    approvalsLeft: spec.approvalsLeft,
+    approvalsRequired: spec.approvalsRequired,
+    description: spec.description,
+    updatedAt: spec.updatedAt,
+    headPipeline:
+      spec.pipeline !== undefined
+        ? pipe(spec.pipeline.status, {
+            id: `gid://gitlab/Ci::Pipeline/${spec.pipeline.id}`,
+            stages: {
+              nodes: spec.pipeline.stages.map(each =>
+                stage(
+                  each.name,
+                  'SUCCESS',
+                  each.jobs.map(one => job(one.name, one.status, { allowFailure: one.allowFailure }))
+                )
+              ),
+            },
+          })
+        : null,
+    reviewers: { nodes: spec.reviewers.map(one => reviewer(one.name, one.state, one.bot)) },
+    discussions: { nodes: spec.threads.map(one => thread(one.body, one.author, one.resolved, true, one.bot)) },
+  })
 )
+
+/** The card GitLab's answer reads into. No merge checks yet (null), as the authored list gives it. */
+const cardArb: fc.Arbitrary<MrCard> = rawMrArb.map(raw => toCard(HOST, raw))
+
+// A job GitLab counts as passed in a passed pipeline: it passed, was skipped, or is an optional manual one not run.
+const passedJobArb = fc.oneof(
+  fc.record({ name: fc.constantFrom('lint', 'unit', 'build'), status: fc.constant<CiJobStatus>('SUCCESS'), allowFailure: fc.boolean(), ran: fc.constant(true) }),
+  fc.record({ name: fc.constantFrom('deploy', 'e2e'), status: fc.constant<CiJobStatus>('SKIPPED'), allowFailure: fc.boolean(), ran: fc.constant(false) }),
+  fc.record({ name: fc.constantFrom('release', 'cleanup'), status: fc.constant<CiJobStatus>('MANUAL'), allowFailure: fc.constant(true), ran: fc.constant(false) })
+)
+
+/** An MR whose pipeline passed with no warning, as GitLab holds it: stages passed or skipped, jobs that passed or never ran. */
+export const passedMrArb: fc.Arbitrary<Mr> = fc
+  .tuple(rawMrArb, fc.array(fc.tuple(fc.constantFrom('build', 'test', 'ship'), fc.boolean(), fc.array(passedJobArb, { maxLength: 6 })), { maxLength: 4 }))
+  .map(([raw, stages]) => ({
+    ...raw,
+    headPipeline: pipe('SUCCESS', {
+      stages: {
+        // A stage none of whose jobs ran may read as passed or skipped; one with a job that ran passed.
+        nodes: stages.map(([name, isSkipped, jobs]) =>
+          stage(
+            name,
+            isSkipped && !jobs.some(one => one.ran) ? 'SKIPPED' : 'SUCCESS',
+            jobs.map(one => job(one.name, one.status, { allowFailure: one.allowFailure, ...(one.ran ? {} : { startedAt: null, finishedAt: null }) }))
+          )
+        ),
+      },
+    }),
+  }))
 
 /** GitLab's merge checks for a card, as GitLab would say them given what the card shows: a failing check for each thing that blocks. */
 const checksFor = (card: MrCard): MergeStatus => {

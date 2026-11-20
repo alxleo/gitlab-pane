@@ -111,7 +111,7 @@ function readDocs() {
   const commands = tableOf(README, ['Command', 'Does'])
   const named = commands.rows.flatMap(row => ticked(row[0]))
   const runs = tableOf(README, ['Runs', 'How often', 'For', 'Writes (plugin store)'])
-  const colours = tableOf(DESIGN, ['Tone', 'Colour', 'Means'])
+  const colours = tableOf(DESIGN, ['Tone', 'Light', 'Dark', 'Means'])
   const checks = tableOf(DESIGN, ['Tone', 'Asks', 'Checks'])
   const marks = tableOf(DESIGN, ['Mark', 'Tone', 'Status'])
   return {
@@ -124,7 +124,10 @@ function readDocs() {
       runs: runs.rows.map(row => durationsOf(row[1])),
     },
     design: {
-      colours: colours.rows.map((row, at) => [firstTicked(`Colour row ${at + 1}`, row[0]), firstTicked(`Colour row ${at + 1}`, row[1])]),
+      colours: colours.rows.map((row, at) => [
+        firstTicked(`Colour row ${at + 1}`, row[0]),
+        { light: firstTicked(`Colour row ${at + 1}`, row[1]), dark: firstTicked(`Colour row ${at + 1}`, row[2]) },
+      ]),
       checkTones: checks.rows.map((row, at) => [firstTicked(`Merge check row ${at + 1}`, row[0]), ticked(row[2])]),
       pipelineMarks: marks.rows.map((row, at) => [row[0] ?? '', firstTicked(`Pipeline mark row ${at + 1}`, row[1]), ticked(row[2])]),
       badges: tableOf(DESIGN, ['Badge', 'Means']).rows.map(row => [row[0] ?? '', row[1] ?? '']),

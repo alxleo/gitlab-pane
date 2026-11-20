@@ -10,11 +10,11 @@ import { INBOX_EVERY_MS, isInboxDue } from './snapshot'
 // count: the sessions that have a window elect one of their own under the inbox's lease, which reads the inbox alone, at
 // the same pace, and the rest show its read. A session with no window has no band, and reads nothing for one.
 
-/** One read of the inbox, when it is due (the pace, or a person asked for a read): shared in the store, and drawn here. */
-export async function inboxPass($: EngineInterface, hosts: readonly string[], isDue: boolean, at: number): Promise<void> {
+/** One read of the inbox, when it is due (the pace, or a person asked for a read, which `isAsked` says): shared in the store, and drawn here. */
+export async function inboxPass($: EngineInterface, hosts: readonly string[], isDue: boolean, at: number, isAsked: boolean): Promise<void> {
   if (isDue) {
     await changeReads($, state => ({ ...state, inboxAt: at }))
-    await leadInbox($, hosts)
+    await leadInbox($, hosts, isAsked)
   }
 }
 
@@ -42,7 +42,7 @@ export async function inboxAlone($: EngineInterface): Promise<void> {
   }
   if (role === 'leader') {
     const [reads, hosts, now] = await Promise.all([readReads($), readHosts($), $.clock.now()])
-    await inboxPass($, hosts, isInboxDue(reads.inboxAt, now, false), now)
+    await inboxPass($, hosts, isInboxDue(reads.inboxAt, now, false), now, false)
   } else if (role === 'follower') {
     await followInboxTick($)
   }

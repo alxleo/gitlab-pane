@@ -22,19 +22,25 @@ function searcher(text: string, pattern: RegExp): (from: number) => RegExpExecAr
   }
 }
 
-/** The first of `sorted` at or after `from`, or undefined. */
-function firstFrom(sorted: readonly number[], from: number): number | undefined {
+/** Where the first of `sorted` whose `keyOf` is at or after `from` stands in it, or its length when none is. */
+function indexFrom<Item>(sorted: readonly Item[], from: number, keyOf: (item: Item) => number): number {
   let low = 0
   let high = sorted.length
   while (low < high) {
     const middle = (low + high) >> 1
-    if ((sorted[middle] ?? Infinity) < from) {
+    const item = sorted[middle]
+    if (item !== undefined && keyOf(item) < from) {
       low = middle + 1
     } else {
       high = middle
     }
   }
-  return sorted[low]
+  return low
+}
+
+/** The first of `sorted` at or after `from`, or undefined. */
+function firstFrom(sorted: readonly number[], from: number): number | undefined {
+  return sorted[indexFrom(sorted, from, at => at)]
 }
 
 /**
@@ -168,19 +174,23 @@ function listed<Key>(map: Map<Key, number[]>, key: Key, value: number): void {
  * reads it: a fence opens a block at the start of a line, and the first line after its own that holds the same fence
  * alone closes it. A fence of more than three that finds no closer is tried one shorter, down to three, as the pattern
  * gives back what it took. The lines that could close a block are listed once, by fence, so an opener with no closer is
- * answered from the list, not by reading to the end of the text.
+ * answered from the list, not by reading to the end of the text. An opener tries only the lengths some line closes with,
+ * not each length down to three: a fence as long as the text, with no closer, would otherwise be tried as many times.
  */
 export function replaceFences(text: string, by: (code: string) => string): string {
-  const closers = new Map<string, number[]>()
+  const byMark = new Map<string, Map<number, number[]>>()
   const ends = new Map<number, number>()
-  // Keyed by the fence's character and its length, not by the fence itself: an opener with no closer asks for each length
-  // down to three, and a key as long as the fence would cost its length to hash each time, a long fence's length squared.
-  const keyOf = (fence: string, length: number) => `${fence.charAt(0)}${length}`
   for (const line of text.matchAll(/^ {0,3}(`{3,}|~{3,})[ \t]*$/gmu)) {
     const fence = line[1] ?? ''
-    listed(closers, keyOf(fence, fence.length), line.index)
+    const byLength = byMark.get(fence.charAt(0)) ?? new Map<number, number[]>()
+    byMark.set(fence.charAt(0), byLength)
+    listed(byLength, fence.length, line.index)
     ends.set(line.index, line.index + line[0].length)
   }
+  // For each fence character, the lengths its closing lines have, shortest first, with where those lines start.
+  const closers = new Map(
+    [...byMark].map(([mark, byLength]) => [mark, [...byLength].map(([length, starts]) => ({ length, starts })).toSorted((one, other) => one.length - other.length)])
+  )
   const opener = /^ {0,3}(`{3,}|~{3,})/gmu
   const kept: string[] = []
   let from = 0
@@ -191,8 +201,15 @@ export function replaceFences(text: string, by: (code: string) => string): strin
       break
     }
     opener.lastIndex = open.index + 1
-    for (let length = run.length; length >= 3; length -= 1) {
-      const close = firstFrom(closers.get(keyOf(run, length)) ?? [], newline + 1)
+    const ofMark = closers.get(run.charAt(0)) ?? []
+    const tried = ofMark
+      .slice(
+        0,
+        indexFrom(ofMark, run.length + 1, closer => closer.length)
+      )
+      .toReversed()
+    for (const { starts } of tried) {
+      const close = firstFrom(starts, newline + 1)
       const end = close !== undefined ? ends.get(close) : undefined
       if (end !== undefined) {
         kept.push(text.slice(from, open.index), by(text.slice(open.index, end)))

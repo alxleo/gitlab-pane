@@ -7,6 +7,12 @@
 # tests. The security scanners (gitleaks, actionlint, zizmor) are not Node tools, so the `scan` job runs each by its
 # official action; locally `npm run scan` runs whichever of them is installed. See CONTRIBUTING.md.
 #
+# Two Claude Code versions are tested. CLAUDE_CODE_VERSION, the pin, runs everything. CLAUDE_CODE_STABLE, the version
+# npm's `stable` tag offers, is the stable release channel's and the oldest an updating install runs; it validates the
+# plugin and runs its tests. Both are steps of this one job, so `check`, the check main requires, covers both. Renovate
+# raises each (renovate.json). The newest release is canary.yml's: it moves almost daily, and a break there is the
+# engine's doing, so it opens an issue instead of failing every open pull request.
+#
 # On main, a green check then runs release-please, so nothing is released from a red main. It keeps one pull request
 # open that would release what has landed since the last release: the next version, worked out from the commit
 # messages, and the changelog. Merging that pull request is the release: it raises `version` in
@@ -45,6 +51,7 @@ jobs:
       contents: read
     env:
       CLAUDE_CODE_VERSION: "2.1.318"
+      CLAUDE_CODE_STABLE: "2.1.311"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,6 +93,16 @@ jobs:
           claude plugin validate --strict "$RUNNER_TEMP/tree"
           claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
           claude plugin validate --strict .claude-plugin/marketplace.json
+      # The stable channel's Claude Code beside the pinned one: the plugin's own validation and tests, not the dev
+      # checks, which read the pinned engine's declarations and pictures.
+      - run: npm install --prefix "$RUNNER_TEMP/stable" "@anthropic-ai/claude-code@${CLAUDE_CODE_STABLE}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      - name: The plugin validates and passes its tests on the stable channel's Claude Code
+        run: |
+          stable="$RUNNER_TEMP/stable/node_modules/.bin/claude"
+          "$stable" --version
+          "$stable" plugin validate --strict .
+          "$stable" plugin validate --strict tools/store-probe
+          "$stable" plugin test .
 
   # The scanners that are not Node tools, each by its official action, pinned to a commit. They install nothing and read the
   # checkout, with its history.

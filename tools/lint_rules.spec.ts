@@ -1,5 +1,3 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { Rule } from '@oxlint/plugins'
@@ -27,22 +25,13 @@ const ENGINE_FILE = join(ROOT, 'hooks', 'pane.tsx')
 // A file the tests make up in hooks/, so that `./decode.ts` is the real decode.ts.
 const HOOK = join(ROOT, 'hooks', 'made-up.ts')
 
-// A module of guards written each way a guard is exported, and of look-alikes that are not guards, in a folder of its own,
-// beside the made-up file that imports them.
-const FIXTURES = mkdtempSync(join(tmpdir(), 'lint-rules-'))
-writeFileSync(
-  join(FIXTURES, 'guards.ts'),
-  [
-    "export function isText(value: unknown): value is string { return typeof value === 'string' }",
-    "export const isWord = function (value: unknown): value is string { return typeof value === 'string' }",
-    "export function isLong(value: unknown): boolean { return typeof value === 'string' && value.length > 9 }",
-    "function isHidden(value: unknown): value is string { return typeof value === 'string' }",
-    'export { isHidden }',
-    'export default function isDefault(value: unknown): value is string { return typeof value === "string" }',
-    '',
-  ].join('\n')
-)
-const IMPORTER = join(FIXTURES, 'importer.ts')
+// tools/lint-fixtures/guards.ts holds guards written each way a guard is exported, and look-alikes that are not guards. The
+// made-up file that imports them sits beside it; the rule reads guards.ts from disk, so it is committed, not written here.
+const IMPORTER = join(ROOT, 'tools', 'lint-fixtures', 'importer.ts')
+// pure-a.ts and pure-b.ts import each other and core files; leaning-a.ts and leaning-b.ts do too, and leaning-b.ts a package.
+// Pure modules outside the core cannot sit in hooks/ (the rule would fail them), so `modules` points the rule at the fixtures.
+const FIXTURE = join(ROOT, 'tools', 'lint-fixtures', 'made-up.ts')
+const FIXTURES = [{ modules: 'tools/lint-fixtures/' }]
 const guardOf = (imported: string, local: string) => `${imported}\nexport function isBox(value: unknown): value is string { return ${local}(value) }`
 
 // The one assertion `no-type-assertion` allows here: inside the private function `brand`.
@@ -55,6 +44,26 @@ tester.run('core-imports', ruleNamed('core-imports'), {
     { name: 'a core file re-exports a core file', filename: CORE_FILE, code: "export { isRecord } from './decode.ts'" },
     { name: 'a package other than the engine is left to tsconfig.core.json', filename: CORE_FILE, code: "import { parse } from 'graphql'" },
     { name: 'a file outside the core imports what it likes', filename: ENGINE_FILE, code: "import { h } from 'claude-code'\nimport { cardOf } from './card'" },
+    { name: 'a hooks file outside the core that imports the engine stays out', filename: HOOK, code: "import type { Ui } from 'claude-code'\nimport { isRecord } from './decode'" },
+    {
+      name: 'a hooks file outside the core that imports a file outside the core stays out',
+      filename: HOOK,
+      code: "import { isRecord } from './decode.ts'\nimport { cardOf } from './card'",
+    },
+    { name: 'a hooks file outside the core that computes an import() stays out', filename: HOOK, code: 'export const late = (name: string) => import(name)' },
+    { name: 'a pure-looking .tsx file stays out, its JSX being the engine’s', filename: join(ROOT, 'hooks', 'made-up.tsx'), code: "import { isRecord } from './decode.ts'" },
+    { name: 'a pure file outside hooks/ is left alone', filename: join(ROOT, 'tests', 'core', 'made-up.spec.ts'), code: "import { isRecord } from '../../hooks/decode.ts'" },
+    {
+      name: 'a hooks file outside the core that imports a package stays out, as the core is compiled with no host’s types',
+      filename: HOOK,
+      code: "import { readFileSync } from 'node:fs'\nexport { isRecord } from './decode.ts'",
+    },
+    {
+      name: 'a module outside the core that imports a cycle outside it, one of which imports a package, stays out',
+      filename: FIXTURE,
+      options: FIXTURES,
+      code: "import { isYamlRecord } from './leaning-a.ts'\nexport const yes = isYamlRecord",
+    },
   ],
   invalid: [
     { name: 'a core file imports a file outside the core', filename: CORE_FILE, code: "import { paneOf } from './pane'", errors: [{ messageId: 'outside' }] },
@@ -74,6 +83,27 @@ tester.run('core-imports', ruleNamed('core-imports'), {
       errors: [{ messageId: 'outside' }],
     },
     { name: 'a core file names a type from the engine', filename: CORE_FILE, code: "export type Ui = typeof import('claude-code')", errors: [{ messageId: 'engine' }] },
+    {
+      name: 'a hooks file outside the core that imports only core files is pure, so it must join the core',
+      filename: HOOK,
+      code: "import { isRecord } from './decode'\nimport type { Mr } from '../types'",
+      errors: [{ messageId: 'pure' }],
+    },
+    { name: 'a hooks file outside the core that imports nothing is pure', filename: HOOK, code: 'export const two = 2', errors: [{ messageId: 'pure' }] },
+    {
+      name: 'a module outside the core that imports a cycle of modules outside it, pure together, is pure',
+      filename: FIXTURE,
+      options: FIXTURES,
+      code: "import { isFilled } from './pure-a.ts'\nexport const full = isFilled",
+      errors: [{ messageId: 'pure' }],
+    },
+    {
+      name: 'a module of a pure cycle outside the core is pure itself, though each of it imports a file outside the core',
+      filename: join(ROOT, 'tools', 'lint-fixtures', 'pure-b.ts'),
+      options: FIXTURES,
+      code: "import { isFilled } from './pure-a.ts'\nexport const isEmpty = (value: unknown): boolean => !isFilled(value)",
+      errors: [{ messageId: 'pure' }],
+    },
   ],
 })
 
@@ -240,8 +270,8 @@ tester.run('only-importers', ruleNamed('only-importers'), {
   valid: [
     {
       name: 'the listed file imports the name',
-      filename: join(ROOT, 'hooks', 'gitlab.ts'),
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      filename: join(ROOT, 'hooks', 'mr-card.ts'),
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "import { fromGitLab } from './markdown.ts'",
     },
   ],
@@ -249,28 +279,28 @@ tester.run('only-importers', ruleNamed('only-importers'), {
     {
       name: 'another file imports the name',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "import { fromGitLab } from './markdown.ts'",
       errors: [{ messageId: 'name' }],
     },
     {
       name: 'another file imports the module as a namespace',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "import * as markdown from './markdown.ts'",
       errors: [{ messageId: 'namespace' }],
     },
     {
       name: 'another file re-exports the name',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', reason: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', reason: 'it says so' } } }],
       code: "export { fromGitLab } from './markdown.ts'",
       errors: [{ messageId: 'name' }],
     },
     {
       name: 'a restriction the config misspells is reported, not dropped',
       filename: HOOK,
-      options: [{ restricted: { fromGitLab: { allowed: ['hooks/gitlab.ts'], module: 'markdown', why: 'it says so' } } }],
+      options: [{ restricted: { fromGitLab: { allowed: ['hooks/mr-card.ts'], module: 'markdown', why: 'it says so' } } }],
       code: "import { fromGitLab } from './markdown.ts'",
       errors: [{ messageId: 'malformed' }],
     },

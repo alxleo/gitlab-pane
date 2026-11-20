@@ -369,9 +369,18 @@ const num = (value: unknown): number => (typeof value === 'number' ? value : Num
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 const box = (each: Record<string, unknown>): Word => ({ text: text(each['text']), x: num(each['x']), y: num(each['y']), w: num(each['w']), h: num(each['h']) })
 
+/** How long a program the shot runs may take before it is stopped. */
+export const CALL_MS = 30_000
+
+/**
+ * What `hs` is run with: a wait just short of the call's own. Its default, four seconds, is less than listing the windows
+ * takes on a desk with an app slow to answer Accessibility, and `hs` then gives up with "receive timeout".
+ */
+export const hsArgs = (chunk: string): readonly string[] => ['-t', String(CALL_MS / 1000 - 5), '-c', chunk]
+
 /** Runs a program to its end and answers what it printed, or says why it could not. */
 function call(program: string, args: readonly string[], input: string, missing: string): string {
-  const done = spawnSync(program, args, { input, encoding: 'utf8', timeout: 30_000 })
+  const done = spawnSync(program, args, { input, encoding: 'utf8', timeout: CALL_MS })
   if (done.error !== undefined) {
     throw new ShotError(text(field(done.error, 'code')) === 'ENOENT' ? missing : `${program} did not answer: ${done.error.message}`)
   }
@@ -401,7 +410,7 @@ function mac(args: readonly string[]): Record<string, unknown> {
 
 function hammerspoon(chunk: string): Record<string, unknown> {
   const missing = "Hammerspoon's `hs` command is not installed: run hs.ipc.cliInstall() in Hammerspoon's console"
-  return lastJson(call('hs', ['-c', chunk], '', missing), 'Hammerspoon')
+  return lastJson(call('hs', hsArgs(chunk), '', missing), 'Hammerspoon')
 }
 
 function desk(): Desk {

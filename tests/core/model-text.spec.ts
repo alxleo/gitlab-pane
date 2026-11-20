@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { describe, wakeLine } from '../../hooks/wake.ts'
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { cut } from '../../hooks/graphemes.ts'
 import { foreign, line } from '../../hooks/model-text.ts'
 import type { ModelLine, Sayable } from '../../hooks/model-text.ts'

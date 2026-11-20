@@ -8,34 +8,34 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 | Rule | Means | Code |
 |---|---|---|
-| What needs you comes first | failing or blocked, then running, then waiting on others, then ready | `rank`, `hooks/attention.ts` |
-| Colour means the same everywhere | one palette for stages, card borders and reviewer rings | `STAGE_COLOURS`, `hooks/status.ts` |
+| What you can finish comes first | what GitLab says can merge, then failing or blocked, then running, then waiting on others, then passed | `byAttention`, `hooks/attention.ts` |
+| Never colour alone | a colour always rides with a glyph or words that say the same; one meaning keeps one colour in either theme, and cards draw no border | `TONE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
 | Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
 | Nothing waits for the pointer | no part of a card shows or hides on a hover, so nothing moves under it; the rest of an MR is on its page, a press away | `card.tsx` |
-| Bots show only when they hold the merge | by an open thread or a request for changes; then a bot gets a face like anyone's; otherwise its summary comments stay out of the way | `toCard`, `hooks/gitlab.ts` |
+| Bots show only when they hold the merge | by an open thread or a request for changes; then a bot gets a face like anyone's; otherwise its summary comments stay out of the way | `toCard`, `hooks/mr-card.ts` |
 
 ## Colour
 
-The same in light and dark. Hovering a card turns its border the theme's `claude` colour.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
 
-| Tone | Colour | Means |
-|---|---|---|
-| `success` | `#2da44e` green | passed, approved |
-| `error` | `#cf222e` red | failed, changes requested, conflicts |
-| `warning` | `#bf8700` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
-| `suggestion` | `#0969da` blue | running, reviewed |
-| `subtle` | `#8c959f` grey | skipped, canceled, not started, waiting on a review |
+The dark shades are the app's own dark keys, sampled from shots of it. The light ones are vivid fill shades: the app paints its light keys in dark text shades (`#016d11`, `#a42628`, `#895903`, `#1757ac`, `#666666`), which turn muddy on a small mark beside an avatar. The screen renderer's `pane.css` paints text in the app's keys and its pane in `PAGE` (`tools/pane_screens.spec.ts`).
+
+| Tone | Light | Dark | Means |
+|---|---|---|---|
+| `success` | `#1f883d` green | `#53c656` green | passed, approved |
+| `error` | `#cf222e` red | `#fa8181` red | failed, changes requested, conflicts |
+| `warning` | `#bf8700` amber | `#e59c08` amber | waiting on a manual job, open threads, new inbox activity, a withdrawn approval |
+| `suggestion` | `#0969da` blue | `#6aacf1` blue | running, reviewed |
+| `subtle` | `#6e7781` grey | `#9c9c9c` grey | skipped, canceled, not started, waiting on a review, looked without a verdict |
 
 ## MR cards
 
 | Part | Shows | Code |
 |---|---|---|
-| Border colour | the review: red while someone asked for changes or it cannot merge as it is (conflicts, a failed pipeline), green once approved, grey while it waits | `reviewTone` |
-| Border weight | bold when it needs you (rank 0), round otherwise | `rank` |
 | Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
-| Line 2 | links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict or the move in its place (below) with other blockers trailing dimly, then the people; a name opens the page on what that person wrote | `row-facts.ts` |
-| Quiet row | one line, the title, GitLab's verdict (or its merge) and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is neither red nor amber and that quotes no one; its links and faces are on its page | `isQuiet` |
+| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, each face badged for where they stand; a name opens the page on what that person wrote | `row-facts.ts` |
+| Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is grey and that quotes no one; its links and faces are on its page. One GitLab says can merge is a decision, so never quiet | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
 
 ## An MR's page
@@ -55,12 +55,14 @@ A title opens the MR on a page of its own. Its open threads are a person's feedb
 | Section | Holds | Code |
 |---|---|---|
 | Top row | the tabs and, on Mine, how old the cards are (the inbox says its own age on the row below); at the right, `↻` reads GitLab again, dim while a read is out, and `🔔` says a raised MR wakes Claude, `🔕` once pressed off. An MR read whole has its way back and its age there instead of the tabs | `pane.tsx` |
+| Search | on Mine, first, `🔍` and a box: Enter looks for an MR's number (`!512` that number alone, `512` it first), its address or reference pasted (`group/repo!512`, the repo whole or its last parts), a ticket however spelled (`ABC-123`, `abc123`) or words of a title, repo, author or an open MR's branch, any part of them, case, accents and punctuation aside. Every word must match. It looks through every MR the pane holds, past the repo picked and every fold, and lists `Found · N`, all it found counted, in place of the list: open MRs as their cards, best first, then `Merged`, the five that match best of the merged MRs the pane holds (each host's newest five of the last three days), as the merged section's rows, then `Inbox`, others' MRs as a link each, five at most. Matches past the five are counted on a line of their own. Typing alone changes nothing; `✕` ends the search. GitLab is not asked. A phone, which may have no text field, has no box | `queryOf`, `matchesOf` |
 | Repo filter | on Mine, `📁` (the repo, as on a card's link) and one picker of `All` and each repo with how many MRs it holds, a single row however many repos there are; a phone, which may not draw a picker, has a button for each instead. None while every MR is in one repo. A pick whose repo has no MRs left, or that leaves one repo, shows them all and is forgotten at the next read, so the repo coming back does not narrow the list by itself. A session whose pane closes reads only the MRs it raised, so like its folds and open page, the pick goes then too | `keptRepo` |
 | This session | the MRs this session raised, watched or you pinned, in the order they came | `buildPane` |
-| `▸ N others` | while This session holds any, every other MR folds behind one line saying how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
-| Ready | the open MRs, most pressing first, ten until `▸ more` | `MINE_SHOWN` |
+| `▸ N others` | while This session holds any, every other MR folds behind one line saying how many GitLab says can merge and how many have news in the inbox; a picked repo shows its MRs unfolded | `buildPane` |
+| Ready | the open MRs, those GitLab says can merge first, then the most pressing, ten until `▸ more` | `MINE_SHOWN` |
 | Parked | a ready MR untouched for a week, its pipeline included, with no news in the inbox; a comment, a push, a pipeline run or news brings it back | `PARKED_AFTER_MS` |
 | Drafts | GitLab's drafts, folded | `buildPane` |
+| Merged | last, folded, as `▸ N merged`: your own MRs merged in the last three days, five at most, as the inbox's read left them (not cards, so nothing that counts or orders the list sees them). A row is the MR's link, how long ago it merged, and the build GitLab ran on the commit that landed on its target branch (never a pipeline a schedule started). Only a failed build is said on the folded line (`▸ 3 merged · 1 build ✗`); open, the rows say it. No wake, no toast | `mergedModel`, `LANDED_WITHIN_MS`, `LANDED_SHOWN` |
 
 ## Merge checks
 
@@ -88,7 +90,7 @@ A failing check's tone is what it asks of you (`CHECK_TONE` in `hooks/attention.
 
 ## Moves
 
-The one press that moves an MR along, where GitLab's checks name it and you may make it (`nextMove` in `hooks/next-move.ts`). It stands in place of the verdict when it fixes the check the verdict names, else beside the verdict, and that check trails no more. Every other MR has none: waiting on people, on a pipeline or on a fix stays as it was.
+The one press that moves an MR along, where GitLab's checks name it and you may make it (`nextMove` in `hooks/next-move.ts`). It leads the card's second line, the same place on every card and across reads, so it is found by habit; the verdict is not said again when the move fixes the check it names, and the move's own check trails no more. Every other MR has none: waiting on people, on a pipeline or on a fix stays as it was.
 
 | Move | Offered when | A press |
 |---|---|---|
@@ -106,7 +108,7 @@ The one press that moves an MR along, where GitLab's checks name it and you may 
 
 ## Pipeline marks
 
-`statusMark` in `hooks/status.ts`. A failed job is ✗; a job allowed to fail is ⚠, amber; each with its run time.
+`statusMark` in `hooks/status.ts`. A failed job is ✗; a job allowed to fail is ⚠, amber; each with its run time. A merged MR's row marks the build of the commit that landed on its target branch the same way, ○ until GitLab has started one.
 
 | Mark | Tone | Status |
 |---|---|---|
@@ -122,14 +124,20 @@ The one press that moves an MR along, where GitLab's checks name it and you may 
 
 A person is their GitLab avatar or, without one, their initials on a disc coloured by name; a bot is its own picture or a robot.
 
-- **Ring** (`personTone`): red for changes requested, else amber for open threads, else green for approved, else grey. Heavy once they have a say, thin while they have none.
-- **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below.
-- **Without images** (the terminal): a coloured `●`, `◉` for the person whose comments are open, or the badge's glyph.
+- **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below: where they stand, said by its glyph, never by a colour alone, so there is no ring. It is cut out of the avatar by an edge in the pane's background (`PAGE`), and its glyph is drawn in that background too, white on the light shades and near black on the dark ones, which keeps 4.5:1 in either theme.
+- **Without images** (the terminal): the badge's glyph, in its tone.
+- **Faded** is kept for a face that is not a reviewer yet, such as someone the pane suggests adding.
 
 | Badge | Means |
 |---|---|
 | ✓ | approved |
 | ✕ | requested changes |
+| ? | reviewing |
+| ? | commented |
+| ◌ | not reviewed yet |
+| 💬 | holds an open thread |
+
+Someone holding an open thread wears 💬 (`THREAD_MARK`, `markOf`), an amber speech bubble, in place of ✓, ? or ◌: the MR waits on their discussion, which its verdict says of the MR as a whole and the bubble says of the person. ✕ outranks it. The count beside their name says how many threads.
 
 ## Links
 
@@ -140,8 +148,9 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
 | 🔀 | the MR |
 | 🎫 | the Jira ticket |
 | 📁 | the repo |
-| 🚦 | the pipeline |
+| 🚦 | the pipeline; on a merged MR's row, the build on its target branch |
 | 💬 | the comment |
+| 📍 | the commit a merge takes |
 
 A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
 
@@ -174,7 +183,7 @@ The tabs are the rules of `hooks/inbox-rules.ts`; `/mrs --rule` takes a tab's na
 | On my MRs | `on-my-mrs` | changes requested, approvals and their withdrawal, reviews, comments, pushes and merges on yours |
 | Following | `following` | the same on MRs of the people and projects `inboxFollow` names |
 
-- A card with news has an amber border and says `N new`; one without is grey.
+- A card with news says `N new`.
 - An MR can show under several tabs; the Inbox tab's count counts it once.
 - The band above the prompt says the Inbox tab's words in amber, `Inbox · N new`, only while there is news and the tabs are out of sight: the pane closed or undrawn, or an MR's page in their place. It never repeats the tab beside it, gives way to a survey, and opens the Inbox tab when pressed (`inboxBand`, `hooks/pane-model.ts`).
 - `N+ new` is a lower bound: GitLab sent only the latest 30 notes, and the mark is older than the oldest.

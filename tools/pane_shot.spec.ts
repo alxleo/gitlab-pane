@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { chooseWindow, hasMoved, inPixels, isTitle, locate, lua, onScreen, parseCommand, parking, plain, sameSession, strokes, target } from './pane_shot.ts'
+import { CALL_MS, chooseWindow, hasMoved, hsArgs, inPixels, isTitle, locate, lua, onScreen, parseCommand, parking, plain, sameSession, strokes, target } from './pane_shot.ts'
 import type { Desk, Line, Located, Window, Word } from './pane_shot.ts'
 
 /** A window like the desktop app's: 1,000 by 800 points, its corner at 100,50 on the screen. */
@@ -223,4 +223,12 @@ test('arguments that cannot be meant are refused with what is wrong', () => {
   expect(() => parse('capture', '-o', 'p.png', '--session', ' ▾')).toThrow('--session needs a name with letters or digits')
   expect(() => parse('shoot')).toThrow('no command shoot')
   expect(() => parse('capture', '--colour', 'red')).toThrow("Unknown option '--colour'")
+})
+
+test('Hammerspoon is given almost as long as the call, not its own four seconds, which listing the windows can outlast', () => {
+  const args = hsArgs('return 1')
+  expect(args.slice(-2)).toEqual(['-c', 'return 1'])
+  const wait = Number(args[args.indexOf('-t') + 1])
+  expect(wait).toBeGreaterThan(4)
+  expect(wait * 1000).toBeLessThan(CALL_MS)
 })

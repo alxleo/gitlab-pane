@@ -6,16 +6,15 @@ import { firstRunLines } from '../../hooks/first-run.ts'
 import { cardKey, projectOf } from '../../hooks/hosts.ts'
 import { shortHash } from '../../hooks/identity.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
-import { toCard } from '../../hooks/gitlab.ts'
+import { toCard } from '../../hooks/mr-card.ts'
 import { buildPane, inboxBand, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { pickedRepo, REPO_ALL } from '../../hooks/repo-filter.ts'
 import { slimCard } from '../../hooks/slim.ts'
-import { STAGE_COLOURS } from '../../hooks/status.ts'
 import { readCardArb } from './arbitrary.ts'
 import { HOST, NOW, gitlabSays, pipe, project, rawMr, thread } from '../fixtures.ts'
 import type { Mr } from '../fixtures.ts'
-import type { CheckStatus, Merging, MrCard, Pressed } from '../../types'
+import type { CheckStatus, InboxMr, Landed, Merging, MrCard, Pressed } from '../../types'
 
 /** GitLab says the person may merge and push, on this head. */
 const CAN: Merging = { head: 'abc123', isRebasing: false, isAutoMerging: false, canMerge: true, canPush: true }
@@ -33,6 +32,9 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       repoFilter: '',
       view: 'mine',
       news: { count: 0, keys: [] },
+      landed: [],
+      search: '',
+      inbox: [],
       poll: { fetchedAt: NOW, error: null, hosts: {} },
       isReading: false,
       isSyncing: false,
@@ -83,7 +85,7 @@ test('the band above the prompt says the inbox news only while the pane shows no
   )
 })
 
-test('each MR is a card bordered by its review, heavier when it needs you, its worst blocker in words', async () => {
+test('each MR is a card in the order of what needs you, its worst blocker in words', async () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const botThread = { nodes: [thread('### What the bot wrote', 'project_1_bot_ab', false, true, true)] }
   const cards = [
@@ -94,13 +96,8 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
     { ...toCard(HOST, rawMr(16)), mergeStatus: gitlabSays({ NOT_OPEN: 'failed' }) },
   ]
   const { mine, tabs } = modelOf(cards)
-  // The failed one needs you: a heavier line in red. One waiting on a review is grey; approved ones are green.
-  expect(Object.fromEntries(mine.rows.map(row => [row.mr.text, [row.border.style, row.border.colour]]))).toEqual({
-    '🔀 !12': ['bold', STAGE_COLOURS.error],
-    '🔀 !13': ['round', STAGE_COLOURS.subtle],
-    '🔀 !14': ['round', STAGE_COLOURS.success],
-    '🔀 !15': ['round', STAGE_COLOURS.success],
-  })
+  // The one GitLab says can merge comes first, so finishing comes before the rest; then the failed one, which needs you.
+  expect(mine.rows.map(row => row.mr.text)).toEqual(['🔀 !14', '🔀 !12', '🔀 !15', '🔀 !13'])
   // GitLab says one is no longer open, so it leaves Mine before the next full read.
   expect(tabs.mine).toBe('Mine · 4')
   const byLink = Object.fromEntries(mine.rows.map(row => [row.mr.text, row]))
@@ -113,7 +110,7 @@ test('each MR is a card bordered by its review, heavier when it needs you, its w
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
 })
 
-test('a row that passed and waits on nothing of yours folds to one line; one that runs, failed, is blocked or quotes a person does not', () => {
+test('a row that passed and waits on others folds to one line; one that can merge, runs, failed, is blocked or quotes a person does not', () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const rows = {
     waiting: toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS') })),
@@ -126,13 +123,20 @@ test('a row that passed and waits on nothing of yours folds to one line; one tha
   }
   const model = modelOf(Object.values(rows))
   const quiet = Object.fromEntries(Object.entries(rows).map(([name, card]) => [name, model.mine.rows.find(row => row.key === card.key)?.isQuiet]))
-  expect(quiet).toEqual({ waiting: true, mergeable: true, running: false, failed: false, conflict: false, asked: false })
-  // Its one line still says what it waits on, or that it can merge.
+  // One that can merge is a decision to make, not waiting: it keeps its links and faces to check before merging.
+  expect(quiet).toEqual({ waiting: true, mergeable: false, running: false, failed: false, conflict: false, asked: false })
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.verdict?.words).toBe('✓ mergeable')
-  // Where the person may merge it, that line offers the merge in place of saying it can, and stays one line.
-  const mayMerge = { ...rows.mergeable, merging: CAN }
+  // GitLab named no head its checks were made on, so there is none to show.
+  expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.head).toBeNull()
+  // Where the person may merge it, the line offers the merge in place of saying it can, with the head a press merges, linked.
+  const sha = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+  const mayMerge = { ...rows.mergeable, merging: { ...CAN, head: sha } }
   const offered = modelOf([mayMerge]).mine.rows[0]
-  expect(offered?.isQuiet).toBe(true)
+  expect(offered?.isQuiet).toBe(false)
+  // Its id shortened as GitLab shortens one; the link opens the whole commit.
+  expect(offered?.head).toEqual({ href: `${mayMerge.repo.url}/-/commit/${sha}`, text: '📍 a1b2c3d4' })
+  // On an MR that cannot merge yet, the head is not said: there is nothing to check it against.
+  expect(modelOf([{ ...rows.waiting, merging: CAN }]).mine.rows[0]?.head).toBeNull()
   expect(offered?.verdict?.move).toEqual({
     key: `move-2-${shortHash(mayMerge.project)}`,
     label: '✓ merge',
@@ -266,7 +270,7 @@ test("the Mine tab and the repos count the same MRs, and this session's, the rea
 
 const pinOf = (card: MrCard, origin: 'raised' | 'watched' = 'watched') => ({ url: card.url, host: card.host, path: card.path, iid: card.iid, origin })
 
-test('with this session holding MRs, the rest fold to one line counting them and their news; a picked repo shows its MRs', () => {
+test('with this session holding MRs, the rest fold to one line counting them, what can merge and their news; a picked repo shows its MRs', () => {
   const failing = (iid: number) => toCard(HOST, rawMr(iid, { headPipeline: pipe('FAILED') }))
   const [held, other, news] = [failing(21), failing(22), failing(23)]
   const cards = [held, other, news, toCard(HOST, rawMr(24, { headPipeline: pipe('FAILED'), project: project('g/q') }))]
@@ -275,6 +279,9 @@ test('with this session holding MRs, the rest fold to one line counting them and
   const folded = modelOf(cards, { pinned, news: { count: 2, keys: [news.key, 'gitlab.example.com/other/repo!9'] } })
   expect(folded.session.map(row => row.key)).toEqual([held.key])
   expect(folded.others).toEqual({ label: '▸ 3 others · 1 new', isOpen: false })
+  // One GitLab says can merge is work to finish, so the folded line says so, news or not.
+  const mergeable = { ...toCard(HOST, rawMr(25, { approvalsLeft: 0, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() }
+  expect(modelOf([...cards, mergeable], { pinned, news: { count: 1, keys: [news.key] } }).others?.label).toBe('▸ 4 others · 1 can merge · 1 new')
   expect(folded.mine.rows).toEqual([])
   const opened = modelOf(cards, { pinned, expanded: ['others'] })
   expect(opened.others?.label).toBe('▾ 3 others')
@@ -284,6 +291,129 @@ test('with this session holding MRs, the rest fold to one line counting them and
   expect(picked.others).toBeNull()
   expect(picked.mine.rows).toHaveLength(2)
   expect(modelOf(cards).others).toBeNull()
+})
+
+const landedOf = (iid: number, over: Partial<Landed> = {}): Landed => ({
+  host: HOST,
+  path: 'g/p',
+  iid,
+  title: `feat: thing ${iid}`,
+  url: `https://${HOST}/g/p/-/merge_requests/${iid}`,
+  mergedAt: NOW - 3_600_000,
+  targetBranch: 'main',
+  sha: 'a'.repeat(40),
+  build: { status: 'success', url: `https://${HOST}/g/p/-/pipelines/${iid}0` },
+  checkedAt: NOW,
+  hasFailed: false,
+  ...over,
+})
+
+test("the user's merged MRs fold last in Mine without joining its count, its folds or its order, and only Mine draws them", () => {
+  const [held, other] = [toCard(HOST, rawMr(21, { headPipeline: pipe('FAILED') })), toCard(HOST, rawMr(22, { headPipeline: pipe('SUCCESS') }))]
+  const cards = [held, other]
+  const landed = [landedOf(31), landedOf(32, { build: { status: 'failed', url: `https://${HOST}/g/p/-/pipelines/320` } })]
+  const plain = modelOf(cards)
+  const folded = modelOf(cards, { landed })
+  expect(folded.merged).toEqual({ label: '▸ 2 merged · 1 build ✗', isOpen: false, rows: [] })
+  // Not cards: what counts and orders the list does not see them.
+  expect(folded.tabs.mine).toBe(plain.tabs.mine)
+  expect(folded.mine).toEqual(plain.mine)
+  // Its own fold, which the fold of the others neither holds nor opens.
+  const pinned = [pinOf(held)]
+  expect(modelOf(cards, { landed, pinned }).others).toMatchObject({ isOpen: false })
+  expect(modelOf(cards, { landed, pinned }).merged?.label).toBe('▸ 2 merged · 1 build ✗')
+  expect(modelOf(cards, { landed, expanded: ['merged'] }).merged).toMatchObject({ label: '▾ 2 merged', isOpen: true })
+  expect(modelOf(cards, { landed, expanded: ['merged'] }).merged?.rows).toHaveLength(2)
+  expect(modelOf(cards, { landed, view: 'inbox' }).merged).toBeNull()
+  expect(modelOf(cards, { landed, view: 'reading' }).merged).toBeNull()
+  expect(plain.merged).toBeNull()
+})
+
+test('an open merged section leaves the list less room, by what its rows may take, and a folded one leaves it all', () => {
+  const cards = [51, 52, 53, 54, 55].map(iid => toCard(HOST, rawMr(iid)))
+  const landed = [landedOf(61), landedOf(62)]
+  const drawn = (over: Partial<PaneInput>) => modelOf(cards, { landed, ...over }, () => 1_000, 4_000).mine.rows.filter(row => row.fit.isDrawn).length
+  expect(drawn({})).toBe(4)
+  expect(drawn({ expanded: ['merged'] })).toBe(2)
+  // Nothing to say, nothing taken.
+  expect(drawn({ landed: [], expanded: ['merged'] })).toBe(4)
+})
+
+test('an MR the list still draws is not also said merged, and the section follows the repo picked as the list does', () => {
+  const [here, there] = [toCard(HOST, rawMr(41)), toCard(HOST, rawMr(42, { project: project('g/q') }))]
+  const landed = [landedOf(41), landedOf(43), landedOf(44, { path: 'g/q' })]
+  const open = (over: Partial<PaneInput> = {}) => modelOf([here, there], { landed, expanded: ['merged'], ...over }).merged?.rows.map(row => row.key)
+  expect(open()).toEqual([cardKey(HOST, 'g/p', 43), cardKey(HOST, 'g/q', 44)])
+  expect(open({ repoFilter: projectOf(HOST, 'g/q') })).toEqual([cardKey(HOST, 'g/q', 44)])
+  // A pick that no longer narrows the list (its repo has no MR left to draw) narrows nothing, here as there.
+  expect(modelOf([here], { landed, expanded: ['merged'], repoFilter: projectOf(HOST, 'g/q') }).merged?.rows.map(row => row.key)).toEqual([
+    cardKey(HOST, 'g/p', 43),
+    cardKey(HOST, 'g/q', 44),
+  ])
+})
+
+test('a search lists what matches in place of the list, past the repo picked and every fold, with no picker while it is on', () => {
+  const inRepo = (path: string, iid: number, over: Partial<Mr> = {}) => toCard(HOST, rawMr(iid, { project: project(path), ...over }))
+  const pinnedHere = inRepo('g/web', 1, { title: 'feat: [ABC-123] Order history' })
+  const parked = inRepo('g/web', 512, { title: 'fix: Order totals', updatedAt: '2026-10-01T15:00:00Z', headPipeline: null })
+  const draft = inRepo('g/api', 7, { title: 'Draft: Order export', draft: true })
+  const other = inRepo('g/api', 8, { title: 'chore: Bump Node' })
+  const cards = [pinnedHere, parked, draft, other]
+  const folded = { pinned: [pinOf(pinnedHere)], repoFilter: projectOf(HOST, 'g/api') }
+  const model = modelOf(cards, { ...folded, search: 'order' })
+  expect(model.found?.heading).toBe('Found · 3')
+  expect(model.found?.rows.map(row => row.key).toSorted()).toEqual([pinnedHere.key, parked.key, draft.key].toSorted())
+  expect(model.found?.rows.every(row => row.fit.isDrawn)).toBe(true)
+  // Found in any repo, a card names its repo as with none picked: all but the home repo of this session's MRs.
+  expect(model.found?.rows.map(row => [row.key, row.repo?.text ?? null])).toContainEqual([draft.key, '📁 api'])
+  expect(model.found?.rows.map(row => [row.key, row.repo?.text ?? null])).toContainEqual([parked.key, null])
+  // What the list would draw is not built; the picker, which a search looks past, is not drawn.
+  expect(model.session).toEqual([])
+  expect(model.repos).toBeNull()
+  expect(modelOf(cards, { ...folded, search: '!512' }).found?.rows.map(row => row.key)).toEqual([parked.key])
+  expect(modelOf(cards, { ...folded, search: 'abc123' }).found?.rows.map(row => row.key)).toEqual([pinnedHere.key])
+  expect(modelOf(cards, { search: 'zebra' }).found).toMatchObject({ heading: 'Found · 0', isEmpty: true, rows: [] })
+  // No search, or one of nothing to look for, is the list as it was; the inbox and an MR's page never search.
+  for (const over of [{ search: '' }, { search: ' !- ' }, { search: 'order', view: 'inbox' as const }, { search: 'order', view: 'reading' as const }]) {
+    expect(modelOf(cards, { ...folded, ...over }).found).toBeNull()
+  }
+  expect(modelOf(cards, folded).repos).not.toBeNull()
+  // Rows a search leaves out are counted, with no word of a picker that is not drawn.
+  expect(modelOf(cards, { search: 'order' }, () => 1_000, 1_500).leftOut).toBe('2 more MRs left out to stay within what the app draws.')
+})
+
+test('MRs a search finds that match as well come in the order the list puts them, most pressing first', () => {
+  const plain = toCard(HOST, rawMr(1, { title: 'Retry one', headPipeline: pipe('SUCCESS') }))
+  const failing = toCard(HOST, rawMr(2, { title: 'Retry two', headPipeline: pipe('FAILED') }))
+  const ready = { ...toCard(HOST, rawMr(3, { title: 'Retry three', headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() }
+  const cards = [plain, failing, ready]
+  const listed = modelOf(cards).mine.rows.map(row => row.key)
+  expect(listed).not.toEqual(cards.map(card => card.key))
+  expect(modelOf(cards, { search: 'retry' }).found?.rows.map(row => row.key)).toEqual(listed)
+})
+
+test("a search finds the user's merged MRs and others' in the inbox as links, leaving the cards the room their rows take", () => {
+  const cards = [51, 52, 53, 54, 55].map(iid => toCard(HOST, rawMr(iid, { title: `fix: Retry ${iid}` })))
+  const landed = [landedOf(61, { title: 'fix: Retry payments' }), landedOf(62, { title: 'feat: Other' })]
+  const inbox: InboxMr[] = [
+    { host: HOST, path: 'g/p', iid: 71, title: 'Retry the queue', url: `https://${HOST}/g/p/-/merge_requests/71`, author: 'sam', authorName: 'Sam', isMine: false },
+  ].map(each => ({ ...each, state: 'opened', isDraft: false, inQueue: false, isFollowed: false, cutoff: null, signals: [] }))
+  const model = modelOf(cards, { landed, inbox, search: 'retry', expanded: ['merged'] }, () => 1_000, 5_000)
+  expect(model.found?.heading).toBe('Found · 7')
+  expect(model.found?.merged.map(row => row.key)).toEqual([cardKey(HOST, 'g/p', 61)])
+  expect(model.found?.inbox).toEqual([
+    {
+      key: cardKey(HOST, 'g/p', 71),
+      boxKey: `found-${shortHash(cardKey(HOST, 'g/p', 71))}`,
+      mr: { href: `https://${HOST}/g/p/-/merge_requests/71`, text: '🔀 !71 Retry the queue' },
+      about: 'p · Sam',
+    },
+  ])
+  // The merged section is what the search found of it, so it is not drawn again below.
+  expect(model.merged).toBeNull()
+  // Two link rows take what two merged rows do (1,400 of 5,000), leaving three cards of 1,000.
+  expect(model.found?.rows.filter(row => row.fit.isDrawn)).toHaveLength(3)
+  expect(model.leftOut).toBe('2 more MRs left out to stay within what the app draws.')
 })
 
 test('the repo filter is 📁 with All and each repo with its count, the picked one current: one repo, or a pick whose MRs are gone, filters nothing', () => {

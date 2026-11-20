@@ -15,11 +15,11 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 | Rule | Detail |
 | --- | --- |
-| The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed. |
-| Imports | A core file imports core files by their `.ts` path, and `../types`. Other files import without extensions. `tools/*.ts` import `gitlab-documents.ts` and `decode.ts` under plain Node. |
+| The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed, and a `.ts` file in `hooks/` that imports nothing of the engine, no package and no module that does must be (`local/core-imports`). |
+| Imports | A core file imports core files by their `.ts` path, and `../types`. Other files import without extensions. `tools/*.ts` import `gitlab-operations.ts` and `decode.ts` under plain Node. |
 | New logic | On plain data goes in the core, with a test on plain data. Engine-facing files stay thin: `pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `replies.ts`, `register.tsx`. |
-| `fromGitLab` (`markdown.ts`) | Turns text into GitLab's Markdown to draw; only `gitlab.ts` imports it (`local/only-importers`). Anything else gets such text from `cleanBody`. |
-| Module state | None: no module `let` or mutated `const`. State lives in atoms. `in-flight.ts` alone holds promises and callbacks. |
+| `fromGitLab` (`markdown.ts`) | Turns text into GitLab's Markdown to draw; only `mr-card.ts` imports it (`local/only-importers`). Anything else gets such text from `cleanBody`. |
+| Module state | None: no module `let` or mutated `const`. State lives in atoms. `in-flight.ts` alone holds promises and callbacks; it needs nothing of the engine, so it is in the core and its spec runs on plain Node. Core logic stays off it: what it serialises is engine work. |
 | Size | No file in `hooks/` over 400 lines. |
 | Conditions | No `if (text)` or `if (count)` anywhere: say `!== ''`, `> 0`, `!== null`. |
 
@@ -28,10 +28,10 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 - No `x as T` (`as const` is fine). The only assertions: `decodeGraphql` in `decode.ts` (GitLab checked the answer against the schema the types came from), and the private `brand` in `markdown.ts`, `model-text.ts` and `svg.ts`.
 - Narrow with a type guard. An annotated `x is T` must test `x` in its body (`typeof`, `in`, `instanceof`, `Array.isArray`, or a call of another guard); a null check is left unannotated for the compiler to infer. An overload implementation returns no more than its signatures.
 - No `any`, no `!`. No `JSON.parse`: use `parseJson`.
-- GitLab's types: documents are static strings in `gitlab-documents.ts`, and those only an MR's page sends (the reply, the one write) in `page-documents.ts`; `hooks/gitlab.generated.ts` is made from them and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types`. Never edit it; a stale one fails `npm run check`. `schema -- snapshot` refreshes the snapshot from gitlab.com.
+- Each question to GitLab is one `ask-*.ts` module: its documents (static strings), request, cost (`COMPLEXITY`) and the reading of its answer. Shared fragments live in `mr-fragments.ts` and `inbox-fragments.ts`; `documentOf` appends the ones a document spreads. `gitlab-operations.ts` adds the modules up; `gitlab-features.ts` learns what an old host lacks. `hooks/gitlab.generated.ts` is made from the documents and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types`. Never edit it; a stale one fails `npm run check`. `schema -- snapshot` refreshes the snapshot from gitlab.com.
 - `types/index.d.ts` stays one self-contained file (`claude plugin validate --strict`): domain types cannot move out, and every atom key is declared there.
 - The engine's declarations are not committed: `npm run setup` unpacks them into git-ignored `.claude-plugin/types/`. `tsconfig.core.json` has none, which keeps the core off the engine.
-- The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all together.
+- The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all together. `CLAUDE_CODE_STABLE` in `check.yml` is apart: the stable channel's version, which follows npm's `stable` tag.
 
 ## What the engine enforces
 

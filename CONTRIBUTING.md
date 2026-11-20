@@ -18,12 +18,12 @@ npm run check && npm test    # everything a commit and a push must pass
 
 | Script | Checks |
 | --- | --- |
-| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the `claude` on your PATH (`tools/engine_types.ts`: no sign-in, no network, git-ignored). |
+| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the `claude` on your PATH (`tools/engine_types.ts`: no sign-in, no model call, git-ignored). |
 | `npm run files` | JSON and YAML parse; no conflict markers, private keys or files over 500 kB; no `oxlint-` or `eslint-` directive comment in any script (checked here because oxlint obeys a blanket disable even over the rule refusing it); one final newline, no trailing whitespace. |
 | `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), oxlint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
 | `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |
 | `npm run knip` | No unused file, export, type or dependency; each entry point in `knip.jsonc` has its reason. |
-| `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `tools/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, by `.ts` path; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
+| `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `tools/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, by `.ts` path, and a `hooks/` module that imports nothing of the engine, no package and no module that does is in the core; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
 | `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tools/tsconfig.json`. |
 | `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the snapshot and the documents. |
 | `npm run release-tree -- check` | The tree built from `release/files` loads only what it holds. |
@@ -32,10 +32,11 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run scan` | gitleaks, actionlint, zizmor: each only if installed, and a skipped one is named. |
 | `npm run check:fast` | `files`, `format:check`, `knip`, `lint`, `types`, `schema -- types --check`, `release-tree -- check`, `docs -- check`, `validate`. |
 | `npm run check` | `check:fast`, then `scan`. |
-| `npm test` | Vitest on the core and the dev tools' own specs (plain Node), `claude plugin test .` (the engine), then the scenes. |
+| `npm test` | Vitest on the core and the dev tools' own specs (plain Node), `claude plugin test .` (the engine), then the scenes. Vitest runs its specs in a Node that refuses to write, start a process or thread, connect, or read outside the repository (`vitest.config.ts`), each within two seconds: those specs work on plain data. |
 | `npm run schema -- <check\|snapshot\|types>` | `check`: every query against gitlab.com's live schema, and what each costs; `snapshot`: refresh the snapshot; `types`: regenerate the types. |
 | `npm run screens -- <render\|setup\|scenes>` | `render` photographs the pane in Chromium for `docs/screens`; `setup` fetches Chromium; `scenes` runs the scenes. |
 | `npm run rig -- flow` | Drives the pane through a headless engine. |
+| `npm run preview` | Serves the pane this checkout draws, live from your GitLab, on 127.0.0.1 (`--help`; [what it cannot show](#checking-the-pane-in-the-desktop-app)). |
 | `npm run shot -- <capture\|press\|tour\|windows>` | Photographs and presses the pane in the running desktop app; Mac only ([when](#checking-the-pane-in-the-desktop-app)). |
 | `npm run commit-msg` | commitlint on a message file (the commit-msg hook). |
 | `npm run pr-title` | commitlint on stdin (CI, for a pull request's title). |
@@ -50,17 +51,18 @@ npm run check && npm test    # everything a commit and a push must pass
 | Commit message and pull request title (commitlint) | | x | | x | |
 | Author and committer are noreply addresses | | | | x | |
 | `npm test` | | | x | x | x, `claude plugin test .` on the newest Claude Code |
+| `claude plugin validate --strict` and `claude plugin test .` on the stable channel's Claude Code | | | | x | |
 | Release tree builds and validates | | | | x | x, and installs |
 | `screens -- render --verify --check` | | | | x, when the drawing changes | |
 | `schema -- check` against gitlab.com | | | | x, when queries change | x |
 | Plugin installs from GitHub; release branch holds the latest tag | | | | | x |
 | gitleaks over the whole history | | | | | x |
 
-Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
+Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. `check.yml` also validates and tests the plugin on `CLAUDE_CODE_STABLE`, the version npm's `stable` tag names, which is what the stable release channel installs and usually older than the pin; Renovate keeps it on that tag. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
 
 ## GitLab's types
 
-Edit the `/* GraphQL */` documents in `hooks/gitlab-documents.ts`, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
+Each question the pane asks GitLab is one `hooks/ask-*.ts` module: its `/* GraphQL */` documents, the request, the cost, and how its answer reads. A new question is a new module, added to `hooks/gitlab-operations.ts` (and `tsconfig.core.json`, `release/files`); a document names the fragments it spreads and `documentOf` appends them, so no list of fragments is kept by hand. Edit a document, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
 `tools/gitlab_schema.snapshot.json` is the slice of gitlab.com's schema the documents use; `npm run schema -- snapshot` then `types` takes the schema as it is now.
 A document's cost is stated in `COMPLEXITY`, which `schema -- check` verifies. A host that answers `undefinedField` is sent the variant without that field.
 
@@ -89,16 +91,28 @@ flowchart LR
 
 `docs/screens` comes from `npm run screens -- render` (the mod's own drawing under the pinned Claude Code, photographed in Chromium; run `screens -- setup` first, `setup --with-deps` on Linux). Run it after changing the drawing and commit the pictures; `screens.yml` fails on a stale one.
 
-A pull request's pictures come from `npm run screens -- render --out <dir> --delta-against origin/main`. For each scene it writes three pictures:
+Every scene is photographed in the desktop app's light theme, `<scene>.png`, and its dark theme, `<scene>-dark.png`; the README shows the one that matches the reader's.
+
+A pull request's pictures come from `npm run screens -- render --out <dir> --delta-against origin/main`. For each scene, in each theme (`<scene>` and `<scene>-dark`), it writes three pictures:
 - `<scene>.png`, as the branch draws it;
 - `<scene>-before.png`, as main draws it;
 - `<scene>-delta.png`, the branch's picture with what changed at full strength and outlined, and everything else faded.
 
-It compares elements, not pixels, so a row that only moved down stays faded. The look of the desktop's elements is `tools/screens/pane.css`; what each colour and mark means is [DESIGN.md](DESIGN.md).
+It compares elements, not pixels, so a row that only moved down stays faded. The look of the desktop's elements in each theme is `tools/screens/pane.css`; what each colour and mark means is [DESIGN.md](DESIGN.md).
 
 ## Checking the pane in the desktop app
 
-The rig and the shot answer different questions. `npm run rig -- flow` stands in for the desktop: it asks a headless engine for drawings, presses and scrolls as the desktop would, and prints what came back. It runs anywhere, CI included, so reach for it first, for anything about what the mod draws or how it answers.
+The rig, the preview and the shot answer different questions. `npm run rig -- flow` stands in for the desktop: it asks a headless engine for drawings, presses and scrolls as the desktop would, and prints what came back. It runs anywhere, CI included, so reach for it first, for anything about what the mod draws or how it answers.
+
+`npm run preview` is the same engine drawn in a browser, so a branch can be looked at and used without loading it in the desktop app, whatever copy is installed there. In the Claude app, start `pane-preview` from `.claude/launch.json` in the browser pane; elsewhere, open http://127.0.0.1:4780. The page redraws whenever the engine does, and clicks, picks in a picker, typing, Enter and scrolling go back to the engine by element key. They reach GitLab as they would from the desktop app, so a merge pressed here is a merge. A second checkout needs `--port`; the page names the checkout and branch it shows.
+
+The preview draws with the screenshots' stylesheet, not the app's own paint, so it cannot show what only the desktop app does:
+- it draws a Button's `label` and not its children, so a symbol in a Button's children shows here and not there;
+- an Input keeps the person's typing across redraws in its own way, which the preview only approximates;
+- it draws a blank pane past 100,000 characters (`DRAWING_BUDGET`), which the preview draws in full;
+- hover cards, the app's fonts and its window's width.
+
+`npm run shot` stays for those.
 
 `npm run shot` looks at the real desktop app on a Mac. Reach for it when the question is what the app itself does with the drawing: whether a click lands, where a hover card pushes the rows, how a narrow window wraps a card, or a bug the rig cannot reproduce. It reads the pane off the screen with macOS text recognition, clicks and scrolls through Hammerspoon, and writes the pane alone as a PNG. The pictures show real MR titles and names, so write them outside the checkout:
 
