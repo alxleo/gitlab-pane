@@ -16,6 +16,8 @@ import { isRecord, parseJson } from '../hooks/decode.ts'
 /** The Codex inside ChatGPT's desktop app on a Mac; elsewhere, `codex` on the PATH. */
 const BUNDLED = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex'
 const WANTED = ['list_my_mrs', 'press_move']
+/** How long Codex's app-server may take to answer one request, starting the plugin's server included. */
+const ANSWER_MS = 120_000
 
 /** The tools Codex's app-server says the server `name` has, over its stdio JSON-RPC. */
 async function toolsOf(codex: string, home: string, name: string): Promise<string[]> {
@@ -32,9 +34,16 @@ async function toolsOf(codex: string, home: string, name: string): Promise<strin
       }
     }
   })
+  // A server that never comes up must fail here with a reason, not run the CI job out of time.
   const ask = (id: number, method: string, params: unknown) =>
-    new Promise<Record<string, unknown>>(settle => {
-      answers.set(id, settle)
+    new Promise<Record<string, unknown>>((settle, refuse) => {
+      const late = setTimeout(() => {
+        refuse(new Error(`Codex did not answer ${method} within ${ANSWER_MS / 1000} s`))
+      }, ANSWER_MS)
+      answers.set(id, answer => {
+        clearTimeout(late)
+        settle(answer)
+      })
       server.stdin.write(`${JSON.stringify({ id, method, params })}\n`)
     })
   try {

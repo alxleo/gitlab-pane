@@ -8,9 +8,11 @@ import { authoredQuery, jobsWanted, listedMrs } from '../hooks/ask-authored.ts'
 import { mergeStatusQuery, readMergeStatus } from '../hooks/ask-merge-status.ts'
 import type { GitLabVerdict } from '../hooks/ask-merge-status.ts'
 import { pinnedMr, pinnedQuery } from '../hooks/ask-pinned.ts'
-import { decodeGraphql, parseJson } from '../hooks/decode.ts'
-import { Failure } from '../hooks/failure.ts'
+import { Failure, messageOf } from '../hooks/failure.ts'
+import { environmentToken, GLAB_VARIABLES, isWorthAnotherTry, present, readAnswer, refusalOf } from '../hooks/gitlab-answer.ts'
+import type { Answer, Source } from '../hooks/gitlab-answer.ts'
 import { missingFeatures } from '../hooks/gitlab-features.ts'
+import { isWrite } from '../hooks/gitlab-operations.ts'
 import type { RawResponse, Request } from '../hooks/gitlab-request.ts'
 import type { AuthoredPlainQuery, AuthoredQuery, MergeStatusQuery } from '../hooks/gitlab.generated.ts'
 import { redact } from '../hooks/hosts.ts'
@@ -36,58 +38,93 @@ export type GitLab = {
 /** Where glab may be when the desktop app starts this server with a short PATH. */
 const GLABS = ['glab', '/opt/homebrew/bin/glab', '/usr/local/bin/glab', `${homedir()}/.local/share/mise/shims/glab`]
 
-/** A token for `host`: GITLAB_TOKEN, else the one glab stored for the host, as the mod's own `tokens.ts` asks for it. */
-function tokenFor(host: string): string {
-  const fromEnv = process.env.GITLAB_TOKEN ?? ''
-  if (fromEnv !== '') {
-    return fromEnv
-  }
+/** How long a request to GitLab, or glab's answer, may take before it is given up as timed out. */
+const WAIT_MS = 30_000
+const GLAB_WAIT_MS = 15_000
+
+/** The token glab stored for `host`, in its config or the keyring; never one from its environment (`GLAB_VARIABLES`). */
+function fromGlab(host: string): string | null {
+  const env = Object.fromEntries(
+    Object.entries(process.env).flatMap(([name, value]) => (value !== undefined && !GLAB_VARIABLES.some(variable => variable === name) ? [[name, value]] : []))
+  )
   for (const glab of GLABS) {
     try {
-      const stored = execFileSync(glab, ['config', 'get', 'token', '--host', host], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-      if (stored !== '') {
+      const stored = present(execFileSync(glab, ['config', 'get', 'token', '--host', host], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env, timeout: GLAB_WAIT_MS }))
+      if (stored !== null) {
         return stored
       }
     } catch {
-      // Not there, or no token for the host: try the next.
+      // Not there, timed out, or no token for the host: try the next.
     }
   }
-  throw new Failure('unauthorized', `no token for ${host}: set GITLAB_TOKEN or run glab auth login --hostname ${host}`)
+  return null
+}
+
+/**
+ * The token for `host`, as the mod's `tokens.ts` finds one: from the environment, for the host glab would talk to
+ * (`environmentToken`, this server's one host standing in when no host variable is set), else what glab stored for it.
+ */
+function tokenFor(host: string): { token: string; source: Source } {
+  const environment = environmentToken(process.env, host, host)
+  if (environment !== null) {
+    return { token: environment, source: 'the environment' }
+  }
+  const glab = fromGlab(host)
+  if (glab !== null) {
+    return { token: glab, source: 'glab' }
+  }
+  throw new Failure('no-token', `no GitLab token for ${host}: set GITLAB_TOKEN, or sign in with \`glab auth login --hostname ${host}\``)
 }
 
 /** A request as this file sends it: Node's `fetch`, or a made-up GitLab's answer to it. */
-export type Send = (url: string, init: { method: 'POST' | 'PUT'; headers: Record<string, string>; body?: string }) => Promise<{ status: number; text: () => Promise<string> }>
+export type Send = (
+  url: string,
+  init: { method: 'POST' | 'PUT'; headers: Record<string, string>; body?: string; signal?: AbortSignal }
+) => Promise<{ status: number; text: () => Promise<string> }>
 
 /**
  * The user's GitLab on `host`, with their token, through Node's `fetch` unless `through` says otherwise (a made-up GitLab).
- * Every request is sent once: a write must not go twice.
+ * GitLab's answers are read as the mod reads them (`readAnswer`, `refusalOf`). A read that GitLab's edge answers 52x, or
+ * whose connection drops, is sent once more; a write is sent once, as a merge must not be asked for twice.
  */
-export function connect(host: string, through: { token: string; send: Send } = { token: tokenFor(host), send: fetch }): GitLab {
-  const { token } = through
-  const send = async (url: string, method: 'POST' | 'PUT', headers: Record<string, string>, body?: string) => {
+export function connect(host: string, through: { token: string; source: Source; send: Send } = { ...tokenFor(host), send: fetch }): GitLab {
+  const { token, source } = through
+  const sendOnce = async (url: string, method: 'POST' | 'PUT', headers: Record<string, string>, body?: string): Promise<Answer> => {
     try {
-      return await through.send(url, { method, headers: { ...headers, Authorization: `Bearer ${token}` }, ...(body !== undefined ? { body } : {}) })
+      const answer = await through.send(url, {
+        method,
+        headers: { ...headers, Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(WAIT_MS),
+        ...(body !== undefined ? { body } : {}),
+      })
+      return { status: answer.status, text: await answer.text() }
     } catch (error) {
-      throw new Failure('network', redact(`${host} failed: ${error instanceof Error ? error.message : String(error)}`, [token]))
+      const message = messageOf(error)
+      throw new Failure(/\babort|timeout/iu.test(message) ? 'timeout' : 'network', redact(`${host} failed: ${message}`, [token]))
     }
   }
   return {
     host,
     async graphql<Data>(request: Request<Data>): Promise<RawResponse<Data>> {
-      const answer = await send(
-        `https://${host}/api/graphql`,
-        'POST',
-        { 'Content-Type': 'application/json', Accept: 'application/json' },
-        JSON.stringify({ query: request.query, variables: request.variables, operationName: request.operation })
-      )
-      if (answer.status === 401 || answer.status === 403) {
-        throw new Failure('unauthorized', `${host} refused the token (HTTP ${answer.status})`)
-      }
-      return decodeGraphql<Data>(parseJson(await answer.text()))
+      const post = () =>
+        sendOnce(
+          `https://${host}/api/graphql`,
+          'POST',
+          { 'Content-Type': 'application/json', Accept: 'application/json' },
+          JSON.stringify({ query: request.query, variables: request.variables, operationName: request.operation })
+        )
+      const isWriting = isWrite(request)
+      const first = isWriting ? await post() : await post().catch((error: unknown) => (error instanceof Failure && error.kind === 'network' ? null : Promise.reject(error)))
+      const answer = first === null || (!isWriting && isWorthAnotherTry(first)) ? await post() : first
+      return readAnswer<Data>(host, source, answer, isWriting ? 'api' : 'read_api', () => null)
     },
     async put(path: string) {
-      const answer = await send(`https://${host}/api/v4/${path}`, 'PUT', { Accept: 'application/json' })
-      return { status: answer.status, text: await answer.text() }
+      const answer = await sendOnce(`https://${host}/api/v4/${path}`, 'PUT', { Accept: 'application/json' })
+      const refused = refusalOf(host, source, answer.status, 'the api scope')
+      if (refused !== null) {
+        throw refused
+      }
+      return answer
     },
   }
 }

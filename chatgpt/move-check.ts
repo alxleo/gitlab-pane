@@ -7,8 +7,10 @@ import { strict as assert } from 'node:assert'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 
+import { Failure } from '../hooks/failure.ts'
 import type { RowModel } from '../hooks/pane-model.ts'
 import { fakeGitLab } from './fake.ts'
+import { connect, openMrs } from './read.ts'
 import { panelHtml } from './panel-build.ts'
 import { metaString, outcomeIn, panelIn, rowsOf } from './result.ts'
 import { createServer } from './server.ts'
@@ -54,7 +56,25 @@ try {
   assert.deepEqual(gitlab.writes, ['405@head-405'], 'one merge, on the head the row was read on')
   assert.ok(!rowsOf(panelIn(made._meta)).some(row => row.key === ready.key), 'the merged MR leaves the list')
 
-  console.log(`ok: !405 armed ("${again.label}"), then merged (${gitlab.writes.join('; ')}); other moves offered: ${other.length > 0 ? other.join(', ') : 'none'}`)
+  // A gateway's error page is said as the server failing, after the one more try a read gets, never as a parse error.
+  let sent = 0
+  const down = connect('gitlab.example.com', {
+    token: 'made-up',
+    source: 'the environment',
+    send: async () => {
+      sent += 1
+      return { status: 502, text: async () => '<html>Bad gateway</html>' }
+    },
+  })
+  const failure = await openMrs(down).catch((error: unknown) => error)
+  assert.ok(failure instanceof Failure, 'a 502 page is a Failure')
+  assert.equal(failure.kind, 'server')
+  assert.equal(failure.message, 'gitlab.example.com answered HTTP 502')
+  assert.equal(sent, 2, 'a read is sent once more after a 502')
+
+  console.log(
+    `ok: !405 armed ("${again.label}"), then merged (${gitlab.writes.join('; ')}); other moves offered: ${other.length > 0 ? other.join(', ') : 'none'}; a 502 is the server failing`
+  )
 } finally {
   await client.close()
 }

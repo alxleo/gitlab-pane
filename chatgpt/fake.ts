@@ -77,5 +77,5 @@ export function fakeGitLab(): GitLab & { writes: string[] } {
     const served = serve(sent(url, init), answers, TOKEN)
     return answer(served.status, served.text)
   }
-  return { ...connect('gitlab.com', { token: TOKEN, send }), writes }
+  return { ...connect('gitlab.com', { token: TOKEN, source: 'the environment', send }), writes }
 }

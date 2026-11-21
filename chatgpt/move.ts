@@ -83,7 +83,11 @@ export async function pressMove(
   now = Date.now(),
   wait: (ms: number) => Promise<unknown> = sleep
 ): Promise<Outcome> {
-  const head = card.merging?.head ?? ''
+  // An MR GitLab gave no merge facts for offers no move, as in the mod's `moves.ts`: nothing is sent for it.
+  if (card.merging === null) {
+    return { state: 'busy' }
+  }
+  const { head } = card.merging
   const pressed = decidePress(press, held.get(card.key), head, now)
   if (pressed === null || pressed.kind === 'conflicts') {
     return { state: 'busy' }
@@ -101,7 +105,7 @@ export async function pressMove(
     outcome = { state: 'ended', say: why(messageOf(error)), isDone: false }
   }
   if (outcome.state === 'ended' && !outcome.isDone) {
-    held.set(card.key, { kind, state: 'failed', on: head, at: Date.now(), say: outcome.say })
+    held.set(card.key, { kind, state: 'failed', on: head, at: now, say: outcome.say })
   } else {
     held.delete(card.key)
   }

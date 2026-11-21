@@ -182,11 +182,12 @@ jobs:
         with:
           ref: ${{ needs.release.outputs.tag_name }}
           persist-credentials: false
-      # release_tree.ts imports nothing from npm, so there is no `npm ci` here.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
       - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      # release_tree.ts builds the ChatGPT plugin into the tree with esbuild (chatgpt/build.ts), from package-lock.json.
+      - run: npm ci --ignore-scripts
       - name: Commit the tree to the release branch
         env:
           TAG: ${{ needs.release.outputs.tag_name }}

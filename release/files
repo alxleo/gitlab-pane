@@ -24,6 +24,7 @@ hooks/faces.tsx
 hooks/failure.ts
 hooks/failures.ts
 hooks/format.ts
+hooks/gitlab-answer.ts
 hooks/gitlab-document.ts
 hooks/gitlab-features.ts
 hooks/gitlab-operations.ts

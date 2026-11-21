@@ -5,7 +5,8 @@
 //   node chatgpt/dist/server.mjs   the packaged server `node chatgpt/build.ts` writes, beside the panel it bundled,
 //                                  which mcp.json launches
 //   GITLAB_PANE_HOST=host          read that host instead of gitlab.com
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -16,7 +17,9 @@ import { z } from 'zod'
 import { foreign } from '../hooks/model-text.ts'
 import type { RowModel } from '../hooks/pane-model.ts'
 import type { MrCard, Pressed } from '../types/index.d.ts'
+import { Failure } from '../hooks/failure.ts'
 import { liveHeld, pressMove } from './move.ts'
+import type { Outcome } from './move.ts'
 import { panelUri } from './panel-uri.ts'
 import { connect, openMrs, panelOf } from './read.ts'
 import type { GitLab, Panel } from './read.ts'
@@ -57,11 +60,24 @@ export function createServer({ html, connectTo = connect, now = Date.now }: Serv
   let gitlab: GitLab | null = null
   let cards: MrCard[] = []
   const held = new Map<string, Pressed>()
-  const read = async () => {
+  // A refused token is forgotten, so the next call asks for it again (a glab token that rotated, one signed in since), as
+  // the mod forgets it.
+  const guarded = async <Done>(work: (to: GitLab) => Promise<Done>): Promise<Done> => {
     gitlab ??= connectTo(HOST)
-    cards = await openMrs(gitlab)
-    return panelOf(cards, liveHeld(held, now()), now())
+    try {
+      return await work(gitlab)
+    } catch (error) {
+      if (error instanceof Failure && (error.kind === 'unauthorized' || error.kind === 'no-token')) {
+        gitlab = null
+      }
+      throw error
+    }
   }
+  const read = () =>
+    guarded(async to => {
+      cards = await openMrs(to)
+      return panelOf(cards, liveHeld(held, now()), now())
+    })
   const listed = (panel: Panel) => ({
     structuredContent: { host: HOST, mrs: rowsOf(panel).map(forModel) },
     content: [{ type: 'text' as const, text: `${rowsOf(panel).length} open merge requests on ${HOST}.` }],
@@ -102,24 +118,29 @@ export function createServer({ html, connectTo = connect, now = Date.now }: Serv
       _meta: { ui: { resourceUri: uri, visibility: ['app'] } },
     },
     async ({ key, kind, does }) => {
+      const card = cards.find(each => each.key === key)
+      if (card === undefined) {
+        return failed(new Error('that MR is no longer in the list: read again'))
+      }
+      let outcome: Outcome
       try {
-        gitlab ??= connectTo(HOST)
-        const card = cards.find(each => each.key === key)
-        if (card === undefined) {
-          return failed(new Error('that MR is no longer in the list: read again'))
-        }
-        const outcome = await pressMove(gitlab, card, { kind, does }, held, now())
-        const panel = await read()
-        return { ...listed(panel), structuredContent: { host: HOST, outcome, mrs: rowsOf(panel).map(forModel) } }
+        outcome = await guarded(to => pressMove(to, card, { kind, does }, held, now()))
       } catch (error) {
         return failed(error)
       }
+      // How the press ended is said whatever the read after it does: a merge that landed is not hidden by a read that failed.
+      const panel = await read().catch(() => null)
+      if (panel === null) {
+        return { structuredContent: { host: HOST, outcome, mrs: [] }, content: [{ type: 'text' as const, text: 'GitLab did not answer the read after the press.' }] }
+      }
+      return { ...listed(panel), structuredContent: { host: HOST, outcome, mrs: rowsOf(panel).map(forModel) } }
     }
   )
   return server
 }
 
-if (import.meta.main) {
+// Run as the program, not imported: `import.meta.main` is newer than the Node 22 the package names, so the path is compared.
+if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   if (!existsSync(BUILT_PANEL)) {
     throw new Error('no panel beside the server: run `node chatgpt/build.ts` and start chatgpt/dist/server.mjs')
   }

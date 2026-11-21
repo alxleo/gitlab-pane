@@ -1,7 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
-import { decodeGraphql, isRecord, parseJson } from './decode'
 import { Failure, messageOf } from './failure'
+import { isWorthAnotherTry, readAnswer, refusalOf } from './gitlab-answer'
+import type { Answer } from './gitlab-answer'
 import { missingFeatures } from './gitlab-features'
 import { isWrite } from './gitlab-operations'
 import type { RawResponse, Request } from './gitlab-request'
@@ -22,7 +23,8 @@ const ENGINE_READS_BYTES = 4 * 1024 * 1024
  */
 export const mayBeCut = (text: string): boolean => new TextEncoder().encode(text).length > ENGINE_READS_BYTES * 0.9
 
-type Answer = { status: number; text: string }
+/** What an answer the engine may have cut is said to be, for `readAnswer`. */
+const cutBy = (text: string): string | null => (mayBeCut(text) ? `more than the ${ENGINE_READS_BYTES / 1024 / 1024} MiB the engine reads` : null)
 
 /** The engine's `plugin: $.http.fetch(url) failed: …` as `host failed: …`, which says as much on a pane's one line. */
 const plainly = (host: string, message: string): string => message.replace(/^(?:[^:]*: )?(?:\$\.http\.fetch(?:\([^)]*\))?(?: over \S+)?:? )+/u, `${host} `)
@@ -46,7 +48,7 @@ async function post($: EngineInterface, host: string, token: string, request: Re
   }
   try {
     const first = await send()
-    if (first.status < 500) {
+    if (!isWorthAnotherTry(first)) {
       return first
     }
   } catch (error) {
@@ -57,32 +59,12 @@ async function post($: EngineInterface, host: string, token: string, request: Re
   return send()
 }
 
-/**
- * A host's answer as GraphQL: a partial one (data beside errors, whatever the status) is kept; a rejected token is not. A
- * read needs a token with the `read_api` scope, a write one with `api`.
- */
+/** A host's answer as GraphQL (`readAnswer`); a rejected token is forgotten, so it is asked for again. */
 function read<Data>(host: string, found: Found, answer: Answer, scope: 'read_api' | 'api'): RawResponse<Data> {
   if (answer.status === 401) {
     forgetFound()
-    throw new Failure('unauthorized', `${host} rejected the token from ${found.source} (HTTP 401)`)
   }
-  if (answer.status === 403) {
-    throw new Failure('unauthorized', `${host} refused the token from ${found.source} (HTTP 403): it needs the ${scope} scope`)
-  }
-  let raw: unknown
-  try {
-    raw = parseJson(answer.text)
-  } catch {
-    throw mayBeCut(answer.text)
-      ? new Failure('bad-answer', `${host} answered more than the ${ENGINE_READS_BYTES / 1024 / 1024} MiB the engine reads`)
-      : answer.status >= 500
-        ? new Failure('server', `${host} answered HTTP ${answer.status}`)
-        : new Failure('bad-answer', `${host} answered HTTP ${answer.status}, which is not JSON: is https://${host}/api/graphql a GitLab?`)
-  }
-  if (isRecord(raw) && !('data' in raw) && !('errors' in raw) && answer.status >= 400) {
-    throw new Failure(answer.status >= 500 ? 'server' : 'bad-answer', `${host} answered HTTP ${answer.status}${typeof raw.message === 'string' ? `: ${raw.message}` : ''}`)
-  }
-  return decodeGraphql<Data>(raw)
+  return readAnswer<Data>(host, found.source, answer, scope, cutBy)
 }
 
 /**
@@ -122,10 +104,10 @@ export async function askRest($: EngineInterface, host: string, path: string, in
   }
   if (answer.status === 401) {
     forgetFound()
-    throw new Failure('unauthorized', `${host} rejected the token from ${source} (HTTP 401)`)
   }
-  if (answer.status === 403) {
-    throw new Failure('unauthorized', `${host} refused the token from ${source} (HTTP 403): it needs ${init.needs}`)
+  const refused = refusalOf(host, source, answer.status, init.needs)
+  if (refused !== null) {
+    throw refused
   }
   return answer
 }

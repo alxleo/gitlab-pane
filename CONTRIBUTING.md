@@ -86,7 +86,7 @@ flowchart LR
 
 - While the version is 0.x, `feat:` and `fix:` both raise the patch number (0.4.0 to 0.4.1); `!` or a `BREAKING CHANGE:` footer raises the minor (`bump-patch-for-minor-pre-major` and `bump-minor-pre-major` in `release-please-config.json`). Other kinds wait for one of those.
 - No check starts on the release PR by itself, as GitHub starts no workflow for a PR its own token opened, yet main requires `check` before any merge. To release, close the PR and reopen it as yourself: that starts its checks, and it merges once they pass. A run started by hand (`gh workflow run check.yml --ref <its branch>`) passes on the same commit but does not count, because GitHub ties it to no pull request.
-- Users get the files in `release/files` and nothing else (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`). A file the plugin loads at run time goes in that list; `release-tree -- check` fails otherwise.
+- Users get the files in `release/files` (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`), and the ChatGPT plugin's built package in `chatgpt/`, and nothing else. A file the mod loads at run time goes in that list; `release-tree -- check` fails otherwise.
 - A team pins `"ref": "plugin-vX.Y.Z"` in its marketplace source (the tree has its own `release/marketplace.json`).
 - The same tree holds the ChatGPT plugin in `chatgpt/`, built by `chatgpt/build.ts` at the release's version, and a Codex marketplace that lists it (`release/codex-marketplace.json`, at `.agents/plugins/marketplace.json`, which ChatGPT's Codex reads before the Claude one). `codex plugin marketplace add alxleo/gitlab-pane --ref release` follows releases; `--ref plugin-vX.Y.Z` pins one. One version names both plugins.
 - The default install reads `.claude-plugin/marketplace.json` on main (`"source": "./"`). Once the first `plugin-v*` tag exists, switch it to `{ "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" }` in its own commit, and change the README's "That follows main" to "That follows releases".
@@ -94,6 +94,14 @@ flowchart LR
 ## Screenshots
 
 `docs/screens` comes from `npm run screens -- render` (the mod's own drawing under the pinned Claude Code, photographed in Chromium; run `screens -- setup` first, `setup --with-deps` on Linux). Run it after changing the drawing and commit the pictures; `screens.yml` fails on a stale one.
+
+The same commit draws the same letters on a Mac and on Linux, but not the same bytes, and `screens.yml` compares bytes on Linux. On a Mac, render the pictures you commit in Playwright's Ubuntu image, which draws what CI draws (CI's steps pass there):
+
+```bash
+docker run --rm --platform linux/amd64 -v "$PWD":/src:ro -v "$PWD/docs/screens":/out mcr.microsoft.com/playwright:v1.64.1-noble bash -c 'mkdir /work && cd /src && tar --exclude=./node_modules --exclude=./.git -cf - . | tar -xf - -C /work && cd /work && npm install --global @anthropic-ai/claude-code@2.1.318 && npm ci --ignore-scripts && npm run screens -- render --out /out'
+```
+
+The image's version is Playwright's in `package-lock.json`, and the Claude Code is the one CI pins.
 
 Every scene is photographed in the desktop app's light theme, `<scene>.png`, and its dark theme, `<scene>-dark.png`; the README shows the one that matches the reader's.
 
