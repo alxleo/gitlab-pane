@@ -17,7 +17,7 @@ import {
 } from './data'
 import { stringRecord, suggestedRecord, usualRecord } from './decode'
 import { isEqual } from './equal'
-import { wantsSuggestions } from './face-model'
+import { suggestionsFor } from './face-model'
 import { asFailure, Failure, together } from './failure'
 import { clear, quietly, record, reported } from './failures'
 import { joined } from './in-flight'
@@ -105,7 +105,7 @@ function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number
 const SUGGESTED_STORE = 'suggested'
 
 /**
- * Who GitLab suggests to approve each MR of the user's that is short of reviewers (`wantsSuggestions`), asked again when
+ * Who GitLab suggests to approve each MR of the user's that is short of reviewers (`suggestionsFor`), asked again when
  * the MR has changed since; one pass at a time, each MR alone, so one that fails keeps its last and loses no other's.
  * Kept only for those MRs, so it never outgrows them. Only the leader asks; the store carries them to the sessions that draw.
  */
@@ -114,8 +114,15 @@ function readSuggestions($: EngineInterface, rows: readonly MrCard[]): Promise<v
     const [known, users] = await Promise.all([readSuggestedKnown($), readUsers($)])
     const failures: Failure[] = []
     const kept: [string, Suggested[string]][] = []
-    for (const card of rows.filter(each => wantsSuggestions(each, users[each.host] ?? null))) {
+    for (const card of rows) {
       const held = known[card.key]
+      const fate = suggestionsFor(card, users[card.host] ?? null)
+      if (fate === 'keep' && held !== undefined) {
+        kept.push([card.key, held])
+      }
+      if (fate !== 'ask') {
+        continue
+      }
       try {
         // A host without the field answers none, and is not asked again.
         const answer = held?.on === card.updatedAt ? null : await askVariant($, card.host, features => suggestedQuery(card.path, card.iid, features))

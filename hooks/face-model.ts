@@ -155,10 +155,20 @@ export function suggestionRoom(card: MrCard): number {
 }
 
 /**
- * Whether GitLab is asked whom to suggest for the MR: one `user` wrote, on its host, with room for a reviewer. Asking for
- * reviews is the author's; an MR of someone else's pinned here suggests no one, and nor does any while the user is unknown.
+ * What a read does about whom GitLab suggests for an MR with room for a reviewer, by who the `user` is on its host: ask
+ * for an MR they wrote; keep what it held while the user is not known yet (the inbox has not read since the mod loaded),
+ * so a reload neither drops the faces nor asks again for each; else none. Asking for reviews is the author's: an MR of
+ * someone else's pinned here suggests no one.
  */
-export const wantsSuggestions = (card: MrCard, user: string | null): boolean => user === card.author && suggestionRoom(card) > 0
+export function suggestionsFor(card: MrCard, user: string | null): 'ask' | 'keep' | 'none' {
+  if (suggestionRoom(card) === 0) {
+    return 'none'
+  }
+  if (user === null) {
+    return 'keep'
+  }
+  return user === card.author ? 'ask' : 'none'
+}
 
 /**
  * The people a card suggests adding as reviewers, in GitLab's order: those it suggested, less the author, bots and anyone

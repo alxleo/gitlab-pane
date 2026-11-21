@@ -36,15 +36,9 @@ export const slimChecks = (checks: MergeStatus | null): MergeStatus | null => {
 }
 
 /**
- * The card without its heavy words: no description (its first line stays as `lead`), each person's latest note as an
- * excerpt (`noteCount` still says how many), the first few open threads as excerpts with no replies and the first few failed
- * jobs, the rest counted; of the stages' jobs only those the card lists, and when each ran only where a row shows it. The
- * first person other than the author asked to review stays of the reviewers, each of whom is on the card as a person: whether one is asked is
- * what moves a ticket in Jira. The store every session rewrites whole holds fifty of these in a few hundred kilobytes.
- */
-/**
- * The reviewers a shared card keeps: every review asked for that has no verdict yet, which decides whether the card
- * suggests a reviewer (`suggestionRoom`), else the first person asked, which says someone was (the Jira moves).
+ * The reviewers a shared card keeps, each of whom is on the card as a person: every review asked for that has no verdict
+ * yet, which decides whether the card suggests a reviewer (`suggestionRoom`), else the first person asked, as whether one
+ * is asked is what moves a ticket in Jira.
  */
 function sharedReviewers(card: MrCard): MrCard['reviewers'] {
   const asked = card.reviewers.filter(reviewer => !reviewer.isBot && reviewer.username !== card.author)
@@ -52,6 +46,13 @@ function sharedReviewers(card: MrCard): MrCard['reviewers'] {
   return awaited.length > 0 ? awaited : asked.slice(0, 1)
 }
 
+/**
+ * The card without its heavy words: no description (its first line stays as `lead`), each person's latest note as an
+ * excerpt (`noteCount` still says how many), the first few open threads as excerpts with no replies and the first few failed
+ * jobs, the rest counted; of the stages' jobs only those the card lists, and when each ran only where a row shows it; of
+ * the reviewers, those `sharedReviewers` keeps. The store every session rewrites whole holds fifty of these in a few
+ * hundred kilobytes.
+ */
 export function slimCard(card: MrCard): MrCard {
   const { pipeline } = card
   const listed = pipeline !== undefined ? listedJobs(pipeline.stages) : []

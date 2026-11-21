@@ -13,7 +13,7 @@ import {
   suggestedPress,
   suggestionRoom,
   THREAD_MARK,
-  wantsSuggestions,
+  suggestionsFor,
 } from '../../hooks/face-model.ts'
 import { toCard } from '../../hooks/mr-card.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
@@ -94,11 +94,13 @@ test('a card short of reviewers suggests whom GitLab suggests, in its order, nev
   const commented = toCard(HOST, rawMr(1, { approvalsLeft: 1, discussions: { nodes: [thread('Why this?', 'rae')] } }))
   expect(commented.people.map(person => person.username)).toEqual(['rae'])
   expect(suggestionRoom(commented)).toBe(1)
-  // Only the user's own MR asks GitLab whom to suggest, and none while who the user is is not known.
-  expect(wantsSuggestions(card, 'alex')).toBe(true)
-  expect(wantsSuggestions(card, 'me')).toBe(false)
-  expect(wantsSuggestions(card, null)).toBe(false)
-  expect(wantsSuggestions({ ...card, approvalsLeft: 0 }, 'alex')).toBe(false)
+  // Only the user's own MR asks GitLab whom to suggest; while who the user is is not known, as after a reload, what was
+  // held stays and nothing is asked.
+  expect(suggestionsFor(card, 'alex')).toBe('ask')
+  expect(suggestionsFor(card, 'me')).toBe('none')
+  expect(suggestionsFor(card, null)).toBe('keep')
+  expect(suggestionsFor({ ...card, approvalsLeft: 0 }, 'alex')).toBe('none')
+  expect(suggestionsFor({ ...card, approvalsLeft: 0 }, null)).toBe('none')
   // An approval asked for and given, or changes asked for, is a verdict: that reviewer waits on nothing more.
   expect(suggestionRoom(cardWith(reviewer('rae', 'REQUESTED_CHANGES')))).toBe(2)
   expect(suggestionRoom(cardWith(reviewer('rae', 'APPROVED')))).toBe(2)
