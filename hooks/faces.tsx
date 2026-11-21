@@ -8,8 +8,7 @@ import type { PersonRow } from './face-model'
 export function face(kit: Kit, person: PersonRow, withPicture: boolean) {
   const { Svg, Text } = kit
   if (Svg === undefined) {
-    // A suggested face has no glyph: the press beside it says `+` and the name.
-    return person.glyph !== '' ? <Text color={person.tone}>{person.glyph}</Text> : null
+    return <Text color={person.tone}>{person.glyph}</Text>
   }
   return <Svg width={22} height={22} alt={person.alt} source={withPicture && person.picture !== null ? person.picture : person.plain} />
 }

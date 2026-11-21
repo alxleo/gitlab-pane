@@ -139,23 +139,26 @@ export function suggestedFace(person: Person, picture: string | undefined): Face
 /** The most suggested faces a card draws: a choice of two, not a list of everyone a rule names. */
 export const SUGGESTED_MOST = 2
 
-/**
- * Someone on the MR with no verdict yet, a reviewer asked or anyone who commented: they may still give one of the
- * approvals it needs. Read from `people`, which a card shared between sessions keeps whole, where it keeps one reviewer.
- */
-const isAwaited = (person: Person): boolean => !person.isBot && person.state !== 'approved' && person.state !== 'requested_changes'
+/** A review asked for that has no verdict yet: that reviewer may still give one of the approvals the MR needs. */
+export const isAwaited = (reviewer: MrCard['reviewers'][number]): boolean => !reviewer.isBot && reviewer.state !== 'approved' && reviewer.state !== 'requested_changes'
 
 /**
- * How many reviewers a card suggests adding: the approvals it still needs, less the people on it with no verdict yet, at
- * most SUGGESTED_MOST. None on a draft or a closed MR, nor on one whose people can give every approval it needs: the pane
- * suggests only where a review is missing.
+ * How many reviewers a card suggests adding: the approvals it still needs, less the reviews asked for that have no
+ * verdict yet, at most SUGGESTED_MOST. None on a draft or a closed MR, nor on one whose reviewers can give every approval
+ * it needs: the pane suggests only where a review is missing. A comment is no review asked for.
  */
 export function suggestionRoom(card: MrCard): number {
   if (!card.isOpen || card.isDraft) {
     return 0
   }
-  return Math.max(0, Math.min(SUGGESTED_MOST, card.approvalsLeft - card.people.filter(isAwaited).length))
+  return Math.max(0, Math.min(SUGGESTED_MOST, card.approvalsLeft - card.reviewers.filter(isAwaited).length))
 }
+
+/**
+ * Whether GitLab is asked whom to suggest for the MR: one `user` wrote, on its host, with room for a reviewer. Asking for
+ * reviews is the author's; an MR of someone else's pinned here suggests no one, and nor does any while the user is unknown.
+ */
+export const wantsSuggestions = (card: MrCard, user: string | null): boolean => user === card.author && suggestionRoom(card) > 0
 
 /**
  * The people a card suggests adding as reviewers, in GitLab's order: those it suggested, less the author, bots and anyone
@@ -184,10 +187,13 @@ export function suggestedOf(card: MrCard, suggestions: readonly Suggestion[]): P
 }
 
 /** What the ledger's ids of adding reviewers start with (writes.ts). */
-export const REVIEWER_IDS = 'reviewer:'
+const REVIEWER_IDS = 'reviewer:'
 
 /** The ledger's id of adding `username` as a reviewer of the card `key`; with no username, what each on that card starts with. */
 export const reviewerId = (key: string, username: string): string => `${REVIEWER_IDS}${key}:${username}`
+
+/** Whether the ledger keeps entry `id` when an add is recorded: another feature's always, an add while its MR is `listed`. */
+export const isAddKept = (id: string, listed: readonly string[]): boolean => !id.startsWith(REVIEWER_IDS) || listed.some(key => id.startsWith(reviewerId(key, '')))
 
 /** What a suggested face's press says and does, by the entry the ledger holds for it. */
 export type SuggestedPress = { label: string; does: 'arm' | 'make' | null; isArmed: boolean; failed: string | null }

@@ -523,7 +523,7 @@ test(
     const asked = gitlab.requests.filter(request => request.startsWith(`${SELF_MANAGED} `) && !request.includes(' Inbox')).map(request => request.slice(SELF_MANAGED.length + 1))
     // Refused once, then never asked again: the plain documents, for the list and for the MR whose jobs it draws.
     expect(asked.filter(name => name === 'Authored')).toHaveLength(1)
-    expect(new Set(asked)).toEqual(new Set(['Authored', 'MergeStatus', 'AuthoredPlain', 'PinnedPlain', 'Usual', 'Suggested']))
+    expect(new Set(asked)).toEqual(new Set(['Authored', 'MergeStatus', 'AuthoredPlain', 'PinnedPlain', 'Usual']))
     const [row] = readSnapshot(store.get('snapshot'))?.rows ?? []
     expect([row?.openThreads.map(open => open.body), row?.pipeline?.failed.map(one => one.name)]).toEqual([['Rename this'], ['lint']])
   }
@@ -587,8 +587,7 @@ test(
     expect(asked(SELF_MANAGED).filter(name => name === 'Authored')).toHaveLength(1)
     expect(asked(SELF_MANAGED).filter(name => name === 'MergeStatus')).toHaveLength(1)
     expect(new Set(asked(SELF_MANAGED))).toEqual(new Set(['Authored', 'MergeStatus', 'AuthoredPlain', 'PinnedPlain', 'Usual']))
-    // An MR still short of a reviewer is asked whom GitLab suggests.
-    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Authored', 'MergeStatus', 'Pinned', 'Usual', 'Suggested']))
+    expect(new Set(asked('gitlab.com'))).toEqual(new Set(['Authored', 'MergeStatus', 'Pinned', 'Usual']))
     expect(asked('git.empty.example')).toEqual([])
 
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -1135,12 +1134,19 @@ test('a mergeable MR’s verdict is its merge: one press arms it, a second merge
 
 test('a card short of a reviewer offers whom GitLab suggests, faded: a press arms adding them, a second adds them once, and they become a reviewer', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  // One approval left and no reviewer: room for one suggestion, never the author.
-  const fake: Fake = { mrs: [rawMr(12)], isDown: false, suggested: [user('alex'), user('ines.mendel'), user('tessa.rowe')] }
-  const { added, toasts, avatars, store } = engine(on, fake)
+  // One approval left and no reviewer: room for one suggestion, never the author. The user is `me`; !13 is someone
+  // else's, and asking for its reviews is theirs.
+  const own = rawMr(12, { author: { username: 'me' } })
+  const fake: Fake = { mrs: [own, rawMr(13)], isDown: false, suggested: [user('me'), user('ines.mendel'), user('tessa.rowe')] }
+  const { added, toasts, avatars, store, gitlab } = engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const asked = () => gitlab.requests.filter(request => request.endsWith(' Suggested')).length
+  expect(asked()).toBe(1)
+  // An MR that has not changed is not asked again.
+  await clock.advance(60_000)
+  expect(asked()).toBe(1)
   const suggestion = async () => (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('suggest-') === true)
   // Faded, with no badge; the row that would be quiet keeps its faces, as adding a reviewer is the author's to do.
   const faded = (await ui.findAll({ type: 'Svg' })).find(svg => svg.props['alt'] === 'Ines Mendel, suggested reviewer')
@@ -1165,7 +1171,7 @@ test('a card short of a reviewer offers whom GitLab suggests, faded: a press arm
   expect(toasts).toContain('!12: asked ines.mendel to review')
   expect(await ui.find({ type: 'Text', text: 'Ines added' })).toBeDefined()
   // The next read shows them as a reviewer: no one is suggested any more, and the row, waiting on them alone, goes quiet.
-  fake.mrs = [rawMr(12, { updatedAt: new Date(NOW).toISOString(), reviewers: { nodes: [reviewer('ines.mendel', 'UNREVIEWED')] } })]
+  fake.mrs = [{ ...own, updatedAt: new Date(NOW).toISOString(), reviewers: { nodes: [reviewer('ines.mendel', 'UNREVIEWED')] } }, rawMr(13)]
   await clock.advance(60_000)
   expect(await suggestion()).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'Ines added' })).toBeUndefined()
@@ -1771,7 +1777,7 @@ test('a face is one small drawing: about 490 characters with an empty badge, 640
     { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null },
   ]
   const suggested = [{ ...user('tessa.rowe'), avatarUrl: null }]
-  engine(on, { mrs: [rawMr(12, { ...SHOWN, approvalsLeft: 2, reviewers: { nodes: people } })], isDown: false, suggested })
+  engine(on, { mrs: [rawMr(12, { ...SHOWN, author: { username: 'me' }, approvalsLeft: 2, reviewers: { nodes: people } })], isDown: false, suggested })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -2344,7 +2350,7 @@ test("a leader that closes its pane hands over: the session that draws takes the
   expect(operations(gitlab.requests)).toEqual([])
   expect(gitlab.requests.filter(request => request.includes(' Inbox'))).toHaveLength(3)
   await clock.advance(60_000)
-  expect(operations(gitlab.requests).filter(name => name !== 'Usual' && name !== 'Suggested')).toEqual(['Authored', 'MergeStatus'])
+  expect(operations(gitlab.requests).filter(name => name !== 'Usual')).toEqual(['Authored', 'MergeStatus'])
   expect(readSnapshot(store.get('snapshot'))?.rows.map(row => row.iid)).toEqual([12, 13])
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(titleOf(await ui.findAll({ type: 'Button' }), 13)).toBe('thing 13')

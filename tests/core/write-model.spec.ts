@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 
 import { Failure } from '../../hooks/failure.ts'
 import { FOLLOW_MS, FOLLOW_TRIES } from '../../hooks/next-move.ts'
-import { confirmedPress, liveOf, LOST, refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
+import { ARMED_MS, confirmedPress, liveOf, LOST, refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 
 import type { FailureKind, Write } from '../../types'
 
@@ -39,6 +39,9 @@ test('a write a second press confirms goes only on a live arm of the same kind f
   expect(confirmedPress('reviewer', armed, 'mel', at, 'make')?.state).toBe('armed')
   expect(confirmedPress('merge', armed, 'ines', at, 'make')?.state).toBe('armed')
   expect(confirmedPress('reviewer', armed, 'ines', at, 'arm')?.state).toBe('armed')
+  // An arm past its time has run out though its timer never ran, as after a reload: the press arms again.
+  expect(confirmedPress('reviewer', armed, 'ines', ARMED_MS, 'make')?.state).toBe('sent')
+  expect(confirmedPress('reviewer', armed, 'ines', ARMED_MS + 1, 'make')?.state).toBe('armed')
   // A failure or an add GitLab made is no arm: the press arms again.
   expect(confirmedPress('reviewer', { ...armed, state: 'failed', say: 'no' }, 'ines', at, 'make')?.state).toBe('armed')
   expect(confirmedPress('reviewer', { ...armed, state: 'handed' }, 'ines', at, 'make')?.state).toBe('armed')

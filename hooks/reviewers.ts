@@ -2,7 +2,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { addedRefusal, addReviewerWrite } from './ask-add-reviewer'
 import { readRows } from './data'
-import { REVIEWER_IDS, reviewerId } from './face-model'
+import { isAddKept, reviewerId } from './face-model'
 import { quietly } from './failures'
 import { ask } from './graphql'
 import { askForRefresh } from './shared'
@@ -18,8 +18,8 @@ import type { Write } from '../types'
 
 /** Records how an add ended, and forgets the adds on MRs no longer listed. */
 async function settle($: EngineInterface, id: string, write: Write): Promise<void> {
-  const listed = (await readRows($)).map(row => reviewerId(row.key, ''))
-  await setWrite($, id, write, each => !each.startsWith(REVIEWER_IDS) || listed.some(prefix => each.startsWith(prefix)))
+  const listed = (await readRows($)).map(row => row.key)
+  await setWrite($, id, write, each => isAddKept(each, listed))
 }
 
 async function press($: EngineInterface, key: string, username: string, does: 'arm' | 'make'): Promise<void> {

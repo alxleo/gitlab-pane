@@ -1,12 +1,25 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { faceFacts, faceRows, REVIEW_MARK, reviewerId, SUGGESTED_MOST, suggestedFace, suggestedOf, suggestedPress, suggestionRoom, THREAD_MARK } from '../../hooks/face-model.ts'
+import {
+  faceFacts,
+  faceRows,
+  isAddKept,
+  REVIEW_MARK,
+  reviewerId,
+  SUGGESTED_MOST,
+  suggestedFace,
+  suggestedOf,
+  suggestedPress,
+  suggestionRoom,
+  THREAD_MARK,
+  wantsSuggestions,
+} from '../../hooks/face-model.ts'
 import { toCard } from '../../hooks/mr-card.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
 import { slimCard } from '../../hooks/slim.ts'
 import { SENT_HOLDS_MS } from '../../hooks/write-model.ts'
-import { HOST, rawMr, reviewer, user } from '../fixtures.ts'
+import { HOST, rawMr, reviewer, thread, user } from '../fixtures.ts'
 import type { Note, Person, PersonState, Suggestion, Write } from '../../types'
 
 const STATES = Object.keys(REVIEW_MARK).filter((state): state is PersonState => state in REVIEW_MARK)
@@ -73,10 +86,19 @@ test('a card short of reviewers suggests whom GitLab suggests, in its order, nev
   expect(suggestionRoom(card)).toBe(1)
   expect(suggestedOf(card, all).map(person => person.username)).toEqual(['ines'])
   expect(suggestedOf(cardWith(), all).map(person => person.username)).toEqual(['rae', 'ines'])
-  // A card shared between sessions keeps one reviewer: the others still count.
+  // A card shared between sessions keeps every reviewer, so it counts the same.
   const three = cardWith(reviewer('rae', 'APPROVED'), reviewer('sam', 'UNREVIEWED'), reviewer('tom', 'REVIEW_STARTED'))
   expect(suggestionRoom(three)).toBe(0)
   expect(suggestionRoom(slimCard(three))).toBe(0)
+  // A comment asks no one for a review: a commenter leaves the room as it was.
+  const commented = toCard(HOST, rawMr(1, { approvalsLeft: 1, discussions: { nodes: [thread('Why this?', 'rae')] } }))
+  expect(commented.people.map(person => person.username)).toEqual(['rae'])
+  expect(suggestionRoom(commented)).toBe(1)
+  // Only the user's own MR asks GitLab whom to suggest, and none while who the user is is not known.
+  expect(wantsSuggestions(card, 'alex')).toBe(true)
+  expect(wantsSuggestions(card, 'me')).toBe(false)
+  expect(wantsSuggestions(card, null)).toBe(false)
+  expect(wantsSuggestions({ ...card, approvalsLeft: 0 }, 'alex')).toBe(false)
   // An approval asked for and given, or changes asked for, is a verdict: that reviewer waits on nothing more.
   expect(suggestionRoom(cardWith(reviewer('rae', 'REQUESTED_CHANGES')))).toBe(2)
   expect(suggestionRoom(cardWith(reviewer('rae', 'APPROVED')))).toBe(2)
@@ -111,6 +133,16 @@ test('the press beside a suggested face arms first, adds on the second, says whe
   expect(suggestedPress('Ines', held({ state: 'handed' }), at + SENT_HOLDS_MS).does).toBe('arm')
   expect(suggestedPress('Ines', held({ state: 'failed', say: 'gitlab.com refused' }), at)).toEqual({ label: '+ Ines', does: 'arm', isArmed: false, failed: 'gitlab.com refused' })
   expect(reviewerId('gitlab.com/g/p!1', 'ines')).toBe('reviewer:gitlab.com/g/p!1:ines')
+})
+
+test('the ledger forgets the adds on MRs no longer listed, and keeps every other feature’s entries', () => {
+  const listed = ['gitlab.com/g/p!1']
+  expect(isAddKept(reviewerId('gitlab.com/g/p!1', 'ines'), listed)).toBe(true)
+  expect(isAddKept(reviewerId('gitlab.com/g/p!2', 'ines'), listed)).toBe(false)
+  // A listed key that only begins another's is not it.
+  expect(isAddKept(reviewerId('gitlab.com/g/p!12', 'ines'), listed)).toBe(false)
+  expect(isAddKept('move:gitlab.com/g/p!2', listed)).toBe(true)
+  expect(isAddKept('reply:https://gitlab.com/g/p/-/merge_requests/2#note_1', [])).toBe(true)
 })
 
 test('a row names its faces by first name, its suggested ones after a +, each with the press its add holds, and keeps initials for a shared name', () => {

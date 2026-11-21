@@ -17,11 +17,11 @@ import {
 } from './data'
 import { stringRecord, suggestedRecord, usualRecord } from './decode'
 import { isEqual } from './equal'
-import { suggestionRoom } from './face-model'
+import { wantsSuggestions } from './face-model'
 import { asFailure, Failure, together } from './failure'
 import { clear, quietly, record, reported } from './failures'
 import { joined } from './in-flight'
-import { moveTickets } from './jira-mover'
+import { moveTickets, readUsers } from './jira-mover'
 import { readSuggested, suggestedQuery } from './ask-suggested'
 import { readUsual, usualQuery } from './ask-usual'
 import { ask, askVariant } from './graphql'
@@ -105,16 +105,16 @@ function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number
 const SUGGESTED_STORE = 'suggested'
 
 /**
- * Who GitLab suggests to approve each MR that is short of reviewers (`suggestionRoom`), asked again when the MR has
- * changed since; one pass at a time, each MR alone, so one that fails keeps its last and loses no other's. Kept only for
- * those MRs, so it never outgrows them. Only the leader asks; the store carries them to the sessions that draw.
+ * Who GitLab suggests to approve each MR of the user's that is short of reviewers (`wantsSuggestions`), asked again when
+ * the MR has changed since; one pass at a time, each MR alone, so one that fails keeps its last and loses no other's.
+ * Kept only for those MRs, so it never outgrows them. Only the leader asks; the store carries them to the sessions that draw.
  */
 function readSuggestions($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
   return joined('suggested', async () => {
-    const known = await readSuggestedKnown($)
+    const [known, users] = await Promise.all([readSuggestedKnown($), readUsers($)])
     const failures: Failure[] = []
     const kept: [string, Suggested[string]][] = []
-    for (const card of rows.filter(each => suggestionRoom(each) > 0)) {
+    for (const card of rows.filter(each => wantsSuggestions(each, users[each.host] ?? null))) {
       const held = known[card.key]
       try {
         // A host without the field answers none, and is not asked again.

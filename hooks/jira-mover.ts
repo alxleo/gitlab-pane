@@ -59,6 +59,11 @@ export async function noteOwn($: EngineInterface, host: string, own: OwnMrs): Pr
   }
 }
 
+/** Who the user is on each host, as the inbox last read it; a host not read yet, or since the mod loaded, is not there. */
+export async function readUsers($: EngineInterface): Promise<Record<string, string | null>> {
+  return Object.fromEntries(Object.entries(await read($, ownAtom)).map(([host, own]) => [host, own.user] as const))
+}
+
 /** Keeps each step's end in its own store entry. */
 async function keep($: EngineInterface, all: readonly Kept[]): Promise<void> {
   await Promise.all(all.map(one => $.store.set(one.key, one.record)))

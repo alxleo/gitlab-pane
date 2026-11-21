@@ -32,6 +32,7 @@ export const ARMED_MS = 10_000
  * What a press records on a write a second press confirms (a merge, adding a reviewer), against the entry held as it
  * holds at `at`: `arm` arms it for `on`; `make` sends it on a live arm of the same kind for the same `on`, and arms it
  * otherwise, so a drawing from before the arm ran out, or before what it was for changed, arms again instead of sending.
+ * An arm older than ARMED_MS has run out whether or not its timer ran: a reload drops the timer, never the entry.
  * Nothing while one is out.
  */
 export function confirmedPress<Kind extends string>(kind: Kind, held: Write | undefined, on: string, at: number, does: 'arm' | 'make'): Write<Kind> | null {
@@ -39,7 +40,7 @@ export function confirmedPress<Kind extends string>(kind: Kind, held: Write | un
   if (live?.state === 'sent') {
     return null
   }
-  const isConfirmed = live?.state === 'armed' && live.kind === kind && live.on === on
+  const isConfirmed = live?.state === 'armed' && live.kind === kind && live.on === on && at - live.at <= ARMED_MS
   return { kind, state: does === 'make' && isConfirmed ? 'sent' : 'armed', on, at }
 }
 
