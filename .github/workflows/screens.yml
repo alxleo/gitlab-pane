@@ -1,4 +1,4 @@
-# Keeps docs/screens/*.png, the README's pictures of the pane, true to what the pane draws.
+# Keeps docs/screens/*.png, the README's pictures of the pane and of the ChatGPT plugin's panel, true to what each draws.
 # The work is `npm run screens -- render --check`: it runs the mod's own drawing code under the pinned Claude Code,
 # photographs the result in Chromium, and fails unless the committed PNGs are exactly those. A stale picture is regenerated
 # by whoever changed the drawing (`npm run screens -- render`) and committed with the change: nothing here pushes a commit,
@@ -17,7 +17,10 @@ on:
       - tests/fixtures.ts
       - tests/gitlab_fake.ts
       - tools/pane_screens.ts
+      - tools/photograph.ts
+      - tools/chatgpt_screens.ts
       - tools/screens/**
+      - chatgpt/**
       - docs/screens/**
       - package-lock.json
       - .claude-plugin/plugin.json
@@ -29,7 +32,10 @@ on:
       - tests/fixtures.ts
       - tests/gitlab_fake.ts
       - tools/pane_screens.ts
+      - tools/photograph.ts
+      - tools/chatgpt_screens.ts
       - tools/screens/**
+      - chatgpt/**
       - docs/screens/**
       - package-lock.json
       - .claude-plugin/plugin.json
@@ -63,5 +69,9 @@ jobs:
       # run asks Ubuntu's package mirrors for nothing and does not fail when they do not answer. The fonts `--with-deps`
       # added are not needed either: a character no bundled font has fails the render as an empty box.
       - run: npm run screens -- setup
-      # Draws every scene twice, fails unless the two sets match byte for byte, and fails unless docs/screens holds them.
+      # The ChatGPT plugin's panel in Chromium behind the host bridge, as ChatGPT opens it: every row drawn without an
+      # error, and a merge pressed twice merges on the made-up GitLab.
+      - run: npm run panel
+      # Draws every scene and the ChatGPT panel twice, fails unless the two sets match byte for byte, and fails unless
+      # docs/screens holds them.
       - run: npm run screens -- render --verify --check

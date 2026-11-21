@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.4](https://github.com/alxleo/gitlab-pane/compare/v0.4.3...v0.4.4) (2026-11-21)
+
+
+### Features
+
+* **chatgpt:** ship the ChatGPT panel beside the mod, under the same checks and releases ([#133](https://github.com/alxleo/gitlab-pane/issues/133)) ([954d460](https://github.com/alxleo/gitlab-pane/commit/954d4607ce671da8116b6598d8dc9843aed160dc))
+* **mine:** a search box finds an MR the pane holds by its number, ticket or words ([#120](https://github.com/alxleo/gitlab-pane/issues/120)) ([13c8aa1](https://github.com/alxleo/gitlab-pane/commit/13c8aa10a6cf98fa5b9d8ad409243e989a286ec7))
+* **mine:** fold your recently merged MRs last, each with the build that landed on its target ([#110](https://github.com/alxleo/gitlab-pane/issues/110)) ([8088e6b](https://github.com/alxleo/gitlab-pane/commit/8088e6b66dd9688525c8d10a6dbf1b02524e0184))
+* **pane:** follow the app's light or dark theme, and say nothing by colour alone ([#123](https://github.com/alxleo/gitlab-pane/issues/123)) ([8ee8f9b](https://github.com/alxleo/gitlab-pane/commit/8ee8f9be43dff0d8d6a31769c4f013cf56f79533))
+* ready-to-merge cards come first, show the head they merge, and lead with their move ([#106](https://github.com/alxleo/gitlab-pane/issues/106)) ([a499b89](https://github.com/alxleo/gitlab-pane/commit/a499b89a87d3384d961022018b2965cad618ae37))
+* **tools:** a live browser preview of the pane a checkout draws, from real GitLab ([#122](https://github.com/alxleo/gitlab-pane/issues/122)) ([e1d58d1](https://github.com/alxleo/gitlab-pane/commit/e1d58d15b7fa27e6f42871177e6ef1fa37b0d477))
+
+
+### Bug Fixes
+
+* **merge:** squash as GitLab will, so a project that always squashes merges from the pane ([#107](https://github.com/alxleo/gitlab-pane/issues/107)) ([c242c3c](https://github.com/alxleo/gitlab-pane/commit/c242c3ccee57dd5db0d84051f18b5b52b5dee4f1))
+* **reads:** ask run times and tickets at their pace, even for one that gets no answer ([#121](https://github.com/alxleo/gitlab-pane/issues/121)) ([088cb29](https://github.com/alxleo/gitlab-pane/commit/088cb29933cd0111091b88ff32431aa4006849c8))
+* **shot:** give Hammerspoon as long as the call, so listing the windows does not time out ([#112](https://github.com/alxleo/gitlab-pane/issues/112)) ([30bd5da](https://github.com/alxleo/gitlab-pane/commit/30bd5daddf17f25ac8c4d3a52850f78f6eb790ac))
+* **tools:** unpack the engine's declarations under CLAUDE_CODE_TMPDIR, the folder claude reads ([#113](https://github.com/alxleo/gitlab-pane/issues/113)) ([3a66b59](https://github.com/alxleo/gitlab-pane/commit/3a66b5978d5b97cee6fd8bc90a87310a02598f5f))
+
+
+### Performance Improvements
+
+* **markdown:** a fence with no closer tries only the lengths some line closes with ([#130](https://github.com/alxleo/gitlab-pane/issues/130)) ([7852cee](https://github.com/alxleo/gitlab-pane/commit/7852cee31e19aa007c2acc65c59467f39698b3f5))
+* **mine:** read the list without its jobs or system notes, so it answers well inside the limit ([#116](https://github.com/alxleo/gitlab-pane/issues/116)) ([859f106](https://github.com/alxleo/gitlab-pane/commit/859f10601f3267719c042b6c8dabdfb788a990b2))
+
 ## [0.4.3](https://github.com/alxleo/gitlab-pane/compare/v0.4.2...v0.4.3) (2026-11-11)
 
 

@@ -1,39 +1,30 @@
 import type { EngineInterface } from 'claude-code'
 
 import { readHosts } from './data'
-import { bareHost, parseTokens } from './hosts'
+import { environmentToken, GLAB_VARIABLES, present } from './gitlab-answer'
+import type { Source } from './gitlab-answer'
+import { parseTokens } from './hosts'
 import { remembered } from './in-flight'
 import { runText } from './tools'
 import type { Outcome } from './tools'
 
-/** Where a token came from, for saying which one a host refused; the token itself is never said. */
-type Source = 'the environment' | 'glab' | 'the plugin settings'
-
 export type Found = { token: string; source: Source }
 
-const present = (value: string | undefined): string | null => (value !== undefined && value.trim() !== '' ? value.trim() : null)
-
 /**
- * The token glab reads from its environment, for the host glab would talk to: `GITLAB_HOST` (or `GL_HOST`), else the
- * first host the settings name. The variable names are the ones glab reads, in its order; the engine takes a name only as
- * a literal, so no host has a variable of its own. A host variable the pane cannot read as a bare host (one with a path,
- * say) names no host here, rather than letting the token fall to the first.
+ * The token glab reads from its environment, for the host glab would talk to (`environmentToken`), the first host the
+ * settings name standing in when no host variable is set. The engine takes a variable's name only as a literal, so no host
+ * has a variable of its own.
  */
 async function fromEnvironment($: EngineInterface, host: string, hosts: readonly string[]): Promise<string | null> {
-  const named = [await $.env.get('GITLAB_HOST'), await $.env.get('GL_HOST')].map(value => value?.trim() ?? '').find(value => value !== '')
-  if ((named === undefined ? hosts[0] : bareHost(named)) !== host) {
-    return null
+  const variables = {
+    GITLAB_HOST: await $.env.get('GITLAB_HOST'),
+    GL_HOST: await $.env.get('GL_HOST'),
+    GITLAB_TOKEN: await $.env.get('GITLAB_TOKEN'),
+    GITLAB_ACCESS_TOKEN: await $.env.get('GITLAB_ACCESS_TOKEN'),
+    OAUTH_TOKEN: await $.env.get('OAUTH_TOKEN'),
   }
-  const values = [await $.env.get('GITLAB_TOKEN'), await $.env.get('GITLAB_ACCESS_TOKEN'), await $.env.get('OAUTH_TOKEN')]
-  return values.map(present).find(value => value !== null) ?? null
+  return environmentToken(Object.fromEntries(Object.entries(variables).flatMap(([name, value]) => (value !== undefined ? [[name, value]] : []))), host, hosts[0])
 }
-
-/**
- * The variables glab takes a token or a host from. glab answers `config get token --host <host>` from its environment
- * before its config, whatever host is asked, so a token meant for one host would come back for every other; they are
- * unset for that question, leaving only what glab stored for the host itself. `fromEnvironment` reads them instead.
- */
-const GLAB_VARIABLES = ['GITLAB_TOKEN', 'GITLAB_ACCESS_TOKEN', 'OAUTH_TOKEN', 'GITLAB_HOST', 'GL_HOST'] as const
 
 /** The token glab stored for the host, in its config file or the keyring; never one from its environment. */
 async function fromGlab($: EngineInterface, host: string): Promise<string | null> {

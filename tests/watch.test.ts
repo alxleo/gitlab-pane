@@ -26,7 +26,7 @@ import {
 import type { Mr } from './fixtures'
 import type { CiJobStatus, PipelineStatusEnum, ReplyMutation, ReplyMutationVariables } from '../hooks/gitlab.generated'
 import type { RawResponse } from '../hooks/gitlab-request'
-import { argumentNotAccepted, undefinedField } from './gitlab_fake'
+import { argumentNotAccepted, moveAnswers, undefinedField } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
@@ -122,54 +122,6 @@ const SIX_RUNS = [600, 660, 720, 780, 840, 900]
 
 /** GitLab's answer to `Usual`: the project's recent successful MR pipelines, each with how long it ran. */
 const pipelinesRan = (durations: readonly number[]) => ({ data: { project: { pipelines: { nodes: durations.map(duration => ({ duration })) } } } })
-
-/** Whether every check GitLab holds for the MR has passed or is off. */
-const isMergeableNow = (mr: Mr) => (mr.mergeabilityChecks ?? []).every(check => check.status === 'SUCCESS' || check.status === 'INACTIVE')
-
-/**
- * GitLab's answers to a move: the MR read fresh, and a merge, which merges it now or, by a strategy, once its checks pass.
- * `merged` hears of each merge asked for, as `<iid>@<head>` and the strategy.
- */
-function moveAnswers(fake: () => Mr[], strategies: () => string[], merged: string[]): Answers {
-  const find = (path: string, iid: string) => fake().find(mr => mr.iid === iid && mr.project.fullPath === path)
-  return {
-    MoveState: ({ path, iid }) => {
-      const mr = find(path, iid)
-      return {
-        data: {
-          project: {
-            mergeRequest:
-              mr === undefined
-                ? null
-                : {
-                    state: mr.state,
-                    detailedMergeStatus: isMergeableNow(mr) ? 'MERGEABLE' : 'BLOCKED_STATUS',
-                    diffHeadSha: mr.merging?.diffHeadSha ?? `head-${mr.iid}`,
-                    rebaseCommitSha: mr.merging?.rebaseCommitSha ?? null,
-                    rebaseInProgress: mr.merging?.rebaseInProgress ?? false,
-                    autoMergeEnabled: mr.merging?.autoMergeEnabled ?? false,
-                    mergeError: mr.merging?.mergeError ?? null,
-                    availableAutoMergeStrategies: strategies(),
-                    squashOnMerge: mr.merging?.squashOnMerge ?? false,
-                  },
-          },
-        },
-      }
-    },
-    Merge: ({ path, iid, sha, strategy, squash }) => {
-      merged.push(`${iid}@${sha}${squash ? ' squashed' : ''}${strategy !== undefined && strategy !== null ? ` ${strategy}` : ''}`)
-      const mr = find(path, iid)
-      if (mr !== undefined) {
-        if (strategy === undefined || strategy === null) {
-          mr.state = 'merged'
-        } else {
-          mr.merging = { ...mr.merging, autoMergeEnabled: true }
-        }
-      }
-      return { data: { mergeRequestAccept: { errors: [], mergeRequest: { state: mr?.state ?? 'opened', mergeError: null } } } }
-    },
-  }
-}
 
 /** The lines of the diff GitLab sends for every thread left on it in these tests, ending at the commented line. */
 const DIFF_LINES = [

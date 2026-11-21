@@ -156,7 +156,10 @@ export default defineConfig({
     {
       // The dev tools are one-shot Node processes, not modules a reload restarts or a second session shares: the reasons for
       // the module-state rule do not apply, and their `main()` is what "runs as the module loads". Everything else holds.
-      files: ['tools/*.ts'],
+      // So are these of the ChatGPT plugin, named one by one so that its modules (read.ts, move.ts and the rest) stay under
+      // the rule: its server, one process per chat that keeps its state in the `createServer` it calls as it starts; its
+      // panel, one page per open panel; and its two checks that are one-shot processes like the tools.
+      files: ['tools/*.ts', 'chatgpt/server.ts', 'chatgpt/panel.ts', 'chatgpt/panel-test.ts', 'chatgpt/codex-check.ts'],
       rules: { 'local/no-module-state': 'off' },
     },
   ],
