@@ -2,6 +2,7 @@ import type { EngineInterface } from 'claude-code'
 
 import {
   heldTicket,
+  isAnyTicketFailed,
   knowTicketDetail,
   knowTickets,
   markTicketsRead,
@@ -67,7 +68,7 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
  * was read is drawn at once, and read again on an opening once it is as old as the quarter-hourly read lets a ticket be. A
  * ticket Jira answers without is kept as not found. A failure is kept with the ticket (`failed`), so its panel says so and
  * no other's does, and asked again at its next opening; what an earlier read gave is kept over it. `/gitlab` says the last
- * such failure (`jira-ticket`), apart from the quarter-hourly read's.
+ * such failure (`jira-ticket`), apart from the quarter-hourly read's, while any ticket's panel still says it failed.
  */
 export function ensureTicket($: EngineInterface, key: string): Promise<void> {
   return joined(`ticket:${key}`, async () => {
@@ -84,9 +85,11 @@ export function ensureTicket($: EngineInterface, key: string): Promise<void> {
       }
       return
     }
-    await clear($, 'jira-ticket')
     const detail = found.value[key]
     await knowTicketDetail($, key, detail !== undefined ? { ...detail, isFound: true, at: now } : { assignee: '', description: '', isFound: false, at: now })
+    if (!(await isAnyTicketFailed($))) {
+      await clear($, 'jira-ticket')
+    }
   })
 }
 

@@ -62,6 +62,11 @@ export async function heldTicket($: EngineInterface, key: string): Promise<Ticke
   return (await read($, ticketDetailsAtom))[key]
 }
 
+/** Whether the last read of any ticket held failed, so a panel still says so. */
+export async function isAnyTicketFailed($: EngineInterface): Promise<boolean> {
+  return Object.values(await read($, ticketDetailsAtom)).some(detail => detail.failed !== undefined)
+}
+
 /** Keeps what Jira said of a ticket read whole, letting go of the oldest read past those held (`keptTicketDetails`). */
 export async function knowTicketDetail($: EngineInterface, key: string, detail: TicketDetail): Promise<void> {
   await update($, ticketDetailsAtom, previous => keptTicketDetails(previous, key, detail))

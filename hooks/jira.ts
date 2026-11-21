@@ -14,14 +14,15 @@ export const browseUrl = (site: unknown): string => (typeof site === 'string' &&
 export const ticketUrl = (browse: string, key: string): string | null => (browse === '' ? null : `${browse}${key}`)
 
 /**
- * A ticket key as a card draws it: its words, and with a Jira site set the link drawn, whose plain click opens the ticket
- * under the card and whose ⌘, ctrl or alt click opens it in Jira.
+ * A ticket key as a card draws it: its words, and with a Jira site set its address (`href`, what a surface without the
+ * pane's own press links, as the ChatGPT panel does) and the link drawn, whose plain click opens the ticket under the card
+ * and whose ⌘, ctrl or alt click opens it in Jira.
  */
-export type TicketChip = { key: string; text: string; link: MarkdownText | null }
+export type TicketChip = { key: string; text: string; href: string | null; link: MarkdownText | null }
 
 export const ticketChip = (browse: string, key: string): TicketChip => {
   const href = ticketUrl(browse, key)
-  return { key, text: key, link: href !== null ? linkMarkdown(`${LINK.jira} ${key}`, href) : null }
+  return { key, text: key, href, link: href !== null ? linkMarkdown(`${LINK.jira} ${key}`, href) : null }
 }
 
 const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/u

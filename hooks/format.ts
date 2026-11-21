@@ -45,7 +45,7 @@ function proseLines(body: GitLabMarkdown): string[] {
 export function excerpt(body: GitLabMarkdown, room = 160): string {
   const first = proseLines(body).find(text => text.replace(/[#*_>\s-]/gu, '').length > 0) ?? ''
   // Underscores stay: in a review they are mostly names (`fn_name`), rarely emphasis.
-  return shorten(first.replace(/^[#>\s]+|[*`]/gu, '').trim(), room)
+  return shorten(drawnLine(first.replace(/^[#>\s]+|[*`]/gu, '')), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */

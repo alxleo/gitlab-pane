@@ -77,7 +77,8 @@ test('a person opened under a card leads with their newest comment once the MR i
   expect(personUnder(once, 'tim', false)).toMatchObject({ latest: null, more: 'read it whole ›' })
   const quiet = toCard(HOST, rawMr(12, { reviewers: { nodes: [reviewer('tim', 'APPROVED')] } }))
   expect(personUnder(quiet, 'tim', true)).toMatchObject({ latest: null, more: null })
-  expect(personUnder(card, 'nobody', true)).toBeNull()
+  // Someone who has left the MR since their panel opened still has one, saying so, which `✕` closes.
+  expect(personUnder(card, 'nobody', true)).toEqual({ kind: 'person', heading: 'nobody · no longer on this MR', latest: null, more: null })
 })
 
 test('a ticket opened under a card says what the quarter-hourly read knows at once, and what reading it whole adds once in', () => {

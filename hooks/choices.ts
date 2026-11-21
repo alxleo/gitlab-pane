@@ -133,8 +133,8 @@ export function closePage($: EngineInterface, key: string): Promise<void> {
 }
 
 /** Shows the Inbox tab, leaving any MR's page, with the person it was on and the folds it had open. */
-export async function showInbox($: EngineInterface): Promise<void> {
-  await settleBox($)
+export function showInbox($: EngineInterface): Promise<void> {
+  // The band that calls this shows only while the pane is closed or a page open, and both settled the box already.
   return change($, choices => ({ ...choices, tab: 'inbox', reading: '', person: {}, folds: choices.folds.filter(id => !id.startsWith(`${choices.reading}#`)) }))
 }
 

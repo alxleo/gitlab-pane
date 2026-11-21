@@ -39,9 +39,11 @@ test('an MR reads by its first paragraph, not its headings', async () => {
   expect(lead(cleanBody(`${'x'.repeat(236)}🇺🇸tail`, HOST, 'g/p'))).toBe(`${'x'.repeat(236)}…`)
 })
 
-test('an excerpt is cut to its room between characters, dropping a flag that does not fit whole', () => {
+test('an excerpt is cut to its room between characters, dropping a flag that does not fit whole, and safe to draw', () => {
   expect(excerpt(cleanBody(`${'x'.repeat(96)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(96)}…`)
   expect(excerpt(cleanBody(`${'x'.repeat(95)}🇺🇸tail`, HOST, 'g/p'), 100)).toBe(`${'x'.repeat(95)}🇺🇸…`)
+  // Someone's words with control characters in them, which a drawing refuses and which can blank the pane.
+  expect(excerpt(cleanBody('line one\u001b[2J\rtwo\u0007 bad', HOST, 'g/p'), 320)).toBe('line one [2J two bad')
 })
 
 test('titles keep the ticket apart and lose their type lead', async () => {

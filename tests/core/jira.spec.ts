@@ -79,9 +79,14 @@ test('the tickets read whole are kept newest read first, thirty at most, the old
   expect(keptTicketDetails(kept, 'ABC-1', detail(100))['ABC-1']).toEqual(detail(100))
 })
 
-test('a ticket key is a link the pane answers while a Jira site is set, and its words alone while none is', () => {
-  expect(ticketChip('https://jira.example.com/browse/', 'ABC-1')).toEqual({ key: 'ABC-1', text: 'ABC-1', link: '[🎫 ABC-1](https://jira.example.com/browse/ABC-1)' })
-  expect(ticketChip('', 'ABC-1')).toEqual({ key: 'ABC-1', text: 'ABC-1', link: null })
+test('a ticket key is a link the pane answers while a Jira site is set, with its address for surfaces that link it plainly, and its words alone while none is', () => {
+  expect(ticketChip('https://jira.example.com/browse/', 'ABC-1')).toEqual({
+    key: 'ABC-1',
+    text: 'ABC-1',
+    href: 'https://jira.example.com/browse/ABC-1',
+    link: '[🎫 ABC-1](https://jira.example.com/browse/ABC-1)',
+  })
+  expect(ticketChip('', 'ABC-1')).toEqual({ key: 'ABC-1', text: 'ABC-1', href: null, link: null })
 })
 
 test('Jira is asked which tickets have ever been in a review status, each name quoted as JQL reads it', () => {

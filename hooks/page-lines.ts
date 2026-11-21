@@ -100,14 +100,15 @@ export type UnderBlock =
   | { kind: 'ticket'; heading: string; lines: string[]; isReading: boolean }
 
 /**
- * A person's say on `card`, or null when they are no longer on it. Their newest note leads once the MR is read whole
- * (`isWhole`): the shared card keeps one note a person, their open thread before their newest, so until then none is quoted.
+ * A person's say on `card`. Their newest note leads once the MR is read whole (`isWhole`): the shared card keeps one note a
+ * person, their open thread before their newest, so until then none is quoted.
  */
-export function personUnder(card: MrCard, username: string, isWhole: boolean): UnderBlock | null {
+export function personUnder(card: MrCard, username: string, isWhole: boolean): UnderBlock {
   const page = personPage(card, username)
   const person = card.people.find(each => each.username === username)
   if (page === null || person === undefined) {
-    return null
+    // Left the MR since the panel opened: the panel says so, for `✕` to close, rather than stay open unseen.
+    return { kind: 'person', heading: `${username} · no longer on this MR`, latest: null, more: null }
   }
   const newest = person.notes.reduce<Note | null>((best, note) => (best === null || note.at > best.at ? note : best), null)
   // The way on to their comments whole, on the MR's page: the one quoted here may be cut short.

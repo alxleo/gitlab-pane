@@ -750,6 +750,13 @@ test('the list follows the search box once typing pauses, and Enter at once, pas
     await ui.press({ key: 'tab-mine' })
     expect((await box(ui))?.props.value).toBe('totals')
     await ui.press({ key: 'search-clear' })
+    // Typing not yet paused on goes with the box when the list is left: the list is not narrowed by it behind the box.
+    await ui.input({ key: (await box(ui))?.key ?? '', text: 'totals', kind: 'change' })
+    await ui.press({ key: 'tab-inbox' })
+    await clock.advance(300)
+    await ui.press({ key: 'tab-mine' })
+    expect((await box(ui))?.props.value).toBe('')
+    expect(await text(ui, /^Found · /u)).toBeUndefined()
     await ui.select({ key: 'repo', value: 'all' })
     expect(await blue(ui)).toBe(0)
     await ui.unmount()
@@ -957,6 +964,38 @@ test(
     await clock.settle()
     expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
     expect(await gitlab()).toMatch(/· jira: /u)
+    expect(await gitlab()).not.toMatch(/jira-ticket: /u)
+    await ui.unmount()
+  }
+)
+
+test(
+  "one ticket read well does not take back from /gitlab another's failure that its panel still points to",
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [rawMr(12, SHOWN), rawMr(14, { ...SHOWN, title: 'feat: [ABC-2] Other' })], isDown: false, ticketsKnown: ['ABC-1', 'ABC-2'], jiraDown: 'whole' }
+    engine(on, fake)
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const gitlab = async () => (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
+    const open = async (key: string) => {
+      const chip = (await ui.findAll({ type: 'Markdown' })).find(element => String(element.props.text).includes(`${key}]`))
+      await ui.press({ key: String(chip?.key), link: { href: `https://jira.example.com/browse/${key}` } })
+      await clock.settle()
+    }
+    await open('ABC-1')
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeDefined()
+    fake.jiraDown = undefined
+    await open('ABC-2')
+    expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeDefined()
+    expect(await gitlab()).toMatch(/· jira-ticket: /u)
+    // ABC-1 read again, and well: nothing failed is left to say.
+    await open('ABC-1')
+    await open('ABC-1')
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeUndefined()
     expect(await gitlab()).not.toMatch(/jira-ticket: /u)
     await ui.unmount()
   }
