@@ -52,6 +52,7 @@
     "hooks/gitlab-status.ts",
     "hooks/gitlab.generated.ts",
     "hooks/graphemes.ts",
+    "hooks/hint-chip.ts",
     "hooks/hosts.ts",
     "hooks/identity.ts",
     "hooks/in-flight.ts",

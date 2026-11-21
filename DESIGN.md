@@ -12,12 +12,12 @@ What each colour, border and mark in the pane means, and the code that holds it.
 | Never colour alone | a colour always rides with a glyph or words that say the same; one meaning keeps one colour in either theme, and cards draw no border | `TONE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
 | Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
-| Nothing waits for the pointer | no part of a card shows or hides on a hover, so nothing moves under it; the rest of an MR is on its page, a press away | `card.tsx` |
+| A symbol says what it means once the pointer rests | resting the pointer on any symbol shows a short description over the card after 0.6 s, never as the pointer passes; it is out of the flow, so nothing moves under the pointer and no other part of a card shows or hides; the symbol stands alone, and the rest of an MR is on its page, a press away | `hinted`, `hooks/hint.tsx`; `waitStep`, `HINT_DELAY_MS` |
 | Bots show only when they hold the merge | by an open thread or a request for changes; then a bot gets a face like anyone's; otherwise its summary comments stay out of the way | `toCard`, `hooks/mr-card.ts` |
 
 ## Colour
 
-Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. The description a symbol shows under the pointer is text too, the theme's text colour behind its inverse. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
 
 Fading is not a tone: a face drawn faded is someone suggested as a reviewer, and nothing else in the pane fades a face (People, below). Its dark veil borrows the dim grey's shade without meaning what `subtle` means.
 
@@ -36,7 +36,7 @@ The dark shades are the app's own dark keys, sampled from shots of it. The light
 | Part | Shows | Code |
 |---|---|---|
 | Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
-| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, each face badged for where they stand; a name opens the page on what that person wrote; last, faded, whom GitLab suggests as a reviewer (People, below) | `row-facts.ts` |
+| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its description), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, each face badged for where they stand; a name opens the page on what that person wrote; last, faded, whom GitLab suggests as a reviewer (People, below) | `row-facts.ts` |
 | Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is grey and that quotes no one; its links and faces are on its page. One GitLab says can merge is a decision, and one with a reviewer to suggest is the author's to act on, so neither is quiet | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens the page on them. No line when there is none | `saidOf` |
 
@@ -128,6 +128,7 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 
 - **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below: where they stand, said by its glyph, never by a colour alone, so there is no ring. It is cut out of the avatar by an edge in the pane's background (`PAGE`), and its glyph is drawn in that background too, white on the light shades and near black on the dark ones, which keeps 4.5:1 in either theme.
 - **Without images** (the terminal): the badge's glyph, in its tone.
+- **Under the pointer**, the face or the name says the badge's words, below; a suggested face says `suggested reviewer`.
 - **Faded** means suggested, and nothing else in the pane: someone not on the MR yet, whom a press adds as a reviewer. Their face is washed out by a veil laid over it (`VEIL`): white at 55% in the light theme; in the dark theme the dim grey at 45%, since a fade toward the dark pane turned the face muddy and drowned its initials. It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked, which is a stand. Without images, `+` before the name says it.
 
 | Badge | Means |
@@ -157,22 +158,60 @@ The add keeps the MR's other reviewers (`APPEND`), and a toast says how it ended
 
 ## Links
 
-Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`).
+Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`), and in words under the pointer (`opens the MR`, `LINK_OPENS`). On a merged MR's row, 🚦 opens the build on its target branch.
 
 | Mark | Opens |
 |---|---|
 | 🔀 | the MR |
 | 🎫 | the Jira ticket |
 | 📁 | the repo |
-| 🚦 | the pipeline; on a merged MR's row, the build on its target branch |
+| 🚦 | the pipeline |
 | 💬 | the comment |
 | 📍 | the commit a merge takes |
+
+## Under the pointer
+
+Resting the pointer on a symbol shows what it means in a chip of the theme's text colour, drawn over the line above it (below, for the top rows, which have nothing above), back from the right edge for a symbol there (`hinted`, `Place`). It covers, never pushes: nothing moves and nothing else appears.
+
+The engine shows a hidden box the moment the pointer touches its symbol and has no delay of its own. So the box holds a small region of the pane's own (a `Client`, `hooks/hint-wait.tsx`) that is laid out as the box shows and hides, and shows the words only once the pointer has stayed `HINT_DELAY_MS`, 0.6 s, every time (`waitStep` in `hooks/hint-chip.ts`, on plain data): a pointer only passing by is gone before they show. The region holds no symbol, so a press lands on the symbol as before. Seen in the desktop app, each rest waited, the second as the first, and the chip showed by 0.7 s.
+
+Tried and dropped: a chip as a picture that fades in waited only the first time, as the desktop keeps one clock per picture; a region laid over the symbol waited every time but swallowed its presses; the app's own tooltip (a framed picture's title) waited longer, fired only over a 16-pixel picture and could not cover links or buttons. 1.5 s read as slow.
+
+The words are the tables' own:
+
+| Symbol | Says |
+|---|---|
+| A link's mark | `opens` and what it opens, above |
+| A face, or its name | its badge's words, above, with the threads they hold (`approved, 2 open threads`) |
+| A pipeline mark | its status (`passed`, `waiting on a manual job`; `STATUS_WORD`); `○` says `no pipeline`, in place of those words on a card |
+| An inbox count | its event's words, above: a card counts `✓2 💬1` in place of `2 approved · 1 commented`; what blocks a merge (changes requested, a failed pipeline, can't merge) keeps its words |
+| The stage strip | its stages, a line each: how many passed, then every other stage's name, state and time |
+| The failed jobs on an MR's page | one description for the list: what `✗` and `⚠` mean, and that each opens its log |
+| An inbox avatar | who it is |
+
+The controls drawn as a symbol alone say what a press does, or what is on (`CONTROL`):
+
+| Control | Says |
+|---|---|
+| ↻ | read GitLab again |
+| 🔔 | raised MRs wake Claude |
+| 🔕 | raised MRs don't wake Claude |
+| ☆ | pin to this session |
+| ★ | unpin from this session |
+| ✕ | end the search |
+| ✓ | mark seen |
+
+- Only the desktop app was seen drawing a description, so it alone draws them. The terminal, VS Code and a phone keep the words a symbol replaces. Neither VS Code nor a phone shows a picture's title either, so there the stage strip's own text (`alt`) names its stages, for whatever reads it out; on the screen the strip says its stages nowhere but the desktop, as before.
+- Text from GitLab in a description (a name, a stage) loses what draws nothing: marks that only steer text, such as a right-to-left override, and letters drawn blank. Words left with nothing to say draw no description (`hintChip` answers `null`).
+- A list of links that each do the same (an MR page's failed jobs) has one description for the whole list, drawn above it: a description per link took 500 characters each and crowded a long page's threads off it.
+- A description from the tables above fits `HINT_ROOM`, 36 cells, so it stays inside a narrow pane; any line past it (a stage's long name, text from GitLab) is cut with `…`, and a list past `HINT_LINES` ends with how many more. Wide letters count two cells. One costs about 350 characters of the drawing, counted with its row; the top row's are in `CHROME_SIZE`. With every symbol described, the heaviest list the tests make (fifty MRs of 180 failed jobs each) draws 8 cards where it drew 15, and counts the rest.
+- Every symbol is drawn through `hinted`, the one component, with its words from these tables. The tests hold it: `unhinted` (`tests/fixtures.ts`) walks a desktop drawing of Mine, an MR's page, a person's page, the inbox and a search, and fails on any picture, link, or label of symbols alone that has no description.
 
 A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
 
 ## Inbox
 
-Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`). The last two name no one.
+Each card counts what happened since you last marked it seen, in the order it matters to the merge (`VERB` in `hooks/inbox-pane.tsx`), as each event's mark and count (`✓2`), whose words show once the pointer rests on it; what blocks a merge is counted in words. The last two name no one.
 
 | Mark | Event |
 |---|---|

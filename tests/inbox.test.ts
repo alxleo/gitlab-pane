@@ -5,7 +5,7 @@ import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
 import { RECHECK_MS } from '../hooks/landed'
-import { NOW, commented, listed, mergeStatuses, pipe, rawMr } from './fixtures'
+import { NOW, commented, hintsIn, listed, mergeStatuses, pipe, rawMr, unhinted } from './fixtures'
 import type { Mr } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, merged, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
@@ -75,6 +75,15 @@ const FIRST_SYNC_MS = 2_000
 const titleOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }, iid: number) =>
   (await ui.find({ type: 'Button', key: `inbox-open-${hashOf(`gitlab.com/g/p!${iid}`)}` }))?.props?.label
 
+/** What the descriptions under a drawn element say, each its lines joined. */
+const chipWords = (node: unknown): string[] => hintsIn(node).map(hint => hint.lines.join(', '))
+
+/** The counts a desktop card draws as marks: each one's mark and number, and what its chip says once the pointer rests. */
+const countsOf = async (ui: { findAll: (query: { type: string }) => Promise<{ key: string | undefined; text: string; children: unknown[] }[]> }) =>
+  (await ui.findAll({ type: 'Box' }))
+    .filter(box => /^hint-[a-z_]+-\w+$/u.test(box.key ?? '') && !['hint-mr-', 'hint-seen-', 'hint-who-', 'hint-at-'].some(prefix => (box.key ?? '').startsWith(prefix)))
+    .map(box => [box.text, ...chipWords(box)])
+
 const typed = (args: string) => ({
   command: 'mrs',
   args,
@@ -87,7 +96,7 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
   const gitlab = engine(on, busyWorld())
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  for (const surface of ['terminal', 'desktop'] as const) {
+  for (const surface of ['terminal', 'vscode', 'mobile', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     await clock.advance(FIRST_SYNC_MS)
     // Three small documents on the host, read with the token from the environment; nothing else is run for the inbox.
@@ -109,7 +118,18 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
     expect(await titleOf(ui, 1)).toBe('▸ thing 1')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
     // A count per kind instead of a line of handles, and the ref without the repo, which follows it. Your own MR leaves your name out.
-    expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented' })).toBeDefined()
+    // Under the desktop's pointer each count is its event's mark, which says the event's words; the terminal, VS Code and a
+    // phone, with no chips, spell them.
+    if (surface !== 'desktop') {
+      expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented' })).toBeDefined()
+      expect((await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hint-') === true)).toEqual([])
+    } else {
+      expect(await ui.find({ type: 'Text', text: 'p' })).toBeDefined()
+      expect(await countsOf(ui)).toEqual([
+        ['✓1', 'approved'],
+        ['💬2', 'commented'],
+      ])
+    }
     expect(JSON.stringify(await ui.drawn())).toContain('"!1"')
     // The newest event says who did what; the rest wait behind a press on the title.
     expect(await ui.find({ type: 'Text', text: '✓ bob approved' })).toBeDefined()
@@ -119,6 +139,8 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
     expect(await titleOf(ui, 1)).toBe('▾ thing 1')
     expect(await ui.find({ type: 'Text', text: '💬 carol commented' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeDefined()
+    // On the desktop every symbol of an open card says what it means once the pointer rests: none is drawn without its chip.
+    expect(surface === 'desktop' ? unhinted(await ui.drawn()) : []).toEqual([])
     // The title closes it again, and so does ▴ less at the card's foot.
     await ui.press(opens)
     expect(await ui.find({ type: 'Text', text: '“please rename”' })).toBeUndefined()
@@ -149,7 +171,8 @@ test('a review requested of you shows until you approve it, and a push since you
   expect(await titleOf(ui, 2)).toBe('▸ thing 2')
   expect(await titleOf(ui, 3)).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: '? Alice asked for a review' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'p · alice · 1 asked for a review' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'p · alice' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '?1' })).toBeDefined()
 
   // Marked seen, it stays in the queue, grey; the author's push then makes it new again.
   await ui.press({ key: `inbox-seen-${hashOf('gitlab.com/g/p!2')}` })
@@ -189,8 +212,13 @@ test('what you were mentioned in, whose build failed and what cannot merge each 
   await ui.press({ key: 'inbox-rule-build-failed' })
   // An event nobody did reads without a name.
   expect(await ui.find({ type: 'Text', text: '✗ pipeline failed' })).toBeDefined()
+  // What blocks a merge is counted in words even under the desktop's pointer, never as a mark that waits to say it.
+  expect(await ui.find({ type: 'Text', text: /\b1 pipeline failed\b/u })).toBeDefined()
+  expect(await countsOf(ui)).toEqual([])
   await ui.press({ key: 'inbox-rule-cant-merge' })
   expect(await ui.find({ type: 'Text', text: "⚠ can't merge" })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\b1 can't merge\b/u })).toBeDefined()
+  expect(await countsOf(ui)).toEqual([])
   await ui.unmount()
 })
 
@@ -523,6 +551,8 @@ test("a search draws your merged MRs and others' inbox MRs that match as links u
   await ui.input({ key: 'search', text: 'thing' })
   expect(await texts()).toEqual(expect.arrayContaining(['Merged', 'Inbox']))
   expect(await linkWords()).toEqual(expect.arrayContaining(['🔀 !11 thing 11', '🔀 !12 thing 12', '🔀 !13 thing 13', '🔀 !2 thing 2']))
+  // Merged rows, their builds and others' MRs found say what each symbol means once the pointer rests, as cards do.
+  expect(unhinted(await ui.drawn())).toEqual([])
   await ui.input({ key: 'search', text: 'abc12' })
   expect(await texts()).toEqual(expect.arrayContaining(['Found · 1', 'Merged']))
   expect(await texts()).not.toContain('Inbox')
@@ -758,8 +788,16 @@ test('a merge on a branch that runs no pipeline is not asked for after ten minut
   await clock.advance(30 * 60_000)
   expect(asked()).toBe(before)
   await ui.press({ key: 'merged' })
-  expect((await ui.find({ type: 'Text', text: 'no pipeline' }))?.text).toBe('no pipeline')
+  // On the desktop the mark for none says so once the pointer rests on it; a phone, with no pointer, keeps the words.
+  expect(chipWords(await ui.drawn())).toContain('no pipeline')
+  expect(await ui.find({ type: 'Text', text: 'no pipeline' })).toBeUndefined()
   await ui.unmount()
+  for (const surface of ['mobile', 'vscode'] as const) {
+    const other = await $.ui.mount({ ...PANE, surface })
+    expect((await other.find({ type: 'Text', text: 'no pipeline' }))?.text).toBe('no pipeline')
+    expect(chipWords(await other.drawn())).toEqual([])
+    await other.unmount()
+  }
 })
 
 test('a merge whose squash commit GitLab will not say draws no build, says so, and is asked for again, while the rest of the inbox reads on', async ($, on) => {
@@ -1347,6 +1385,6 @@ test('an MR with more notes than GitLab sent counts them as at least, and says s
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-on-my-mrs' })
   expect(await ui.find({ type: 'Text', text: '2+ new' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'p · 2+ commented' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '💬2+' })).toBeDefined()
   await ui.unmount()
 })

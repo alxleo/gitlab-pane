@@ -1,8 +1,10 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure } from './drawing'
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure, opens } from './drawing'
 import { ago, plural } from './format'
+import { hinted } from './hint'
 import { shortHash } from './identity'
+import { kitOf } from './kit'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
@@ -30,6 +32,9 @@ export type PageView = { folds: string[]; focus: string; head: PageHead; now: nu
  */
 export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now, reply, writes }: PageView) {
   const { Box, Text, Button, Link, Markdown, Code, Input } = $.ui.resolve(e)
+  const kit = kitOf($, e, now)
+  /** A link to GitLab with what its mark opens shown once the pointer rests on it. */
+  const out = (key: string, words: string, href: string, text: string) => hinted(kit, key, words, <Link href={href}>{text}</Link>)
   /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
   const markdown = (text: MarkdownText) => <Markdown text={text} />
 
@@ -64,7 +69,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           {[note.where, ago(note.at, now)].filter(Boolean).join(' · ')}
         </Text>
       </Box>
-      <Link href={note.url}>{LINK.comment}</Link>
+      {out(`hint-note-${shortHash(note.url)}`, opens('comment'), note.url, LINK.comment)}
     </Box>
   )
   const said = (note: Note, who = note.author) => (
@@ -80,8 +85,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       {mr.title}
     </Text>,
     <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-      <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
-      <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
+      {out('hint-page-mr', opens('mr'), mr.url, `${LINK.mr} !${mr.iid}`)}
+      {out('hint-page-repo', opens('repo'), mr.repo.url, `${LINK.repo} ${mr.repo.name}`)}
       {verdict !== null && (
         <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
           {verdict.words}
@@ -91,10 +96,10 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
         {`${mr.branch.source} → ${mr.branch.target}${mr.diff !== null ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
       </Text>
     </Box>,
-    ...(about.ticket !== null ? [<Link href={about.ticket.href}>{about.ticket.text}</Link>] : []),
+    ...(about.ticket !== null ? [out('hint-page-ticket', opens('jira'), about.ticket.href, about.ticket.text)] : []),
     ...about.standing.map(line =>
       line.href !== null ? (
-        <Link href={line.href}>{line.text}</Link>
+        out(`hint-start-${shortHash(line.href)}`, 'opens the job, to start it', line.href, line.text)
       ) : (
         // What waits on others is said quietly, as the verdict says it; what is yours to act on stands out in its tone.
         <Text weight={line.tone !== undefined ? 'semibold' : undefined} dimColor={line.tone === undefined} color={line.tone}>
@@ -125,13 +130,16 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       ...head,
       <Text weight="semibold">{person.heading}</Text>,
       ...notes,
-      ...(notes.length < person.notes.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of their comments are on GitLab`}</Link>] : []),
+      ...(notes.length < person.notes.length ? [out('hint-rest-person', opens('mr'), mr.url, `${LINK.mr} The rest of their comments are on GitLab`)] : []),
       <Button key="page-whole" plain label={`the whole of !${mr.iid} ›`} onPress={() => showWhole($)} />,
     ]
   }
 
   const pipeline = mr.pipeline
   const jobs = [...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗' })), ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠' }))]
+  // One description for the whole list: every link opens its job's log, and a list of a hundred and more jobs leaves room for
+  // the threads and the description only if its links are bare.
+  const jobsSay = [...((pipeline?.failed.length ?? 0) > 0 ? ['✗ failed'] : []), ...((pipeline?.amber.length ?? 0) > 0 ? ['⚠ allowed to fail'] : []), 'each opens its log']
   /**
    * Under a thread, the way to answer it: a quiet `↩ reply`, then one box at a time, then the text to confirm, since it
    * posts as you. A phone may not have been sent a text field, and a thread read without where its replies go has none:
@@ -207,11 +215,16 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
             <Text weight="semibold" color="error">
               {plural(jobs.length, 'failed job')}
             </Text>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {jobs.map(({ job, glyph }) => (
-                <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
-              ))}
-            </Box>
+            {hinted(
+              kit,
+              'hint-jobs',
+              jobsSay,
+              <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+                {jobs.map(({ job, glyph }) => (
+                  <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
+                ))}
+              </Box>
+            )}
           </Box>,
         ]
       : []),
@@ -249,8 +262,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   return [
     ...head,
     ...described,
-    ...(isCut ? [<Link href={mr.url}>{`${LINK.mr} The rest of the description is on GitLab`}</Link>] : []),
+    ...(isCut ? [out('hint-rest-description', opens('mr'), mr.url, `${LINK.mr} The rest of the description is on GitLab`)] : []),
     ...kept,
-    ...(kept.length < blocks.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of the threads are on GitLab`}</Link>] : []),
+    ...(kept.length < blocks.length ? [out('hint-rest-threads', opens('mr'), mr.url, `${LINK.mr} The rest of the threads are on GitLab`)] : []),
   ]
 }

@@ -1,11 +1,13 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
+import { HINT_ROOM } from '../../hooks/drawing.ts'
 import {
   faceFacts,
   faceRows,
   isAddKept,
   REVIEW_MARK,
+  REVIEW_STATE,
   reviewerId,
   SUGGESTED_MOST,
   suggestedFace,
@@ -54,6 +56,18 @@ test('every face, with or without a picture, draws its badge in both shades insi
   )
 })
 
+test("a face's description says its badge in the Badge table's words, with the threads they hold, short enough for a narrow pane", () => {
+  fc.assert(
+    fc.property(personArb, fc.nat(999), (person, openThreads) => {
+      const face = faceFacts({ ...person, openThreads }, undefined)
+      expect(face.hint.startsWith(REVIEW_STATE[person.state])).toBe(true)
+      expect(face.hint.endsWith('open thread') || face.hint.endsWith('open threads')).toBe(face.glyph === THREAD_MARK.glyph)
+      expect(face.hint.length).toBeLessThanOrEqual(HINT_ROOM)
+      expect(face.alt).toBe(`${person.name}, ${face.hint}`)
+    })
+  )
+})
+
 test('a suggested face is the same face under a veil that washes it out, lighter in the dark theme, with no badge or glyph', () => {
   fc.assert(
     fc.property(personArb, fc.constantFrom(undefined, 'https://gitlab.com/a.png'), (person, picture) => {
@@ -73,6 +87,7 @@ test('a suggested face is the same face under a veil that washes it out, lighter
       }
       expect(face.glyph).toBe('')
       expect(face.alt).toBe(`${person.name}, suggested reviewer`)
+      expect(face.hint).toBe('suggested reviewer')
     })
   )
 })

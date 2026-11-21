@@ -30,6 +30,14 @@ test('a live page marks each keyed button, picker and field with its key and kin
   expect(html).toContain('data-press-key="search" data-kind="input"')
 })
 
+test('a region is drawn as empty room, its module and data taken and none of them named as untaught', () => {
+  const region = el('Client', { key: 'hint-mr-w', module: 'hooks/hint-wait.tsx', props: { lines: ['opens the MR'] }, width: '100%', height: 1 })
+  const { html, unknown } = liveHtml(el('Box', {}, [region]))
+  expect(html).toContain('<span class="client"></span>')
+  expect(html).not.toContain('opens the MR')
+  expect([...unknown]).toEqual([])
+})
+
 test('a button with no key is drawn but not marked, as the desktop measures only what it can press', () => {
   expect(liveHtml(tree).html).toContain('<button class="btn">unkeyed</button>')
 })

@@ -50,6 +50,8 @@ export type FaceFacts = {
   tone: Tone
   /** The badge's glyph, the person's mark where no Svg is drawn. */
   glyph: string
+  /** What the badge says, in the Badge table's words: the face's description under the pointer, and its `alt` after the name. */
+  hint: string
   alt: string
   /** Their initials on a disc, or a robot. */
   plain: SvgSource
@@ -109,10 +111,12 @@ const framed = (inner: RawSvg): SvgSource => svg`<svg xmlns='http://www.w3.org/2
 export function faceFacts(person: Person, picture: string | undefined): FaceFacts {
   const mark = markOf(person)
   const badge = badgeOf(mark)
+  const hint = `${REVIEW_STATE[person.state]}${mark === THREAD_MARK ? `, ${plural(person.openThreads, 'open thread')}` : ''}`
   return {
     tone: mark.tone,
     glyph: mark.glyph,
-    alt: `${person.name}, ${REVIEW_STATE[person.state]}${mark === THREAD_MARK ? `, ${plural(person.openThreads, 'open thread')}` : ''}`,
+    hint,
+    alt: `${person.name}, ${hint}`,
     ...drawn(person, picture, inner => framed(followingTheme(raw([inner, badge])))),
   }
 }
@@ -135,6 +139,7 @@ export function suggestedFace(person: Person, picture: string | undefined): Face
     tone: 'subtle',
     // The press beside the face says `+` and their name, which is all a surface without Svg draws.
     glyph: '',
+    hint: 'suggested reviewer',
     alt: `${person.name}, suggested reviewer`,
     ...drawn(person, picture, inner => framed(followingTheme(raw([inner, veil])))),
   }
@@ -258,6 +263,8 @@ export type PersonRow = {
   tone: Tone
   /** The mark a surface without Svg draws. */
   glyph: string
+  /** What the face's badge says, under the pointer. */
+  hint: string
   alt: string
   plain: SvgSource
   picture: SvgSource | null
@@ -285,6 +292,7 @@ export function faceRows(
     label,
     tone: person.face.tone,
     glyph: person.face.glyph,
+    hint: person.face.hint,
     alt: person.face.alt,
     plain: person.face.plain,
     picture: person.face.picture,
