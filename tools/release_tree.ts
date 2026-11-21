@@ -1,6 +1,6 @@
 // release-tree: the files the plugin ships, copied out of the repository and checked.
 //
-//   node tools/release_tree.ts build DIR    copy the files named in release/files into DIR (made empty first), then check them
+//   node tools/release_tree.ts build DIR    copy the files named in release-tree/files into DIR (made empty first), then check them
 //   node tools/release_tree.ts check        build into a scratch directory and check, leaving nothing behind
 //
 // (`npm run release-tree -- build DIR` is the same.) Installing the plugin copies its whole source, and the repository holds
@@ -20,7 +20,7 @@
 //   - the README links or shows a relative path (the tree holds no docs/ or CONTRIBUTING.md): links there are absolute
 //
 // The tree also holds the ChatGPT plugin, built into chatgpt/ by chatgpt/build.ts at the tree's version, beside the Codex
-// marketplace that lists it (release/files). It fails when that package lacks its server or panel, its manifests name
+// marketplace that lists it (release-tree/files). It fails when that package lacks its server or panel, its manifests name
 // another version, or its mcp.json does not name the Agent Plugins schema, without which ChatGPT starts no server.
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -30,7 +30,9 @@ import { buildPackage, modVersion } from '../chatgpt/build.ts'
 import { isRecord, parseJson } from '../hooks/decode.ts'
 
 const ROOT = join(import.meta.dirname, '..')
-const MANIFEST = join(ROOT, 'release', 'files')
+const MANIFEST = join(ROOT, 'release-tree', 'files')
+/** The branch the tree is published to: no path on main may share its name, or `git checkout` of it is ambiguous. */
+const BRANCH = 'release'
 const SUFFIXES = ['.ts', '.tsx', '.js', '.mjs']
 const ENGINE = 'claude-code'
 // What the plugin never needs and a team must not receive, even if the allowlist were to name it.
@@ -366,7 +368,7 @@ function closure(tree: string): { readonly loaded: Set<string>; readonly problem
       }
       const target = resolveImport(tree, module, spec)
       if (target === null) {
-        problems.push(`${relative(tree, module)} imports '${spec}', which the tree does not hold: add it to release/files`)
+        problems.push(`${relative(tree, module)} imports '${spec}', which the tree does not hold: add it to release-tree/files`)
       } else {
         pending.push({ importer: module, module: target })
       }
@@ -381,7 +383,7 @@ function verify(tree: string): string[] {
   const shipped = existsSync(hooks) ? readdirSync(hooks).toSorted() : []
   for (const name of shipped) {
     if ((name.endsWith('.ts') || name.endsWith('.tsx')) && !loaded.has(join(hooks, name))) {
-      problems.push(`hooks/${name} ships but nothing loads it: take it out of release/files`)
+      problems.push(`hooks/${name} ships but nothing loads it: take it out of release-tree/files`)
     }
   }
   const readme = join(tree, 'README.md')
@@ -457,8 +459,15 @@ function report(tree: string, problems: readonly string[]): number {
 async function buildAndCheck(tree: string): Promise<number> {
   const copied = build(tree)
   await buildPackage(join(tree, 'chatgpt'), modVersion())
-  return report(tree, [...selfCheck(), ...copied, ...verify(tree), ...verifyChatgpt(tree)])
+  return report(tree, [...selfCheck(), ...branchFree(readdirSync(ROOT)), ...copied, ...verify(tree), ...verifyChatgpt(tree)])
 }
+
+/**
+ * Codex follows releases by `git checkout release` in a clone of main: a path of that name at the root, among `names`,
+ * makes it ambiguous.
+ */
+export const branchFree = (names: readonly string[]): string[] =>
+  names.includes(BRANCH) ? [`main has a path named ${BRANCH}, so \`git checkout ${BRANCH}\`, which Codex runs to follow releases, is ambiguous: name it otherwise`] : []
 
 async function main(args: readonly string[]): Promise<number> {
   const [command, folder] = args
@@ -477,4 +486,7 @@ async function main(args: readonly string[]): Promise<number> {
   return 2
 }
 
-process.exitCode = await main(process.argv.slice(2))
+// Run as a command, not when its spec imports it.
+if (import.meta.main) {
+  process.exitCode = await main(process.argv.slice(2))
+}

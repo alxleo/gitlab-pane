@@ -1,7 +1,7 @@
 {
   "name": "gitlab-pane-tooling",
   "private": true,
-  "description": "Dev-time tooling only: the checks, generators and screenshots of the gitlab-pane mod. The mod itself has no npm packages and ships none (release/files leaves this file out).",
+  "description": "Dev-time tooling only: the checks, generators and screenshots of the gitlab-pane mod. The mod itself has no npm packages and ships none (release-tree/files leaves this file out).",
   "type": "module",
   "engines": {
     "node": ">=26"

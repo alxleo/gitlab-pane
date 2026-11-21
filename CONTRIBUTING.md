@@ -26,7 +26,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `tools/`, `chatgpt/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, by `.ts` path, and a `hooks/` module that imports nothing of the engine, no package and no module that does is in the core; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
 | `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json`, `tools/tsconfig.json` and `chatgpt/tsconfig.json`. |
 | `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the snapshot and the documents. |
-| `npm run release-tree -- check` | The tree built from `release/files` loads only what it holds, and holds the ChatGPT plugin, built at the tree's version with an `mcp.json` ChatGPT reads. |
+| `npm run release-tree -- check` | The tree built from `release-tree/files` loads only what it holds, and holds the ChatGPT plugin, built at the tree's version with an `mcp.json` ChatGPT reads. |
 | `npm run docs -- check` | README's settings table is `userConfig`; README's and DESIGN's tables are `tests/docs.generated.ts` (`docs -- write` remakes it, `tests/docs.test.ts` holds it to the code); the scripts table here is `package.json`'s scripts. |
 | `npm run validate` | `claude plugin validate --strict` on the plugin and the store probe. |
 | `npm run scan` | gitleaks, actionlint, zizmor: each only if installed, and a skipped one is named. |
@@ -65,7 +65,7 @@ Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`.
 
 ## GitLab's types
 
-Each question the pane asks GitLab is one `hooks/ask-*.ts` module: its `/* GraphQL */` documents, the request, the cost, and how its answer reads. A new question is a new module, added to `hooks/gitlab-operations.ts` (and `tsconfig.core.json`, `release/files`); a document names the fragments it spreads and `documentOf` appends them, so no list of fragments is kept by hand. Edit a document, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
+Each question the pane asks GitLab is one `hooks/ask-*.ts` module: its `/* GraphQL */` documents, the request, the cost, and how its answer reads. A new question is a new module, added to `hooks/gitlab-operations.ts` (and `tsconfig.core.json`, `release-tree/files`); a document names the fragments it spreads and `documentOf` appends them, so no list of fragments is kept by hand. Edit a document, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
 `tools/gitlab_schema.snapshot.json` is the slice of gitlab.com's schema the documents use; `npm run schema -- snapshot` then `types` takes the schema as it is now.
 A document's cost is stated in `COMPLEXITY`, which `schema -- check` verifies. A host that answers `undefinedField` is sent the variant without that field.
 
@@ -86,9 +86,9 @@ flowchart LR
 
 - While the version is 0.x, `feat:` and `fix:` both raise the patch number (0.4.0 to 0.4.1); `!` or a `BREAKING CHANGE:` footer raises the minor (`bump-patch-for-minor-pre-major` and `bump-minor-pre-major` in `release-please-config.json`). Other kinds wait for one of those.
 - No check starts on the release PR by itself, as GitHub starts no workflow for a PR its own token opened, yet main requires `check` before any merge. To release, close the PR and reopen it as yourself: that starts its checks, and it merges once they pass. A run started by hand (`gh workflow run check.yml --ref <its branch>`) passes on the same commit but does not count, because GitHub ties it to no pull request.
-- Users get the files in `release/files` (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`), and the ChatGPT plugin's built package in `chatgpt/`, and nothing else. A file the mod loads at run time goes in that list; `release-tree -- check` fails otherwise.
-- A team pins `"ref": "plugin-vX.Y.Z"` in its marketplace source (the tree has its own `release/marketplace.json`).
-- The same tree holds the ChatGPT plugin in `chatgpt/`, built by `chatgpt/build.ts` at the release's version, and a Codex marketplace that lists it (`release/codex-marketplace.json`, at `.agents/plugins/marketplace.json`, which ChatGPT's Codex reads before the Claude one). `codex plugin marketplace add alxleo/gitlab-pane --ref release` follows releases; `--ref plugin-vX.Y.Z` pins one. One version names both plugins.
+- Users get the files in `release-tree/files` (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`), and the ChatGPT plugin's built package in `chatgpt/`, and nothing else. A file the mod loads at run time goes in that list; `release-tree -- check` fails otherwise.
+- A team pins `"ref": "plugin-vX.Y.Z"` in its marketplace source (the tree has its own `release-tree/marketplace.json`).
+- The same tree holds the ChatGPT plugin in `chatgpt/`, built by `chatgpt/build.ts` at the release's version, and a Codex marketplace that lists it (`release-tree/codex-marketplace.json`, at `.agents/plugins/marketplace.json`, which ChatGPT's Codex reads before the Claude one). `codex plugin marketplace add alxleo/gitlab-pane --ref release` follows releases; `--ref plugin-vX.Y.Z` pins one. One version names both plugins.
 - The default install reads `.claude-plugin/marketplace.json` on main (`"source": "./"`). Once the first `plugin-v*` tag exists, switch it to `{ "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" }` in its own commit, and change the README's "That follows main" to "That follows releases".
 
 ## Screenshots
