@@ -99,10 +99,10 @@ function change($: EngineInterface, how: (choices: Choices) => Choices): Promise
 }
 
 /**
- * Leaving the list for a page or the inbox: the box comes back drawn holding what is searched for, as typing paused on it,
- * a new box under a new key. Typing not yet paused on goes with the box.
+ * Leaving the list for a page or the inbox, or closing the pane: the box comes back drawn holding what is searched for, as
+ * typing paused on it, a new box under a new key. Typing not yet paused on goes with the box.
  */
-async function settleBox($: EngineInterface): Promise<void> {
+export async function settleBox($: EngineInterface): Promise<void> {
   typed('search')
   const search = await read($, searchAtom)
   await update($, searchBoxAtom, box => (box.drawn === search ? box : { drawn: search, round: box.round + 1 }))

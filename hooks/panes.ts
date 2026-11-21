@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiScrollArgs } from 'claude-code'
 
-import { closePage, readPage, readTab, setPage, setTab, showInbox, toggleUnder } from './choices'
+import { closePage, readPage, readTab, setPage, setTab, settleBox, showInbox, toggleUnder } from './choices'
 import { readRows } from './data'
 import { ensureDetail } from './detail'
-import { quietly } from './failures'
+import { clear, quietly } from './failures'
 import { inboxNews, inboxView, markSeen } from './inbox'
 import { arrowSteps, cardButtons, handOver, ringAfterSeen, ringStep } from './inbox-ring'
 import type { RingScroll } from './inbox-ring'
@@ -139,6 +139,11 @@ export async function notePaneDrawn($: EngineInterface): Promise<boolean> {
   const isDrawn = (await $.ui.panes()).some(pane => pane.id === PANE_ID && pane.isPlaced && pane.isShown)
   if ((await read($, paneDrawnAtom)) !== isDrawn) {
     await update($, paneDrawnAtom, () => isDrawn)
+    // Nothing may be written into the search box while it may be typed in, so a pause in typing narrows the list and leaves
+    // the box as drawn. Closed, the pane opens again with the box holding what the list is searched for.
+    if (!isDrawn) {
+      await settleBox($)
+    }
   }
   return isDrawn
 }
@@ -195,9 +200,11 @@ export function openReading($: EngineInterface, key: string, username = ''): voi
  * press closes it. A person's comments need the MR's threads, which the shared card leaves out, and a ticket its description.
  */
 export function openUnder($: EngineInterface, card: string, kind: 'person' | 'ticket', id: string): void {
+  // A ticket opened after one whose read failed is being read, not down: the failure goes before it is drawn.
+  const cleared = kind === 'ticket' ? clear($, 'jira-ticket') : Promise.resolve()
   quietly(
     $,
-    toggleUnder($, card, kind, id).then(open => (open === null ? undefined : open.kind === 'person' ? ensureDetail($, card) : ensureTicket($, open.id)))
+    cleared.then(() => toggleUnder($, card, kind, id)).then(open => (open === null ? undefined : open.kind === 'person' ? ensureDetail($, card) : ensureTicket($, open.id)))
   )
 }
 

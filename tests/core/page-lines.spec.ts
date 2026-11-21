@@ -83,29 +83,31 @@ test('a person opened under a card leads with their newest comment once the MR i
 test('a ticket opened under a card says what the quarter-hourly read knows at once, and what reading it whole adds once in', () => {
   const ticket = { type: 'Story', status: 'In Review', isDone: false, summary: 'Order history' }
   const read = { isFound: true, at: 0 }
-  expect(ticketUnder('ABC-1', ticket, undefined, false)).toEqual({ kind: 'ticket', heading: 'ABC-1 · Story · In Review', lines: ['Order history'], isReading: true })
-  expect(ticketUnder('ABC-1', ticket, { assignee: 'Ines Mendel', description: '', ...read }, false)).toEqual({
+  expect(ticketUnder('ABC-1', ticket, undefined, null)).toEqual({ kind: 'ticket', heading: 'ABC-1 · Story · In Review', lines: ['Order history'], isReading: true })
+  expect(ticketUnder('ABC-1', ticket, { assignee: 'Ines Mendel', description: '', ...read }, null)).toEqual({
     kind: 'ticket',
     heading: 'ABC-1 · Story · In Review',
     lines: ['Order history', 'Assigned to Ines Mendel', 'No description.'],
     isReading: false,
   })
   // A ticket the read has not reached is its key alone, and nobody assigned says nothing.
-  expect(ticketUnder('ABC-2', undefined, { assignee: '', description: 'Do it.', ...read }, false)).toEqual({
+  expect(ticketUnder('ABC-2', undefined, { assignee: '', description: 'Do it.', ...read }, null)).toEqual({
     kind: 'ticket',
     heading: 'ABC-2',
     lines: ['Do it.'],
     isReading: false,
   })
   // Never "reading" for good: a ticket Jira answered without says so, and a Jira that cannot be read points at /gitlab.
-  expect(ticketUnder('ABC-3', undefined, { assignee: '', description: '', isFound: false, at: 0 }, false)).toEqual({
+  expect(ticketUnder('ABC-3', undefined, { assignee: '', description: '', isFound: false, at: 0 }, null)).toEqual({
     kind: 'ticket',
     heading: 'ABC-3',
     lines: ['Jira says nothing of this ticket to you.'],
     isReading: false,
   })
-  expect(ticketUnder('ABC-3', undefined, undefined, true)).toEqual({ kind: 'ticket', heading: 'ABC-3', lines: ['Jira could not be read; /gitlab says why.'], isReading: false })
+  expect(ticketUnder('ABC-3', undefined, undefined, 'failed')).toEqual({ kind: 'ticket', heading: 'ABC-3', lines: ['Jira could not be read; /gitlab says why.'], isReading: false })
+  // With Jira's tool not installed, /gitlab says nothing of it (it is optional), so the ticket says so itself, as a page does.
+  expect(ticketUnder('ABC-3', undefined, undefined, 'not-installed')).toMatchObject({ lines: ['Jira is not available here.'], isReading: false })
   // What Jira says is drawn without the control characters a drawing refuses, which could blank the whole list.
   const hostile = { type: 'Ta\u0007sk', status: 'In\nReview', isDone: false, summary: 'Fix\u001b[31m it\r' }
-  expect(ticketUnder('ABC-4', hostile, undefined, false)).toMatchObject({ heading: 'ABC-4 · Ta sk · In Review', lines: ['Fix [31m it'] })
+  expect(ticketUnder('ABC-4', hostile, undefined, null)).toMatchObject({ heading: 'ABC-4 · Ta sk · In Review', lines: ['Fix [31m it'] })
 })

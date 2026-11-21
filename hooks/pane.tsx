@@ -82,7 +82,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const shared = rows.find(each => each.key === row.key)
     const block =
       under.kind === 'ticket'
-        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id], failures['jira-ticket'] !== undefined)
+        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id], failures['jira-ticket']?.kind ?? null)
         : shared !== undefined
           ? personUnder(withDetail(shared, details[row.key]), under.id, isCurrentWhole(shared, details[row.key]))
           : null
@@ -199,10 +199,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ]
   // The search box tops Mine. The list follows the typing once it pauses, and Enter at once; ✕ ends the search. The box is
   // drawn holding what Enter or ✕ left (SearchBox), never what is being typed, so a redraw while typing keeps every key.
-  // A box that does not hold what the list is searched for (the pane drawn again, a reload, another surface of the session)
-  // has the search named beside it. Text that finds nothing to look for (`!`, spaces) narrows nothing, and says nothing.
+  // Closing the pane draws the box again holding what the list is searched for (`notePaneDrawn`). Text that finds nothing
+  // to look for (`!`, spaces) narrows nothing, and says nothing.
   const { found } = model
-  const searched = found === null ? null : searchBox.drawn === search ? filtered : <Text dimColor>{`${FILTERED}: ${search}`}</Text>
   const searchRow =
     Input !== undefined
       ? [
@@ -218,7 +217,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
                 onSubmit={text => submitSearch($, text)}
               />
             </Box>
-            {searched}
+            {found !== null && filtered}
             {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => clearSearch($)} />}
           </Box>,
         ]

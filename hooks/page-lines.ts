@@ -8,7 +8,7 @@ import { ticketUrl } from './jira.ts'
 import { cardFacts } from './row-facts.ts'
 import type { Tone } from './status.ts'
 
-import type { MrCard, Note, Person, Problems, Ticket, TicketDetail } from '../types'
+import type { FailureKind, MrCard, Note, Person, Problems, Ticket, TicketDetail } from '../types'
 
 /** What a page draws beside the MR itself: what was read about its ticket, and whether Jira can be read here. */
 export type PageContext = {
@@ -122,16 +122,20 @@ export function personUnder(card: MrCard, username: string, isWhole: boolean): U
 
 /**
  * A ticket's say: what the quarter-hourly read knows at once, and what reading it whole adds, once that is in. While none
- * is in, it is being read, unless Jira's last read failed (`isJiraDown`), which `/gitlab` says.
+ * is in, it is being read, unless its read failed (`failed`): `/gitlab` says why, but of a Jira tool that is not installed,
+ * which is optional, it says nothing, so the ticket says so itself, as a page does.
  */
-export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined, isJiraDown: boolean): UnderBlock {
+export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined, failed: FailureKind | null): UnderBlock {
+  const isJiraDown = failed !== null
   const heading = ticket !== undefined ? `${key} · ${drawnLine(ticket.type)} · ${drawnLine(ticket.status)}` : key
   const summary = drawnLine(ticket?.summary ?? '')
   const said =
     detail === undefined
-      ? isJiraDown
-        ? ['Jira could not be read; /gitlab says why.']
-        : []
+      ? failed === 'not-installed'
+        ? ['Jira is not available here.']
+        : isJiraDown
+          ? ['Jira could not be read; /gitlab says why.']
+          : []
       : !detail.isFound
         ? ['Jira says nothing of this ticket to you.']
         : [...(detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []), detail.description !== '' ? detail.description : 'No description.']

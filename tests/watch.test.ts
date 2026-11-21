@@ -726,7 +726,7 @@ test('a repo picked until its MRs all closed is forgotten, so the repo coming ba
 test('the list follows the search box once typing pauses, and Enter at once, past the repo picked; ✕ ends it with a new box, and a phone has no box', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const ticketed = rawMr(512, { title: 'feat: [ABC-123] Order history', project: project('g/q') })
-  engine(on, { mrs: [ticketed, rawMr(2, { title: 'fix: Totals' }), rawMr(3, { title: 'fix: Order totals' })], isDown: false })
+  const { panes } = engine(on, { mrs: [ticketed, rawMr(2, { title: 'fix: Totals' }), rawMr(3, { title: 'fix: Order totals' })], isDown: false })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const text = async (ui: { find: (query: { type: 'Text'; text: RegExp }) => Promise<{ text: string } | undefined> }, start: RegExp) =>
@@ -802,16 +802,21 @@ test('the list follows the search box once typing pauses, and Enter at once, pas
     expect(await blue(ui)).toBe(0)
     await ui.unmount()
   }
-  // A pane drawn again (or a reload, or another surface of the session) has a box that does not hold what typing paused on,
-  // as nothing may be written into a box while it is typed in; the search is named beside it instead.
+  // Typing pasted with control characters, which a drawing refuses, still draws: the search is kept without them. Once
+  // the pane closes, it opens again with the box holding what the list is searched for, as nothing may be written into a
+  // box while it may be typed in.
   const before = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await before.input({ key: (await box(before))?.key ?? '', text: 'totals', kind: 'change' })
+  await before.input({ key: (await box(before))?.key ?? '', text: 'totals\u001b\u0007', kind: 'change' })
   await clock.advance(300)
   expect(await text(before, /^Found · /u)).toBe('Found · 2')
+  expect(await text(before, /^⧩ filtered/u)).toBe('⧩ filtered')
+  panes.delete('gitlab-pane')
   await before.unmount()
+  await clock.advance(5_000)
+  panes.add('gitlab-pane')
   const after = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await box(after))?.props.value).toBe('')
-  expect(await text(after, /^⧩ filtered/u)).toBe('⧩ filtered: totals')
+  expect((await box(after))?.props.value).toBe('totals')
+  expect(await text(after, /^Found · /u)).toBe('Found · 2')
   await after.press({ key: 'search-clear' })
   await after.unmount()
   // A search left on where there is a box is not drawn on a phone, which has none to end it with.
@@ -1536,7 +1541,18 @@ test('a person opened under a card says their newest comment once the MR is read
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('person-tim-12-'))?.key ?? '' })
+  const person = async () => (await ui.findAll({ type: 'Button' })).find(keyed('person-tim-12-'))?.key ?? ''
+  // While the MR cannot be read whole, the shared card's note (the open thread) is not quoted as their newest.
+  fake.timedOut = ['12']
+  await ui.press({ key: await person() })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^Tim · requested changes/u })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^newest, /u })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Please look again.' })).toBeUndefined()
+  // Read whole, it is.
+  fake.timedOut = []
+  await ui.press({ key: await person() })
+  await ui.press({ key: await person() })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: 'Thanks, fixed.' })).toBeDefined()
   // Merged, the MR leaves the list, and what was open under it goes with it: it does not come back with the MR.

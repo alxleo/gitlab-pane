@@ -66,7 +66,7 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
  * A ticket opened under a card, read whole: its description and assignee, which the quarter-hourly read leaves out. What
  * was read is drawn at once, and read again on an opening once it is as old as the quarter-hourly read lets a ticket be. A
  * ticket Jira answers without is kept as not found. A failure is this read's own (`jira-ticket`), apart from the quarter-hourly
- * read's, and lasts until the next opening asks again.
+ * read's, and lasts until a ticket is opened again (`openUnder` clears it, so the next ticket is not drawn as failed).
  */
 export function ensureTicket($: EngineInterface, key: string): Promise<void> {
   return joined(`ticket:${key}`, async () => {
@@ -75,8 +75,6 @@ export function ensureTicket($: EngineInterface, key: string): Promise<void> {
     if ((await readBrowse($)) === '' || (held !== undefined && now - held.at < TICKETS_EVERY_MS)) {
       return
     }
-    // A ticket opened after another's read failed is being read, not down.
-    await clear($, 'jira-ticket')
     const found = await runJson($, 'acli', detailArgs(key), readTicketDetails, { timeoutMs: 60_000 })
     if (!found.ok) {
       await record($, 'jira-ticket', failureOf(found))
