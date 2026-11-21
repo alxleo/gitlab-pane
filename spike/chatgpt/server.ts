@@ -18,10 +18,10 @@ import { foreign } from '../../hooks/model-text.ts'
 import type { RowModel } from '../../hooks/pane-model.ts'
 import type { MrCard, Pressed } from '../../types/index.d.ts'
 import { liveHeld, pressMove } from './move.ts'
+import { panelUri } from './panel-uri.ts'
 import { connect, openMrs, panelOf } from './read.ts'
 import type { GitLab, Panel } from './read.ts'
 
-const PANEL_URI = 'ui://gitlab-pane/panel.html'
 const HOST = process.env.GITLAB_PANE_HOST ?? 'gitlab.com'
 /** Beside the packaged server, the panel `build.ts` already bundled; from the sources, it is built on start. */
 const BUILT_PANEL = new URL('./panel.bundled.html', import.meta.url)
@@ -46,7 +46,9 @@ const rowsIn = (panel: Panel) => panel.sections.flatMap(section => section.rows)
 
 const failed = (error: unknown) => ({ isError: true, content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }] })
 
-export function createServer(connectTo: (host: string) => GitLab = connect): McpServer {
+export async function createServer(connectTo: (host: string) => GitLab = connect): Promise<McpServer> {
+  const html = await loadPanel()
+  const PANEL_URI = panelUri(html)
   const server = new McpServer(
     { name: 'gitlab-pane', version: '0.0.0' },
     { instructions: "list_my_mrs reads the user's open GitLab merge requests. Rows carry no titles or comments; open the URL for those." }
@@ -65,9 +67,8 @@ export function createServer(connectTo: (host: string) => GitLab = connect): Mcp
     content: [{ type: 'text' as const, text: `${rowsIn(panel).length} open merge requests on ${HOST}.` }],
     _meta: { gitlabPane: panel },
   })
-  const html = loadPanel()
   registerAppResource(server, 'GitLab MRs panel', PANEL_URI, {}, async () => ({
-    contents: [{ uri: PANEL_URI, mimeType: RESOURCE_MIME_TYPE, text: await html }],
+    contents: [{ uri: PANEL_URI, mimeType: RESOURCE_MIME_TYPE, text: html }],
   }))
   registerAppTool(
     server,
@@ -121,5 +122,5 @@ export function createServer(connectTo: (host: string) => GitLab = connect): Mcp
 }
 
 if (import.meta.main) {
-  await createServer().connect(new StdioServerTransport())
+  await (await createServer()).connect(new StdioServerTransport())
 }

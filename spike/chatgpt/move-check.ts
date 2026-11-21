@@ -13,7 +13,7 @@ import { createServer } from './server.ts'
 const gitlab = fakeGitLab()
 const client = new Client({ name: 'check', version: '0' })
 const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
-await createServer(() => gitlab).connect(serverSide)
+await (await createServer(() => gitlab)).connect(serverSide)
 await client.connect(clientSide)
 
 const panelIn = (result: { _meta?: Record<string, unknown> | undefined }): Panel => result._meta?.gitlabPane as Panel

@@ -8,7 +8,9 @@
   },
   "scripts": {
     "server": "node server.ts",
-    "probe": "node probe.ts"
+    "probe": "node probe.ts",
+    "test": "tsc -p tsconfig.json --noEmit && node move-check.ts && node panel-test.ts && node build.ts && node probe.ts dist/server.mjs",
+    "test:live": "node build.ts && node panel-test.ts --live"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.5",

@@ -18,9 +18,12 @@ The panel draws the pane's own row model, built by the core's `buildPane`, laid 
 | `.codex-plugin/plugin.json` | The name and category ChatGPT's desktop app shows. |
 | `build.ts`, `panel-build.ts` | Bundle the server, the core and the panel into `dist/`, which is what a package holds. |
 | `install.ts` | Copies the package to `~/.codex/plugins/gitlab-pane` and lists it in the personal marketplace, `~/.agents/plugins/marketplace.json`. |
+| `panel-uri.ts` | The panel's URI, named by a hash of the panel. ChatGPT caches a panel by its URI, apart from the server, and draws the cached one with the new server's rows. A fixed URI kept the panel from before main's merge, which then failed on rows that no longer had a border colour. |
 | `fake.ts`, `move-check.ts` | A made-up GitLab, and a check that a merge pressed in the panel arms, merges, and is followed to "merged". |
-| `probe.ts` | Talks to the server the way the desktop app would, and prints a verdict, never the MRs. |
-| `harness.ts` | Plays ChatGPT's side of the panel in a browser, against the made-up GitLab, or the real one with `--live`. |
+| `probe.ts` | Talks to the server the way the desktop app would, checks the panel's URI names its contents, and prints a verdict, never the MRs. |
+| `host.ts` | ChatGPT's side of the panel in a web page: it reads the panel by the URI the tool names and drives it through ext-apps' AppBridge. |
+| `harness.ts` | That page to look at, against the made-up GitLab, or the real one with `--live`. |
+| `panel-test.ts` | That page in headless Chromium. It fails on any error the panel throws or shows, checks every MR has a card with an edge, and presses ✓ merge twice on the made-up GitLab. `--live` runs the packaged server against your GitLab and presses nothing. |
 
 ## Run it
 
@@ -31,18 +34,18 @@ cd spike/chatgpt && npm install
 ```
 
 ```bash
-node move-check.ts
+npm test
 ```
 
 ```bash
-node probe.ts
+npm run test:live
 ```
 
 ```bash
 node harness.ts
 ```
 
-The probe reads your GitLab, so it needs a token: `GITLAB_TOKEN`, or `glab auth login`. `GITLAB_PANE_HOST` picks a host other than gitlab.com. The check and the harness run against the made-up GitLab. `--live` points the harness at the real one, where a merge press merges.
+`npm test` runs the type check, the merge check, the headless panel test against the made-up GitLab, the build, and the probe of the packaged server. The probe and `test:live` read your GitLab, so they need a token: `GITLAB_TOKEN`, or `glab auth login`. `GITLAB_PANE_HOST` picks a host other than gitlab.com. `test:live` presses nothing. The harness runs against the made-up GitLab; `--live` points it at the real one, where a merge press merges. The panel test needs Playwright's Chromium, which `npm run screens -- setup` at the root installs.
 
 ## In ChatGPT
 
