@@ -4,7 +4,7 @@ import type { EngineInterface, UiScrollArgs } from 'claude-code'
 import { closePage, readPage, readTab, setPage, setTab, settleBox, showInbox, toggleUnder } from './choices'
 import { readRows } from './data'
 import { ensureDetail } from './detail'
-import { clear, quietly } from './failures'
+import { quietly } from './failures'
 import { inboxNews, inboxView, markSeen } from './inbox'
 import { arrowSteps, cardButtons, handOver, ringAfterSeen, ringStep } from './inbox-ring'
 import type { RingScroll } from './inbox-ring'
@@ -200,11 +200,9 @@ export function openReading($: EngineInterface, key: string, username = ''): voi
  * press closes it. A person's comments need the MR's threads, which the shared card leaves out, and a ticket its description.
  */
 export function openUnder($: EngineInterface, card: string, kind: 'person' | 'ticket', id: string): void {
-  // A ticket opened after one whose read failed is being read, not down: the failure goes before it is drawn.
-  const cleared = kind === 'ticket' ? clear($, 'jira-ticket') : Promise.resolve()
   quietly(
     $,
-    cleared.then(() => toggleUnder($, card, kind, id)).then(open => (open === null ? undefined : open.kind === 'person' ? ensureDetail($, card) : ensureTicket($, open.id)))
+    toggleUnder($, card, kind, id).then(open => (open === null ? undefined : open.kind === 'person' ? ensureDetail($, card) : ensureTicket($, open.id)))
   )
 }
 

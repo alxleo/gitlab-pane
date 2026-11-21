@@ -925,6 +925,31 @@ test(
 )
 
 test(
+  'a ticket whose read failed says so in its panel, and is read again at its next opening, however soon',
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [rawMr(12, SHOWN)], isDown: false, jiraDown: 'whole' }
+    const { jiraWholeReads } = engine(on, fake)
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const ticket = (await ui.findAll({ type: 'Markdown' })).find(element => String(element.key).startsWith('ticket-'))
+    const link = { key: String(ticket?.key), link: { href: 'https://jira.example.com/browse/ABC-1' } }
+    await ui.press(link)
+    await clock.settle()
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeDefined()
+    fake.jiraDown = undefined
+    await ui.press(link)
+    await ui.press(link)
+    await clock.settle()
+    expect(jiraWholeReads.length).toBe(2)
+    expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    await ui.unmount()
+  }
+)
+
+test(
   "a ticket opened under a card and the quarter-hourly read of statuses fail apart: neither's failure or success speaks for the other",
   { options: { jiraUrl: 'https://jira.example.com/' } },
   async ($, on) => {
@@ -1531,12 +1556,13 @@ test('someone without a picture is their initials on a disc, beside their first 
   await ui.unmount()
 })
 
-test('a person opened under a card says their newest comment once the MR is read whole, and goes when the MR leaves the list', async ($, on) => {
+test('a person opened under a card says their newest comment once the MR is read whole; another card keeps its own open, until its MR leaves the list', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   // An open thread and a newer settled comment: the card the sessions share keeps the open thread alone.
   const settled = { resolvable: true, resolved: true, notes: { nodes: [note('Thanks, fixed.', 'tim', { createdAt: new Date(NOW - 60_000).toISOString() })] } }
   const mr = rawMr(12, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'REQUESTED_CHANGES')] }, discussions: { nodes: [thread('Please look again.', 'tim'), settled] } })
-  const fake: Fake = { mrs: [mr], isDown: false }
+  const other = rawMr(13, { ...SHOWN, reviewers: { nodes: [reviewer('ines.mendel', 'APPROVED')] }, discussions: { nodes: [thread('One more thing.', 'ines.mendel')] } })
+  const fake: Fake = { mrs: [mr, other], isDown: false }
   engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -1555,13 +1581,20 @@ test('a person opened under a card says their newest comment once the MR is read
   await ui.press({ key: await person() })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: 'Thanks, fixed.' })).toBeDefined()
-  // Merged, the MR leaves the list, and what was open under it goes with it: it does not come back with the MR.
-  fake.mrs = [{ ...mr, state: 'merged', updatedAt: stamp(clock) }]
+  // A person opened under another card opens beside it: neither closes, so no card moves under the pointer.
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('person-ines.mendel-13-'))?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'One more thing.' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Thanks, fixed.' })).toBeDefined()
+  // Merged, the MR leaves the list, and what was open under it goes with it: it does not come back with the MR. The other
+  // card keeps its own.
+  fake.mrs = [{ ...mr, state: 'merged', updatedAt: stamp(clock) }, other]
   await clock.advance(180_000)
-  fake.mrs = [{ ...mr, updatedAt: stamp(clock) }]
+  fake.mrs = [{ ...mr, updatedAt: stamp(clock) }, other]
   await clock.advance(180_000)
   expect((await ui.findAll({ type: 'Button' })).find(keyed('person-tim-12-'))).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^Tim · requested changes/u })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'One more thing.' })).toBeDefined()
   await ui.unmount()
 })
 

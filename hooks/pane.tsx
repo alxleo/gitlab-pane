@@ -36,7 +36,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     repoFilter,
     search,
     searchBox,
-    under,
+    unders,
     ticketDetails,
     tab,
     page,
@@ -70,9 +70,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     drawnParts.set(key, made)
     return made
   }
-  // What is open under one card, drawn once and sized once, so the card's room in the list counts it.
+  // What is open under a card, drawn once and sized once, so the card's room in the list counts it.
   const underOf = (row: RowModel): { element: RenderChildren; size: number } | null => {
-    if (under === null || under.card !== row.key) {
+    const under = unders[row.key]
+    if (under === undefined) {
       return null
     }
     const known = drawnParts.get(`${row.key}|under`)
@@ -82,7 +83,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const shared = rows.find(each => each.key === row.key)
     const block =
       under.kind === 'ticket'
-        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id], failures['jira-ticket']?.kind ?? null)
+        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id])
         : shared !== undefined
           ? personUnder(withDetail(shared, details[row.key]), under.id, isCurrentWhole(shared, details[row.key]))
           : null

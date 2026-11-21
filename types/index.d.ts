@@ -487,14 +487,18 @@ export type Choices = {
  */
 export type SearchBox = { drawn: string; round: number }
 
-/** What is open under one card, in place of a page: a person's say on it, or its ticket. One at a time; null for none. */
-export type Under = { card: string; kind: 'person' | 'ticket'; id: string } | null
+/**
+ * What is open under a card, in place of a page: a person's say on it, or its ticket. One thing a card; any number of
+ * cards, so opening one never closes another and no card moves under the pointer.
+ */
+export type Under = { kind: 'person' | 'ticket'; id: string }
 
 /**
  * What a ticket says beyond its line on the card, read from Jira when it is opened under one, and when (`at`); `isFound`
- * false when Jira answered without it (a key it does not know, or one hidden from you).
+ * false when Jira answered without it (a key it does not know, or one hidden from you). `failed`, when the last read of it
+ * failed, and why: each ticket's own, so a panel open under one card never speaks for another's.
  */
-export type TicketDetail = { assignee: string; description: string; isFound: boolean; at: number }
+export type TicketDetail = { assignee: string; description: string; isFound: boolean; at: number; failed?: FailureKind }
 
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }
@@ -529,8 +533,8 @@ declare module 'claude-code' {
       search: string
       /** What the search box is drawn holding, and how many times ✕ has emptied it. */
       searchBox: SearchBox
-      /** What is open under one card of the list. */
-      under: Under
+      /** What is open under the cards of the list, by card key. */
+      unders: Record<string, Under>
       /** Tickets' descriptions and assignees by key, read when each was first opened under a card. */
       ticketDetails: Record<string, TicketDetail>
       /** Per card key, `<pipeline id>:<what>` already announced. */

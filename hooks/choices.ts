@@ -29,21 +29,21 @@ const searchAtom = atom({ plugin: 'gitlab-pane', key: 'search' } as const, '')
 // What the box is drawn holding, which typing never changes, so a redraw while typing keeps what is typed (SearchBox).
 const searchBoxAtom = atom({ plugin: 'gitlab-pane', key: 'searchBox' } as const, { drawn: '', round: 0 } satisfies SearchBox)
 
-// What is open under one card: a person's say on it, or its ticket (Under). Its own key, as the search's is.
-const underAtom = atom({ plugin: 'gitlab-pane', key: 'under' } as const, null)
+// What is open under each card, by card key: a person's say on it, or its ticket (Under). Its own key, as the search's is.
+const undersAtom = atom({ plugin: 'gitlab-pane', key: 'unders' } as const, {})
 
 /** How long typing pauses before the list follows it: long enough to finish a word, short enough to feel live. */
 const TYPING_PAUSE_MS = 250
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnChoices($: EngineInterface) {
-  const [{ expanded, person, folds, repoFilter, tab, reading, wake }, search, searchBox, under] = await Promise.all([
+  const [{ expanded, person, folds, repoFilter, tab, reading, wake }, search, searchBox, unders] = await Promise.all([
     read($, choicesAtom),
     read($, searchAtom),
     read($, searchBoxAtom),
-    read($, underAtom),
+    read($, undersAtom),
   ])
-  return { expanded, chosen: person, folds, repoFilter, tab, page: reading, isWaking: wake, search, searchBox, under }
+  return { expanded, chosen: person, folds, repoFilter, tab, page: reading, isWaking: wake, search, searchBox, unders }
 }
 
 /** Typing in the search box: once it pauses, with nothing typed after, the list shows what `text` finds. */
@@ -70,11 +70,17 @@ export function clearSearch($: EngineInterface): void {
 }
 
 /**
- * Opens `kind` `id` under the card `card`, or closes it when it is the one open; whatever else was open under a card closes.
- * Gives what is open now.
+ * Opens `kind` `id` under the card `card`, in place of whatever that card had open, or closes it when it is what the card
+ * has open. Other cards keep theirs. Gives what the card has open now.
  */
-export function toggleUnder($: EngineInterface, card: string, kind: 'person' | 'ticket', id: string): Promise<Under> {
-  return update($, underAtom, open => (open !== null && open.card === card && open.kind === kind && open.id === id ? null : { card, kind, id }))
+export async function toggleUnder($: EngineInterface, card: string, kind: 'person' | 'ticket', id: string): Promise<Under | null> {
+  const open = await update($, undersAtom, unders => {
+    const now = unders[card]
+    return now !== undefined && now.kind === kind && now.id === id
+      ? Object.fromEntries(Object.entries(unders).filter(([key]) => key !== card))
+      : { ...unders, [card]: { kind, id } }
+  })
+  return open[card] ?? null
 }
 
 export async function readTab($: EngineInterface): Promise<string> {
@@ -84,11 +90,11 @@ export async function readTab($: EngineInterface): Promise<string> {
 export async function readPage($: EngineInterface): Promise<string> {
   return (await read($, choicesAtom)).reading
 }
-/** The cards whose threads are wanted: the MR read whole, and the one a person's say is open under. */
+/** The cards whose threads are wanted: the MR read whole, and those a person's say is open under. */
 export async function readOpened($: EngineInterface): Promise<string[]> {
-  const [{ reading }, under] = await Promise.all([read($, choicesAtom), read($, underAtom)])
-  const cards = [...(reading !== '' ? [reading] : []), ...(under !== null && under.kind === 'person' ? [under.card] : [])]
-  return [...new Set(cards)]
+  const [{ reading }, unders] = await Promise.all([read($, choicesAtom), read($, undersAtom)])
+  const people = Object.entries(unders).flatMap(([card, under]) => (under.kind === 'person' ? [card] : []))
+  return [...new Set([...(reading !== '' ? [reading] : []), ...people])]
 }
 export async function readWake($: EngineInterface): Promise<boolean> {
   return (await read($, choicesAtom)).wake
@@ -189,9 +195,8 @@ export async function forgetGone($: EngineInterface, isShown: (key: string) => b
     await change($, choices => ({ ...choices, person, folds, repoFilter: keptRepo(choices.repoFilter, projects), reading: isGone ? '' : choices.reading }))
   }
   // What was open under a card goes with the card.
-  const under = await read($, underAtom)
-  if (under !== null && !isShown(under.card)) {
-    await update($, underAtom, open => (open !== null && !isShown(open.card) ? null : open))
+  if (Object.keys(await read($, undersAtom)).some(card => !isShown(card))) {
+    await update($, undersAtom, unders => Object.fromEntries(Object.entries(unders).filter(([card]) => isShown(card))))
   }
   return isGone
 }

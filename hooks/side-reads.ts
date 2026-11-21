@@ -65,21 +65,26 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
 /**
  * A ticket opened under a card, read whole: its description and assignee, which the quarter-hourly read leaves out. What
  * was read is drawn at once, and read again on an opening once it is as old as the quarter-hourly read lets a ticket be. A
- * ticket Jira answers without is kept as not found. A failure is this read's own (`jira-ticket`), apart from the quarter-hourly
- * read's, and lasts until a ticket is opened again (`openUnder` clears it, so the next ticket is not drawn as failed).
+ * ticket Jira answers without is kept as not found. A failure is kept with the ticket (`failed`), so its panel says so and
+ * no other's does, and asked again at its next opening; what an earlier read gave is kept over it. `/gitlab` says the last
+ * such failure (`jira-ticket`), apart from the quarter-hourly read's.
  */
 export function ensureTicket($: EngineInterface, key: string): Promise<void> {
   return joined(`ticket:${key}`, async () => {
     const now = await $.clock.now()
     const held = await heldTicket($, key)
-    if ((await readBrowse($)) === '' || (held !== undefined && now - held.at < TICKETS_EVERY_MS)) {
+    if ((await readBrowse($)) === '' || (held !== undefined && held.failed === undefined && now - held.at < TICKETS_EVERY_MS)) {
       return
     }
     const found = await runJson($, 'acli', detailArgs(key), readTicketDetails, { timeoutMs: 60_000 })
     if (!found.ok) {
       await record($, 'jira-ticket', failureOf(found))
+      if (held === undefined || held.failed !== undefined) {
+        await knowTicketDetail($, key, { assignee: '', description: '', isFound: false, at: now, failed: found.kind })
+      }
       return
     }
+    await clear($, 'jira-ticket')
     const detail = found.value[key]
     await knowTicketDetail($, key, detail !== undefined ? { ...detail, isFound: true, at: now } : { assignee: '', description: '', isFound: false, at: now })
   })

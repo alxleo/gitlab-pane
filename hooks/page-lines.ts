@@ -120,27 +120,26 @@ export function personUnder(card: MrCard, username: string, isWhole: boolean): U
   }
 }
 
+/** What a ticket's panel says when reading it failed: `/gitlab` says why, but nothing of an optional tool not installed. */
+const failedSay = (failed: FailureKind): string => (failed === 'not-installed' ? 'Jira is not available here.' : 'Jira could not be read; /gitlab says why.')
+
 /**
  * A ticket's say: what the quarter-hourly read knows at once, and what reading it whole adds, once that is in. While none
- * is in, it is being read, unless its read failed (`failed`): `/gitlab` says why, but of a Jira tool that is not installed,
- * which is optional, it says nothing, so the ticket says so itself, as a page does.
+ * is in, it is being read; a read that failed says so (`failed`), for this ticket alone.
  */
-export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined, failed: FailureKind | null): UnderBlock {
-  const isJiraDown = failed !== null
+export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined): UnderBlock {
   const heading = ticket !== undefined ? `${key} · ${drawnLine(ticket.type)} · ${drawnLine(ticket.status)}` : key
   const summary = drawnLine(ticket?.summary ?? '')
   const said =
     detail === undefined
-      ? failed === 'not-installed'
-        ? ['Jira is not available here.']
-        : isJiraDown
-          ? ['Jira could not be read; /gitlab says why.']
-          : []
-      : !detail.isFound
-        ? ['Jira says nothing of this ticket to you.']
-        : [...(detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []), detail.description !== '' ? detail.description : 'No description.']
+      ? []
+      : detail.failed !== undefined
+        ? [failedSay(detail.failed)]
+        : !detail.isFound
+          ? ['Jira says nothing of this ticket to you.']
+          : [...(detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []), detail.description !== '' ? detail.description : 'No description.']
   const lines = [...(summary !== '' ? [summary] : []), ...said]
-  return { kind: 'ticket', heading, lines, isReading: detail === undefined && !isJiraDown }
+  return { kind: 'ticket', heading, lines, isReading: detail === undefined }
 }
 
 /** `bot`, `@handle`, or nothing where the name is written like the handle ("Mel.Northcote") and would say it twice. */

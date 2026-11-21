@@ -73,7 +73,7 @@ function ticketLink($: EngineInterface, kit: Kit, row: RowModel, ticket: NonNull
  * it. The way on goes to the whole (the MR's page on that person, or the ticket in Jira); `✕` closes it, as a second press
  * on what opened it does.
  */
-export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: UnderBlock, open: NonNullable<Under>, href: string | null): RenderChildren {
+export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: UnderBlock, open: Under, href: string | null): RenderChildren {
   const { Box, Text, Button, Link } = kit
   const close = <Button key={`under-close-${row.suffix}`} plain dimColor label="✕" onPress={() => openUnder($, row.key, open.kind, open.id)} />
   const heading = (
