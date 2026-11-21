@@ -1,3 +1,4 @@
+import { hintChip } from './hint-chip'
 import type { Kit } from './kit'
 import type { StripModel } from './strip-model'
 
@@ -13,10 +14,8 @@ export function strip(kit: Kit, model: StripModel) {
       </Box>
     )
   }
-  // Where no description shows (VS Code, a phone), the picture carries its stages as its own title instead.
-  return kit.showsHints ? (
-    <Svg width={model.width} height={10} alt={model.alt} source={model.source} />
-  ) : (
-    <Svg isInteractive width={model.width} height={10} alt={model.alt} source={model.titled} />
-  )
+  // Where no description shows (VS Code and a phone draw no title tooltip either), the picture's text names its stages, as
+  // the description would, cleaned and cut the same way, for whatever reads it out.
+  const said = kit.showsHints ? model.alt : (hintChip(model.hint)?.lines.join(', ') ?? model.alt)
+  return <Svg width={model.width} height={10} alt={said} source={model.source} />
 }

@@ -18,7 +18,7 @@ export const HINT_TICK_MS = 100
 export const HINT_LINES = 8
 
 export type HintChip = {
-  /** What it says, a line each, each one line of at most `HINT_ROOM` cells; none for words that are all unseen marks. */
+  /** What it says, a line each, each one line of at most `HINT_ROOM` cells; at least one. */
   lines: string[]
   /** Cells across and rows down the box that holds it: its widest line and the room either side, and a row a line. */
   cells: number
@@ -26,16 +26,21 @@ export type HintChip = {
 }
 
 /**
- * Marks that draw nothing and only steer the text (a right-to-left override, a zero-width space), which a name from GitLab
- * could use to turn a description around. The two joiners stay: emoji and some scripts are spelled with them.
+ * What draws nothing: marks that only steer the text (a right-to-left override, a zero-width space), which a name from
+ * GitLab could use to turn a description around, and letters drawn blank (the Braille and Hangul blanks). The two joiners
+ * and the tags that spell a flag stay: emoji and some scripts are spelled with them. (`foreign` in `model-text.ts` drops
+ * every format mark, joiners too, as the model reads no emoji; a description is drawn, so it keeps them.)
  */
-const UNSEEN = /(?![‌‍])\p{Cf}/gu
+const UNSEEN = /(?!\u{200C}|\u{200D}|[\u{E0020}-\u{E007F}])\p{Cf}|[\u{115F}\u{1160}\u{2800}\u{3164}\u{FFA0}]/gu
 
-/** `words` as a description draws them: lines cleaned and cut to `HINT_ROOM` cells, a long list cut to `HINT_LINES`. */
-export function hintChip(words: string | readonly string[]): HintChip {
+/**
+ * `words` as a description draws them: lines cleaned and cut to `HINT_ROOM` cells, a long list cut to `HINT_LINES`; `null`
+ * when nothing is left to say, so the symbol draws alone rather than over an empty chip.
+ */
+export function hintChip(words: string | readonly string[]): HintChip | null {
   const every = (typeof words === 'string' ? [words] : words).map(each => shortenToCells(drawnLine(each.replace(UNSEEN, '')), HINT_ROOM)).filter(line => line !== '')
   const lines = every.length > HINT_LINES ? [...every.slice(0, HINT_LINES - 1), `and ${every.length - HINT_LINES + 1} more`] : every
-  return { lines, cells: Math.max(0, ...lines.map(cellsOf)) + 2, rows: Math.max(1, lines.length) }
+  return lines.length > 0 ? { lines, cells: Math.max(...lines.map(cellsOf)) + 2, rows: lines.length } : null
 }
 
 /** Where a region's wait stands: since when it has been shown, `null` while hidden, and whether its words show. */

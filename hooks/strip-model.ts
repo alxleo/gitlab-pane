@@ -18,8 +18,6 @@ export type StripModel = {
   /** The description, a line each: how many stages passed, then every other stage as `stageLine` says it, in order. */
   hint: string[]
   source: SvgSource
-  /** The same picture with the description as its title, for a surface that shows no description of its own. */
-  titled: SvgSource
 }
 
 /** `build · passed · ran 3m`; a stage none of whose jobs ran says only its state. */
@@ -58,6 +56,5 @@ export function stripModel(stages: Stage[], now: number): StripModel {
     alt: `${stages.length} stages`,
     hint,
     source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${drawing}</svg>`,
-    titled: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'><title>${hint.join('\n')}</title>${drawing}</svg>`,
   }
 }

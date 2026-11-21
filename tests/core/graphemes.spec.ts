@@ -12,6 +12,11 @@ test('a line cut to so many cells keeps whole characters, ends in an ellipsis, a
   expect(shortenToCells('opens the MR', 8)).toBe('opens t…')
   expect(shortenToCells('李小龍李小龍', 7)).toBe('李小龍…')
   expect(shortenToCells(`${FAMILY}${FAMILY}`, 3)).toBe(`${FAMILY}…`)
+  // A letter can carry any number of marks and still take one cell, so a line is held to four units a cell as well.
+  const heavy = `a${String.fromCodePoint(0x301).repeat(40)}`.repeat(36)
+  expect(cellsOf(heavy)).toBe(36)
+  expect(shortenToCells(heavy, 36).length).toBeLessThanOrEqual(4 * 36)
+  expect(shortenToCells(heavy, 36).endsWith('…')).toBe(true)
   fc.assert(
     fc.property(textArb, fc.integer({ min: 2, max: 40 }), (text, room) => {
       const line = shortenToCells(text, room)

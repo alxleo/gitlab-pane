@@ -29,7 +29,7 @@ export function hinted(kit: Kit, key: string, words: string | readonly string[],
     return symbol
   }
   const chip = hintChip(words)
-  if (chip.lines.length === 0) {
+  if (chip === null) {
     return symbol
   }
   const props: HintWaitProps = { lines: chip.lines }

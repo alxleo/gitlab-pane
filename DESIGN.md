@@ -185,8 +185,9 @@ The controls drawn as a symbol alone say what a press does, or what is on (`CONT
 | ✕ | end the search |
 | ✓ | mark seen |
 
-- Only the desktop app was seen drawing a description, so it alone draws them. The terminal, VS Code and a phone keep the words a symbol replaces, and there the stage strip carries its stages as its picture's own title.
-- Text from GitLab in a description (a name, a stage) loses the marks that draw nothing and only steer text, such as a right-to-left override; words left with nothing to say draw no description.
+- Only the desktop app was seen drawing a description, so it alone draws them. The terminal, VS Code and a phone keep the words a symbol replaces. Neither VS Code nor a phone shows a picture's title either, so there the stage strip's own text (`alt`) names its stages, for whatever reads it out; on the screen the strip says its stages nowhere but the desktop, as before.
+- Text from GitLab in a description (a name, a stage) loses what draws nothing: marks that only steer text, such as a right-to-left override, and letters drawn blank. Words left with nothing to say draw no description (`hintChip` answers `null`).
+- A list of links that each do the same (an MR page's failed jobs) has one description for the whole list, drawn above it: a description per link took 500 characters each and crowded a long page's threads off it.
 - A description from the tables above fits `HINT_ROOM`, 36 cells, so it stays inside a narrow pane; any line past it (a stage's long name, text from GitLab) is cut with `…`, and a list past `HINT_LINES` ends with how many more. Wide letters count two cells. One costs about 350 characters of the drawing, counted with its row; the top row's are in `CHROME_SIZE`. With every symbol described, the heaviest list the tests make (fifty MRs of 180 failed jobs each) draws 8 cards where it drew 15, and counts the rest.
 - Every symbol is drawn through `hinted`, the one component, with its words from these tables. The tests hold it: `unhinted` (`tests/fixtures.ts`) walks a desktop drawing of Mine, an MR's page, a person's page, the inbox and a search, and fails on any picture, link, or label of symbols alone that has no description.
 
