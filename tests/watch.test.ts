@@ -34,6 +34,7 @@ import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
 import { DRAWING_BUDGET } from '../hooks/drawing'
+import { HINT_DELAY_MS } from '../hooks/hint-chip'
 import { toCard } from '../hooks/mr-card'
 import { MERGED_ROW_SIZE } from '../hooks/landed-model'
 import { REPLY_MOST } from '../hooks/reply-model'
@@ -1439,6 +1440,33 @@ test('resting the pointer on a symbol shows what it means over the card, moving 
   const hidden = boxesOf(await ui.drawn()).filter(box => box.props?.display === 'none')
   expect(hidden.length).toBeGreaterThan(5)
   expect(hidden.filter(box => box.props?.position !== 'absolute')).toEqual([])
+
+  // The region in ↻'s box, run as the app runs it: laid out as the box shows (the pointer on ↻) and hides, its clock moved
+  // on. The words wait on every rest, the second as the first, and go as the box hides.
+  const region = { in: 'hint-refresh-w' }
+  const says = async () => JSON.stringify(await ui.drawn(region)).includes('read GitLab again')
+  const rest = { columns: 19, rows: 1, ...region }
+  const gone = { columns: 0, rows: 0, ...region }
+  expect(await says()).toBe(false)
+  await ui.resize(rest)
+  await ui.advance(HINT_DELAY_MS - 100)
+  expect(await says()).toBe(false)
+  await ui.advance(200)
+  expect(await says()).toBe(true)
+  await ui.resize(gone)
+  expect(await says()).toBe(false)
+  await ui.resize(rest)
+  await ui.advance(HINT_DELAY_MS - 100)
+  expect(await says()).toBe(false)
+  await ui.advance(200)
+  expect(await says()).toBe(true)
+  // A pointer that only passes: shown and hidden again before the wait is up, so the words never draw.
+  await ui.resize(gone)
+  await ui.resize(rest)
+  await ui.advance(HINT_DELAY_MS / 2)
+  await ui.resize(gone)
+  await ui.advance(5 * HINT_DELAY_MS)
+  expect(await says()).toBe(false)
   await ui.unmount()
 
   const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
