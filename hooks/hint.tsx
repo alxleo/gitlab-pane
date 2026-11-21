@@ -1,6 +1,7 @@
 import type { RenderChildren } from 'claude-code'
 
 import { hintChip } from './hint-chip'
+import type { HintWaitProps } from './hint-wait'
 import type { Kit } from './kit'
 
 /**
@@ -16,18 +17,19 @@ export const AT_END: Place = { side: 'above', edge: 'end' }
 export const TOP_RIGHT: Place = { side: 'below', edge: 'end' }
 
 /**
- * A symbol and what it means, shown once the pointer rests on it: one rule for every symbol the pane draws. The box that
- * holds the description is out of the flow, so it covers the lines beside it and moves nothing, and nothing of the card shows
- * or hides but it. The engine reveals it at once; the chip inside is a picture that waits `HINT_DELAY_S` before it shows, so
- * a pointer passing by sets nothing off. `words` is a line, or several (a strip's stages). Where no pointer hovers, the symbol
- * alone, and whoever drops words for it keeps them there.
+ * A symbol and what it means, shown once the pointer has rested on it: the one rule for every symbol the pane draws. The box
+ * that holds the description is out of the flow, so it covers the lines beside it and moves nothing. The engine reveals it
+ * the moment the pointer touches the symbol; the region inside (`hint-wait.tsx`) shows the words only after `HINT_DELAY_MS`,
+ * on every rest, so a pointer passing by sets nothing off. `words` is a line, or several (a strip's stages). Where no
+ * pointer hovers, the symbol alone, and whoever drops words for it keeps them there.
  */
 export function hinted(kit: Kit, key: string, words: string | readonly string[], symbol: RenderChildren, place: Place = ABOVE): RenderChildren {
-  const { Box, Svg } = kit
-  if (!kit.showsHints || Svg === undefined) {
+  const { Box, Client } = kit
+  if (Client === undefined) {
     return symbol
   }
-  const chip = hintChip(typeof words === 'string' ? [words] : words, key)
+  const chip = hintChip(words)
+  const props: HintWaitProps = { lines: chip.lines }
   return (
     <Box key={key} flexShrink={0}>
       {symbol}
@@ -37,12 +39,10 @@ export function hinted(kit: Kit, key: string, words: string | readonly string[],
         left={place.edge === 'start' ? 0 : undefined}
         right={place.edge === 'end' ? 0 : undefined}
         width={chip.cells}
-        flexDirection="row"
-        justifyContent={place.edge === 'start' ? 'flex-start' : 'flex-end'}
         display="none"
         hover={{ display: 'flex' }}
       >
-        <Svg width={chip.width} height={chip.height} alt={chip.lines.join(', ')} source={chip.source} />
+        <Client key={`${key}-w`} module="./hint-wait.tsx" props={props} width="100%" height={chip.rows} />
       </Box>
     </Box>
   )

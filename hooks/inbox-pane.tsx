@@ -77,11 +77,12 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     ) : null
 
   /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
-  const event = (one: InboxActivity, isWhole: boolean) => {
+  const event = (mr: string, one: InboxActivity, at: number, isWhole: boolean) => {
     const verb = VERB[one.kind]
     const when = ago(one.at, now)
     const said = one.excerpt !== '' ? `“${one.excerpt}”` : ''
-    const tag = shortHash(`${one.actor}${one.at}${one.kind}`)
+    // Its MR and place in its list: two events of one person, kind and second are still two, and each region takes its own key.
+    const tag = shortHash(`${mr}#${at}`)
     return (
       <Box key={`ev-${tag}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
@@ -98,7 +99,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               </Text>
             )}
           </Box>
-          <Box flexShrink={0}>{isFilled(one.url) ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}</Box>
+          <Box flexShrink={0}>{isFilled(one.url) ? hinted(kit, `hint-at-${tag}`, opens('comment'), <Link href={one.url}>{when}</Link>, AT_END) : <Text dimColor>{when}</Text>}</Box>
         </Box>
         {isWhole && said !== '' && (
           <Box paddingLeft={3}>
@@ -177,7 +178,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           </Box>
         </Box>
-        {isOpen ? item.activity.map(one => event(one, true)) : item.activity[0] !== undefined && event(item.activity[0], false)}
+        {isOpen ? item.activity.map((one, at) => event(item.key, one, at, true)) : item.activity[0] !== undefined && event(item.key, item.activity[0], 0, false)}
         {isOpen && <Button key={buttons.less} plain label="▴ less" onPress={() => toggleCard($, item.key)} />}
       </Box>
     )

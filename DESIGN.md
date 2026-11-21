@@ -12,12 +12,12 @@ What each colour, border and mark in the pane means, and the code that holds it.
 | Never colour alone | a colour always rides with a glyph or words that say the same; one meaning keeps one colour in either theme, and cards draw no border | `TONE_COLOURS`, `hooks/status.ts` |
 | Words beat icons for what blocks a merge | the worst blocker is said in words on line 2; other markers trail it | `verdictOf`, `hooks/attention.ts` |
 | Small enough to draw | the desktop draws nothing past 100,000 characters, so rows come first, most pressing first, then avatars; rows that do not fit are counted, not dropped | `DRAWING_BUDGET`, `hooks/drawing.ts` |
-| A symbol says what it means once the pointer rests | resting the pointer on any symbol shows a short description over the card after 0.6 s, never as the pointer passes; it is out of the flow, so nothing moves under the pointer and no other part of a card shows or hides; the symbol stands alone, and the rest of an MR is on its page, a press away | `hinted`, `hooks/hint.tsx`; `HINT_DELAY_S` |
+| A symbol says what it means once the pointer rests | resting the pointer on any symbol shows a short description over the card after 0.6 s, never as the pointer passes; it is out of the flow, so nothing moves under the pointer and no other part of a card shows or hides; the symbol stands alone, and the rest of an MR is on its page, a press away | `hinted`, `hooks/hint.tsx`; `waitStep`, `HINT_DELAY_MS` |
 | Bots show only when they hold the merge | by an open thread or a request for changes; then a bot gets a face like anyone's; otherwise its summary comments stay out of the way | `toCard`, `hooks/mr-card.ts` |
 
 ## Colour
 
-Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip, the chip a symbol shows under the pointer) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. The description a symbol shows under the pointer is text too, the theme's text colour behind its inverse. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
 
 The dark shades are the app's own dark keys, sampled from shots of it. The light ones are vivid fill shades: the app paints its light keys in dark text shades (`#016d11`, `#a42628`, `#895903`, `#1757ac`, `#666666`), which turn muddy on a small mark beside an avatar. The screen renderer's `pane.css` paints text in the app's keys and its pane in `PAGE` (`tools/pane_screens.spec.ts`).
 
@@ -157,7 +157,9 @@ Every link says what it opens before its words (`LINK` in `hooks/drawing.ts`), a
 
 Resting the pointer on a symbol shows what it means in a chip of the theme's text colour, drawn over the line above it (below, for the top rows, which have nothing above), back from the right edge for a symbol there (`hinted`, `Place`). It covers, never pushes: nothing moves and nothing else appears.
 
-The engine shows a hidden box the moment the pointer touches its symbol and has no delay of its own, so the chip is a picture that keeps itself invisible for `HINT_DELAY_S`, 0.6 s, after it is drawn (`hintChip`): a pointer only passing by is gone before it shows. Each symbol's chip is a picture of its own (its key is in it): the desktop keeps one copy of a picture, clock included, for every place that draws the same source, so a second symbol with the same words showed its chip at once. 1.5 s read as slow. The app's own tooltip (a framed picture's title) waited longer still and fired only over a 16-pixel picture, so it needed a precise aim and could not cover links or buttons.
+The engine shows a hidden box the moment the pointer touches its symbol and has no delay of its own. So the box holds a small region of the pane's own (a `Client`, `hooks/hint-wait.tsx`) that is laid out as the box shows and hides, and shows the words only once the pointer has stayed `HINT_DELAY_MS`, 0.6 s, every time (`waitStep` in `hooks/hint-chip.ts`, on plain data): a pointer only passing by is gone before they show. The region holds no symbol, so a press lands on the symbol as before. Seen in the desktop app, each rest waited, the second as the first, and the chip showed by 0.7 s.
+
+Tried and dropped: a chip as a picture that fades in waited only the first time, as the desktop keeps one clock per picture; a region laid over the symbol waited every time but swallowed its presses; the app's own tooltip (a framed picture's title) waited longer, fired only over a 16-pixel picture and could not cover links or buttons. 1.5 s read as slow.
 
 The words are the tables' own:
 
@@ -183,9 +185,9 @@ The controls drawn as a symbol alone say what a press does, or what is on (`CONT
 | ✕ | end the search |
 | ✓ | mark seen |
 
-- Only the desktop app was seen drawing a description, so it alone draws them. The terminal and a phone, where nothing hovers, keep the words a symbol replaces.
-- A description from the tables above fits `HINT_ROOM`, 36 cells, so it stays inside a narrow pane; a strip's lines are its stages' own. One costs about 700 characters of the drawing, counted with its row; the top row's are in `CHROME_SIZE`.
-- Every symbol is drawn through `hinted`, the one component, with its words from these tables. The tests hold it: `unhinted` (`tests/fixtures.ts`) walks a desktop drawing of Mine, an MR's page, a person's page, the inbox and a search, and fails on any picture, link led by its mark, or label of symbols alone that has no chip.
+- Only the desktop app was seen drawing a description, so it alone draws them. The terminal, VS Code and a phone keep the words a symbol replaces.
+- A description from the tables above fits `HINT_ROOM`, 36 cells, so it stays inside a narrow pane; any line past it (a stage's long name, text from GitLab) is cut with `…`, and a list past `HINT_LINES` ends with how many more. Wide letters count two cells. One costs about 350 characters of the drawing, counted with its row; the top row's are in `CHROME_SIZE`. With every symbol described, the heaviest list the tests make (fifty MRs of 180 failed jobs each) draws 8 cards where it drew 15, and counts the rest.
+- Every symbol is drawn through `hinted`, the one component, with its words from these tables. The tests hold it: `unhinted` (`tests/fixtures.ts`) walks a desktop drawing of Mine, an MR's page, a person's page, the inbox and a search, and fails on any picture, link, or label of symbols alone that has no description.
 
 A ticket the pane moves in Jira (`jiraInReview`, `jiraOnMerge`; the rules are `hooks/jira-moves.ts`) gets no mark on its card: moving it is the pane's chore, not the person's. The move is a toast once, in the session that made it (the one that reads GitLab for the others), whose 🎫 line on the MR's page shows the new status at once; other sessions show it at their next read of Jira.
 

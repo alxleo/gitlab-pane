@@ -5,7 +5,7 @@ import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
 import { RECHECK_MS } from '../hooks/landed'
-import { NOW, commented, listed, mergeStatuses, pipe, rawMr, unhinted } from './fixtures'
+import { NOW, commented, hintsIn, listed, mergeStatuses, pipe, rawMr, unhinted } from './fixtures'
 import type { Mr } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, merged, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
@@ -75,21 +75,13 @@ const FIRST_SYNC_MS = 2_000
 const titleOf = async (ui: { find: (query: { type: string; key: string }) => Promise<{ props?: Record<string, unknown> } | undefined> }, iid: number) =>
   (await ui.find({ type: 'Button', key: `inbox-open-${hashOf(`gitlab.com/g/p!${iid}`)}` }))?.props?.label
 
-/** What the chips under a drawn element say: the `alt` of each picture beneath it. */
-const chipWords = (node: unknown): string[] =>
-  typeof node === 'object' && node !== null
-    ? [
-        ...('type' in node && node.type === 'Svg' && 'props' in node && typeof node.props === 'object' && node.props !== null && 'alt' in node.props
-          ? [String(node.props.alt)]
-          : []),
-        ...('children' in node && Array.isArray(node.children) ? node.children.flatMap(chipWords) : []),
-      ]
-    : []
+/** What the descriptions under a drawn element say, each its lines joined. */
+const chipWords = (node: unknown): string[] => hintsIn(node).map(hint => hint.lines.join(', '))
 
 /** The counts a desktop card draws as marks: each one's mark and number, and what its chip says once the pointer rests. */
 const countsOf = async (ui: { findAll: (query: { type: string }) => Promise<{ key: string | undefined; text: string; children: unknown[] }[]> }) =>
   (await ui.findAll({ type: 'Box' }))
-    .filter(box => /^hint-[a-z_]+-\w+$/u.test(box.key ?? '') && !['hint-mr-', 'hint-seen-', 'hint-who-'].some(prefix => (box.key ?? '').startsWith(prefix)))
+    .filter(box => /^hint-[a-z_]+-\w+$/u.test(box.key ?? '') && !['hint-mr-', 'hint-seen-', 'hint-who-', 'hint-at-'].some(prefix => (box.key ?? '').startsWith(prefix)))
     .map(box => [box.text, ...chipWords(box)])
 
 const typed = (args: string) => ({
@@ -220,8 +212,13 @@ test('what you were mentioned in, whose build failed and what cannot merge each 
   await ui.press({ key: 'inbox-rule-build-failed' })
   // An event nobody did reads without a name.
   expect(await ui.find({ type: 'Text', text: '✗ pipeline failed' })).toBeDefined()
+  // What blocks a merge is counted in words even under the desktop's pointer, never as a mark that waits to say it.
+  expect(await ui.find({ type: 'Text', text: /\b1 pipeline failed\b/u })).toBeDefined()
+  expect(await countsOf(ui)).toEqual([])
   await ui.press({ key: 'inbox-rule-cant-merge' })
   expect(await ui.find({ type: 'Text', text: "⚠ can't merge" })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\b1 can't merge\b/u })).toBeDefined()
+  expect(await countsOf(ui)).toEqual([])
   await ui.unmount()
 })
 
@@ -792,13 +789,13 @@ test('a merge on a branch that runs no pipeline is not asked for after ten minut
   expect(asked()).toBe(before)
   await ui.press({ key: 'merged' })
   // On the desktop the mark for none says so once the pointer rests on it; a phone, with no pointer, keeps the words.
-  expect((await ui.findAll({ type: 'Svg' })).some(svg => svg.props.alt === 'no pipeline')).toBe(true)
+  expect(chipWords(await ui.drawn())).toContain('no pipeline')
   expect(await ui.find({ type: 'Text', text: 'no pipeline' })).toBeUndefined()
   await ui.unmount()
   for (const surface of ['mobile', 'vscode'] as const) {
     const other = await $.ui.mount({ ...PANE, surface })
     expect((await other.find({ type: 'Text', text: 'no pipeline' }))?.text).toBe('no pipeline')
-    expect((await other.findAll({ type: 'Svg' })).some(svg => svg.props.alt === 'no pipeline')).toBe(false)
+    expect(chipWords(await other.drawn())).toEqual([])
     await other.unmount()
   }
 })
@@ -1290,10 +1287,7 @@ test('an actor who wrote an MR in the inbox has the initials of their name, like
   await ui.press({ key: 'tab-inbox' })
   await ui.press({ key: 'inbox-rule-review-requested' })
   await ui.press({ key: `inbox-open-${hashOf('gitlab.com/g/p!1')}` })
-  // The discs, not the chips that wait for the pointer.
-  const discs = (await ui.findAll({ type: 'Svg' }))
-    .filter(svg => !String(svg.props.source).includes('<set '))
-    .map(svg => [svg.props.alt, /<text[^>]*>([^<]*)</u.exec(String(svg.props.source))?.[1]])
+  const discs = (await ui.findAll({ type: 'Svg' })).map(svg => [svg.props.alt, /<text[^>]*>([^<]*)</u.exec(String(svg.props.source))?.[1]])
   // GitLab names the author of an MR, not an actor of its activity: the others stay as the username gives them.
   expect(discs).toEqual([
     ['zed99', 'ZE'],

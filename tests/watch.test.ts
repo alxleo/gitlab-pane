@@ -21,6 +21,7 @@ import {
   reviewer,
   stage,
   thread,
+  hintsIn,
   unhinted,
   user,
 } from './fixtures'
@@ -33,7 +34,6 @@ import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
 import { DRAWING_BUDGET } from '../hooks/drawing'
-import { HINT_DELAY_S } from '../hooks/hint-chip'
 import { toCard } from '../hooks/mr-card'
 import { MERGED_ROW_SIZE } from '../hooks/landed-model'
 import { REPLY_MOST } from '../hooks/reply-model'
@@ -1412,13 +1412,13 @@ test('resting the pointer on a symbol shows what it means over the card, moving 
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // The description is the last child of the keyed box that holds the symbol: drawn hidden and out of the flow, shown while
-  // the pointer is on that box, as a chip picture that waits before it shows itself.
+  // the pointer is on that box, holding the region that waits before it shows the words.
   const hintOf = async (prefix: string) => {
     const card = (await ui.findAll({ type: 'Box' })).find(keyed(prefix))?.children.filter(isDrawn).at(-1)
-    const chip = elementsOf(card).find(element => element.type === 'Svg')
+    const [chip, ...more] = hintsIn(card)
     return {
-      words: chip?.props?.alt,
-      waits: String(chip?.props?.source).includes(`begin='${HINT_DELAY_S}s'`),
+      words: chip?.lines.join(', '),
+      waits: chip !== undefined && more.length === 0,
       top: card?.props?.top,
       fromEnd: card?.props?.right === 0,
       movesNothing: card?.props?.position === 'absolute' && card.props.display === 'none' && card.hover?.display === 'flex',
@@ -1782,9 +1782,13 @@ test('a stage strip draws its passed stages as one run; once the pointer rests i
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const strip = String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === '9 stages')?.props?.source)
-  // Its stages are its chip's lines, as the pointer rests on the strip: the passed ones counted, the others by name.
-  const chip = elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && String(element.props?.alt).startsWith('7 stages passed'))
-  expect(String(chip?.props?.alt)).toMatch(/^7 stages passed, cleanup · skipped · ran \S+, e2e · running/u)
+  // Its stages are its description's lines, as the pointer rests on the strip: the passed ones counted, the others by name,
+  // and the box sits as many rows above the strip as it has lines, so the last line is not drawn over the strip.
+  const box = (await ui.findAll({ type: 'Box' })).find(keyed('hint-strip'))?.children.filter(isDrawn).at(-1)
+  const lines = hintsIn(box)[0]?.lines ?? []
+  expect(lines.join(', ')).toMatch(/^7 stages passed, cleanup · skipped · ran \S+, e2e · running/u)
+  expect(lines.length).toBeGreaterThan(1)
+  expect(box?.props?.top).toBe(-lines.length)
   expect(strip).not.toContain('<title>')
   // A square per stage, each with its own tooltip, came to 840; the strip alone is now a plain picture.
   expect(strip.length).toBeLessThan(600)
@@ -2200,13 +2204,18 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     // running pipeline reads against how long one usually takes.
     const pictures = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg')
     const alts = pictures.map(svg => String(svg.props?.alt))
+    const hints = hintsIn(await ui.drawn())
+    const said = hints.map(hint => hint.lines.join(', '))
     const squares = await ui.find({ type: 'Text', text: '■' })
     expect(
       surface === 'terminal'
         ? pictures.length === 0 && squares !== undefined
         : alts.some(alt => /^\d+ stages$/u.test(alt)) &&
-            (surface !== 'desktop' || (alts.some(alt => alt.startsWith('2 stages passed')) && alts.some(alt => alt.includes('build · running'))))
+            (surface !== 'desktop' || (said.some(words => words.startsWith('2 stages passed')) && said.some(words => words.includes('build · running'))))
     ).toBe(true)
+    // Each description is a region of its own, which the app keeps apart by its key, so no two share one.
+    expect(new Set(hints.map(hint => hint.key)).size).toBe(hints.length)
+    expect(hints.length > 0).toBe(surface === 'desktop')
     expect(await ui.find({ text: '🚦 20m · usually 11–14m' })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: '🔀 !103' })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: '🎫 ABC-1' })).toBeDefined()

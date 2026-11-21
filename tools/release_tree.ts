@@ -243,6 +243,9 @@ function loads(source: string): Loads {
           specs.push(spec)
         }
       }
+    } else if (isWord(token, 'module') && isPunct(after, '=') && second?.kind === 'string') {
+      // A Client's `module="./x.tsx"`: the engine reads the path off the source and loads that module.
+      specs.push(second.text)
     } else if (isWord(token, 'export') && depth === 0 && !isPunct(tokens[at - 1], '.')) {
       // Only the forms with a list or a star can name a module: `export type X = {…}` and `export const …` never do, so
       // nothing after them is read as the end of a clause.
@@ -286,6 +289,7 @@ const READINGS: readonly { readonly name: string; readonly source: string; reado
   { name: 'a local export list loads nothing', source: "const a = 1\nexport { a }\nimport { z } from './v'\n", specs: ['./v'], dynamic: 0 },
   { name: 'import( is flagged, with a literal or not', source: "const m = await import('./w')\nconst n = import(name)\n", specs: [], dynamic: 2 },
   { name: 'import.meta is not an import', source: 'const here = import.meta.url\n', specs: [], dynamic: 0 },
+  { name: "a Client's module loads it", source: 'const c = <Client key="k" module="./wait.tsx" props={p} />\n', specs: ['./wait.tsx'], dynamic: 0 },
   {
     name: 'comments, strings, templates and regular expressions hide nothing and show nothing',
     source:

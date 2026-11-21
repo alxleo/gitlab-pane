@@ -83,3 +83,15 @@ export function leading(text: string, count: number, size: number): string[] {
   }
   return found
 }
+
+/** A character drawn two cells wide: Chinese, Japanese and Korean letters, full-width forms, and emoji pictures. */
+const WIDE = /^(?:[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Extended_Pictographic})/u
+
+/** The cells `text` takes on screen: two for each wide character, one for any other a person counts. */
+export function cellsOf(text: string): number {
+  let cells = 0
+  for (const { segment } of SEGMENTER.segment(text)) {
+    cells += WIDE.test(segment) ? 2 : 1
+  }
+  return cells
+}

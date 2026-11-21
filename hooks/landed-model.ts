@@ -20,9 +20,9 @@ export const mrLinkText = (iid: number, title: string): string => `${LINK.mr} !$
 /**
  * The most characters an open row draws to, which the list leaves room for in the drawing budget for each: five rows of the
  * longest title and addresses the model allows, with the chips their link and mark show once the pointer rests, each
- * measured alone at 2,321.
+ * measured alone at 1,637.
  */
-export const MERGED_ROW_SIZE = 2_400
+export const MERGED_ROW_SIZE = 1_700
 
 type Link = { href: string; text: string }
 

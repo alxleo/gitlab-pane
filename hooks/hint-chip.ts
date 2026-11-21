@@ -1,65 +1,56 @@
-// A symbol's description as a small picture: a chip in the pane's text colour, its words in the page's, kept invisible for
-// a moment after it is drawn. The engine reveals a hidden box the moment the pointer touches its symbol and offers no
-// delay, so the delay is the picture's own: a pointer passing by is gone before the chip shows. Pure, on plain data.
-import { PAGE } from './status.ts'
-import type { Shades } from './status.ts'
-import { raw, svg } from './svg.ts'
-import type { SvgSource } from './svg.ts'
+// What a symbol's description says, how much room it takes, and when it shows: the one rule every symbol follows, on
+// plain data. The engine reveals a hidden box the moment the pointer touches its symbol and has no delay of its own, so the
+// box holds a region (`hint-wait.tsx`) that runs `waitStep` and draws the words only once the pointer has rested there.
+import { HINT_ROOM } from './drawing.ts'
+import { drawnLine } from './format.ts'
+import { cellsOf, shorten } from './graphemes.ts'
 
 /**
- * Seconds a chip stays invisible once drawn, as tooltips commonly wait half a second to most of one. 1.5 s read as slow in
- * the desktop app; half a second read as instant only while symbols with the same words shared a picture (see `hintChip`).
+ * Milliseconds the pointer rests on a symbol before its description shows, every time it comes back: tooltips commonly
+ * wait half a second to most of one. 1.5 s read as slow in the desktop app, and 0.6 s as right.
  */
-export const HINT_DELAY_S = 0.6
+export const HINT_DELAY_MS = 600
 
-/** The pane's text, as the desktop paints it in each theme. */
-const INK: Shades = { light: '#191919', dark: '#efefef' }
+/** How often a region that is waiting looks at the clock: the description shows at most this late. */
+export const HINT_TICK_MS = 100
 
-/** A colour as the theme picks it. */
-const shade = ({ light, dark }: Shades): string => `light-dark(${light},${dark})`
-
-/**
- * CSS pixels: a one-line chip's height, each further line's, its words' size, the room either side of them, and what a
- * letter takes at most, so the words fit.
- */
-const HEIGHT = 20
-const LINE = 15
-const SIZE = 12
-const PAD = 7
-const LETTER = 7.5
-
-/** About what a cell of the pane takes across and down, in CSS pixels; a chip's box is given the cells its picture needs. */
-const CELL = 7
-const ROW = 20
+/** Lines a description draws at most; a longer list (a strip's stages) ends with how many more there are. */
+export const HINT_LINES = 8
 
 export type HintChip = {
-  /** What it says, a line each: its `alt`, joined. */
-  lines: readonly string[]
-  /** CSS pixels. */
-  width: number
-  height: number
-  /** Cells across the box that holds it needs, so the picture is drawn at its own width, and rows down, to sit above its symbol. */
+  /** What it says, a line each, each one line of at most `HINT_ROOM` characters. */
+  lines: string[]
+  /** Cells across and rows down the box that holds it: its widest line and the room either side, and a row a line. */
   cells: number
   rows: number
-  source: SvgSource
 }
 
-/**
- * `lines` in a chip that follows the app's theme and shows `HINT_DELAY_S` after it is drawn. About 450 characters for one
- * line. `key` makes each symbol's picture its own: the desktop keeps one copy of a picture, and its clock, for every place that
- * draws the same source, so a second symbol with the same words showed its chip at once, its wait already spent on the first.
- */
-export function hintChip(lines: readonly string[], key: string): HintChip {
-  const width = Math.ceil(Math.max(0, ...lines.map(line => line.length)) * LETTER) + 2 * PAD
-  const height = HEIGHT + LINE * Math.max(0, lines.length - 1)
-  const text = lines.map((line, i) => svg`<tspan x='${PAD}' y='${14 + i * LINE}'>${line}</tspan>`)
-  return {
-    lines,
-    width,
-    height,
-    cells: Math.ceil(width / CELL) + 1,
-    rows: Math.ceil(height / ROW),
-    // Only the desktop draws a chip, and it knows light-dark(), so each paint is the one style, with no fallback shade.
-    source: svg`<svg xmlns='http://www.w3.org/2000/svg' id='${key}' width='${width}' height='${height}'><g style='color-scheme:light dark' opacity='0'><set attributeName='opacity' to='1' begin='${HINT_DELAY_S}s'/><rect width='${width}' height='${height}' rx='4' style='fill:${shade(INK)}'/><text font-family='system-ui' font-size='${SIZE}' style='fill:${shade(PAGE)}'>${raw(text)}</text></g></svg>`,
-  }
+/** `words` as a description draws them: whole lines cleaned and cut to `HINT_ROOM`, a long list cut to `HINT_LINES`. */
+export function hintChip(words: string | readonly string[]): HintChip {
+  const every = (typeof words === 'string' ? [words] : words).map(each => shorten(drawnLine(each), HINT_ROOM))
+  const lines = every.length > HINT_LINES ? [...every.slice(0, HINT_LINES - 1), `and ${every.length - HINT_LINES + 1} more`] : every
+  return { lines, cells: Math.max(0, ...lines.map(cellsOf)) + 2, rows: Math.max(1, lines.length) }
 }
+
+/** Where a region's wait stands: since when it has been shown, `null` while hidden, and whether its words show. */
+export type Wait = { since: number | null; isShown: boolean }
+
+/** A region the pointer is not on. */
+export const HIDDEN: Wait = { since: null, isShown: false }
+
+/**
+ * The wait after the region was laid out or its clock ticked at `now`: hidden, it starts over; shown, it counts from when it
+ * was first shown, and its words show once `HINT_DELAY_MS` has passed. The same object back means nothing changed.
+ */
+export function waitStep(wait: Wait, isVisible: boolean, now: number): Wait {
+  if (!isVisible) {
+    return wait.since === null && !wait.isShown ? wait : HIDDEN
+  }
+  if (wait.since === null) {
+    return { since: now, isShown: false }
+  }
+  return !wait.isShown && now - wait.since >= HINT_DELAY_MS ? { since: wait.since, isShown: true } : wait
+}
+
+/** Whether a region must look at the clock: shown, its words not yet. */
+export const isWaiting = (wait: Wait): boolean => wait.since !== null && !wait.isShown

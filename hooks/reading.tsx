@@ -99,7 +99,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     ...(about.ticket !== null ? [out('hint-page-ticket', opens('jira'), about.ticket.href, about.ticket.text)] : []),
     ...about.standing.map(line =>
       line.href !== null ? (
-        <Link href={line.href}>{line.text}</Link>
+        out(`hint-start-${shortHash(line.href)}`, 'opens the job, to start it', line.href, line.text)
       ) : (
         // What waits on others is said quietly, as the verdict says it; what is yours to act on stands out in its tone.
         <Text weight={line.tone !== undefined ? 'semibold' : undefined} dimColor={line.tone === undefined} color={line.tone}>

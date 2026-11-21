@@ -8,6 +8,13 @@ import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
+/** Text made one line a Text draws: each control character a space, each run of spaces one, none at either end. */
+export const drawnLine = (text: string): string =>
+  text
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/ {2,}/gu, ' ')
+    .trim()
+
 /** A body's lines of prose: code blocks (a suggestion is one) left out, a link's words kept without its address, pictures dropped. */
 function proseLines(body: GitLabMarkdown): string[] {
   const kept: string[] = []

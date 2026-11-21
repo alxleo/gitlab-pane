@@ -45,9 +45,9 @@ export const DRAWING_BUDGET = 85_000
 
 /**
  * What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos, and the chips that say
- * what ↻, 🔔 and the search's ✕ do, about 700 characters each.
+ * what ↻, 🔔 and the search's ✕ do, about 350 characters each.
  */
-export const CHROME_SIZE = 8_000
+export const CHROME_SIZE = 7_000
 
 /** JSON.stringify answers `undefined` for a value with no JSON form, though its declared type says `string`. */
 const lengthOf = (json: string | undefined): number => (json === undefined ? 0 : json.length)

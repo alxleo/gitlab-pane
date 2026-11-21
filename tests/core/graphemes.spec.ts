@@ -1,11 +1,26 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { cut, leading, shorten } from '../../hooks/graphemes.ts'
+import { cellsOf, cut, leading, shorten } from '../../hooks/graphemes.ts'
 import { textArb } from './arbitrary.ts'
 
 // A family is three people joined by zero-width joiners, written as escapes so the joiners can be seen.
 const FAMILY = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}'
+
+test('a wide letter or a picture takes two cells, any other character one, however many code points it is made of', () => {
+  expect(cellsOf('opens the MR')).toBe(12)
+  expect(cellsOf('李小龍')).toBe(6)
+  expect(cellsOf('한글')).toBe(4)
+  expect(cellsOf(`${FAMILY} ok`)).toBe(5)
+  expect(cellsOf('é')).toBe(1)
+  fc.assert(
+    fc.property(textArb, text => {
+      const characters = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].length
+      expect(cellsOf(text)).toBeGreaterThanOrEqual(characters)
+      expect(cellsOf(text)).toBeLessThanOrEqual(2 * characters)
+    })
+  )
+})
 // A person, a skin tone, a joiner and red hair: seven UTF-16 units, one character, and its second code point is no mark.
 const PERSON = '\u{1F9D1}\u{1F3FD}\u{200D}\u{1F9B0}'
 // A flag of black, five tag letters and the tag that cancels them: fourteen units, one character, ending in a tag.
