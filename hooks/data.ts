@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { isEqual } from './equal.ts'
-import { browseUrl } from './jira.ts'
+import { browseUrl, keptTicketDetails } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { keptCards, keptCardsByKey } from './snapshot.ts'
 
@@ -62,18 +62,9 @@ export async function heldTicket($: EngineInterface, key: string): Promise<Ticke
   return (await read($, ticketDetailsAtom))[key]
 }
 
-/** The most tickets read whole kept: every drawing reads them all, so the oldest read go. */
-const TICKETS_HELD = 30
-
-/** Keeps what Jira said of a ticket read whole, letting go of the oldest read past `TICKETS_HELD`. */
+/** Keeps what Jira said of a ticket read whole, letting go of the oldest read past those held (`keptTicketDetails`). */
 export async function knowTicketDetail($: EngineInterface, key: string, detail: TicketDetail): Promise<void> {
-  await update($, ticketDetailsAtom, previous =>
-    Object.fromEntries(
-      Object.entries({ ...previous, [key]: detail })
-        .toSorted(([, a], [, b]) => b.at - a.at)
-        .slice(0, TICKETS_HELD)
-    )
-  )
+  await update($, ticketDetailsAtom, previous => keptTicketDetails(previous, key, detail))
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {

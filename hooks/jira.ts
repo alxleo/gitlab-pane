@@ -1,5 +1,6 @@
 import { field, records, text } from './decode.ts'
 import { LINK } from './drawing.ts'
+import { drawnLine } from './format.ts'
 import { cut } from './graphemes.ts'
 import { linkMarkdown } from './markdown.ts'
 import type { MarkdownText } from './markdown.ts'
@@ -87,16 +88,6 @@ const BLOCKS = new Set(['paragraph', 'heading', 'listItem', 'codeBlock', 'blockq
 const WORDS_IN: Readonly<Record<string, readonly string[]>> = { mention: ['text'], emoji: ['text', 'shortName'], status: ['text'], inlineCard: ['url'] }
 
 /**
- * A line as a drawing takes it: a control character (a carriage return, an escape) is refused in drawn text and can blank
- * the whole pane, so each is a space, and runs of spaces are one.
- */
-const drawable = (line: string): string =>
-  line
-    .replace(/\p{Cc}/gu, ' ')
-    .replace(/ {2,}/gu, ' ')
-    .trim()
-
-/**
  * Jira's description as plain lines: the text of its document format (ADF), a block a line, list items as `• `, a table
  * row's cells joined by ` · `, a mention or a link by its words; blank lines dropped. A description written as a plain
  * string keeps its lines.
@@ -104,7 +95,10 @@ const drawable = (line: string): string =>
 function adfText(node: unknown): string {
   const lines: string[] = []
   if (typeof node === 'string') {
-    lines.push(...node.split(/\r?\n/u))
+    // One at a time: spreading a long description's lines into a call runs out of stack.
+    for (const each of node.split(/\r?\n/u)) {
+      lines.push(each)
+    }
   } else {
     let line = ''
     // Inside a table cell a paragraph ends no line: the row does.
@@ -148,7 +142,7 @@ function adfText(node: unknown): string {
     lines.push(line)
   }
   return lines
-    .map(drawable)
+    .map(drawnLine)
     .filter(each => each !== '' && each !== '•')
     .join('\n')
 }
@@ -168,13 +162,24 @@ export function readTicketDetails(raw: unknown): Record<string, Pick<TicketDetai
         return [
           text(row.key),
           {
-            assignee: text(field(field(fields, 'assignee'), 'displayName')),
+            assignee: drawnLine(text(field(field(fields, 'assignee'), 'displayName'))),
             description: kept === description ? description : `${kept.trimEnd()}…`,
           },
         ]
       })
   )
 }
+
+/** The most tickets read whole kept: every drawing reads them all, so the oldest read go. */
+const TICKETS_HELD = 30
+
+/** The tickets read whole with `key`'s latest read among them, newest read first, past `TICKETS_HELD` the oldest let go. */
+export const keptTicketDetails = (held: Readonly<Record<string, TicketDetail>>, key: string, detail: TicketDetail): Record<string, TicketDetail> =>
+  Object.fromEntries(
+    Object.entries({ ...held, [key]: detail })
+      .toSorted(([, a], [, b]) => b.at - a.at)
+      .slice(0, TICKETS_HELD)
+  )
 
 /** `acli jira workitem search --json` rows, Jira's own issue shape, by key; throws when the answer is not a list. */
 export function readTickets(raw: unknown): Record<string, Ticket> {

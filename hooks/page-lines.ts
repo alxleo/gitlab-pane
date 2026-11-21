@@ -3,7 +3,7 @@
 import type { Badge } from './attention.ts'
 import { LINK } from './drawing.ts'
 import { REVIEW_STATE } from './face-model.ts'
-import { excerpt, plural } from './format.ts'
+import { drawnLine, excerpt, plural } from './format.ts'
 import { ticketUrl } from './jira.ts'
 import { cardFacts } from './row-facts.ts'
 import type { Tone } from './status.ts'
@@ -67,7 +67,7 @@ export function pageHead(card: MrCard, ctx: PageContext): PageHead {
     facts.ticket === null
       ? ''
       : jira !== undefined
-        ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}`
+        ? `${facts.ticket} · ${drawnLine(jira.type)} · ${drawnLine(jira.status)}: ${drawnLine(jira.summary)}`
         : `${facts.ticket}: ${isJiraUnavailable ? 'Jira is not available here' : 'not read from Jira yet'}`
   // Every marker the page has words for, the one GitLab's verdict is about too: the page says who can approve, which the
   // verdict's "needs 1 approval" does not.
@@ -99,8 +99,11 @@ export type UnderBlock =
   | { kind: 'person'; heading: string; latest: { label: string; text: string } | null; more: string | null }
   | { kind: 'ticket'; heading: string; lines: string[]; isReading: boolean }
 
-/** A person's say on `card`, or null when they are no longer on it. Their newest note leads; the card shares an excerpt of one. */
-export function personUnder(card: MrCard, username: string): UnderBlock | null {
+/**
+ * A person's say on `card`, or null when they are no longer on it. Their newest note leads once the MR is read whole
+ * (`isWhole`): the shared card keeps one note a person, their open thread before their newest, so until then none is quoted.
+ */
+export function personUnder(card: MrCard, username: string, isWhole: boolean): UnderBlock | null {
   const page = personPage(card, username)
   const person = card.people.find(each => each.username === username)
   if (page === null || person === undefined) {
@@ -112,7 +115,7 @@ export function personUnder(card: MrCard, username: string): UnderBlock | null {
   return {
     kind: 'person',
     heading: page.heading,
-    latest: newest !== null ? { label: newest.isOpen ? 'open thread' : 'comment', text: excerpt(newest.body, UNDER_ROOM) } : null,
+    latest: newest !== null && isWhole ? { label: newest.isOpen ? 'open thread' : 'comment', text: excerpt(newest.body, UNDER_ROOM) } : null,
     more,
   }
 }
@@ -122,7 +125,8 @@ export function personUnder(card: MrCard, username: string): UnderBlock | null {
  * is in, it is being read, unless Jira's last read failed (`isJiraDown`), which `/gitlab` says.
  */
 export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined, isJiraDown: boolean): UnderBlock {
-  const heading = ticket !== undefined ? `${key} · ${ticket.type} · ${ticket.status}` : key
+  const heading = ticket !== undefined ? `${key} · ${drawnLine(ticket.type)} · ${drawnLine(ticket.status)}` : key
+  const summary = drawnLine(ticket?.summary ?? '')
   const said =
     detail === undefined
       ? isJiraDown
@@ -131,7 +135,7 @@ export function ticketUnder(key: string, ticket: Ticket | undefined, detail: Tic
       : !detail.isFound
         ? ['Jira says nothing of this ticket to you.']
         : [...(detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []), detail.description !== '' ? detail.description : 'No description.']
-  const lines = [...(ticket !== undefined && ticket.summary !== '' ? [ticket.summary] : []), ...said]
+  const lines = [...(summary !== '' ? [summary] : []), ...said]
   return { kind: 'ticket', heading, lines, isReading: detail === undefined && !isJiraDown }
 }
 

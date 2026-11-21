@@ -104,6 +104,8 @@ type Fake = {
   ticketsKnown?: string[]
   /** acli failing on the search of tickets' history alone. */
   isHistoryDown?: boolean
+  /** acli failing on one read alone: the quarter-hourly read of statuses, or a ticket opened and read whole. */
+  jiraDown?: 'statuses' | 'whole'
   /** GitLab's failure message of the failed jobs, by the job's path. */
   reasons?: Record<string, string>
   /** The logs the REST API serves, by `<project path>#<job number>`. */
@@ -392,6 +394,9 @@ function engine(
       const whole = e.argv.includes('key,description,assignee')
       if (whole) {
         jiraWholeReads.push(e.argv.at(-1) ?? '')
+      }
+      if (fake.jiraDown === (whole ? 'whole' : 'statuses')) {
+        return ran('', 1, 'Error: dial tcp: i/o timeout')
       }
       const description = {
         type: 'doc',
@@ -728,18 +733,25 @@ test('the list follows the search box once typing pauses, and Enter at once, pas
     (await ui.find({ type: 'Text', text: start }))?.text
   // Each ✕ draws a new box under a new key, so a box is found by its type.
   const box = async (ui: { findAll: (query: { type: 'Input' }) => Promise<{ key?: string; props: { value?: string } }[]> }) => (await ui.findAll({ type: 'Input' }))[0]
-  // A filter that hides something says so beside it, in blue.
-  const blue = async (ui: { findAll: (query: { type: 'Text'; text: string }) => Promise<{ props: { color?: unknown } }[]> }) =>
-    (await ui.findAll({ type: 'Text', text: '⧩ filtered' })).filter(each => each.props.color === 'suggestion').length
+  // A filter that hides something says so beside it, by a glyph and a word.
+  const blue = async (ui: { findAll: (query: { type: 'Text'; text: RegExp }) => Promise<{ props: { dimColor?: unknown } }[]> }) =>
+    (await ui.findAll({ type: 'Text', text: /^⧩ filtered/u })).filter(each => each.props.dimColor === true).length
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await blue(ui)).toBe(0)
+    // Text that names nothing to look for narrows nothing, so says nothing of it.
+    const typing = (await box(ui))?.key ?? ''
+    for (const nothing of ['!', '  ', '-']) {
+      await ui.input({ key: typing, text: nothing, kind: 'change' })
+      await clock.advance(300)
+      expect(await text(ui, /^Ready · /u)).toBe('Ready · 3')
+      expect(await blue(ui)).toBe(0)
+    }
     await ui.select({ key: 'repo', value: 'gitlab.com/g/p' })
     expect(await text(ui, /^Ready · /u)).toBe('Ready · 2')
     expect(await blue(ui)).toBe(1)
     // Typing searches once it pauses, for what was typed last: the pause after the first text ends while more was typed, so
     // it finds nothing, and the list waits for the pause after the last.
-    const typing = (await box(ui))?.key ?? ''
     await ui.input({ key: typing, text: 'totals', kind: 'change' })
     await clock.advance(100)
     await ui.input({ key: typing, text: 'abc123', kind: 'change' })
@@ -790,6 +802,18 @@ test('the list follows the search box once typing pauses, and Enter at once, pas
     expect(await blue(ui)).toBe(0)
     await ui.unmount()
   }
+  // A pane drawn again (or a reload, or another surface of the session) has a box that does not hold what typing paused on,
+  // as nothing may be written into a box while it is typed in; the search is named beside it instead.
+  const before = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await before.input({ key: (await box(before))?.key ?? '', text: 'totals', kind: 'change' })
+  await clock.advance(300)
+  expect(await text(before, /^Found · /u)).toBe('Found · 2')
+  await before.unmount()
+  const after = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await box(after))?.props.value).toBe('')
+  expect(await text(after, /^⧩ filtered/u)).toBe('⧩ filtered: totals')
+  await after.press({ key: 'search-clear' })
+  await after.unmount()
   // A search left on where there is a box is not drawn on a phone, which has none to end it with.
   const desk = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await desk.input({ key: (await box(desk))?.key ?? '', text: '!512' })
@@ -891,6 +915,39 @@ test(
     expect(jiraWholeReads.length).toBe(2)
     expect(await ui.find({ type: 'Text', text: 'Jira says nothing of this ticket to you.' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'reading Jira…' })).toBeUndefined()
+    await ui.unmount()
+  }
+)
+
+test(
+  "a ticket opened under a card and the quarter-hourly read of statuses fail apart: neither's failure or success speaks for the other",
+  { options: { jiraUrl: 'https://jira.example.com/' } },
+  async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const fake: Fake = { mrs: [rawMr(12, SHOWN)], isDown: false, jiraDown: 'whole' }
+    engine(on, fake)
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    await clock.settle()
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const gitlab = async () => (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
+    const ticket = (await ui.findAll({ type: 'Markdown' })).find(element => String(element.key).startsWith('ticket-'))
+    await ui.press({ key: String(ticket?.key), link: { href: 'https://jira.example.com/browse/ABC-1' } })
+    await clock.settle()
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeDefined()
+    // The statuses read well a quarter hour on; the ticket's own read still failed, and is not said to be under way.
+    await clock.advance(20 * 60_000)
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'reading Jira…' })).toBeUndefined()
+    expect(await gitlab()).toMatch(/· jira-ticket: /u)
+    // The statuses failing, a ticket opened and read well says nothing of them: /gitlab still says the statuses' failure.
+    fake.jiraDown = 'statuses'
+    await clock.advance(20 * 60_000)
+    await ui.press({ key: String(ticket?.key), link: { href: 'https://jira.example.com/browse/ABC-1' } })
+    await ui.press({ key: String(ticket?.key), link: { href: 'https://jira.example.com/browse/ABC-1' } })
+    await clock.settle()
+    expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    expect(await gitlab()).toMatch(/· jira: /u)
+    expect(await gitlab()).not.toMatch(/jira-ticket: /u)
     await ui.unmount()
   }
 )
@@ -2230,6 +2287,15 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   expect(open).toBeLessThan(DRAWING_BUDGET)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
+  // What opens under a card counts in its card's room: the list, packed to the budget, gives up a row for it rather than
+  // overshoot.
+  const leftOut = async () => Number(/^(\d+)/u.exec((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text ?? '')?.[1])
+  const before = await leftOut()
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.includes('person-') === true)?.key ?? '' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^newest, /u })).toBeDefined()
+  expect(await leftOut()).toBe(before + 1)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   await ui.unmount()
 })
 

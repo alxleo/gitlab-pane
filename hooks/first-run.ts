@@ -5,6 +5,7 @@ import type { FailureKind, Problems, ProblemSource } from '../types'
 const NAMES: Record<ProblemSource, string> = {
   gitlab: 'GitLab',
   jira: 'Jira',
+  'jira-ticket': 'Jira ticket',
   'jira-moves': 'Jira moves',
   usual: 'Pipeline times',
   avatars: 'Pictures',

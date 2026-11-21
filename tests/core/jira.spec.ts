@@ -1,6 +1,17 @@
 import { expect, test } from 'vitest'
 
-import { detailArgs, readTicketDetails, readTickets, readTransition, reviewedArgs, searchArgs, ticketChip, ticketQuery, transitionArgs } from '../../hooks/jira.ts'
+import {
+  detailArgs,
+  keptTicketDetails,
+  readTicketDetails,
+  readTickets,
+  readTransition,
+  reviewedArgs,
+  searchArgs,
+  ticketChip,
+  ticketQuery,
+  transitionArgs,
+} from '../../hooks/jira.ts'
 
 test('a ticket read whole is its assignee and its description as plain lines, a block a line and list items marked', () => {
   expect(detailArgs('ABC-1')).toEqual(['jira', 'workitem', 'search', '--json', '--fields', 'key,description,assignee', '--limit', '1', '--jql', 'key in (ABC-1)'])
@@ -49,6 +60,23 @@ test('a ticket read whole is its assignee and its description as plain lines, a 
   const long = readTicketDetails([{ key: 'ABC-4', fields: { description: '👍'.repeat(700) } }])['ABC-4']?.description ?? ''
   expect(long).toBe(`${'👍'.repeat(600)}…`)
   expect(() => readTicketDetails({})).toThrow('acli answered something other than a list of tickets')
+})
+
+test('a ticket read whole is safe to draw: its assignee loses control characters, and a description of any length reads', () => {
+  const read = readTicketDetails([{ key: 'ABC-7', fields: { description: 'x\n'.repeat(200_000), assignee: { displayName: 'Ines\r\u001bMendel' } } }])['ABC-7']
+  expect(read?.assignee).toBe('Ines Mendel')
+  expect(read?.description.startsWith('x\nx\n')).toBe(true)
+})
+
+test('the tickets read whole are kept newest read first, thirty at most, the oldest read let go', () => {
+  const detail = (at: number) => ({ assignee: '', description: '', isFound: true, at })
+  const thirty = Object.fromEntries(Array.from({ length: 30 }, (_, at) => [`ABC-${at}`, detail(at)]))
+  const kept = keptTicketDetails(thirty, 'ABC-99', detail(99))
+  expect(Object.keys(kept)).toHaveLength(30)
+  expect(kept['ABC-99']).toEqual(detail(99))
+  expect(kept['ABC-0']).toBeUndefined()
+  // Reading one again keeps it once, as of the new read.
+  expect(keptTicketDetails(kept, 'ABC-1', detail(100))['ABC-1']).toEqual(detail(100))
 })
 
 test('a ticket key is a link the pane answers while a Jira site is set, and its words alone while none is', () => {

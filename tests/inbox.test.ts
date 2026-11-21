@@ -237,6 +237,10 @@ test('the band above the prompt says the inbox news while the pane is not shown,
   expect(await pane.find({ type: 'Button', key: 'back-top' })).toBeUndefined()
   expect((await pane.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
   expect(await bandOf(shown)).toBeUndefined()
+  // Something typed on Mine, never entered, before the pane closes.
+  await pane.press({ key: 'tab-mine' })
+  await pane.input({ key: (await pane.findAll({ type: 'Input' }))[0]?.key ?? '', text: 'rename', kind: 'change' })
+  await clock.advance(300)
   await shown.unmount()
   await pane.unmount()
 
@@ -260,6 +264,10 @@ test('the band above the prompt says the inbox news while the pane is not shown,
   expect(await bandOf(band)).toBeUndefined()
   const opened = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await opened.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
+  // Leaving Mine for the inbox this way draws the search box again holding what the list is searched for.
+  await opened.press({ key: 'tab-mine' })
+  expect((await opened.findAll({ type: 'Input' }))[0]?.props.value).toBe('rename')
+  await opened.press({ key: 'tab-inbox' })
 
   // Everything marked seen, there is no news, and the band stays away with the pane closed again.
   await opened.press({ key: 'inbox-rule-on-my-mrs' })

@@ -18,7 +18,7 @@ import { drawReading } from './reading'
 import { pickedRepo } from './repo-filter'
 import { drawnReply } from './replies'
 import { drawnWrites } from './writes'
-import { withDetail } from './slim'
+import { isCurrentWhole, withDetail } from './slim'
 import { view } from './view'
 
 /** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
@@ -79,12 +79,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     if (known !== undefined) {
       return known
     }
-    const card = cards.find(each => each.key === row.key)
+    const shared = rows.find(each => each.key === row.key)
     const block =
       under.kind === 'ticket'
-        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id], failures.jira !== undefined)
-        : card !== undefined
-          ? personUnder(card, under.id)
+        ? ticketUnder(under.id, tickets[under.id], ticketDetails[under.id], failures['jira-ticket'] !== undefined)
+        : shared !== undefined
+          ? personUnder(withDetail(shared, details[row.key]), under.id, isCurrentWhole(shared, details[row.key]))
           : null
     if (block === null) {
       return null
@@ -168,9 +168,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ...fold('drafts', drafts),
         ]
       : []
-  // A filter that narrows the list says so where it was narrowed: `⧩ filtered` beside it, in the theme's blue, a glyph and a
-  // word with the colour, as no colour says anything alone.
-  const filtered = <Text color="suggestion">{FILTERED}</Text>
+  // A filter that narrows the list says so where it was narrowed: `⧩ filtered` beside it, dim, a glyph and a word.
+  const filtered = <Text dimColor>{FILTERED}</Text>
   // The repos are one picker, a row however many there are; a phone, which may not draw one, has a button for each.
   const { repos } = model
   const { Select } = kit
@@ -200,6 +199,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ]
   // The search box tops Mine. The list follows the typing once it pauses, and Enter at once; ✕ ends the search. The box is
   // drawn holding what Enter or ✕ left (SearchBox), never what is being typed, so a redraw while typing keeps every key.
+  // A box that does not hold what the list is searched for (the pane drawn again, a reload, another surface of the session)
+  // has the search named beside it. Text that finds nothing to look for (`!`, spaces) narrows nothing, and says nothing.
+  const { found } = model
+  const searched = found === null ? null : searchBox.drawn === search ? filtered : <Text dimColor>{`${FILTERED}: ${search}`}</Text>
   const searchRow =
     Input !== undefined
       ? [
@@ -215,12 +218,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
                 onSubmit={text => submitSearch($, text)}
               />
             </Box>
-            {search !== '' && filtered}
+            {searched}
             {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => clearSearch($)} />}
           </Box>,
         ]
       : []
-  const { found } = model
   const list =
     found !== null
       ? [

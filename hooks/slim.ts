@@ -81,13 +81,16 @@ export function slimCard(card: MrCard): MrCard {
   }
 }
 
+/** Whether the card read whole is as new as the shared one, so its words are the card's: what `withDetail` puts back. */
+export const isCurrentWhole = (shared: MrCard, whole: MrCard | undefined): boolean => whole !== undefined && Date.parse(whole.updatedAt) >= Date.parse(shared.updatedAt)
+
 /**
  * A shared card with the words of the same card read whole. A whole read older than the shared card says nothing of how
  * its threads stand now, so then the shared card stands as it is; one newer (read again after a reply posted from its page,
  * before the shared cards catch up) has the latest words.
  */
 export function withDetail(shared: MrCard, whole: MrCard | undefined): MrCard {
-  if (whole === undefined || Date.parse(whole.updatedAt) < Date.parse(shared.updatedAt)) {
+  if (whole === undefined || !isCurrentWhole(shared, whole)) {
     return shared
   }
   return {

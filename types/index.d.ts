@@ -453,8 +453,11 @@ export type InboxState = {
  */
 export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server' | 'failed' | 'unknown'
 
-/** What a background job reports failing, by where it ran. */
-export type ProblemSource = 'gitlab' | 'jira' | 'jira-moves' | 'usual' | 'avatars' | 'inbox' | 'merged' | 'pane' | 'store'
+/**
+ * What a background job reports failing, by where it ran. `jira` is the quarter-hourly read of every ticket's status, and
+ * `jira-ticket` the read of one ticket opened under a card: neither one's failure or success says anything of the other.
+ */
+export type ProblemSource = 'gitlab' | 'jira' | 'jira-ticket' | 'jira-moves' | 'usual' | 'avatars' | 'inbox' | 'merged' | 'pane' | 'store'
 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
 export type Problems = { [Source in ProblemSource]?: { message: string; kind: FailureKind; at: number } }

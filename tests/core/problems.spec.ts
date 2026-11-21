@@ -10,6 +10,8 @@ test('a failure carries the kind it was detected as, and only an absent optional
   })
   expect(withProblem({}, 'gitlab', new Error('boom'), 0).gitlab?.kind).toBe('unknown')
   expect(isAbsentOptional('jira', 'not-installed')).toBe(true)
+  // A ticket opened under a card is read by the same optional tool.
+  expect(isAbsentOptional('jira-ticket', 'not-installed')).toBe(true)
   expect(isAbsentOptional('inbox', 'not-installed')).toBe(false)
   expect(isAbsentOptional('gitlab', 'not-installed')).toBe(false)
   expect(isAbsentOptional('jira', 'failed')).toBe(false)
