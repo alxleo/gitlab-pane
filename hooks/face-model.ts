@@ -5,7 +5,7 @@ import { BOT_MARKS, discMarks } from './avatar.ts'
 import { plural } from './format.ts'
 import { initials, shortHash } from './identity.ts'
 import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status.ts'
-import type { Tone } from './status.ts'
+import type { Shades, Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { RawSvg, SvgSource } from './svg.ts'
 import { SENT_HOLDS_MS } from './write-model.ts'
@@ -120,19 +120,23 @@ export function faceFacts(person: Person, picture: string | undefined): FaceFact
 // ---- Suggested reviewers ------------------------------------------------------------------------------------------------
 
 /**
- * How faint a suggested face is drawn. Faded means suggested and nothing else in the pane: someone not on the MR yet,
- * whom a press adds. It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked.
+ * The veil over a suggested face, washing it out: white at 55% in the light theme, the dark theme's dim grey at 45% in
+ * the dark one. Faded means suggested and nothing else in the pane: someone not on the MR yet, whom a press adds. A fade
+ * toward the pane's background read pale on white but muddy on the dark pane, where it drowned the initials and darkened
+ * a picture almost to the background (seen in the app's own engine), so the dark theme washes toward a lighter shade.
+ * It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked.
  */
-const SUGGESTED_OPACITY = 0.45
+const VEIL: Shades = { light: `${PAGE.light}8c`, dark: `${TONE_COLOURS.subtle.dark}73` }
 
-/** A person GitLab suggests adding as a reviewer: their face faded, with no badge. About 300 characters, a picture 1,300. */
+/** A person GitLab suggests adding as a reviewer: their face faded, with no badge. About 400 characters, a picture 1,400. */
 export function suggestedFace(person: Person, picture: string | undefined): FaceFacts {
+  const veil = svg`<circle cx='8' cy='8' r='8' ${themePaint([['fill', VEIL]])}/>`
   return {
     tone: 'subtle',
     // The press beside the face says `+` and their name, which is all a surface without Svg draws.
     glyph: '',
     alt: `${person.name}, suggested reviewer`,
-    ...drawn(person, picture, inner => framed(raw(svg`<g opacity='${SUGGESTED_OPACITY}'>${raw(inner)}</g>`))),
+    ...drawn(person, picture, inner => framed(followingTheme(raw([inner, veil])))),
   }
 }
 

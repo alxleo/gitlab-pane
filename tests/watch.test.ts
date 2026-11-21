@@ -1150,7 +1150,7 @@ test('a card short of a reviewer offers whom GitLab suggests, faded: a press arm
   const suggestion = async () => (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('suggest-') === true)
   // Faded, with no badge; the row that would be quiet keeps its faces, as adding a reviewer is the author's to do.
   const faded = (await ui.findAll({ type: 'Svg' })).find(svg => svg.props['alt'] === 'Ines Mendel, suggested reviewer')
-  expect(String(faded?.props['source'])).toContain("<g opacity='0.45'>")
+  expect(String(faded?.props['source'])).toContain("style='fill:light-dark(#ffffff8c,#9c9c9c73)'")
   expect((await suggestion())?.props).toMatchObject({ label: '+ Ines', plain: true, dimColor: true })
   expect((await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('suggest-') === true)).toHaveLength(1)
   // Their picture is fetched like anyone's on the pane, and the store carries the suggestion to the sessions that draw.
@@ -1799,7 +1799,7 @@ test('a passed MR that waits on an approval is one line, its title and what it w
   await ui.unmount()
 })
 
-test('a face is one small drawing: about 490 characters with an empty badge, 640 with a filled one, in both shades, 360 faded', async ($, on) => {
+test('a face is one small drawing: about 490 characters with an empty badge, 640 with a filled one, in both shades, 390 faded', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
@@ -1816,8 +1816,8 @@ test('a face is one small drawing: about 490 characters with an empty badge, 640
   expect((await faceOf('Mel')).length).toBeLessThan(500)
   expect((await faceOf('Ines')).length).toBeLessThan(650)
   expect(await faceOf('Mel')).toContain('>MN</text>')
-  // A suggested face wears no badge, so it carries one shade: the disc, faded.
-  expect((await faceOf('Tessa')).length).toBeLessThan(360)
+  // A suggested face wears no badge: the disc, and the veil over it in both shades.
+  expect((await faceOf('Tessa')).length).toBeLessThan(400)
   expect(await faceOf('Tessa')).toContain('>TR</text>')
   await ui.unmount()
 })

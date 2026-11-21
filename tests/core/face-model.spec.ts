@@ -54,7 +54,7 @@ test('every face, with or without a picture, draws its badge in both shades insi
   )
 })
 
-test('a suggested face is the same face faded, with no badge, no glyph and no colour of its own, and says it is a suggestion', () => {
+test('a suggested face is the same face under a veil that washes it out, lighter in the dark theme, with no badge or glyph', () => {
   fc.assert(
     fc.property(personArb, fc.constantFrom(undefined, 'https://gitlab.com/a.png'), (person, picture) => {
       const face = suggestedFace(person, picture)
@@ -62,9 +62,12 @@ test('a suggested face is the same face faded, with no badge, no glyph and no co
       expect(face.picture === null).toBe(reviewed.picture === null)
       const pairs = [[face.plain, reviewed.plain] as const, ...(face.picture !== null && reviewed.picture !== null ? [[face.picture, reviewed.picture] as const] : [])]
       for (const [source, badged] of pairs) {
-        // The same size as a badged face, so a row does not shift when they become a reviewer.
-        expect(source).toMatch(/^<svg xmlns='http:\/\/www.w3.org\/2000\/svg' width='22' height='22' viewBox='-3 -3 22 22'><g opacity='0.45'>/u)
-        expect(source).not.toContain('light-dark(')
+        // The same size as a badged face, so a row does not shift when they become a reviewer; the veil is the last thing
+        // drawn, over the whole face, and it alone follows the theme: white on the light pane, the dim grey on the dark one,
+        // never the dark pane's own near-black, which made the face muddy.
+        expect(source).toMatch(/^<svg xmlns='http:\/\/www.w3.org\/2000\/svg' width='22' height='22' viewBox='-3 -3 22 22'><g style='color-scheme:light dark'>/u)
+        expect(source).toMatch(/<circle cx='8' cy='8' r='8' fill='#ffffff8c' style='fill:light-dark\(#ffffff8c,#9c9c9c73\)'\/><\/g><\/svg>$/u)
+        expect(source.match(/light-dark\(/gu)).toHaveLength(1)
         expect(source).not.toContain('stroke-dasharray')
         expect(source.length).toBeLessThan(badged.length)
       }

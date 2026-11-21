@@ -128,7 +128,7 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 
 - **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below: where they stand, said by its glyph, never by a colour alone, so there is no ring. It is cut out of the avatar by an edge in the pane's background (`PAGE`), and its glyph is drawn in that background too, white on the light shades and near black on the dark ones, which keeps 4.5:1 in either theme.
 - **Without images** (the terminal): the badge's glyph, in its tone.
-- **Faded** means suggested, and nothing else in the pane: someone not on the MR yet, whom a press adds as a reviewer. Their face is drawn at 45% (`SUGGESTED_OPACITY`) with no badge, as they have no stand to show; ◌ is a reviewer who has not looked, which is a stand. Without images, `+` before the name says it.
+- **Faded** means suggested, and nothing else in the pane: someone not on the MR yet, whom a press adds as a reviewer. Their face is washed out by a veil laid over it (`VEIL`): white at 55% in the light theme; in the dark theme the dim grey at 45%, since a fade toward the dark pane turned the face muddy and drowned its initials. It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked, which is a stand. Without images, `+` before the name says it.
 
 | Badge | Means |
 |---|---|
