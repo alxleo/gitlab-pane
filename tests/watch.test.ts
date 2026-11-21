@@ -2128,12 +2128,12 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.press({ key: 'more' })
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   // The merged section opens last, with the longest titles and addresses it may be given: the list leaves it the room each of
-  // its rows may take, so the whole still draws inside the budget, and a row is no bigger than that room.
-  const folded = JSON.stringify(await ui.drawn()).length
+  // its rows may take, so the whole still draws inside the budget, and each row, measured alone, is no bigger than that room.
   await ui.press({ key: 'merged' })
-  const open = JSON.stringify(await ui.drawn()).length
-  expect(open - folded).toBeLessThanOrEqual(5 * MERGED_ROW_SIZE)
-  expect(open).toBeLessThan(DRAWING_BUDGET)
+  const rows = (await ui.findAll({ type: 'Box' })).filter(keyed('merged-'))
+  expect(rows).toHaveLength(5)
+  for (const row of rows) expect(JSON.stringify(row).length).toBeLessThanOrEqual(MERGED_ROW_SIZE)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
   await ui.unmount()

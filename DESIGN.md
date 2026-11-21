@@ -17,7 +17,7 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 ## Colour
 
-Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
+Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip, the chip a symbol shows under the pointer) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
 
 The dark shades are the app's own dark keys, sampled from shots of it. The light ones are vivid fill shades: the app paints its light keys in dark text shades (`#016d11`, `#a42628`, `#895903`, `#1757ac`, `#666666`), which turn muddy on a small mark beside an avatar. The screen renderer's `pane.css` paints text in the app's keys and its pane in `PAGE` (`tools/pane_screens.spec.ts`).
 

@@ -104,7 +104,7 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
   const gitlab = engine(on, busyWorld())
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  for (const surface of ['terminal', 'desktop'] as const) {
+  for (const surface of ['terminal', 'vscode', 'mobile', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     await clock.advance(FIRST_SYNC_MS)
     // Three small documents on the host, read with the token from the environment; nothing else is run for the inbox.
@@ -126,9 +126,11 @@ test('the inbox reads GitLab once the pane shows it, applies each rule, and open
     expect(await titleOf(ui, 1)).toBe('▸ thing 1')
     expect(await ui.find({ type: 'Text', text: '3 new' })).toBeDefined()
     // A count per kind instead of a line of handles, and the ref without the repo, which follows it. Your own MR leaves your name out.
-    // Under the desktop's pointer each count is its event's mark, which says the event's words; the terminal spells them.
-    if (surface === 'terminal') {
+    // Under the desktop's pointer each count is its event's mark, which says the event's words; the terminal, VS Code and a
+    // phone, with no chips, spell them.
+    if (surface !== 'desktop') {
       expect(await ui.find({ type: 'Text', text: 'p · 1 approved · 2 commented' })).toBeDefined()
+      expect((await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hint-') === true)).toEqual([])
     } else {
       expect(await ui.find({ type: 'Text', text: 'p' })).toBeDefined()
       expect(await countsOf(ui)).toEqual([
@@ -793,9 +795,12 @@ test('a merge on a branch that runs no pipeline is not asked for after ten minut
   expect((await ui.findAll({ type: 'Svg' })).some(svg => svg.props.alt === 'no pipeline')).toBe(true)
   expect(await ui.find({ type: 'Text', text: 'no pipeline' })).toBeUndefined()
   await ui.unmount()
-  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
-  expect((await phone.find({ type: 'Text', text: 'no pipeline' }))?.text).toBe('no pipeline')
-  await phone.unmount()
+  for (const surface of ['mobile', 'vscode'] as const) {
+    const other = await $.ui.mount({ ...PANE, surface })
+    expect((await other.find({ type: 'Text', text: 'no pipeline' }))?.text).toBe('no pipeline')
+    expect((await other.findAll({ type: 'Svg' })).some(svg => svg.props.alt === 'no pipeline')).toBe(false)
+    await other.unmount()
+  }
 })
 
 test('a merge whose squash commit GitLab will not say draws no build, says so, and is asked for again, while the rest of the inbox reads on', async ($, on) => {

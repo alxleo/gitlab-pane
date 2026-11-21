@@ -23,7 +23,12 @@ const brand = (text: string): SvgSource => text as SvgSource
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }
 
-const escaped = (text: string): string => text.replace(/[&<>"']/gu, char => ESCAPES[char] ?? char)
+/**
+ * A value made safe to put in SVG: the five markup characters escaped, and what XML allows nowhere dropped (control
+ * characters but tab, newline and return, and the non-characters, among them U+FFFE and U+FFFF), which would make the
+ * whole picture invalid, so a name from GitLab cannot blank a face or a chip.
+ */
+const escaped = (text: string): string => text.replace(/(?![\t\n\r])\p{Cc}|\p{Noncharacter_Code_Point}/gu, '').replace(/[&<>"']/gu, char => ESCAPES[char] ?? char)
 
 /** `svg\`<text>${name}</text>\`` with `name` escaped; numbers print as they are, a `raw` fragment is put in unescaped. */
 export function svg(parts: TemplateStringsArray, ...values: readonly (string | number | RawSvg)[]): SvgSource {
