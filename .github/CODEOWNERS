@@ -4,7 +4,7 @@
 /.claude/                 @alxleo
 /.github/                 @alxleo
 /tools/                   @alxleo
-/release/                 @alxleo
+/release-tree/            @alxleo
 /package.json             @alxleo
 /package-lock.json        @alxleo
 /oxlint.config.ts         @alxleo
