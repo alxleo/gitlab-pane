@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { liveOf } from './write-model'
+import { quietly } from './failures'
+import { ARMED_MS, liveOf } from './write-model'
 
 import type { Write } from '../types'
 
@@ -43,6 +44,16 @@ export async function claimWrite<Made extends Write>($: EngineInterface, id: str
     return next !== null ? { ...all, [id]: next } : all
   })
   return made[0] ?? null
+}
+
+/** Takes back `id`'s arm made at `at` once its time is up (`ARMED_MS`), unless it was pressed again meanwhile. */
+export function expireArm($: EngineInterface, id: string, at: number): void {
+  $.clock.after(ARMED_MS, () =>
+    quietly(
+      $,
+      forgetWrite($, id, held => held?.state === 'armed' && held.at === at)
+    )
+  )
 }
 
 /**

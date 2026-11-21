@@ -19,6 +19,7 @@
     "types": []
   },
   "include": [
+    "hooks/ask-add-reviewer.ts",
     "hooks/ask-authored.ts",
     "hooks/ask-failures.ts",
     "hooks/ask-inbox-authored.ts",
@@ -34,6 +35,7 @@
     "hooks/ask-rebase.ts",
     "hooks/ask-reply.ts",
     "hooks/ask-squash-commit.ts",
+    "hooks/ask-suggested.ts",
     "hooks/ask-threads.ts",
     "hooks/ask-usual.ts",
     "hooks/attention.ts",
@@ -42,6 +44,7 @@
     "hooks/drawing.ts",
     "hooks/failure.ts",
     "hooks/format.ts",
+    "hooks/gitlab-answer.ts",
     "hooks/gitlab-document.ts",
     "hooks/gitlab-features.ts",
     "hooks/gitlab-operations.ts",

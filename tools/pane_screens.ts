@@ -28,10 +28,10 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
-import { chromium, type BrowserContext, type Page } from 'playwright'
-
 import { parseJson } from '../hooks/decode.ts'
+import { CHATGPT_PANEL as chatgptPanel, photographPanel } from './chatgpt_screens.ts'
 import { decodeScene, pageHtml, strings, type Scene } from './pane_html.ts'
+import { checkLetters, pictureName, ScreensError, THEMES, withThemes, type Theme } from './photograph.ts'
 import { deltaMarks } from './screen_delta.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -41,8 +41,6 @@ const SHOTS = join(ROOT, 'docs', 'screens')
 const EXPECTED_CLAUDE = '2.1.318'
 const MARKER = 'PANE-SCENE '
 const LISTED = 'PANE-SCENES '
-
-class ScreensError extends Error {}
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -162,89 +160,12 @@ function claudeVersion(claude: string): string {
 /** What a picture holds: the pane, or the band with its prompt box; a page has one of the two. */
 const FRAME = '#pane, #band'
 
-/** Fonts Chromium took from the machine for any text on the page: every glyph should come from tools/screens/fonts. */
-async function fontsBorrowed(context: BrowserContext, page: Page): Promise<Set<string>> {
-  const session = await context.newCDPSession(page)
-  await session.send('DOM.enable')
-  await session.send('CSS.enable')
-  const document = await session.send('DOM.getDocument', { depth: 0 })
-  const found = await session.send('DOM.querySelectorAll', { nodeId: document.root.nodeId, selector: '#pane *, #band *' })
-  const borrowed = new Set<string>()
-  for (const nodeId of found.nodeIds) {
-    const { fonts } = await session.send('CSS.getPlatformFontsForNode', { nodeId })
-    fonts.filter(font => font.isCustomFont !== true && font.glyphCount > 0).forEach(font => borrowed.add(font.familyName))
-  }
-  await session.detach()
-  return borrowed
-}
-
-/**
- * Run in the page: each character the frame draws, and each letter in it, painted alone in its element's own font and
- * compared with what that font paints for U+10FFFD, which no font has. Where no font has a glyph, Chromium paints the first font's empty box and
- * credits that font, so `fontsBorrowed` cannot see it; a character that paints the same as U+10FFFD has no glyph.
- */
-const NO_GLYPH_SCRIPT = `(() => {
-  const canvas = document.createElement('canvas')
-  canvas.width = 64
-  canvas.height = 64
-  const paint = canvas.getContext('2d', { willReadFrequently: true })
-  const painted = (font, text) => {
-    paint.clearRect(0, 0, 64, 64)
-    paint.font = font
-    paint.fillText(text, 8, 44)
-    return paint.getImageData(0, 0, 64, 64).data.join()
-  }
-  const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' })
-  const seen = new Map()
-  const none = new Set()
-  const walk = document.createTreeWalker(document.querySelector('${FRAME}'), NodeFilter.SHOW_TEXT)
-  for (let node = walk.nextNode(); node !== null; node = walk.nextNode()) {
-    const style = getComputedStyle(node.parentElement)
-    const font = style.fontStyle + ' ' + style.fontWeight + ' 32px ' + style.fontFamily
-    if (!seen.has(font)) {
-      seen.set(font, painted(font, '\\u{10FFFD}'))
-    }
-    for (const { segment } of graphemes.segment(node.data)) {
-      // A cluster with no glyph paints a box for each of its letters, so its letters are painted alone too; marks,
-      // joiners and selectors are left out, as alone they paint nothing or a dotted circle.
-      const letters = [...segment].filter(one => !/^[\\s\\p{Cc}\\p{Cf}\\p{M}]$/u.test(one))
-      if (letters.length > 0 && [segment, ...letters].some(text => painted(font, text) === seen.get(font))) {
-        none.add(segment)
-      }
-    }
-  }
-  return [...none]
-})()`
-
-/** Characters the page draws with no glyph from any font: an empty box, here and on every other machine without one. */
-async function glyphsMissing(page: Page): Promise<string[]> {
-  const found: unknown = await page.evaluate(NO_GLYPH_SCRIPT)
-  return Array.isArray(found) ? found.filter((one): one is string => typeof one === 'string') : []
-}
-
 /** A page to photograph: the file, and the app theme it is seen in (pane.css and the faces' own styles follow it). */
 type Sitting = { readonly path: string; readonly theme: Theme }
 
 async function photograph(pages: ReadonlyMap<string, Sitting>, out: string, scale: number): Promise<void> {
   mkdirSync(out, { recursive: true })
-  const browser = await chromium.launch({ args: ['--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb'] }).catch((error: unknown) => {
-    throw new ScreensError(`Chromium would not start (${messageOf(error)}); install it with: npm run screens -- setup`)
-  })
-  try {
-    const contexts = new Map<Theme, BrowserContext>()
-    for (const theme of THEMES) {
-      contexts.set(
-        theme,
-        await browser.newContext({
-          viewport: { width: 700, height: 900 },
-          deviceScaleFactor: scale,
-          colorScheme: theme,
-          locale: 'en-GB',
-          timezoneId: 'UTC',
-          reducedMotion: 'reduce',
-        })
-      )
-    }
+  await withThemes(scale, async contexts => {
     for (const [name, { path, theme }] of pages) {
       const context = contexts.get(theme)
       if (context === undefined) {
@@ -253,24 +174,11 @@ async function photograph(pages: ReadonlyMap<string, Sitting>, out: string, scal
       const page = await context.newPage()
       await page.goto(pathToFileURL(path).href)
       await page.evaluate('document.fonts.ready.then(() => true)')
-      const borrowed = await fontsBorrowed(context, page)
-      if (borrowed.size > 0) {
-        throw new ScreensError(
-          `scene ${name} drew with fonts of this machine, not the bundled ones: ${[...borrowed].toSorted().join(', ')}. Add the missing glyph to tools/screens/fonts (see SOURCES.md), or the shot changes from machine to machine.`
-        )
-      }
-      const missing = await glyphsMissing(page)
-      if (missing.length > 0) {
-        throw new ScreensError(
-          `scene ${name} draws ${missing.map(one => JSON.stringify(one)).join(', ')} as an empty box: no bundled font has a glyph for it. Add it to a subset in tools/screens/fonts (see SOURCES.md).`
-        )
-      }
+      await checkLetters(name, context, page, { root: FRAME, frame: null })
       await page.locator(FRAME).screenshot({ path: join(out, `${name}.png`), animations: 'disabled', omitBackground: false })
       await page.close()
     }
-  } finally {
-    await browser.close()
-  }
+  })
 }
 
 // ---- render -------------------------------------------------------------------------------------------------------------
@@ -285,13 +193,6 @@ type Options = {
   /** A git ref to draw the scenes at too: each scene it also has gets `<scene>-before.png` and `<scene>-delta.png`. */
   readonly deltaAgainst: string | null
 }
-
-/** The desktop app's two themes; every scene is photographed in each, as the app draws the pane in either. */
-const THEMES = ['light', 'dark'] as const
-type Theme = (typeof THEMES)[number]
-
-/** A scene's picture in a theme: `mine.png` in light, `mine-dark.png` in dark. */
-const pictureName = (scene: string, theme: Theme): string => (theme === 'light' ? scene : `${scene}-${theme}`)
 
 /** The pictures a scene is in docs/screens: one per theme. */
 const scenePictures = (scene: Scene): string[] => THEMES.map(theme => pictureName(scene.name, theme))
@@ -318,9 +219,17 @@ function picturesOf(scenes: readonly Scene[], base: readonly Scene[] | null, wid
   return pictures
 }
 
-/** Draws the scenes with the engine and photographs each; only when every check has passed do the PNGs reach `out`. */
-async function produce(options: Options, out: string): Promise<Scene[]> {
-  const version = claudeVersion(options.claude)
+/**
+ * Draws the scenes with the engine and photographs each, and the ChatGPT plugin's panel (`chatgpt_screens.ts`) unless
+ * the scenes asked for leave it out; only when every check has passed do the PNGs reach `out`. Returns the pictures, by
+ * name, that stand in docs/screens: the before and delta pictures of a pull request are not among them.
+ */
+async function produce(options: Options, out: string): Promise<string[]> {
+  // The panel is no scene of the engine's; a pull request's before and delta pictures are of the pane alone.
+  const isPanelToo = options.deltaAgainst === null && (options.scenes.length === 0 || options.scenes.includes(chatgptPanel))
+  const asked = options.scenes.filter(name => name !== chatgptPanel)
+  const isPaneToo = options.scenes.length === 0 || asked.length > 0
+  const version = isPaneToo ? claudeVersion(options.claude) : EXPECTED_CLAUDE
   if (version !== EXPECTED_CLAUDE) {
     throw new ScreensError(
       `${options.claude} is Claude Code ${version}; the pane is drawn by ${EXPECTED_CLAUDE}, the version CI pins, and another version may draw it differently. Install it (npm install --global @anthropic-ai/claude-code@${EXPECTED_CLAUDE}) or point --claude at it.`
@@ -328,12 +237,12 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
   }
   const work = mkdtempSync(join(tmpdir(), 'pane-screens-'))
   try {
-    const drawn = drawScenes(options.claude, work)
-    const missing = options.scenes.filter(name => !drawn.some(scene => scene.name === name))
+    const drawn = isPaneToo ? drawScenes(options.claude, work) : []
+    const missing = asked.filter(name => !drawn.some(scene => scene.name === name))
     if (missing.length > 0) {
-      throw new ScreensError(`no such scene: ${missing.join(', ')}; there are ${drawn.map(scene => scene.name).join(', ')}`)
+      throw new ScreensError(`no such scene: ${missing.join(', ')}; there are ${[...drawn.map(scene => scene.name), chatgptPanel].join(', ')}`)
     }
-    const scenes = options.scenes.length > 0 ? drawn.filter(scene => options.scenes.includes(scene.name)) : drawn
+    const scenes = options.scenes.length > 0 ? drawn.filter(scene => asked.includes(scene.name)) : drawn
     // The other version's scenes are drawn by its own mod and scenes, and photographed by this renderer, so the two look alike.
     let base: Scene[] | null = null
     if (options.deltaAgainst !== null) {
@@ -359,6 +268,7 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
     }
     const shots = join(work, 'shots')
     await photograph(pages, shots, options.scale)
+    const panel = isPanelToo ? await photographPanel(shots, options.scale) : []
     if (options.keep !== null) {
       mkdirSync(options.keep, { recursive: true })
       // Each scene's tree, the other version's too, and every page photographed, so a picture can be read back.
@@ -379,14 +289,14 @@ async function produce(options: Options, out: string): Promise<Scene[]> {
       )
     }
     mkdirSync(out, { recursive: true })
-    for (const name of pages.keys()) {
+    for (const name of [...pages.keys(), ...panel]) {
       copyFileSync(join(shots, `${name}.png`), join(out, `${name}.png`))
     }
     const unmatched = base === null ? [] : scenes.filter(scene => !pages.has(`${scene.name}-delta`)).map(scene => scene.name)
     if (unmatched.length > 0) {
       console.error(`note: ${unmatched.join(', ')} is no scene at ${options.deltaAgainst ?? ''}, so it has no before or delta picture`)
     }
-    return scenes
+    return [...scenes.flatMap(scenePictures), ...panel]
   } finally {
     rmSync(work, { recursive: true, force: true })
   }
@@ -406,8 +316,7 @@ async function render(values: {
   try {
     // --check draws into a scratch folder and compares with `out`; it writes nothing there.
     const target = values.check ? join(scratch, 'now') : out
-    const scenes = await produce(options, target)
-    const pictures = scenes.flatMap(scenePictures).map(name => `${name}.png`)
+    const pictures = (await produce(options, target)).map(name => `${name}.png`)
     const others = existsSync(out) ? readdirSync(out).filter(name => name.endsWith('.png') && !pictures.includes(name)) : []
     if (others.length > 0 && options.scenes.length === 0 && options.deltaAgainst === null) {
       console.error(`note: ${others.join(', ')} in ${out} is no scene (any more); delete it if it is stale`)

@@ -42,6 +42,8 @@ const modelOf = (cards: MrCard[], over: Partial<PaneInput> = {}, cost: (piece: P
       isWaking: true,
       failures: {},
       pressed: {},
+      suggested: {},
+      writes: {},
       here: null,
       ...over,
     },

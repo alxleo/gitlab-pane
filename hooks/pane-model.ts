@@ -5,6 +5,8 @@
 import { badges, byAttention, hasLeft, isMergeable } from './attention.ts'
 import { CONTROL, LINK, titleKey } from './drawing.ts'
 import type { Control } from './drawing.ts'
+import { faceRows } from './face-model.ts'
+import type { PersonRow, SuggestedRow } from './face-model.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
@@ -22,13 +24,12 @@ import { keptRepo, repoFilterOf } from './repo-filter.ts'
 import type { RepoFilter } from './repo-filter.ts'
 import { cardFacts } from './row-facts.ts'
 import { queryOf } from './search.ts'
-import type { CardFacts, PersonFacts } from './row-facts.ts'
+import type { CardFacts } from './row-facts.ts'
 import type { Tone } from './status.ts'
 import { stripModel } from './strip-model.ts'
 import type { StripModel } from './strip-model.ts'
-import type { SvgSource } from './svg.ts'
 
-import type { InboxMr, Landed, MrCard, Pinned, PollState, Pressed, Problems, Usual } from '../types'
+import type { InboxMr, Landed, MrCard, Pinned, PollState, Pressed, Problems, Suggested, Usual, Write } from '../types'
 
 /** Past this many, the least pressing of Mine fold behind a button, so the pane's size stays bounded. */
 export const MINE_SHOWN = 10
@@ -40,20 +41,6 @@ const PARKED_AFTER_MS = 7 * 86_400_000
 const ROW_FLOOR = 300
 
 type Link = { href: string; text: string }
-
-export type PersonRow = {
-  username: string
-  /** The name beside the face, with the open threads they hold. */
-  label: string
-  tone: Tone
-  /** The mark a surface without Svg draws. */
-  glyph: string
-  /** What the face's badge says, under the pointer. */
-  hint: string
-  alt: string
-  plain: SvgSource
-  picture: SvgSource | null
-}
 
 /**
  * The MR's one move as a row draws it: a press while `press` is set (armed, the press that confirms a merge), else words
@@ -82,6 +69,7 @@ export type RowModel = {
   verdict: { words: string; tone: Tone; bold: boolean; trailing: string | null; move: RowMove | null } | null
   blocker: { text: string; tone: Tone } | null
   people: PersonRow[]
+  suggested: SuggestedRow[]
   /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
   said: { label: string; username: string } | null
   /** Nothing to show past the title and verdict, so the row is one line: its title, its verdict and its age. */
@@ -131,6 +119,10 @@ export type PaneInput = {
   failures: Problems
   /** This session's presses on moves, by card key, each as it holds now (`liveOf`). */
   pressed: Readonly<Record<string, Pressed>>
+  /** Who GitLab suggests as each MR's reviewers, by card key. */
+  suggested: Readonly<Suggested>
+  /** What this session set out to write to GitLab, by ledger id, each as it holds now: a suggested face finds its add there (`reviewerId`). */
+  writes: Readonly<Record<string, Write>>
   /** The project (`host/group/project`) this session works in, where Claude can take an MR's conflicts; null when none. */
   here: string | null
 }
@@ -163,7 +155,7 @@ export type PaneModel = {
   isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
   footer: PaneLine
-  /** Whether a raised MR wakes Claude: the bell drawn, struck through when off, and its hover. */
+  /** Whether a raised MR wakes Claude: the bell drawn, struck through when off, and its description. */
   wake: Control<'wakeOn' | 'wakeOff'>
 }
 
@@ -174,12 +166,13 @@ const WAITING: readonly string[] = ['approvals', 'ready']
  * Whether a row has nothing to show past its title and verdict: its pipeline passed, nothing stands before a merge but
  * approvals (no thread, request for changes or bot holds it, whatever face speaks for it), GitLab's verdict waits on others
  * (grey), and no person's open thread is quoted on it. One GitLab says can merge (the green verdict) is a decision, not
- * waiting, so it keeps its links, faces and head.
+ * waiting, so it keeps its links, faces and head; so does one short of reviewers, with someone to suggest.
  */
 function isQuiet(card: MrCard, facts: CardFacts): boolean {
   return (
     card.pipeline?.status === 'success' &&
     facts.said === null &&
+    facts.suggested.length === 0 &&
     badges(card).every(badge => WAITING.includes(badge.kind)) &&
     (facts.verdict === null || facts.verdict.tone === 'subtle')
   )
@@ -208,9 +201,6 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
   // A move said beside the verdict speaks for its own check, which then trails no more.
   const trailing = move !== null && !isVerdict ? facts.trailing.filter(badge => badge.check !== move.check) : facts.trailing
   const [firstTrailing] = trailing
-  const names = facts.people.map(person => (hasSvg ? person.call : person.initials))
-  // Beside a face that already shows the initials, a first name reads better; two of the same name keep initials.
-  const callOf = (person: PersonFacts, i: number): string => (hasSvg && names.filter(name => name === names[i]).length > 1 ? person.initials : (names[i] ?? person.initials))
   const time = pipeline !== undefined ? pipelineTime(card, now, input.usual[card.project]) : ''
   return {
     key: card.key,
@@ -236,16 +226,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
           }
         : null,
     blocker: blocker !== undefined ? { text: `${blocker.glyph} ${blocker.words}${facts.row.length > 1 ? ` +${facts.row.length - 1}` : ''}`, tone: blocker.tone } : null,
-    people: facts.people.map((person, i) => ({
-      username: person.username,
-      label: `${callOf(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`,
-      tone: person.face.tone,
-      glyph: person.face.glyph,
-      hint: person.face.hint,
-      alt: person.face.alt,
-      plain: person.face.plain,
-      picture: person.face.picture,
-    })),
+    ...faceRows(facts, { hasSvg, writes: input.writes, key: card.key, suffix, now }),
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
     isQuiet: isQuiet(card, facts),
     pin: pinOf(
@@ -321,7 +302,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   // What a search finds is from any repo, so each card names its own, as with no repo picked.
   const rowInput = matches !== null ? { ...input, repoFilter: '' } : input
   const built = wanted.map(card => {
-    const facts = cardFacts(card, input.avatars)
+    const facts = cardFacts(card, input.avatars, input.suggested[card.key]?.people)
     return { card, facts, row: headOf(card, facts, rowInput, home, surface.hasSvg, now) }
   })
 

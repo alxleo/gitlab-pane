@@ -4,28 +4,18 @@
 import { isMergeable, rank, rowBadges, trailingOf, verdictOf } from './attention.ts'
 import type { Badge, Verdict } from './attention.ts'
 import { LINK } from './drawing.ts'
-import { faceFacts } from './face-model.ts'
-import type { FaceFacts } from './face-model.ts'
+import { faceFacts, suggestedFace, suggestedOf } from './face-model.ts'
+import type { FaceFacts, PersonFacts } from './face-model.ts'
 import { excerpt, shortTitle, ticketOf } from './format.ts'
 import { shorten } from './graphemes.ts'
 import { firstName } from './identity.ts'
 
-import type { MrCard, Person } from '../types'
+import type { MrCard, Person, Suggestion } from '../types'
 
 /** Letters of a bot's name beside its face. */
 const BOT_NAME_ROOM = 14
 /** A quoted comment's words: a short one whole, on two lines of the pane at most; the page has a long one whole. */
 const SAID_ROOM = 120
-
-export type PersonFacts = {
-  username: string
-  isBot: boolean
-  initials: string
-  openThreads: number
-  /** A first name where it is clear, else the initials; `initials` is what a surface without pictures uses. */
-  call: string
-  face: FaceFacts
-}
 
 /** The comment a card quotes: who, by first name, and the start of their words. */
 type Said = { username: string; who: string; words: string }
@@ -42,6 +32,8 @@ export type CardFacts = {
   trailing: Badge[]
   said: Said | null
   people: PersonFacts[]
+  /** Who the card suggests adding as a reviewer, their faces faded (`suggestedOf`). */
+  suggested: PersonFacts[]
   hasPictures: boolean
   /** On an MR GitLab says can merge, the commit a merge would take, linked: what a press merges, seen before it. */
   head: { href: string; text: string } | null
@@ -64,13 +56,13 @@ const calledBy = (person: Person): string => {
   return first !== '' ? first : person.initials
 }
 
-const personFacts = (person: Person, picture: string | undefined): PersonFacts => ({
+const personFacts = (person: Person, face: FaceFacts): PersonFacts => ({
   username: person.username,
   isBot: person.isBot,
   initials: person.initials,
   openThreads: person.openThreads,
   call: calledBy(person),
-  face: faceFacts(person, picture),
+  face,
 })
 
 /** What a quote says of a comment with no words to quote: code (a suggestion is one) or pictures alone. */
@@ -91,11 +83,16 @@ function saidOf(people: readonly Person[]): Said | null {
   return { username: latest.person.username, who: calledBy(latest.person), words: words !== '' ? words : WORDLESS }
 }
 
-/** The card's facts; `avatars` are the pictures kept by URL, which a face is drawn with where there is room. */
-export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>>): CardFacts {
+/**
+ * The card's facts; `avatars` are the pictures kept by URL, which a face is drawn with where there is room, and
+ * `suggestions` who GitLab suggests as its reviewers.
+ */
+export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>>, suggestions: readonly Suggestion[] = []): CardFacts {
   const list = rowBadges(card)
   const verdict = verdictOf(card)
-  const people = card.people.map(person => personFacts(person, person.avatarUrl !== null ? avatars[person.avatarUrl] : undefined))
+  const pictureOf = (person: Person): string | undefined => (person.avatarUrl !== null ? avatars[person.avatarUrl] : undefined)
+  const people = card.people.map(person => personFacts(person, faceFacts(person, pictureOf(person))))
+  const suggested = suggestedOf(card, suggestions).map(person => personFacts(person, suggestedFace(person, pictureOf(person))))
   return {
     key: card.key,
     rank: rank(card),
@@ -106,7 +103,8 @@ export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>
     trailing: verdict !== null ? trailingOf(verdict, list) : [],
     said: saidOf(card.people),
     people,
-    hasPictures: people.some(person => person.face.picture !== null),
+    suggested,
+    hasPictures: [...people, ...suggested].some(person => person.face.picture !== null),
     head: headOf(card),
   }
 }

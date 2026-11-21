@@ -26,7 +26,7 @@ Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star 
 
 While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. While no session draws the pane, one session with a window still reads the inbox each minute, and no MR list, so the band keeps up.
 
-MRs GitLab says can merge come first, each with its links, approvers and the commit a merge takes. A card's move leads its second line, in the same place on every card: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
+MRs GitLab says can merge come first, each with its links, approvers and the commit a merge takes. A card's move leads its second line, in the same place on every card: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one. An MR of yours with fewer reviews asked for than approvals needed shows, faded, up to two people GitLab suggests to approve it (its approval rules' eligible approvers, CODEOWNERS among them; a paid tier's field); `+ Name`, pressed twice, adds them as a reviewer.
 
 ## Install
 
@@ -38,7 +38,7 @@ Every change is tested on two Claude Code versions: the one CI pins, and the one
 
 Renamed from `gitlab-ci` in 0.3.0. The marketplace tells Claude Code of the rename, so an installed or enabled `gitlab-ci@gitlab-pane` moves to `gitlab-pane@gitlab-pane` by itself. The store (avatars, seen marks) starts empty, the plugin's options may need setting again, and a permission rule for `mcp__gitlab-ci__watch_mr` must be added again as `mcp__gitlab-pane__watch_mr`.
 
-Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`); merging, rebasing and replying from the pane need `api`. Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in; moving tickets needs that sign-in to have Jira's permission to transition them.
+Needs a token with `read_api` per GitLab host (`GITLAB_TOKEN`, `glab auth login`, or `gitlabTokens`); merging, rebasing, replying and adding a reviewer from the pane need `api`. Jira details need Atlassian's [`acli`](https://developer.atlassian.com/cloud/acli/guides/install-acli/), signed in; moving tickets needs that sign-in to have Jira's permission to transition them.
 
 For a team, in the project's `.claude/settings.json`:
 
@@ -54,6 +54,20 @@ For a team, in the project's `.claude/settings.json`:
 - `ref` pins a [release](https://github.com/alxleo/gitlab-pane/releases); raise it to update. v0.3.0 is the first under the name `gitlab-pane`: an older tag knows only `gitlab-ci`. Without it, every update installs main, which runs with your GitLab and Jira sign-ins.
 - From the first `plugin-v*` tag, `"ref": "plugin-v<version>"` pins too, and installs only the plugin's files.
 - `claude plugin update gitlab-pane@gitlab-pane` updates; a running session keeps its copy until `/reload-plugins`.
+
+## In ChatGPT
+
+The same list of your MRs, with the same moves, in a panel beside a ChatGPT conversation. It is drawn from the same rows as the pane, by the same code.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/chatgpt-panel-dark.png"><img alt="The ChatGPT panel" width="420" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/chatgpt-panel.png"></picture>
+
+In ChatGPT's desktop app, add this repository's releases as a plugin marketplace, then install "GitLab MRs" from it in the Plugins Directory:
+
+```bash
+codex plugin marketplace add alxleo/gitlab-pane --ref release
+```
+
+In a chat that runs locally, open "My merge requests" among the chat's side panels. The plugin's server runs on your machine, so it reaches a GitLab only your network can, with the token you already have (`GITLAB_TOKEN`, or `glab auth login`; `GITLAB_PANE_HOST` names a host other than gitlab.com). It needs Node 22 or newer on your PATH. `✓ merge` takes two presses, as in the pane; only the panel can press it, never the model, and the model is given no titles or comments. A local plugin works in the desktop app only, and a company workspace's policy may refuse it.
 
 ## Commands
 
@@ -85,7 +99,7 @@ Each ticket moves once per step, as you, and starts from when the setting is tur
 
 ## What it runs
 
-Queries, as you. GitLab is written to only when you press a merge or a rebase, or post a reply you confirmed, and Jira only when `jiraInReview` or `jiraOnMerge` names a status.
+Queries, as you. GitLab is written to only when you press a merge or a rebase, post a reply you confirmed, or confirm adding a reviewer, and Jira only when `jiraInReview` or `jiraOnMerge` names a status.
 
 | Runs | How often | For | Writes (plugin store) |
 |---|---|---|---|
@@ -94,6 +108,8 @@ Queries, as you. GitLab is written to only when you press a merge or a rebase, o
 | GraphQL `createNote`, in the session whose page it is | once per press of `post as you`, never sent again on its own | your reply under a thread; then the MR is read whole again, so the thread shows it | — |
 | GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
 | GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
+| GraphQL, one query per MR, by the leader, after a read | for each open MR of yours that is not a draft and has fewer reviews asked for than approvals needed, once each time it changes, and again at the next read after an ask failed; never again on a host without the field | who GitLab suggests to approve it | the suggestions |
+| GraphQL `mergeRequestSetReviewers` (`APPEND`), in the session pressed in | once per confirmed `+ Name`, never sent again on its own | that person as a reviewer, keeping the others; GitLab tells them | — |
 | GraphQL, per host, by the leader; while no session draws the pane, by one session with a window | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |
 | GraphQL, one query per MR, by whoever reads the inbox (the leader; while no session draws the pane, one session with a window), after the inbox is shown, so a slow answer holds nothing else back; `GET …/merge_requests/<iid>` once for a merge that left no merge commit | 1 min, in the first hour after the merge, for a build that is running or has not started; 10 min, or at once on ↻, for one that failed, was canceled or waits to be run by hand, for one still unfinished after that hour, for a squash commit GitLab would not name, and for anything GitLab did not answer; never again for a build that passed or was skipped; the squash commit, once read, never | the build of the commit each lately merged MR put on its target branch (a pipeline a schedule started is not one), and the squash commit when the merge was a fast-forward | in the inbox's snapshot |
 | GraphQL; with `failureLogs`, `GET …/jobs/<job>/trace` (last 64 KiB, up to 3 jobs), by the leader, or by the raising session if it draws no pane | once, when a raised MR's pipeline fails | why each job failed | in the snapshot |

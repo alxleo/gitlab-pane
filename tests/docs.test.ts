@@ -57,6 +57,9 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [WAKE_ONLY_EVERY_MS],
     // the usual pipeline times
     [USUAL_EVERY_MS],
+    // who GitLab suggests as a reviewer, once each time an MR changes; adding one, once per confirmed press
+    [],
+    [],
     // the Inbox
     [INBOX_EVERY_MS],
     // the build of each lately merged MR's commit, asked with the inbox while it runs, and again after the recheck period when it failed or waits on a person

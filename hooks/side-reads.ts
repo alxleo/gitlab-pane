@@ -7,27 +7,31 @@ import {
   markUsualRead,
   mergeUsual,
   readAvatarsShown,
+  readSuggestedKnown,
   readBrowse,
   readReads,
   readUnreachable,
   readUsualKnown,
   setAvatars,
+  setSuggested,
 } from './data'
-import { stringRecord, usualRecord } from './decode'
+import { stringRecord, suggestedRecord, usualRecord } from './decode'
 import { isEqual } from './equal'
+import { suggestionsFor } from './face-model'
 import { asFailure, Failure, together } from './failure'
-import { clear, quietly, record } from './failures'
+import { clear, quietly, record, reported } from './failures'
 import { joined } from './in-flight'
-import { moveTickets } from './jira-mover'
+import { moveTickets, readUsers } from './jira-mover'
+import { readSuggested, suggestedQuery } from './ask-suggested'
 import { readUsual, usualQuery } from './ask-usual'
-import { ask } from './graphql'
+import { ask, askVariant } from './graphql'
 import { readTickets, searchArgs } from './jira'
 import { ticketOf } from './format'
 import { pictureUri, sizedAvatar } from './picture'
 import { isPassDue } from './snapshot'
 import { failureOf, runJson } from './tools'
 
-import type { MrCard } from '../types'
+import type { MrCard, Suggested } from '../types'
 
 // What the leader reads beside the MRs: Jira's view of their tickets, how long each repo's pipelines usually run, and the
 // people's pictures. The tickets and run times stay in this session's state; the pictures go to the store, for the sessions
@@ -98,6 +102,51 @@ function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number
   })
 }
 
+const SUGGESTED_STORE = 'suggested'
+
+/**
+ * Who GitLab suggests to approve each MR of the user's that is short of reviewers (`suggestionsFor`), asked again when
+ * the MR has changed since, or at the next read after the ask failed; one pass at a time, each MR alone, so one that fails
+ * keeps its last and loses no other's.
+ * Kept only for those MRs, so it never outgrows them. Only the leader asks; the store carries them to the sessions that draw.
+ */
+function readSuggestions($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
+  return joined('suggested', async () => {
+    const [known, users] = await Promise.all([readSuggestedKnown($), readUsers($)])
+    const failures: Failure[] = []
+    const kept: [string, Suggested[string]][] = []
+    for (const card of rows) {
+      const held = known[card.key]
+      const fate = suggestionsFor(card, users[card.host] ?? null)
+      if (fate === 'keep' && held !== undefined) {
+        kept.push([card.key, held])
+      }
+      if (fate !== 'ask') {
+        continue
+      }
+      try {
+        // A host without the field answers none, and is not asked again.
+        const answer = held?.on === card.updatedAt ? null : await askVariant($, card.host, features => suggestedQuery(card.path, card.iid, features))
+        const people = answer !== null ? readSuggested(card.host, answer) : null
+        kept.push([card.key, people !== null ? { on: card.updatedAt, people } : (held ?? { on: '', people: [] })])
+      } catch (error) {
+        failures.push(asFailure(error, message => `${card.project}: ${message}`))
+        kept.push([card.key, held ?? { on: '', people: [] }])
+      }
+    }
+    const next: Suggested = Object.fromEntries(kept)
+    await setSuggested($, next)
+    if (!isEqual(next, known)) {
+      await $.store.set(SUGGESTED_STORE, next)
+    }
+    if (failures.length > 0) {
+      await record($, 'suggested', together(failures))
+    } else {
+      await clear($, 'suggested')
+    }
+  })
+}
+
 /** 20 pixels drawn at 14 stays fairly sharp on a Retina screen and costs about 1,000 characters of the drawing. */
 const AVATAR_PX = 20
 /** Base64 past this is no thumbnail: GitLab sent the full picture. */
@@ -110,7 +159,10 @@ const AVATAR_STORE = 'avatars'
  * whole, and the pictures are its largest value after the snapshot.
  */
 async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
-  const urls = [...new Set(rows.flatMap(row => row.people.map(person => person.avatarUrl)))].filter(url => url !== null)
+  const suggested = await readSuggestedKnown($)
+  // The people a card suggests are on the pane too, faded.
+  const people = rows.flatMap(row => [...row.people, ...(suggested[row.key]?.people ?? [])])
+  const urls = [...new Set(people.map(person => person.avatarUrl))].filter(url => url !== null)
   const shown = await readAvatarsShown($)
   const known: Record<string, string> = Object.keys(shown).length > 0 ? shown : stringRecord(await $.store.get(AVATAR_STORE))
   // A picture that failed is not asked for again until the mod reloads.
@@ -151,19 +203,26 @@ async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise
 }
 
 /**
- * What the leader does with a read's open MRs once it has drawn them: their repos' run times, their people's pictures,
- * and the Jira moves they call for (after the inbox, which says who the user is and what merged), each failing alone.
+ * What the leader does with a read's open MRs once it has drawn them: their repos' run times, who GitLab suggests as
+ * their reviewers and then their people's pictures, theirs among them, and the Jira moves they call for (after the inbox,
+ * which says who the user is and what merged), each failing alone.
  */
 export function afterRead($: EngineInterface, open: readonly MrCard[], now: number): void {
   quietly($, readUsualTimes($, open, now), 'usual')
-  quietly($, readAvatars($, open), 'avatars')
+  quietly(
+    $,
+    readSuggestions($, open)
+      .catch(reported($, 'suggested'))
+      .then(() => readAvatars($, open)),
+    'avatars'
+  )
   quietly($, moveTickets($, open), 'jira-moves')
 }
 
 const USUAL_STORE = 'usual'
 
-/** The pictures and run times the leader kept in the store, for a session that draws what the leader read. */
+/** The pictures, run times and suggested reviewers the leader kept in the store, for a session that draws what the leader read. */
 export async function loadShared($: EngineInterface): Promise<void> {
-  const [pictures, times] = await Promise.all([$.store.get(AVATAR_STORE), $.store.get(USUAL_STORE)])
-  await Promise.all([setAvatars($, stringRecord(pictures)), mergeUsual($, usualRecord(times))])
+  const [pictures, times, suggested] = await Promise.all([$.store.get(AVATAR_STORE), $.store.get(USUAL_STORE), $.store.get(SUGGESTED_STORE)])
+  await Promise.all([setAvatars($, stringRecord(pictures)), mergeUsual($, usualRecord(times)), setSuggested($, suggestedRecord(suggested))])
 }

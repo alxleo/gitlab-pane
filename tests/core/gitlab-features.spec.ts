@@ -3,6 +3,7 @@ import { expect, test } from 'vitest'
 import { authoredQuery } from '../../hooks/ask-authored.ts'
 import { mergeStatusQuery } from '../../hooks/ask-merge-status.ts'
 import { pinnedQuery } from '../../hooks/ask-pinned.ts'
+import { suggestedQuery } from '../../hooks/ask-suggested.ts'
 import { threadsQuery } from '../../hooks/ask-threads.ts'
 import { decodeGraphql, parseJson } from '../../hooks/decode.ts'
 import { missingFeatures } from '../../hooks/gitlab-features.ts'
@@ -16,6 +17,10 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   expect(said('MergeRequest', 'mergeabilityChecks')).toEqual(['hasMergeVerdict'])
   expect(said('Todo', 'targetEntity')).toEqual(['hasTodoEntity'])
   expect(said('Discussion', 'truncatedDiffLines')).toEqual(['hasDiffLines'])
+  // The Community Edition has no approval state; an older paid GitLab has one without the suggestions.
+  expect(said('MergeRequest', 'approvalState')).toEqual(['hasSuggestedApprovers'])
+  expect(said('MergeRequestApprovalState', 'suggestedApprovers')).toEqual(['hasSuggestedApprovers'])
+  expect(said('MergeRequest', 'suggestedApprovers')).toEqual([])
   // A GitLab older than 16.5 refuses the comment filter as an argument, not a field.
   const refused = (name: string, argumentName: string) => missingFeatures(decodeGraphql(parseJson(JSON.stringify(argumentNotAccepted(name, argumentName)))))
   expect(refused('notes', 'filter')).toEqual(['hasCommentFilter'])
@@ -30,7 +35,7 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   ).toEqual([])
   forgetProbed()
   const current = featuresOf('git.corp.com')
-  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true })
+  expect(current).toEqual({ hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true, hasSuggestedApprovers: true })
   // A host with review states but no comment filter gets the plain documents, which ask for every thread whole.
   const unfiltered = { ...current, hasCommentFilter: false }
   expect([authoredQuery(unfiltered, { kind: 'open' }).operation, pinnedQuery({ url: '', host: SELF_MANAGED, path: 'g/p', iid: 3 }, unfiltered).operation]).toEqual([
@@ -41,7 +46,14 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   expect(authoredQuery(current, { kind: 'open' }).query).toContain('ONLY_COMMENTS')
   learnLack('git.corp.com', 'hasReviewStates')
   learnLack('git.corp.com', 'hasDiffLines')
-  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({ hasMergeVerdict: false, hasReviewStates: false, hasTodoEntity: true, hasDiffLines: false, hasCommentFilter: true })
+  expect(learnLack('git.corp.com', 'hasMergeVerdict')).toEqual({
+    hasMergeVerdict: false,
+    hasReviewStates: false,
+    hasTodoEntity: true,
+    hasDiffLines: false,
+    hasCommentFilter: true,
+    hasSuggestedApprovers: true,
+  })
   const older = featuresOf('git.corp.com')
   expect(featuresOf('gitlab.com')).toEqual(current)
   forgetProbed()
@@ -62,4 +74,7 @@ test("a host that answers a field as undefined is remembered to lack it, read fr
   // A page's threads are asked without their diff lines of a host that has none.
   expect([threadsQuery('g/p', 3, current).operation, threadsQuery('g/p', 3, older).operation]).toEqual(['Threads', 'ThreadsPlain'])
   expect(threadsQuery('g/p', 3, older).query).not.toContain('truncatedDiffLines')
+  // A host without suggested approvers is not asked whom to suggest.
+  expect(suggestedQuery('g/p', 3, current)?.operation).toBe('Suggested')
+  expect(suggestedQuery('g/p', 3, { ...current, hasSuggestedApprovers: false })).toBeNull()
 })

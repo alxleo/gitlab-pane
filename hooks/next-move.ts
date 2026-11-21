@@ -4,13 +4,10 @@
 import { checkWords, failureTone, verdictOf } from './attention.ts'
 import type { MergeStrategyEnum } from './gitlab.generated.ts'
 import { foreign, line, URL_ROOM, type ModelLine } from './model-text.ts'
-import { liveOf, why } from './write-model.ts'
+import { confirmedPress, liveOf, why } from './write-model.ts'
 import type { Refusal } from './write-model.ts'
 
 import type { MoveKind, MrCard, Pressed, Write } from '../types'
-
-/** How long a merge stays armed after its first press; a second press within it merges, and past it the press is forgotten. */
-export const ARMED_MS = 10_000
 
 /**
  * A move as a row says it. `check` is the GitLab check it speaks for, which the row then does not say again; null for a
@@ -39,6 +36,17 @@ export const moveId = (key: string): string => `move:${key}`
 
 const isMoveKind = (kind: string): kind is MoveKind => kind in MOVES
 
+/** The presses on moves in the ledger, by card key. */
+export function pressedIn(writes: Readonly<Record<string, Write>>): Record<string, Pressed> {
+  const move = moveId('')
+  return Object.fromEntries(
+    Object.entries(writes).flatMap(([id, write]) => {
+      const held = id.startsWith(move) ? pressOf(write) : undefined
+      return held !== undefined ? [[id.slice(move.length), held] as const] : []
+    })
+  )
+}
+
 /** The ledger's entry as a press on a move, or none when it is another feature's. */
 export function pressOf(write: Write | undefined): Pressed | undefined {
   if (write === undefined) {
@@ -56,16 +64,17 @@ export function pressOf(write: Write | undefined): Pressed | undefined {
  */
 export function decidePress(press: { kind: MoveKind; does: 'arm' | 'make' }, held: Pressed | undefined, head: string, at: number): Pressed | null {
   const live = liveOf(held, at)
-  const isSame = live !== undefined && live.kind === press.kind && live.on === head
   // While a move is out, no press of any kind replaces it.
   if (live?.state === 'sent') {
     return null
   }
   if (press.kind === 'conflicts') {
-    return isSame && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', on: head, at }
+    return live?.kind === 'conflicts' && live.on === head && live.state === 'handed' ? null : { kind: 'conflicts', state: 'handed', on: head, at }
   }
-  const isConfirmed = !MOVES[press.kind].isMerging || (isSame && live.state === 'armed')
-  return { kind: press.kind, state: press.does === 'make' && isConfirmed ? 'sent' : 'armed', on: head, at }
+  if (MOVES[press.kind].isMerging) {
+    return confirmedPress(press.kind, live, head, at, press.does)
+  }
+  return { kind: press.kind, state: press.does === 'make' ? 'sent' : 'armed', on: head, at }
 }
 
 /**
