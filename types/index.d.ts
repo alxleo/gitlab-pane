@@ -52,7 +52,8 @@ export type MoveKind = 'merge' | 'rebase' | 'rebase-merge' | 'conflicts'
 
 /**
  * Something this session set out to write to GitLab, by its id in the ledger (`writes.ts`): armed, waiting for the press
- * that confirms it; sent, while GitLab carries it out; handed on (to Claude), which takes as long as it takes; or failed,
+ * that confirms it; sent, while GitLab carries it out; handed on (to Claude, which takes as long as it takes, or a reviewer
+ * GitLab added, until a read shows them); or failed,
  * with why in a line, said beside it until it is tried again. `on` is what it was confirmed for (a merge's head, a
  * reply's text), so a confirm holds for what the person saw and nothing newer.
  */
@@ -244,7 +245,15 @@ export type HostFeatures = {
   hasDiffLines: boolean
   /** `MergeRequest.notes(filter:)` (GitLab 16.5): without it the MR documents ask for every note, system ones too, and go plain. */
   hasCommentFilter: boolean
+  /** `MergeRequestApprovalState.suggestedApprovers`, which the Community Edition lacks: without it no card suggests a reviewer. */
+  hasSuggestedApprovers: boolean
 }
+
+/** Someone GitLab suggests to approve an MR (`ask-suggested.ts`), whom a card offers to add as a reviewer. */
+export type Suggestion = { username: string; name: string; avatarUrl: string | null; isBot: boolean }
+
+/** Who GitLab suggested for an MR, by card key, as read at the MR's `updatedAt` (`on`); a newer MR is asked again. */
+export type Suggested = Record<string, { on: string; people: Suggestion[] }>
 
 /** A Jira ticket as acli read it; `isDone` says whether Jira counts its status as done, whatever the workflow calls it, or null when Jira did not say. */
 export type Ticket = { type: string; status: string; isDone: boolean | null; summary: string }
@@ -457,7 +466,7 @@ export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'netwo
  * What a background job reports failing, by where it ran. `jira` is the quarter-hourly read of every ticket's status, and
  * `jira-ticket` the read of one ticket opened under a card: neither one's failure or success says anything of the other.
  */
-export type ProblemSource = 'gitlab' | 'jira' | 'jira-ticket' | 'jira-moves' | 'usual' | 'avatars' | 'inbox' | 'merged' | 'pane' | 'store'
+export type ProblemSource = 'gitlab' | 'jira' | 'jira-ticket' | 'jira-moves' | 'usual' | 'avatars' | 'suggested' | 'inbox' | 'merged' | 'pane' | 'store'
 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
 export type Problems = { [Source in ProblemSource]?: { message: string; kind: FailureKind; at: number } }
@@ -527,6 +536,8 @@ declare module 'claude-code' {
       usual: Record<string, Usual>
       /** Small avatar pictures as `data:` URIs, by the avatar URL GitLab gave. */
       avatars: Record<string, string>
+      /** Who GitLab suggests to approve each MR still needing approvals, by card key. */
+      suggested: Suggested
       /** What the person chose in the pane. */
       choices: Choices
       /** What is searched for in the box above Mine, as typing last paused on it or Enter left it; empty while no search is on. */
@@ -565,7 +576,7 @@ declare module 'claude-code' {
       reported: Problems
       /** Whether a wake quotes the end of a failed job's log: the `failureLogs` setting. */
       logs: boolean
-      /** What this session set out to write to GitLab, by id: merges, rebases and hand-offs (`move:<card key>`), replies (`reply:<thread>`). */
+      /** What this session set out to write to GitLab, by id: merges, rebases and hand-offs (`move:<card key>`), replies (`reply:<thread>`), reviewers added (`reviewer:<card key>:<username>`). */
       writes: Record<string, Write>
       /** The reply being written on an MR's page, if any. */
       reply: ReplyBox

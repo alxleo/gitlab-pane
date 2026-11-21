@@ -9,6 +9,7 @@ const NAMES: Record<ProblemSource, string> = {
   'jira-moves': 'Jira moves',
   usual: 'Pipeline times',
   avatars: 'Pictures',
+  suggested: 'Suggested reviewers',
   inbox: 'Inbox',
   merged: 'Merged builds',
   pane: 'Pane',

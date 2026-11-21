@@ -74,6 +74,8 @@ const NOTHING = {
   InboxQueue: { data: { currentUser: { username: 'me', reviewRequestedMergeRequests: { nodes: [] } } } },
   InboxAuthored: { data: { currentUser: { username: 'me', opened: { nodes: [] }, merged: { nodes: [] } } } },
   Landed: { data: { project: { pipelines: { nodes: [] } } } },
+  // A project with no approval rules suggests no one.
+  Suggested: { data: { project: { mergeRequest: { approvalState: { suggestedApprovers: { nodes: [] } } } } } },
 } as const
 
 /** What `$.http.fetch` resolves with. */
@@ -247,6 +249,10 @@ export function serve(request: Sent, answers: Answers, accepted: string | undefi
       return reply(200, set(answers.InboxBrief, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
     case 'MoveState':
       return reply(200, set(answers.MoveState, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid') }))
+    case 'Suggested':
+      return reply(200, answers.Suggested !== undefined ? answers.Suggested({ path: need(variables, 'path'), iid: need(variables, 'iid') }) : NOTHING.Suggested)
+    case 'AddReviewer':
+      return reply(200, set(answers.AddReviewer, operation)({ path: need(variables, 'path'), iid: need(variables, 'iid'), username: need(variables, 'username') }))
     case 'Merge': {
       const strategy = STRATEGIES[variables.strategy ?? '']
       return reply(

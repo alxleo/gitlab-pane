@@ -19,6 +19,8 @@ What each colour, border and mark in the pane means, and the code that holds it.
 
 Each tone is a key of the app's theme, so it follows the desktop app's light or dark setting as it switches; the faces and the stage strip follow it too, as shots of the app set opposite to macOS showed. Text names the key and the app paints it. A picture (a face's badge, the stage strip) cannot name a key, so it carries both shades below (`tonePaint`, `themePaint`) and the app's theme picks one; a custom theme recolours the text, never these. A border cannot carry two shades (the app draws one so given in black), which is one reason cards draw none.
 
+Fading is not a tone: a face drawn faded is someone suggested as a reviewer, and nothing else in the pane fades a face (People, below). Its dark veil borrows the dim grey's shade without meaning what `subtle` means.
+
 The dark shades are the app's own dark keys, sampled from shots of it. The light ones are vivid fill shades: the app paints its light keys in dark text shades (`#016d11`, `#a42628`, `#895903`, `#1757ac`, `#666666`), which turn muddy on a small mark beside an avatar. The screen renderer's `pane.css` paints text in the app's keys and its pane in `PAGE` (`tools/pane_screens.spec.ts`).
 
 | Tone | Light | Dark | Means |
@@ -34,9 +36,9 @@ The dark shades are the app's own dark keys, sampled from shots of it. The light
 | Part | Shows | Code |
 |---|---|---|
 | Line 1 | the title, which opens the MR as a page of its own (its ticket, what stands before a merge, description, failed jobs and threads), the time since the last update, and a star at the right: `☆` dim pins the MR here, `★` unpins it (none on an MR this session raised, so its wakes stay) | `card.tsx` |
-| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, each face badged for where they stand; a name opens what that person says under the card (below) | `row-facts.ts` |
+| Line 2 | the move first (below), so it is in one place on every card, and on an MR GitLab says can merge, `📍` and the commit a merge takes; then links, the stage strip (passed stages fold into one run, counted in its tooltip), run time against the repo's usual, GitLab's merge verdict (unless the move says it) with other blockers trailing dimly, then the people, each face badged for where they stand; a name opens what that person says under the card (below); last, faded, whom GitLab suggests as a reviewer (People, below) | `row-facts.ts` |
 | Under the card | one thing a card, opened by a press and closed by the same press or `✕`; a press on another name or the ticket of the same card puts that in its place. Other cards keep theirs open, as the Inbox's cards do, so up to five open a press closes nothing and the list stays where it is. Each is a whole MR or ticket read and kept, so a sixth closes the first opened, which moves the cards below it up. A name: where they stand, their newest comment cut to a glance once the MR is read whole (the shared card keeps one note a person, not always their newest, so none is quoted before), and `all N comments ›` (`read it whole ›` for one) to the MR's page on them. A ticket: its type, status and summary at once, then its assignee and the start of its description, read from Jira when it is opened and again once a quarter hour old, or at once after a read of it that failed; a ticket Jira answers without says so, and one whose read failed says so in its own panel alone, and `🎫 open in Jira` leaves for Jira | `personUnder`, `ticketUnder` |
-| Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is grey and that quotes no one; its links and faces are on its page. One GitLab says can merge is a decision, so never quiet | `isQuiet` |
+| Quiet row | one line, the title, GitLab's verdict and the age, for an MR whose pipeline passed, that waits on nothing but approvals, whose verdict is grey and that quotes no one; its links and faces are on its page. One GitLab says can merge is a decision, and one with a reviewer to suggest is the author's to act on, so neither is quiet | `isQuiet` |
 | Line 3 | `💬` and the latest open thread a person wrote, never a bot, approved or not; it opens what they say under the card. No line when there is none | `saidOf` |
 
 ## An MR's page
@@ -103,10 +105,10 @@ The one press that moves an MR along, where GitLab's checks name it and you may 
 
 - A move is a button; armed, it is the primary one. Under way it is dim words with nothing to press: `✓ merging…`, `↻ rebasing…`, `✓ merges when checks pass` (GitLab's auto-merge, whoever set it, while what holds the MR is others or time; a check to fix keeps its words and its move) and `⇄ conflicts · with Claude`.
 - A merge or rebase is sent once. One whose answer is lost may still have reached GitLab, so the pane follows it as one that went through, and GitLab's own state says how it ended.
-- Merges, rebases and replies keep one record of what was confirmed, sent and how it ended (`hooks/writes.ts`; `hooks/write-model.ts` says what each entry means), so each says the same when an answer is lost, and none is sent twice. One sent by a session closed or reloaded mid-way is offered again with `no answer came back` in amber, since it may have gone through.
+- Merges, rebases, replies and reviewers added keep one record of what was confirmed, sent and how it ended (`hooks/writes.ts`; `hooks/write-model.ts` says what each entry means), so each says the same when an answer is lost, and none is sent twice. One sent by a session closed or reloaded mid-way is offered again with `no answer came back` in amber, since it may have gone through.
 - What was pressed holds until the MR's head moves, so a push offers the move afresh, and a hand-off to Claude ends when its push lands.
 - A press that did not take says why beside the move, amber, until it is pressed again; a toast says how each move ended.
-- Merging and rebasing write to GitLab, so they need a token with the `api` scope; the pane reads with `read_api`.
+- Merging, rebasing and adding a reviewer write to GitLab, so they need a token with the `api` scope; the pane reads with `read_api`.
 
 ## Pipeline marks
 
@@ -128,7 +130,7 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 
 - **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below: where they stand, said by its glyph, never by a colour alone, so there is no ring. It is cut out of the avatar by an edge in the pane's background (`PAGE`), and its glyph is drawn in that background too, white on the light shades and near black on the dark ones, which keeps 4.5:1 in either theme.
 - **Without images** (the terminal): the badge's glyph, in its tone.
-- **Faded** is kept for a face that is not a reviewer yet, such as someone the pane suggests adding.
+- **Faded** means suggested, and nothing else in the pane: someone not on the MR yet, whom a press adds as a reviewer. Their face is washed out by a veil laid over it (`VEIL`): white at 55% in the light theme; in the dark theme the dim grey at 45%, since a fade toward the dark pane turned the face muddy and drowned its initials. It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked, which is a stand. Without images, `+` before the name says it.
 
 | Badge | Means |
 |---|---|
@@ -140,6 +142,20 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 | 💬 | holds an open thread |
 
 Someone holding an open thread wears 💬 (`THREAD_MARK`, `markOf`), an amber speech bubble, in place of ✓, ? or ◌: the MR waits on their discussion, which its verdict says of the MR as a whole and the bubble says of the person. ✕ outranks it. The count beside their name says how many threads.
+
+### Suggested reviewers
+
+An open MR of yours that is not a draft and is short of reviewers (the approvals it still needs, less the reviews asked for that have no verdict yet; a comment asks no one) suggests whom GitLab suggests to approve it: the eligible approvers of its approval rules, its CODEOWNERS rules among them, less those who approved (`suggestedApprovers`, a paid tier's field; a Community Edition host suggests no one). Never the author, a bot or anyone on the MR, in GitLab's order, two at most (`suggestionRoom`, `suggestedOf`). Only the session that reads GitLab asks, once per MR each time it changes, and again at the next read after an ask failed; asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
+
+| Beside the faded face | Means | Press |
+|---|---|---|
+| `+ Ines` | GitLab suggests Ines | arms adding her |
+| `+ add Ines as a reviewer? press again` | armed, as the primary button, for 10 seconds | adds her; GitLab tells her |
+| `+ adding Ines…` | sent | none |
+| `Ines added` | GitLab added her; the next read shows her badged ◌ | none |
+| amber words after `+ Ines` | why GitLab did not add her | arms again |
+
+The add keeps the MR's other reviewers (`APPEND`), and a toast says how it ended.
 
 ## Links
 

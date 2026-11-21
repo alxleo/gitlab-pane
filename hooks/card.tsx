@@ -8,6 +8,7 @@ import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
 import type { UnderBlock } from './page-lines'
 import { openReading, openUnder } from './panes'
+import { pressSuggested } from './reviewers'
 import { togglePin } from './shared'
 import type { RowModel } from './pane-model'
 import { strip } from './strip'
@@ -187,6 +188,28 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
               <Button key={scope(`person-${person.username}`)} plain label={person.label} onPress={() => openUnder($, row.key, 'person', person.username)} />
             </Box>
           ))}
+          {/* Someone suggested as a reviewer, faded: `+` and their name arms adding them, and armed, a second press adds them. */}
+          {row.suggested.flatMap(person => {
+            const { does, isArmed, failed } = person.press
+            const press = () => {
+              if (does !== null) {
+                pressSuggested($, row.key, person.username, does)
+              }
+            }
+            return [
+              <Box flexDirection="row" alignItems="center" flexShrink={0}>
+                {face(kit, person, withPictures)}
+                {does === null ? (
+                  <Text dimColor>{person.label}</Text>
+                ) : isArmed ? (
+                  <Button key={person.key} variant="primary" label={person.label} onPress={press} />
+                ) : (
+                  <Button key={person.key} plain dimColor label={person.label} onPress={press} />
+                )}
+              </Box>,
+              ...(failed !== null ? [<Text color="warning">{failed}</Text>] : []),
+            ]
+          })}
         </Box>
       )
     }

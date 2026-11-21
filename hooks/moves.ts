@@ -10,30 +10,18 @@ import { mergeRefusal, mergeWrite } from './ask-merge'
 import { moveStateQuery, readMoveState } from './ask-move-state'
 import { rebasePath, rebaseRefusal } from './ask-rebase'
 import { lines } from './model-text'
-import { afterSend, ARMED_MS, conflictsTask, decidePress, firstStep, FOLLOW_MS, moveId, nextStep, pressOf } from './next-move'
+import { afterSend, conflictsTask, decidePress, firstStep, FOLLOW_MS, moveId, nextStep, pressOf } from './next-move'
 import type { Fresh, Step } from './next-move'
 import { askForRefresh, publishPins } from './shared'
 import { refusalOf, why } from './write-model'
 import type { Refusal } from './write-model'
-import { claimWrite, drawnWrites, forgetWrite, setWrite } from './writes'
+import { claimWrite, expireArm, setWrite } from './writes'
 
 import type { MoveKind, MrCard, Pressed } from '../types'
 
 // The MR moves a press makes: merge, rebase, or hand the conflicts to Claude. What a card offers, what a press records and
 // each step after it are next-move.ts's to decide; this file sends what it decides to GitLab or to Claude and looks at
 // GitLab until the move is done. A press is an entry in the ledger of writes (writes.ts), `move:` and the card key.
-
-const MOVE = moveId('')
-
-/** The presses the rows draw, by card key; reading them redraws the pane when one changes. */
-export async function drawnPressed($: EngineInterface): Promise<Record<string, Pressed>> {
-  return Object.fromEntries(
-    Object.entries(await drawnWrites($)).flatMap(([id, write]) => {
-      const held = id.startsWith(MOVE) ? pressOf(write) : undefined
-      return held !== undefined ? [[id.slice(MOVE.length), held] as const] : []
-    })
-  )
-}
 
 /** The project this session works in, `host/group/project`, from its remote; Claude can take that project's conflicts. */
 export async function hereProject($: EngineInterface): Promise<string | null> {
@@ -44,7 +32,7 @@ export async function hereProject($: EngineInterface): Promise<string | null> {
 /** Records a press on `key`, or forgets it (null), and forgets the presses on MRs no longer listed. */
 async function mark($: EngineInterface, key: string, pressed: Pressed | null): Promise<void> {
   const listed = new Set((await readRows($)).map(row => moveId(row.key)))
-  await setWrite($, moveId(key), pressed, id => !id.startsWith(MOVE) || listed.has(id))
+  await setWrite($, moveId(key), pressed, id => !id.startsWith(moveId('')) || listed.has(id))
 }
 
 /** The MR as GitLab says it now. */
@@ -140,13 +128,7 @@ async function press($: EngineInterface, key: string, move: { kind: MoveKind; do
     return
   }
   if (pressed.state === 'armed') {
-    // Taken back once its time is up, unless it was pressed again meanwhile.
-    $.clock.after(ARMED_MS, () =>
-      quietly(
-        $,
-        forgetWrite($, moveId(key), held => held?.state === 'armed' && held.at === at)
-      )
-    )
+    expireArm($, moveId(key), at)
     return
   }
   if (pressed.state === 'handed') {

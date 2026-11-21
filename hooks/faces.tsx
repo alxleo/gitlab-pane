@@ -1,5 +1,5 @@
 import type { Kit } from './kit'
-import type { PersonRow } from './pane-model'
+import type { PersonRow } from './face-model'
 
 /**
  * A person's face: their avatar or initials on a disc, ringed in the colour of where they stand, as the row model made

@@ -131,7 +131,7 @@ export function connect(host: string, through: { token: string; source: Source; 
 
 /** The user's open MRs with GitLab's merge verdicts, read side by side as the mod's `read-gitlab.ts` reads them. */
 export async function openMrs(gitlab: GitLab): Promise<MrCard[]> {
-  let features: HostFeatures = { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true }
+  let features: HostFeatures = { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true, hasSuggestedApprovers: true }
   let authored = await gitlab.graphql(authoredQuery(features, { kind: 'open' }))
   const lacking = missingFeatures(authored)
   if (lacking.length > 0) {
@@ -201,6 +201,9 @@ export function panelOf(cards: readonly MrCard[], held: ReadonlyMap<string, Pres
       isWaking: false,
       failures: {},
       pressed: Object.fromEntries(held),
+      // The panel asks GitLab whom to suggest for no MR, so it draws no suggested faces and has no adds to follow.
+      suggested: {},
+      writes: {},
       // No thread works in a repo, so the core offers no conflicts move; the panel hands them on as a message instead.
       here: null,
     },

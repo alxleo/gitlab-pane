@@ -1,6 +1,8 @@
 // Every operation the pane sends GitLab, gathered from the modules that own them: each `ask-*.ts` module holds one question's
 // documents, its request, its cost and how its answer reads. This file only adds them up, for the sender (which retries a read
 // and never a write), the schema check (tools/gitlab_schema.ts) and the fakes in the tests.
+import { ADD_REVIEWER_ASK } from './ask-add-reviewer.ts'
+import type { AddReviewerOperations } from './ask-add-reviewer.ts'
 import { AUTHORED_ASK } from './ask-authored.ts'
 import type { AuthoredOperations } from './ask-authored.ts'
 import { FAILURES_ASK } from './ask-failures.ts'
@@ -27,6 +29,8 @@ import { PINNED_ASK } from './ask-pinned.ts'
 import type { PinnedOperations } from './ask-pinned.ts'
 import { REPLY_ASK } from './ask-reply.ts'
 import type { ReplyOperations } from './ask-reply.ts'
+import { SUGGESTED_ASK } from './ask-suggested.ts'
+import type { SuggestedOperations } from './ask-suggested.ts'
 import { THREADS_ASK } from './ask-threads.ts'
 import type { ThreadsOperations } from './ask-threads.ts'
 import { USUAL_ASK } from './ask-usual.ts'
@@ -47,10 +51,12 @@ export type Operations = AuthoredOperations &
   InboxFollowOperations &
   LandedOperations &
   MoveStateOperations &
-  MergeOperations
+  MergeOperations &
+  SuggestedOperations &
+  AddReviewerOperations
 
 /** The documents that change GitLab: mutations, which are sent once and never scored, since scoring a document sends it. */
-export const WRITES = [...MERGE_ASK.writes, ...REPLY_ASK.writes] as const satisfies readonly (keyof Operations)[]
+export const WRITES = [...MERGE_ASK.writes, ...REPLY_ASK.writes, ...ADD_REVIEWER_ASK.writes] as const satisfies readonly (keyof Operations)[]
 
 type Reads = Exclude<keyof Operations, (typeof WRITES)[number]>
 
@@ -71,6 +77,8 @@ export const DOCUMENTS: { readonly [Name in keyof Operations]: string } = {
   ...LANDED_ASK.documents,
   ...MOVE_STATE_ASK.documents,
   ...MERGE_ASK.documents,
+  ...SUGGESTED_ASK.documents,
+  ...ADD_REVIEWER_ASK.documents,
 }
 
 /**
@@ -92,6 +100,7 @@ export const COMPLEXITY: { readonly [Name in Reads]: number } = {
   ...INBOX_FOLLOW_ASK.complexity,
   ...LANDED_ASK.complexity,
   ...MOVE_STATE_ASK.complexity,
+  ...SUGGESTED_ASK.complexity,
 }
 
 /** The most of GitLab's limit a document may score: the rest is room for a field to grow, and for the other queries of a read. */

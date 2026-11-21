@@ -111,6 +111,16 @@ export type TodoActionEnum =
   | 'transfer_failed'
   | 'unmergeable'
 
+export type AddReviewerMutationVariables = Exact<{
+  path: string
+  iid: string
+  username: string
+}>
+
+export type AddReviewerMutation = {
+  mergeRequestSetReviewers: { errors: Array<string>; mergeRequest: { reviewers: { nodes: Array<{ username: string } | null> | null } | null } | null } | null
+}
+
 export type AuthoredQueryVariables = Exact<{
   state?: MergeRequestState | null | undefined
   after?: string | null | undefined
@@ -731,6 +741,19 @@ export type ReplyMutationVariables = Exact<{
 
 export type ReplyMutation = {
   createNote: { errors: Array<string>; note: { id: string } | null; quickActionsStatus: { commandsOnly: boolean | null; errorMessages: Array<string> | null } | null } | null
+}
+
+export type SuggestedQueryVariables = Exact<{
+  path: string
+  iid: string
+}>
+
+export type SuggestedQuery = {
+  project: {
+    mergeRequest: {
+      approvalState: { suggestedApprovers: { nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null }
+    } | null
+  } | null
 }
 
 export type ThreadsQueryVariables = Exact<{
