@@ -21,7 +21,7 @@
 # is .release-please-manifest.json. That pull request is opened with GITHUB_TOKEN, so no check starts on it by itself,
 # and main requires one: closing and reopening it as a person starts it (CONTRIBUTING.md, Releasing).
 #
-# What a team can pin is not this repository but the tree tools/release_tree.ts builds from the allowlist release/files:
+# What a team can pin is not this repository but the tree tools/release_tree.ts builds from the allowlist release-tree/files:
 # the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so
 # a broken tree fails there and not at a release. The publish job then commits the tree of a new version to the
 # `release` branch, one commit and one `plugin-v<version>` tag per version, never forced. The tree also holds the ChatGPT
