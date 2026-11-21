@@ -1,5 +1,5 @@
 import type { Kit } from './kit'
-import type { PersonRow } from './pane-model'
+import type { PersonRow } from './face-model'
 
 /**
  * A person's face: their avatar or initials on a disc, ringed in the colour of where they stand, as the row model made
@@ -8,7 +8,8 @@ import type { PersonRow } from './pane-model'
 export function face(kit: Kit, person: PersonRow, withPicture: boolean) {
   const { Svg, Text } = kit
   if (Svg === undefined) {
-    return <Text color={person.tone}>{person.glyph}</Text>
+    // A suggested face has no glyph: the press beside it says `+` and the name.
+    return person.glyph !== '' ? <Text color={person.tone}>{person.glyph}</Text> : null
   }
   return <Svg width={22} height={22} alt={person.alt} source={withPicture && person.picture !== null ? person.picture : person.plain} />
 }

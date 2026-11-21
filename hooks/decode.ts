@@ -3,7 +3,7 @@
 import { Failure } from './failure.ts'
 import type { RawResponse } from './gitlab-request.ts'
 
-import type { Usual } from '../types'
+import type { Suggested, Usual } from '../types'
 
 export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -54,6 +54,30 @@ export const usualRecord = (value: unknown): Record<string, Usual> =>
     ? Object.fromEntries(
         Object.entries(value).flatMap(([project, times]) =>
           isRecord(times) && typeof times.low === 'number' && typeof times.high === 'number' ? [[project, { low: times.low, high: times.high }]] : []
+        )
+      )
+    : {}
+
+/** Who GitLab suggested for each MR, as the store keeps it; an entry or a person in another shape is left out. */
+export const suggestedRecord = (value: unknown): Suggested =>
+  isRecord(value)
+    ? Object.fromEntries(
+        Object.entries(value).flatMap(([key, entry]) =>
+          isRecord(entry) && typeof entry.on === 'string'
+            ? [
+                [
+                  key,
+                  {
+                    on: entry.on,
+                    people: records(entry.people).flatMap(person =>
+                      typeof person.username === 'string' && typeof person.name === 'string' && typeof person.isBot === 'boolean'
+                        ? [{ username: person.username, name: person.name, avatarUrl: textOrNull(person.avatarUrl), isBot: person.isBot }]
+                        : []
+                    ),
+                  },
+                ],
+              ]
+            : []
         )
       )
     : {}

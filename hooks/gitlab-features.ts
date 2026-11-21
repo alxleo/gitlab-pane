@@ -26,7 +26,10 @@ export function missingFeatures(response: RawResponse<unknown>): (keyof HostFeat
           ? ['hasTodoEntity' as const]
           : typeName === 'Discussion' && fieldName === 'truncatedDiffLines'
             ? ['hasDiffLines' as const]
-            : []
+            : // The Community Edition has no approval state at all; an older paid one has it without the suggestions.
+              (typeName === 'MergeRequest' && fieldName === 'approvalState') || (typeName === 'MergeRequestApprovalState' && fieldName === 'suggestedApprovers')
+              ? ['hasSuggestedApprovers' as const]
+              : []
   })
 }
 

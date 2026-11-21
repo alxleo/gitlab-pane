@@ -3,7 +3,7 @@
 // what the pane draws and keeps of it.
 import { isFilled, isSome, present } from './decode.ts'
 import { ciStatusOf, reviewStateOf } from './gitlab-status.ts'
-import { cardKey, projectOf, siteOf } from './hosts.ts'
+import { absoluteUrl, cardKey, projectOf, siteOf } from './hosts.ts'
 import { lead, ranOf } from './format.ts'
 import { initials } from './identity.ts'
 import { fromGitLab } from './markdown.ts'
@@ -12,9 +12,6 @@ import type { ListedPipeline, NodeOf, RawJob, RawMr, RawNote, RawReviewer, RawSt
 import { firstDifference } from './order.ts'
 
 import type { GitLabMarkdown, Job, JobLink, MrCard, Note, Person, PersonState, ReviewState } from '../types'
-
-/** GitLab gives an uploaded avatar as a path on its own host and a Gravatar one as a full URL. */
-const absolute = (host: string, url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${siteOf(host)}${url}` : url) : null)
 
 /** A reviewer's review state; a host without the field gives none, which reads as not yet reviewed. */
 const reviewOf = (reviewer: RawReviewer): ReviewState => reviewStateOf('mergeRequestInteraction' in reviewer ? reviewer.mergeRequestInteraction?.reviewState : undefined)
@@ -84,7 +81,7 @@ function toPeople(raw: RawMr, host: string, path: string, mrUrl: string, threads
     if (user === null || user.username === author) {
       return undefined
     }
-    const avatarUrl = absolute(host, user.avatarUrl)
+    const avatarUrl = absoluteUrl(host, user.avatarUrl)
     const known = byName.get(user.username) ?? {
       name: user.name,
       isBot: user.bot,
