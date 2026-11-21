@@ -23,18 +23,19 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), oxlint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
 | `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |
 | `npm run knip` | No unused file, export, type or dependency; each entry point in `knip.jsonc` has its reason. |
-| `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `tools/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, by `.ts` path, and a `hooks/` module that imports nothing of the engine, no package and no module that does is in the core; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
-| `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json` and `tools/tsconfig.json`. |
+| `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `tools/`, `chatgpt/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, by `.ts` path, and a `hooks/` module that imports nothing of the engine, no package and no module that does is in the core; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
+| `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json`, `tools/tsconfig.json` and `chatgpt/tsconfig.json`. |
 | `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the snapshot and the documents. |
-| `npm run release-tree -- check` | The tree built from `release/files` loads only what it holds. |
+| `npm run release-tree -- check` | The tree built from `release/files` loads only what it holds, and holds the ChatGPT plugin, built at the tree's version with an `mcp.json` ChatGPT reads. |
 | `npm run docs -- check` | README's settings table is `userConfig`; README's and DESIGN's tables are `tests/docs.generated.ts` (`docs -- write` remakes it, `tests/docs.test.ts` holds it to the code); the scripts table here is `package.json`'s scripts. |
 | `npm run validate` | `claude plugin validate --strict` on the plugin and the store probe. |
 | `npm run scan` | gitleaks, actionlint, zizmor: each only if installed, and a skipped one is named. |
 | `npm run check:fast` | `files`, `format:check`, `knip`, `lint`, `types`, `schema -- types --check`, `release-tree -- check`, `docs -- check`, `validate`. |
 | `npm run check` | `check:fast`, then `scan`. |
-| `npm test` | Vitest on the core and the dev tools' own specs (plain Node), `claude plugin test .` (the engine), then the scenes. Vitest runs its specs in a Node that refuses to write, start a process or thread, connect, or read outside the repository (`vitest.config.ts`), each within two seconds: those specs work on plain data. |
+| `npm test` | Vitest on the core and the dev tools' own specs (plain Node), `claude plugin test .` (the engine), then the scenes, then the ChatGPT plugin: a merge pressed through its server on the made-up GitLab (`chatgpt/move-check.ts`), its package built, and the packaged server serving the panel by its hash (`chatgpt/probe.ts`). Vitest runs its specs in a Node that refuses to write, start a process or thread, connect, or read outside the repository (`vitest.config.ts`), each within two seconds: those specs work on plain data. |
+| `npm run panel` | The ChatGPT plugin's panel in Chromium behind the MCP Apps host bridge, as ChatGPT opens it: every row drawn without an error, then a merge pressed twice on the made-up GitLab (`chatgpt/panel-test.ts`; `--live` reads your GitLab and presses nothing). |
 | `npm run schema -- <check\|snapshot\|types>` | `check`: every query against gitlab.com's live schema, and what each costs; `snapshot`: refresh the snapshot; `types`: regenerate the types. |
-| `npm run screens -- <render\|setup\|scenes>` | `render` photographs the pane in Chromium for `docs/screens`; `setup` fetches Chromium; `scenes` runs the scenes. |
+| `npm run screens -- <render\|setup\|scenes>` | `render` photographs the pane, and the ChatGPT plugin's panel, in Chromium for `docs/screens`; `setup` fetches Chromium; `scenes` runs the scenes. |
 | `npm run rig -- flow` | Drives the pane through a headless engine. |
 | `npm run preview` | Serves the pane this checkout draws, live from your GitLab, on 127.0.0.1 (`--help`; [what it cannot show](#checking-the-pane-in-the-desktop-app)). |
 | `npm run shot -- <capture\|press\|tour\|windows>` | Photographs and presses the pane in the running desktop app; Mac only ([when](#checking-the-pane-in-the-desktop-app)). |
@@ -53,6 +54,8 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm test` | | | x | x | x, `claude plugin test .` on the newest Claude Code |
 | `claude plugin validate --strict` and `claude plugin test .` on the stable channel's Claude Code | | | | x | |
 | Release tree builds and validates | | | | x | x, and installs |
+| The tree's ChatGPT plugin installs in Codex and starts its server (`chatgpt/codex-check.ts`) | | | | x | |
+| `npm run panel` | | | | x, when the drawing changes | |
 | `screens -- render --verify --check` | | | | x, when the drawing changes | |
 | `schema -- check` against gitlab.com | | | | x, when queries change | x |
 | Plugin installs from GitHub; release branch holds the latest tag | | | | | x |
@@ -85,6 +88,7 @@ flowchart LR
 - No check starts on the release PR by itself, as GitHub starts no workflow for a PR its own token opened, yet main requires `check` before any merge. To release, close the PR and reopen it as yourself: that starts its checks, and it merges once they pass. A run started by hand (`gh workflow run check.yml --ref <its branch>`) passes on the same commit but does not count, because GitHub ties it to no pull request.
 - Users get the files in `release/files` and nothing else (`plugin.json`, `hooks/` without the generated types, `types/index.d.ts`, `LICENSE`, `README.md`). A file the plugin loads at run time goes in that list; `release-tree -- check` fails otherwise.
 - A team pins `"ref": "plugin-vX.Y.Z"` in its marketplace source (the tree has its own `release/marketplace.json`).
+- The same tree holds the ChatGPT plugin in `chatgpt/`, built by `chatgpt/build.ts` at the release's version, and a Codex marketplace that lists it (`release/codex-marketplace.json`, at `.agents/plugins/marketplace.json`, which ChatGPT's Codex reads before the Claude one). `codex plugin marketplace add alxleo/gitlab-pane --ref release` follows releases; `--ref plugin-vX.Y.Z` pins one. One version names both plugins.
 - The default install reads `.claude-plugin/marketplace.json` on main (`"source": "./"`). Once the first `plugin-v*` tag exists, switch it to `{ "source": "github", "repo": "alxleo/gitlab-pane", "ref": "release" }` in its own commit, and change the README's "That follows main" to "That follows releases".
 
 ## Screenshots
@@ -92,6 +96,8 @@ flowchart LR
 `docs/screens` comes from `npm run screens -- render` (the mod's own drawing under the pinned Claude Code, photographed in Chromium; run `screens -- setup` first, `setup --with-deps` on Linux). Run it after changing the drawing and commit the pictures; `screens.yml` fails on a stale one.
 
 Every scene is photographed in the desktop app's light theme, `<scene>.png`, and its dark theme, `<scene>-dark.png`; the README shows the one that matches the reader's.
+
+The ChatGPT plugin's panel is photographed beside the scenes, as `chatgpt-panel.png` and `chatgpt-panel-dark.png` (`tools/chatgpt_screens.ts`): its own server on the made-up GitLab, the clock held at the scenes' moment, the panel opened behind the MCP Apps host bridge, and the bundled fonts handed to it as a host hands its own. `--scene chatgpt-panel` takes it alone, and needs no Claude Code. Both kinds go through `tools/photograph.ts`, which holds the browser, the themes and the font checks. Pull-request delta pictures are of the pane alone; for the panel, show its picture before and after.
 
 A pull request's pictures come from `npm run screens -- render --out <dir> --delta-against origin/main`. For each scene, in each theme (`<scene>` and `<scene>-dark`), it writes three pictures:
 - `<scene>.png`, as the branch draws it;

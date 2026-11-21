@@ -1,16 +1,16 @@
 // A press on a row's move, carried out: the mod's `moves.ts` without the engine. What a press records and every step after
 // it are the core's (`decidePress`, `firstStep`, `nextStep`, `afterSend`); this file sends what they decide and looks at
 // GitLab until the move is done. The presses live in this server's memory, one per MR, as the mod keeps them in its ledger.
-import { messageOf } from '../../hooks/failure.ts'
-import { Failure } from '../../hooks/failure.ts'
-import { mergeRefusal, mergeWrite } from '../../hooks/ask-merge.ts'
-import { moveStateQuery, readMoveState } from '../../hooks/ask-move-state.ts'
-import { rebasePath, rebaseRefusal } from '../../hooks/ask-rebase.ts'
-import { afterSend, ARMED_MS, decidePress, firstStep, FOLLOW_MS, nextStep } from '../../hooks/next-move.ts'
-import type { Fresh, Step } from '../../hooks/next-move.ts'
-import { refusalOf, why } from '../../hooks/write-model.ts'
+import { messageOf } from '../hooks/failure.ts'
+import { Failure } from '../hooks/failure.ts'
+import { mergeRefusal, mergeWrite } from '../hooks/ask-merge.ts'
+import { moveStateQuery, readMoveState } from '../hooks/ask-move-state.ts'
+import { rebasePath, rebaseRefusal } from '../hooks/ask-rebase.ts'
+import { afterSend, ARMED_MS, decidePress, firstStep, FOLLOW_MS, nextStep } from '../hooks/next-move.ts'
+import type { Fresh, Step } from '../hooks/next-move.ts'
+import { refusalOf, why } from '../hooks/write-model.ts'
 
-import type { MoveKind, MrCard, Pressed } from '../../types/index.d.ts'
+import type { MoveKind, MrCard, Pressed } from '../types/index.d.ts'
 import type { GitLab } from './read.ts'
 
 /** How a press ended: armed (press again), or the move's last word, done or not. */
@@ -18,7 +18,10 @@ export type Outcome = { state: 'armed' } | { state: 'busy' } | { state: 'ended';
 
 type Course = { kind: 'merge' | 'rebase' | 'rebase-merge'; before: Fresh; tries: number }
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const sleep = (ms: number) =>
+  new Promise(resolve => {
+    setTimeout(resolve, ms)
+  })
 
 async function freshOf(gitlab: GitLab, card: MrCard): Promise<Fresh> {
   const fresh = readMoveState(await gitlab.graphql(moveStateQuery(card.path, card.iid)))

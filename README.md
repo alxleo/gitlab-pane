@@ -55,6 +55,20 @@ For a team, in the project's `.claude/settings.json`:
 - From the first `plugin-v*` tag, `"ref": "plugin-v<version>"` pins too, and installs only the plugin's files.
 - `claude plugin update gitlab-pane@gitlab-pane` updates; a running session keeps its copy until `/reload-plugins`.
 
+## In ChatGPT
+
+The same list of your MRs, with the same moves, in a panel beside a ChatGPT conversation. It is drawn from the same rows as the pane, by the same code.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/chatgpt-panel-dark.png"><img alt="The ChatGPT panel" width="420" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/chatgpt-panel.png"></picture>
+
+In ChatGPT's desktop app, add this repository's releases as a plugin marketplace, then install "GitLab MRs" from it in the Plugins Directory:
+
+```bash
+codex plugin marketplace add alxleo/gitlab-pane --ref release
+```
+
+In a chat that runs locally, open "My merge requests" among the chat's side panels. The plugin's server runs on your machine, so it reaches a GitLab only your network can, with the token you already have (`GITLAB_TOKEN`, or `glab auth login`; `GITLAB_PANE_HOST` names a host other than gitlab.com). It needs Node 22 or newer on your PATH. `✓ merge` takes two presses, as in the pane; only the panel can press it, never the model, and the model is given no titles or comments. A local plugin works in the desktop app only, and a company workspace's policy may refuse it.
+
 ## Commands
 
 | Command | Does |

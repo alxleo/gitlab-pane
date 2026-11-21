@@ -4,26 +4,26 @@
 import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
 
-import { authoredQuery, jobsWanted, listedMrs } from '../../hooks/ask-authored.ts'
-import { mergeStatusQuery, readMergeStatus } from '../../hooks/ask-merge-status.ts'
-import type { GitLabVerdict } from '../../hooks/ask-merge-status.ts'
-import { pinnedMr, pinnedQuery } from '../../hooks/ask-pinned.ts'
-import { decodeGraphql } from '../../hooks/decode.ts'
-import { Failure } from '../../hooks/failure.ts'
-import { missingFeatures } from '../../hooks/gitlab-features.ts'
-import type { RawResponse, Request } from '../../hooks/gitlab-request.ts'
-import type { AuthoredPlainQuery, AuthoredQuery, MergeStatusQuery } from '../../hooks/gitlab.generated.ts'
-import { redact } from '../../hooks/hosts.ts'
-import { mergeReads } from '../../hooks/incremental.ts'
-import { lines } from '../../hooks/model-text.ts'
-import { toCard } from '../../hooks/mr-card.ts'
-import { pinKey } from '../../hooks/mr-url.ts'
-import { conflictsTask, nextMove } from '../../hooks/next-move.ts'
-import { buildPane } from '../../hooks/pane-model.ts'
-import type { RowModel } from '../../hooks/pane-model.ts'
-import { slimCard, slimChecks } from '../../hooks/slim.ts'
+import { authoredQuery, jobsWanted, listedMrs } from '../hooks/ask-authored.ts'
+import { mergeStatusQuery, readMergeStatus } from '../hooks/ask-merge-status.ts'
+import type { GitLabVerdict } from '../hooks/ask-merge-status.ts'
+import { pinnedMr, pinnedQuery } from '../hooks/ask-pinned.ts'
+import { decodeGraphql, parseJson } from '../hooks/decode.ts'
+import { Failure } from '../hooks/failure.ts'
+import { missingFeatures } from '../hooks/gitlab-features.ts'
+import type { RawResponse, Request } from '../hooks/gitlab-request.ts'
+import type { AuthoredPlainQuery, AuthoredQuery, MergeStatusQuery } from '../hooks/gitlab.generated.ts'
+import { redact } from '../hooks/hosts.ts'
+import { mergeReads } from '../hooks/incremental.ts'
+import { lines } from '../hooks/model-text.ts'
+import { toCard } from '../hooks/mr-card.ts'
+import { pinKey } from '../hooks/mr-url.ts'
+import { conflictsTask, nextMove } from '../hooks/next-move.ts'
+import { buildPane } from '../hooks/pane-model.ts'
+import type { RowModel } from '../hooks/pane-model.ts'
+import { slimCard, slimChecks } from '../hooks/slim.ts'
 
-import type { HostFeatures, MrCard, Pressed } from '../../types/index.d.ts'
+import type { HostFeatures, MrCard, Pressed } from '../types/index.d.ts'
 
 /** How a document, or a REST call, reaches one host with the user's token. */
 export type GitLab = {
@@ -55,12 +55,18 @@ function tokenFor(host: string): string {
   throw new Failure('unauthorized', `no token for ${host}: set GITLAB_TOKEN or run glab auth login --hostname ${host}`)
 }
 
-/** The user's GitLab on `host`. Every request is sent once: a write must not go twice. */
-export function connect(host: string): GitLab {
-  const token = tokenFor(host)
-  const send = async (url: string, init: RequestInit): Promise<Response> => {
+/** A request as this file sends it: Node's `fetch`, or a made-up GitLab's answer to it. */
+export type Send = (url: string, init: { method: 'POST' | 'PUT'; headers: Record<string, string>; body?: string }) => Promise<{ status: number; text: () => Promise<string> }>
+
+/**
+ * The user's GitLab on `host`, with their token, through Node's `fetch` unless `through` says otherwise (a made-up GitLab).
+ * Every request is sent once: a write must not go twice.
+ */
+export function connect(host: string, through: { token: string; send: Send } = { token: tokenFor(host), send: fetch }): GitLab {
+  const { token } = through
+  const send = async (url: string, method: 'POST' | 'PUT', headers: Record<string, string>, body?: string) => {
     try {
-      return await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } })
+      return await through.send(url, { method, headers: { ...headers, Authorization: `Bearer ${token}` }, ...(body !== undefined ? { body } : {}) })
     } catch (error) {
       throw new Failure('network', redact(`${host} failed: ${error instanceof Error ? error.message : String(error)}`, [token]))
     }
@@ -68,18 +74,19 @@ export function connect(host: string): GitLab {
   return {
     host,
     async graphql<Data>(request: Request<Data>): Promise<RawResponse<Data>> {
-      const answer = await send(`https://${host}/api/graphql`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ query: request.query, variables: request.variables, operationName: request.operation }),
-      })
+      const answer = await send(
+        `https://${host}/api/graphql`,
+        'POST',
+        { 'Content-Type': 'application/json', Accept: 'application/json' },
+        JSON.stringify({ query: request.query, variables: request.variables, operationName: request.operation })
+      )
       if (answer.status === 401 || answer.status === 403) {
         throw new Failure('unauthorized', `${host} refused the token (HTTP ${answer.status})`)
       }
-      return decodeGraphql<Data>(await answer.json())
+      return decodeGraphql<Data>(parseJson(await answer.text()))
     },
     async put(path: string) {
-      const answer = await send(`https://${host}/api/v4/${path}`, { method: 'PUT', headers: { Accept: 'application/json' } })
+      const answer = await send(`https://${host}/api/v4/${path}`, 'PUT', { Accept: 'application/json' })
       return { status: answer.status, text: await answer.text() }
     },
   }
@@ -116,7 +123,7 @@ export async function openMrs(gitlab: GitLab): Promise<MrCard[]> {
 }
 
 /** GitLab's answers as cards with their verdicts: a failed verdict read leaves every card without one, as in the mod. */
-export function cardsFrom(
+function cardsFrom(
   host: string,
   authored: RawResponse<AuthoredQuery | AuthoredPlainQuery>,
   status: RawResponse<MergeStatusQuery> | null,

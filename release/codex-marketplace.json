@@ -1,0 +1,12 @@
+{
+  "name": "gitlab-pane",
+  "interface": { "displayName": "GitLab pane" },
+  "plugins": [
+    {
+      "name": "gitlab-pane",
+      "source": { "source": "local", "path": "./chatgpt" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

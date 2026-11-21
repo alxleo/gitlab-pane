@@ -24,7 +24,8 @@
 # What a team can pin is not this repository but the tree tools/release_tree.ts builds from the allowlist release/files:
 # the plugin and nothing else. A pull request builds it, validates it and checks that every module it loads is in it, so
 # a broken tree fails there and not at a release. The publish job then commits the tree of a new version to the
-# `release` branch, one commit and one `plugin-v<version>` tag per version, never forced.
+# `release` branch, one commit and one `plugin-v<version>` tag per version, never forced. The tree also holds the ChatGPT
+# plugin (chatgpt/), which a pull request installs from the tree with the Codex CODEX_VERSION pins, as ChatGPT does.
 # See CONTRIBUTING.md, Releasing.
 name: check
 on:
@@ -52,6 +53,7 @@ jobs:
     env:
       CLAUDE_CODE_VERSION: "2.1.318"
       CLAUDE_CODE_STABLE: "2.1.311"
+      CODEX_VERSION: "0.169.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,6 +95,13 @@ jobs:
           claude plugin validate --strict "$RUNNER_TEMP/tree"
           claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
           claude plugin validate --strict .claude-plugin/marketplace.json
+      # The ChatGPT plugin as ChatGPT's desktop app takes it: its server serves the panel by its hash, and Codex installs
+      # it from the tree and starts that server. Neither reads GitLab.
+      - run: npm install --prefix "$RUNNER_TEMP/codex" "@openai/codex@${CODEX_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      - name: The release tree's ChatGPT plugin installs in Codex and starts its server
+        run: |
+          node chatgpt/probe.ts --server "$RUNNER_TEMP/tree/chatgpt/dist/server.mjs"
+          node chatgpt/codex-check.ts --tree "$RUNNER_TEMP/tree" --codex "$RUNNER_TEMP/codex/node_modules/.bin/codex"
       # The stable channel's Claude Code beside the pinned one: the plugin's own validation and tests, not the dev
       # checks, which read the pinned engine's declarations and pictures.
       - run: npm install --prefix "$RUNNER_TEMP/stable" "@anthropic-ai/claude-code@${CLAUDE_CODE_STABLE}" # zizmor: ignore[adhoc-packages] one pinned CLI

@@ -2,10 +2,60 @@ import { isRecord, parseJson, stringRecord } from '../hooks/decode.ts'
 import type { Operations } from '../hooks/gitlab-operations.ts'
 import type { RawResponse } from '../hooks/gitlab-request.ts'
 import type { MergeStrategyEnum } from '../hooks/gitlab.generated.ts'
+import type { Mr } from './fixtures.ts'
 
 /** GitLab's answer to each operation the pane sends, typed by the document's generated types. A test sets the ones it needs. */
 export type Answers = {
   [Name in keyof Operations]?: (variables: Operations[Name]['variables']) => RawResponse<Operations[Name]['data']>
+}
+
+/** Whether every check GitLab holds for the MR has passed or is off. */
+const isMergeableNow = (mr: Mr) => (mr.mergeabilityChecks ?? []).every(check => check.status === 'SUCCESS' || check.status === 'INACTIVE')
+
+/**
+ * GitLab's answers to a move: the MR read fresh, and a merge, which merges it now or, by a strategy, once its checks pass.
+ * `merged` hears of each merge asked for, as `<iid>@<head>` and the strategy. The mod's tests and the ChatGPT plugin's
+ * made-up GitLab both answer moves with these.
+ */
+export function moveAnswers(fake: () => Mr[], strategies: () => string[], merged: string[]): Answers {
+  const find = (path: string, iid: string) => fake().find(mr => mr.iid === iid && mr.project.fullPath === path)
+  return {
+    MoveState: ({ path, iid }) => {
+      const mr = find(path, iid)
+      return {
+        data: {
+          project: {
+            mergeRequest:
+              mr === undefined
+                ? null
+                : {
+                    state: mr.state,
+                    detailedMergeStatus: isMergeableNow(mr) ? 'MERGEABLE' : 'BLOCKED_STATUS',
+                    diffHeadSha: mr.merging?.diffHeadSha ?? `head-${mr.iid}`,
+                    rebaseCommitSha: mr.merging?.rebaseCommitSha ?? null,
+                    rebaseInProgress: mr.merging?.rebaseInProgress ?? false,
+                    autoMergeEnabled: mr.merging?.autoMergeEnabled ?? false,
+                    mergeError: mr.merging?.mergeError ?? null,
+                    availableAutoMergeStrategies: strategies(),
+                    squashOnMerge: mr.merging?.squashOnMerge ?? false,
+                  },
+          },
+        },
+      }
+    },
+    Merge: ({ path, iid, sha, strategy, squash }) => {
+      merged.push(`${iid}@${sha}${squash ? ' squashed' : ''}${strategy !== undefined && strategy !== null ? ` ${strategy}` : ''}`)
+      const mr = find(path, iid)
+      if (mr !== undefined) {
+        if (strategy === undefined || strategy === null) {
+          mr.state = 'merged'
+        } else {
+          mr.merging = { ...mr.merging, autoMergeEnabled: true }
+        }
+      }
+      return { data: { mergeRequestAccept: { errors: [], mergeRequest: { state: mr?.state ?? 'opened', mergeError: null } } } }
+    },
+  }
 }
 
 /** GitLab's answer to a document with a field its schema lacks, as an older self-managed GitLab gives it: no data, and where. */

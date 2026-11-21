@@ -41,6 +41,8 @@
       .link { color: var(--suggestion); }
       .picture { display: inline-flex; line-height: 0; }
       .picture svg { max-height: 16px; width: auto; }
+      /* A face's initials name system-ui; the host's font draws them, as it draws the rest of the panel. */
+      .picture svg text { font-family: var(--font-sans, system-ui, sans-serif) !important; }
       .soft { color: var(--soft); }
       .small { font-size: 11px; white-space: nowrap; }
       .bold { font-weight: 600; }

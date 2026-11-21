@@ -10,6 +10,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 
 import { fakeGitLab } from './fake.ts'
 import { serveHost } from './host.ts'
+import { panelHtml } from './panel-build.ts'
 import { connect } from './read.ts'
 import { createServer } from './server.ts'
 
@@ -20,7 +21,7 @@ const gitlabFor = values.live ? connect : () => fakeGitLab()
 
 const client = new Client({ name: 'harness', version: '0' })
 const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
-await (await createServer(gitlabFor)).connect(serverSide)
+await createServer({ html: await panelHtml(), connectTo: gitlabFor }).connect(serverSide)
 await client.connect(clientSide)
-const { url } = await serveHost(client, Number(values.port))
+const { url } = await serveHost(client, { port: Number(values.port) })
 console.log(`harness on ${url} (${values.live ? 'live GitLab' : 'made-up MRs'})`)

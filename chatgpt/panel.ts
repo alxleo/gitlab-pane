@@ -1,11 +1,12 @@
 // The conversation panel: an MCP App that ChatGPT opens beside a thread. It decides nothing: it draws the pane's own row
 // model (`buildPane`, as `card.tsx` lays it out), and sends each press to the server. esbuild bundles it into one HTML.
-import { App, applyDocumentTheme, applyHostStyleVariables } from '@modelcontextprotocol/ext-apps'
+import { App, applyDocumentTheme, applyHostFonts, applyHostStyleVariables } from '@modelcontextprotocol/ext-apps'
 import { OpenAIExtensions } from '@openai/mcp-extensions/app'
 
-import { ARMED_MS } from '../../hooks/next-move.ts'
-import type { RowModel } from '../../hooks/pane-model.ts'
+import { ARMED_MS } from '../hooks/next-move.ts'
+import type { RowModel } from '../hooks/pane-model.ts'
 import type { Panel } from './read.ts'
+import { panelIn } from './result.ts'
 
 /** How often the panel reads again while it is open: the stand-in for the mod's poll, which runs only while mounted here. */
 const REFRESH_MS = 60_000
@@ -24,9 +25,6 @@ const refresh = document.querySelector<HTMLButtonElement>('#refresh')
 let drawn: Panel = { sections: [], handOff: {} }
 const pressing = new Set<string>()
 const said = new Map<string, string>()
-
-const isPanel = (value: unknown): value is Panel => typeof value === 'object' && value !== null && 'sections' in value && Array.isArray(value.sections)
-const panelIn = (meta: unknown): Panel | null => (typeof meta === 'object' && meta !== null && 'gitlabPane' in meta && isPanel(meta.gitlabPane) ? meta.gitlabPane : null)
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag)
@@ -212,9 +210,13 @@ const applyHost = (context: ReturnType<App['getHostContext']>) => {
   if (context?.styles?.variables !== undefined) {
     applyHostStyleVariables(context.styles.variables)
   }
+  // The faces the host's font variables name: ChatGPT's own, or the bundled ones the pictures are taken with.
+  if (context?.styles?.css?.fonts !== undefined) {
+    applyHostFonts(context.styles.css.fonts)
+  }
 }
 
-app.ontoolresult = result => {
+app.addEventListener('toolresult', result => {
   const panel = panelIn(result._meta)
   if (panel !== null) {
     draw(panel)
@@ -222,7 +224,7 @@ app.ontoolresult = result => {
   if (status !== null) {
     status.textContent = result.isError === true ? 'GitLab did not answer' : readAt()
   }
-}
+})
 app.addEventListener('hostcontextchanged', applyHost)
 refresh?.addEventListener('click', () => void read())
 
