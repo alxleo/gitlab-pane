@@ -143,7 +143,7 @@ Someone holding an open thread wears 💬 (`THREAD_MARK`, `markOf`), an amber sp
 
 ### Suggested reviewers
 
-An open MR of yours that is not a draft and is short of reviewers (the approvals it still needs, less the reviews asked for that have no verdict yet; a comment asks no one) suggests whom GitLab suggests to approve it: the eligible approvers of its approval rules, its CODEOWNERS rules among them, less those who approved (`suggestedApprovers`, a paid tier's field; a Community Edition host suggests no one). Never the author, a bot or anyone on the MR, in GitLab's order, two at most (`suggestionRoom`, `suggestedOf`). Only the session that reads GitLab asks, once per MR each time it changes; asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
+An open MR of yours that is not a draft and is short of reviewers (the approvals it still needs, less the reviews asked for that have no verdict yet; a comment asks no one) suggests whom GitLab suggests to approve it: the eligible approvers of its approval rules, its CODEOWNERS rules among them, less those who approved (`suggestedApprovers`, a paid tier's field; a Community Edition host suggests no one). Never the author, a bot or anyone on the MR, in GitLab's order, two at most (`suggestionRoom`, `suggestedOf`). Only the session that reads GitLab asks, once per MR each time it changes, and again at the next read after an ask failed; asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
 
 | Beside the faded face | Means | Press |
 |---|---|---|

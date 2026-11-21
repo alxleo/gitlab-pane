@@ -106,7 +106,8 @@ const SUGGESTED_STORE = 'suggested'
 
 /**
  * Who GitLab suggests to approve each MR of the user's that is short of reviewers (`suggestionsFor`), asked again when
- * the MR has changed since; one pass at a time, each MR alone, so one that fails keeps its last and loses no other's.
+ * the MR has changed since, or at the next read after the ask failed; one pass at a time, each MR alone, so one that fails
+ * keeps its last and loses no other's.
  * Kept only for those MRs, so it never outgrows them. Only the leader asks; the store carries them to the sessions that draw.
  */
 function readSuggestions($: EngineInterface, rows: readonly MrCard[]): Promise<void> {

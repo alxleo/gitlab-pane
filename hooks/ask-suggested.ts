@@ -1,7 +1,7 @@
 // Who GitLab suggests to approve an MR: the eligible approvers of its approval rules, its CODEOWNERS rules among them, less
 // those who approved. A field of GitLab's paid tiers, so a Community Edition host lacks it, and a project without rules
-// answers none. Asked only for MRs that still need approvals, one at a time, never in the list's own document: it costs
-// ten and calls Gitaly for each MR.
+// answers none. Asked only for MRs that still need approvals, one at a time, never in the list's own document: GitLab
+// scores it 21 and it calls Gitaly for each MR.
 import type { SuggestedQuery, SuggestedQueryVariables } from './gitlab.generated.ts'
 import { present } from './decode.ts'
 import type { RawResponse, Request } from './gitlab-request.ts'

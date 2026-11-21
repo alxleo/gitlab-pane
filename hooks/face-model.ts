@@ -8,7 +8,7 @@ import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status.ts'
 import type { Shades, Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { RawSvg, SvgSource } from './svg.ts'
-import { SENT_HOLDS_MS } from './write-model.ts'
+import { ARMED_MS, SENT_HOLDS_MS } from './write-model.ts'
 
 import type { MrCard, Person, PersonState, Suggestion, Write } from '../types'
 
@@ -149,13 +149,15 @@ export const isAwaited = (reviewer: MrCard['reviewers'][number]): boolean => !re
 /**
  * How many reviewers a card suggests adding: the approvals it still needs, less the reviews asked for that have no
  * verdict yet, at most SUGGESTED_MOST. None on a draft or a closed MR, nor on one whose reviewers can give every approval
- * it needs: the pane suggests only where a review is missing. A comment is no review asked for.
+ * it needs: the pane suggests only where a review is missing. A comment is no review asked for, and the author's own
+ * gives no approval the MR counts (a shared card leaves the author out of its reviewers).
  */
 export function suggestionRoom(card: MrCard): number {
   if (!card.isOpen || card.isDraft) {
     return 0
   }
-  return Math.max(0, Math.min(SUGGESTED_MOST, card.approvalsLeft - card.reviewers.filter(isAwaited).length))
+  const awaited = card.reviewers.filter(reviewer => reviewer.username !== card.author && isAwaited(reviewer))
+  return Math.max(0, Math.min(SUGGESTED_MOST, card.approvalsLeft - awaited.length))
 }
 
 /**
@@ -225,7 +227,8 @@ export function suggestedPress(call: string, held: Write | undefined, now: numbe
   if (held?.state === 'handed' && now - held.at < SENT_HOLDS_MS) {
     return { label: `${call} added`, does: null, isArmed: false, failed: null }
   }
-  const isArmed = held?.state === 'armed'
+  // An arm past its time has run out whether or not its timer ran, as `confirmedPress` judges it.
+  const isArmed = held?.state === 'armed' && now - held.at <= ARMED_MS
   return {
     label: isArmed ? `+ add ${call} as a reviewer? press again` : `+ ${call}`,
     does: isArmed ? 'make' : 'arm',

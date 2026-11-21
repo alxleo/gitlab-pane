@@ -18,7 +18,7 @@ import {
 import { toCard } from '../../hooks/mr-card.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
 import { slimCard } from '../../hooks/slim.ts'
-import { SENT_HOLDS_MS } from '../../hooks/write-model.ts'
+import { ARMED_MS, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 import { HOST, rawMr, reviewer, thread, user } from '../fixtures.ts'
 import type { Note, Person, PersonState, Suggestion, Write } from '../../types'
 
@@ -107,8 +107,12 @@ test('a card short of reviewers suggests whom GitLab suggests, in its order, nev
   // An approval asked for and given, or changes asked for, is a verdict: that reviewer waits on nothing more.
   expect(suggestionRoom(cardWith(reviewer('rae', 'REQUESTED_CHANGES')))).toBe(2)
   expect(suggestionRoom(cardWith(reviewer('rae', 'APPROVED')))).toBe(2)
-  // A bot's review gives no approval the MR counts.
+  // A bot's review gives no approval the MR counts, nor does the author's of their own MR; a shared card, which leaves the
+  // author out of its reviewers, counts the same.
   expect(suggestionRoom(cardWith(reviewer('bot', 'UNREVIEWED', true)))).toBe(2)
+  const selfAsked = cardWith(reviewer(card.author, 'UNREVIEWED'))
+  expect(suggestionRoom(selfAsked)).toBe(2)
+  expect(suggestionRoom(slimCard(selfAsked))).toBe(2)
   // None on a draft, a closed MR, or one with every approval it needs asked for.
   expect(suggestionRoom({ ...card, isDraft: true })).toBe(0)
   expect(suggestionRoom({ ...card, isOpen: false })).toBe(0)
@@ -132,6 +136,9 @@ test('the press beside a suggested face arms first, adds on the second, says whe
     over.state === 'failed' ? { kind: 'reviewer', on: 'ines', at, say: 'no', ...over } : { kind: 'reviewer', on: 'ines', at, ...over, state: over.state }
   expect(suggestedPress('Ines', undefined, at)).toEqual({ label: '+ Ines', does: 'arm', isArmed: false, failed: null })
   expect(suggestedPress('Ines', held({ state: 'armed' }), at)).toEqual({ label: '+ add Ines as a reviewer? press again', does: 'make', isArmed: true, failed: null })
+  // An arm past its time has run out though its timer never ran, as after a reload: a press arms afresh, so it says so.
+  expect(suggestedPress('Ines', held({ state: 'armed' }), at + ARMED_MS)).toMatchObject({ does: 'make', isArmed: true })
+  expect(suggestedPress('Ines', held({ state: 'armed' }), at + ARMED_MS + 1)).toEqual({ label: '+ Ines', does: 'arm', isArmed: false, failed: null })
   expect(suggestedPress('Ines', held({ state: 'sent' }), at)).toEqual({ label: '+ adding Ines…', does: null, isArmed: false, failed: null })
   // Added, until a read shows them as a reviewer; never longer than a sent write is followed.
   expect(suggestedPress('Ines', held({ state: 'handed' }), at + SENT_HOLDS_MS - 1)).toEqual({ label: 'Ines added', does: null, isArmed: false, failed: null })
