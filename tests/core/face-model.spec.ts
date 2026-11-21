@@ -4,6 +4,7 @@ import fc from 'fast-check'
 import { faceFacts, faceRows, REVIEW_MARK, reviewerId, SUGGESTED_MOST, suggestedFace, suggestedOf, suggestedPress, suggestionRoom, THREAD_MARK } from '../../hooks/face-model.ts'
 import { toCard } from '../../hooks/mr-card.ts'
 import { cardFacts } from '../../hooks/row-facts.ts'
+import { slimCard } from '../../hooks/slim.ts'
 import { SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 import { HOST, rawMr, reviewer, user } from '../fixtures.ts'
 import type { Note, Person, PersonState, Suggestion, Write } from '../../types'
@@ -65,22 +66,27 @@ const mel: Suggestion = { username: 'mel', name: 'Mel Northcote', avatarUrl: 'ht
 const tess: Suggestion = { username: 'tess', name: 'Tess Rowe', avatarUrl: null, isBot: false }
 
 test('a card short of reviewers suggests whom GitLab suggests, in its order, never the author, a bot or anyone on the MR', () => {
-  const card = toCard(HOST, rawMr(1, { approvalsLeft: 2, approvalsRequired: 2, reviewers: { nodes: [reviewer('rae', 'REVIEWED')] } }))
+  const cardWith = (...nodes: ReturnType<typeof reviewer>[]) => toCard(HOST, rawMr(1, { approvalsLeft: 2, approvalsRequired: 2, reviewers: { nodes } }))
+  const card = cardWith(reviewer('rae', 'REVIEWED'))
   const all: Suggestion[] = [{ ...ines, username: 'alex' }, { ...ines, username: 'rae' }, { ...ines, username: 'bot', isBot: true }, ines, mel, tess]
   // Two approvals left, one review asked for with no verdict: room for one.
   expect(suggestionRoom(card)).toBe(1)
   expect(suggestedOf(card, all).map(person => person.username)).toEqual(['ines'])
-  expect(suggestedOf({ ...card, reviewers: [] }, all).map(person => person.username)).toEqual(['ines', 'mel'])
+  expect(suggestedOf(cardWith(), all).map(person => person.username)).toEqual(['rae', 'ines'])
+  // A card shared between sessions keeps one reviewer: the others still count.
+  const three = cardWith(reviewer('rae', 'APPROVED'), reviewer('sam', 'UNREVIEWED'), reviewer('tom', 'REVIEW_STARTED'))
+  expect(suggestionRoom(three)).toBe(0)
+  expect(suggestionRoom(slimCard(three))).toBe(0)
   // An approval asked for and given, or changes asked for, is a verdict: that reviewer waits on nothing more.
-  expect(suggestionRoom({ ...card, reviewers: [{ username: 'rae', isBot: false, state: 'requested_changes' }] })).toBe(2)
-  expect(suggestionRoom({ ...card, reviewers: [{ username: 'rae', isBot: false, state: 'approved' }] })).toBe(2)
+  expect(suggestionRoom(cardWith(reviewer('rae', 'REQUESTED_CHANGES')))).toBe(2)
+  expect(suggestionRoom(cardWith(reviewer('rae', 'APPROVED')))).toBe(2)
   // A bot's review gives no approval the MR counts.
-  expect(suggestionRoom({ ...card, reviewers: [{ username: 'bot', isBot: true, state: 'unreviewed' }] })).toBe(2)
+  expect(suggestionRoom(cardWith(reviewer('bot', 'UNREVIEWED', true)))).toBe(2)
   // None on a draft, a closed MR, or one with every approval it needs asked for.
   expect(suggestionRoom({ ...card, isDraft: true })).toBe(0)
   expect(suggestionRoom({ ...card, isOpen: false })).toBe(0)
   expect(suggestionRoom({ ...card, approvalsLeft: 0 })).toBe(0)
-  expect(suggestionRoom({ ...card, approvalsLeft: 9, reviewers: [] })).toBe(SUGGESTED_MOST)
+  expect(suggestionRoom({ ...cardWith(), approvalsLeft: 9 })).toBe(SUGGESTED_MOST)
   expect(suggestedOf(card, [])).toEqual([])
 })
 

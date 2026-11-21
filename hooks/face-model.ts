@@ -139,19 +139,22 @@ export function suggestedFace(person: Person, picture: string | undefined): Face
 /** The most suggested faces a card draws: a choice of two, not a list of everyone a rule names. */
 export const SUGGESTED_MOST = 2
 
-/** A review asked for that has no verdict yet: that reviewer may still give one of the approvals the MR needs. */
-const isAwaited = (reviewer: MrCard['reviewers'][number]): boolean => !reviewer.isBot && reviewer.state !== 'approved' && reviewer.state !== 'requested_changes'
+/**
+ * Someone on the MR with no verdict yet, a reviewer asked or anyone who commented: they may still give one of the
+ * approvals it needs. Read from `people`, which a card shared between sessions keeps whole, where it keeps one reviewer.
+ */
+const isAwaited = (person: Person): boolean => !person.isBot && person.state !== 'approved' && person.state !== 'requested_changes'
 
 /**
- * How many reviewers a card suggests adding: the approvals it still needs, less the reviews asked for that have no
- * verdict yet, at most SUGGESTED_MOST. None on a draft or a closed MR, nor on one whose reviewers can give every approval
- * it needs: the pane suggests only where a review is missing.
+ * How many reviewers a card suggests adding: the approvals it still needs, less the people on it with no verdict yet, at
+ * most SUGGESTED_MOST. None on a draft or a closed MR, nor on one whose people can give every approval it needs: the pane
+ * suggests only where a review is missing.
  */
 export function suggestionRoom(card: MrCard): number {
   if (!card.isOpen || card.isDraft) {
     return 0
   }
-  return Math.max(0, Math.min(SUGGESTED_MOST, card.approvalsLeft - card.reviewers.filter(isAwaited).length))
+  return Math.max(0, Math.min(SUGGESTED_MOST, card.approvalsLeft - card.people.filter(isAwaited).length))
 }
 
 /**
