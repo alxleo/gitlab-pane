@@ -29,7 +29,9 @@ const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
   attemptedAt: null,
   failures: 0,
   ticketsAt: null,
+  ticketsAsked: [],
   usualAt: null,
+  usualAsked: [],
   adopted: '',
   refreshed: 0,
   inboxAt: null,
@@ -65,9 +67,6 @@ export async function readRows($: EngineInterface): Promise<MrCard[]> {
 }
 export async function readDetails($: EngineInterface): Promise<Record<string, MrCard>> {
   return keptCardsByKey(await read($, detailsAtom))
-}
-export function readTicketsKnown($: EngineInterface): Promise<Record<string, Ticket>> {
-  return read($, ticketsAtom)
 }
 export function readUsualKnown($: EngineInterface): Promise<Record<string, Usual>> {
   return read($, usualAtom)
@@ -161,10 +160,9 @@ export async function markUnreachable($: EngineInterface, urls: readonly string[
   }
 }
 
-/** Adds what Jira said about tickets, and when it was asked. */
-export async function mergeTickets($: EngineInterface, found: Record<string, Ticket>, at: number): Promise<void> {
-  await knowTickets($, found)
-  await changeReads($, reads => ({ ...reads, ticketsAt: at }))
+/** Records when Jira was asked about the tickets the titles name, and which, whatever it answered. */
+export async function markTicketsRead($: EngineInterface, at: number, asked: readonly string[]): Promise<void> {
+  await changeReads($, reads => ({ ...reads, ticketsAt: at, ticketsAsked: [...asked] }))
 }
 
 /** Adds what Jira said of some tickets, leaving when the whole list is next read as it was. */
@@ -183,9 +181,9 @@ export async function mergeUsual($: EngineInterface, usual: Record<string, Usual
   }
 }
 
-/** Records when a pass over the projects' run times ended. */
-export async function markUsualRead($: EngineInterface, at: number): Promise<void> {
-  await changeReads($, reads => ({ ...reads, usualAt: at }))
+/** Records when a pass over the projects' run times ended, and the projects it asked. */
+export async function markUsualRead($: EngineInterface, at: number, asked: readonly string[]): Promise<void> {
+  await changeReads($, reads => ({ ...reads, usualAt: at, usualAsked: [...asked] }))
 }
 
 /** What the footer says of the last read: written only when its words would change, as every write redraws the pane. */

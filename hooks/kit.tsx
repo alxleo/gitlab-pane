@@ -10,7 +10,9 @@ export function kitOf($: EngineInterface, e: RenderInput<'Pane'>, now: number) {
   const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
   // A phone draws a Select only when its app asked for one, else an empty Box, and the pane cannot tell which it got.
   const Select = e.surface !== 'mobile' ? elements.Select : undefined
-  return { ...elements, Svg, Select, e, now }
+  // So may an Input, so a phone has no search box.
+  const Input = e.surface !== 'mobile' ? elements.Input : undefined
+  return { ...elements, Svg, Select, Input, e, now }
 }
 
 export type Kit = ReturnType<typeof kitOf>

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gitlab-pane",
+  "description": "Your open GitLab merge requests beside a ChatGPT conversation.",
+  "license": "MIT",
+  "version": "0.4.4"
+}

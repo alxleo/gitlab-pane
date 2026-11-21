@@ -157,13 +157,19 @@ export type Fresh = {
   mergeError: string | null
   /** GitLab's `availableAutoMergeStrategies`, as it words them (`merge_when_checks_pass`). */
   strategies: readonly string[]
+  /** GitLab will squash it on merging (`squashOnMerge`): the project's rule where it always or never squashes, else the MR's own flag. */
+  squash: boolean
 }
 
 /**
  * What to do next for a move: rebase, merge (by a strategy, or now), look again in a moment, or stop and say how it
  * ended, `isDone` when it did what was pressed for (or as much as GitLab allows yet).
  */
-export type Step = { does: 'rebase' } | { does: 'merge'; head: string; strategy: MergeStrategyEnum | null } | { does: 'wait' } | { does: 'stop'; say: string; isDone: boolean }
+export type Step =
+  | { does: 'rebase' }
+  | { does: 'merge'; head: string; strategy: MergeStrategyEnum | null; squash: boolean }
+  | { does: 'wait' }
+  | { does: 'stop'; say: string; isDone: boolean }
 
 const done = (say: string): Step => ({ does: 'stop', say, isDone: true })
 const failed = (say: string): Step => ({ does: 'stop', say, isDone: false })
@@ -192,7 +198,7 @@ export function firstStep(kind: 'merge' | 'rebase' | 'rebase-merge', head: strin
   if (before.status !== 'MERGEABLE') {
     return failed(`cannot merge just now: GitLab says ${checkWords(before.status ?? 'nothing')}`)
   }
-  return { does: 'merge', head, strategy: nowStrategy(before) }
+  return { does: 'merge', head, strategy: nowStrategy(before), squash: before.squash }
 }
 
 /**
@@ -240,7 +246,7 @@ export function nextStep(kind: 'merge' | 'rebase' | 'rebase-merge', before: Fres
   }
   const strategy = now.status === 'MERGEABLE' ? nowStrategy(now) : whenStrategy(now)
   if (now.status === 'MERGEABLE' || strategy !== null) {
-    return { does: 'merge', head: now.head, strategy }
+    return { does: 'merge', head: now.head, strategy, squash: now.squash }
   }
   // The rebase is done; what is left is GitLab's to offer, which the row's own move then is.
   return isLast ? done('rebased; merge it once its checks pass') : { does: 'wait' }

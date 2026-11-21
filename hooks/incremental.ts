@@ -1,11 +1,11 @@
-// Reading only what changed. A whole read of the authored list costs GitLab 158 of the 250 a query may, and most polls find
-// nothing new, so between whole reads the leader asks for the MRs updated since the last one (`updatedAfter`), of every
+// Reading only what changed. A whole read of the authored list is the heaviest query (`COMPLEXITY.Authored`), and most polls
+// find nothing new, so between whole reads the leader asks for the MRs updated since the last one (`updatedAfter`), of every
 // state so that one merged or closed shows up as such. GitLab does not bump `updatedAt` when an MR's pipeline moves,
 // when another MR merges into its target and it starts to conflict, or when a rule changes, so those are read another
 // way: a running pipeline's MR is read on its own, the merge verdicts are read for all MRs every time, and a whole read
 // comes round every `FULL_EVERY_MS` for the rest. Pure, on plain data.
-import type { AuthoredScope } from './authored-request.ts'
-import type { GitLabVerdict } from './gitlab.ts'
+import type { AuthoredScope } from './ask-authored.ts'
+import type { GitLabVerdict } from './ask-merge-status.ts'
 import type { Cursor } from './snapshot.ts'
 import { isSettled } from './status.ts'
 
@@ -20,8 +20,6 @@ import type { MrCard } from '../types'
 export const FULL_EVERY_MS = 5 * 60_000
 /** A delta starts this long before the last read began, so a clock a little apart from GitLab's loses nothing. */
 export const OVERLAP_MS = 60_000
-/** Past this many running pipelines to read one by one, a whole read is cheaper than the single ones. */
-export const MOVING_MAX = 5
 
 /** A host's next read: from its cursor, or whole when it has none, its last whole read is old, or the person asked for a fresh one. */
 export function scopeFor(cursor: Cursor | undefined, now: number, isFresh: boolean): AuthoredScope {
@@ -46,23 +44,40 @@ export type HostFound = {
   base: readonly MrCard[]
   /** The authored read: every open MR for a whole read, those changed (any state) for a delta. */
   fetched: readonly MrCard[]
-  /** MRs read one by one: pinned ones the authored list lacks, and running pipelines. Any state. */
+  /** MRs read one by one: pinned ones the authored list lacks, running pipelines, and those whose row needs its jobs. Any state. */
   singles: readonly MrCard[]
   /** Keys pinned by any session, whose closed MRs are kept so each session can unpin its own. */
   pinned: ReadonlySet<string>
   /** GitLab's verdicts by card key, or null when the host has none or could not be asked. */
   verdicts: ReadonlyMap<string, GitLabVerdict> | null
+  /** Keys of fetched MRs whose jobs were wanted (`needsJobs`) and could not be read. */
+  withoutJobs: ReadonlySet<string>
 }
 
 /**
  * The host's rows after a read. A whole read starts from nothing; a delta from the rows known, less the closed ones nobody
  * pins any more. A card read opens or replaces its row, and one that is closed stays only while pinned. An open row keeps
- * its last verdict through a delta that brings none.
+ * its last verdict through a delta that brings none, and one whose jobs could not be read keeps the jobs it had of the
+ * same pipeline in the same state; of another it shows none, and the read says why (`notes` in `read-gitlab.ts`).
  */
-export function mergeReads({ scope, base, fetched, singles, pinned, verdicts }: HostFound): MrCard[] {
+export function mergeReads({ scope, base, fetched, singles, pinned, verdicts, withoutJobs }: HostFound): MrCard[] {
   const before = new Map(base.map(row => [row.key, row]))
   const rows = new Map(scope === 'since' ? base.filter(row => row.isOpen || pinned.has(row.key)).map(row => [row.key, row]) : [])
-  for (const card of [...fetched, ...singles]) {
+  const withJobs = fetched.map(card => {
+    const known = withoutJobs.has(card.key) ? before.get(card.key)?.pipeline : undefined
+    const { pipeline } = card
+    if (pipeline === undefined || known === undefined || known.id !== pipeline.id || known.status !== pipeline.status) {
+      return card
+    }
+    // What the list said of the pipeline stands; what only its jobs say comes from the row before.
+    const stages = pipeline.stages.map(stage => {
+      const was = known.stages.find(each => each.name === stage.name)
+      return was !== undefined ? { ...stage, jobs: was.jobs, ran: was.ran } : stage
+    })
+    const { failed, amber, blockedOn, moreJobs, moreFailed, moreAmber } = known
+    return { ...card, pipeline: { ...pipeline, stages, failed, amber, blockedOn, moreJobs, moreFailed, moreAmber } }
+  })
+  for (const card of [...withJobs, ...singles]) {
     if (card.isOpen || pinned.has(card.key)) {
       rows.set(card.key, card)
     } else {

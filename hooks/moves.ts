@@ -6,7 +6,9 @@ import { quietly } from './failures'
 import { ask, askRest } from './graphql'
 import { projectOf } from './hosts'
 import { parseRemote } from './inbox-refs'
-import { mergeRefusal, mergeWrite, moveStateQuery, readMoveState, rebasePath, rebaseRefusal } from './merge-gitlab'
+import { mergeRefusal, mergeWrite } from './ask-merge'
+import { moveStateQuery, readMoveState } from './ask-move-state'
+import { rebasePath, rebaseRefusal } from './ask-rebase'
 import { lines } from './model-text'
 import { afterSend, ARMED_MS, conflictsTask, decidePress, firstStep, FOLLOW_MS, moveId, nextStep, pressOf } from './next-move'
 import type { Fresh, Step } from './next-move'
@@ -58,7 +60,7 @@ async function freshOf($: EngineInterface, card: MrCard): Promise<Fresh> {
 async function send($: EngineInterface, card: MrCard, step: Extract<Step, { does: 'merge' | 'rebase' }>): Promise<Refusal | null> {
   try {
     if (step.does === 'merge') {
-      return mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, step.head, step.strategy)))
+      return mergeRefusal(await ask($, card.host, mergeWrite(card.path, card.iid, step.head, step.strategy, step.squash)))
     }
     return rebaseRefusal(
       await askRest($, card.host, rebasePath(card.path, card.iid), {

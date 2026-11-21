@@ -4,13 +4,13 @@ A Claude Code plugin (`gitlab-pane`) that shows your GitLab merge requests besid
 
 | Mine: your MRs, what needs you first | Inbox: reviews, mentions, failures |
 |---|---|
-| ![The Mine tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png) | ![The Inbox tab](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png) |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-dark.png"><img alt="The Mine tab" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox-dark.png"><img alt="The Inbox tab" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/inbox.png"></picture> |
 | **A title: the MR on a page of its own** | **A name or a quoted comment: what that person wrote** |
-| ![One MR read whole](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png) | ![One reviewer's comments](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png) |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-dark.png"><img alt="One MR read whole" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person-dark.png"><img alt="One reviewer's comments" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-person.png"></picture> |
 | **☆: the MRs you work on today, the rest one line** | **↩ reply: answer a thread beside its diff, once you confirm** |
-| ![One MR pinned, the rest folded](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png) | ![A reply under a thread, waiting to be confirmed](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-reply.png) |
-| **Pane closed: the inbox's news above the prompt** | |
-| ![The band above the prompt](https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band.png) | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned-dark.png"><img alt="One MR pinned, the rest folded" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-pinned.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-reply-dark.png"><img alt="A reply under a thread, waiting to be confirmed" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/reading-reply.png"></picture> |
+| **Pane closed: the inbox's news above the prompt** | **▸ N merged: what landed lately, and its build on the branch** |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band-dark.png"><img alt="The band above the prompt" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/band.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-merged-dark.png"><img alt="Your merged MRs opened, each with the build of the commit that landed" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/mine-merged.png"></picture> |
 
 <sub>Made-up data.</sub>
 
@@ -22,17 +22,19 @@ flowchart LR
   poll -->|MR can merge| ready["Session wakes:<br/>!iid can merge"]
 ```
 
-Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it.
+Each wake comes once per pipeline. MRs pinned with `watch_mr`, or with the star at a card's top right, sit on top too, but only toast. While a session has MRs on top, the rest of its list folds to one line; each session keeps its own. A ready MR untouched for a week folds under Parked until something moves on it. Last in Mine, `▸ N merged` folds your MRs merged in the last three days (five at most), each with how long ago and the build GitLab ran on the commit that landed on its target branch; only a failed build is said on the folded line, and none of it wakes or toasts. The `🔍` box at the top of Mine finds an MR the pane holds by its number (`!512`), its ticket (`ABC-123` or `abc123`) or words of its title, branch, repo or author, open, merged or in the inbox, whatever repo is picked and whatever is folded.
 
 While the inbox has news and the pane's tabs are out of sight (the pane closed, too narrow to draw, or an MR's page open), a band above the prompt says `Inbox · N new`, in every session; pressing it opens the pane on the Inbox tab. While no session draws the pane, one session with a window still reads the inbox each minute, and no MR list, so the band keeps up.
 
-A card's move stands where GitLab's verdict is: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
+MRs GitLab says can merge come first, each with its links, approvers and the commit a merge takes. A card's move leads its second line, in the same place on every card: `✓ merge` on an MR GitLab says can merge, pressed twice; `↻ rebase` on one behind its target, which also merges once checks pass when nothing else holds it; and `⇄ hand conflicts to Claude` on one with conflicts in the repo the session works in, which pins it there and asks Claude to resolve them in a subagent. Each is offered only where you may make it, and the card says when it is done or why not. [DESIGN.md](https://github.com/alxleo/gitlab-pane/blob/main/DESIGN.md#moves) has each one.
 
 ## Install
 
 ```bash
 claude plugin install gitlab-pane --marketplace alxleo/gitlab-pane
 ```
+
+Every change is tested on two Claude Code versions: the one CI pins, and the one the stable release channel installed when CI last caught up with it. The newest release is tested every week, and a failure there opens an issue.
 
 Renamed from `gitlab-ci` in 0.3.0. The marketplace tells Claude Code of the rename, so an installed or enabled `gitlab-ci@gitlab-pane` moves to `gitlab-pane@gitlab-pane` by itself. The store (avatars, seen marks) starts empty, the plugin's options may need setting again, and a permission rule for `mcp__gitlab-ci__watch_mr` must be added again as `mcp__gitlab-pane__watch_mr`.
 
@@ -52,6 +54,20 @@ For a team, in the project's `.claude/settings.json`:
 - `ref` pins a [release](https://github.com/alxleo/gitlab-pane/releases); raise it to update. v0.3.0 is the first under the name `gitlab-pane`: an older tag knows only `gitlab-ci`. Without it, every update installs main, which runs with your GitLab and Jira sign-ins.
 - From the first `plugin-v*` tag, `"ref": "plugin-v<version>"` pins too, and installs only the plugin's files.
 - `claude plugin update gitlab-pane@gitlab-pane` updates; a running session keeps its copy until `/reload-plugins`.
+
+## In ChatGPT
+
+The same list of your MRs, with the same moves, in a panel beside a ChatGPT conversation. It is drawn from the same rows as the pane, by the same code.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/chatgpt-panel-dark.png"><img alt="The ChatGPT panel" width="420" src="https://raw.githubusercontent.com/alxleo/gitlab-pane/main/docs/screens/chatgpt-panel.png"></picture>
+
+In ChatGPT's desktop app, add this repository's releases as a plugin marketplace, then install "GitLab MRs" from it in the Plugins Directory:
+
+```bash
+codex plugin marketplace add alxleo/gitlab-pane --ref release
+```
+
+In a chat that runs locally, open "My merge requests" among the chat's side panels. The plugin's server runs on your machine, so it reaches a GitLab only your network can, with the token you already have (`GITLAB_TOKEN`, or `glab auth login`; `GITLAB_PANE_HOST` names a host other than gitlab.com). It needs Node 22 or newer on your PATH. `✓ merge` takes two presses, as in the pane; only the panel can press it, never the model, and the model is given no titles or comments. A local plugin works in the desktop app only, and a company workspace's policy may refuse it.
 
 ## Commands
 
@@ -93,6 +109,7 @@ Queries, as you. GitLab is written to only when you press a merge or a rebase, o
 | GraphQL, per raised MR, in a session that draws no pane | 5 min | that MR, so its wakes still fire | — |
 | GraphQL, per repo, by the leader | 30 min, and for a new repo | usual pipeline times | the times |
 | GraphQL, per host, by the leader; while no session draws the pane, by one session with a window | 1 min | Inbox: to-dos, review queue, your MRs, one per `inboxFollow` entry | the inbox; ✓ seen marks (GitLab's to-dos are untouched) |
+| GraphQL, one query per MR, by whoever reads the inbox (the leader; while no session draws the pane, one session with a window), after the inbox is shown, so a slow answer holds nothing else back; `GET …/merge_requests/<iid>` once for a merge that left no merge commit | 1 min, in the first hour after the merge, for a build that is running or has not started; 10 min, or at once on ↻, for one that failed, was canceled or waits to be run by hand, for one still unfinished after that hour, for a squash commit GitLab would not name, and for anything GitLab did not answer; never again for a build that passed or was skipped; the squash commit, once read, never | the build of the commit each lately merged MR put on its target branch (a pipeline a schedule started is not one), and the squash commit when the merge was a fast-forward | in the inbox's snapshot |
 | GraphQL; with `failureLogs`, `GET …/jobs/<job>/trace` (last 64 KiB, up to 3 jobs), by the leader, or by the raising session if it draws no pane | once, when a raised MR's pipeline fails | why each job failed | in the snapshot |
 | `acli jira workitem search`, in each session that draws | 15 min, and for a new key | ticket status | — |
 | `acli jira workitem search`, then `acli jira workitem transition --key <ticket> --status <status>`, by the leader | after a read, only when a ticket is due a move (a failed ask is tried again after 15 min) | moving a ticket: its key and the status name, nothing else | each step done, as `jira-move:<ticket>><step>` |

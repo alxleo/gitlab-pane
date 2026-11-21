@@ -3,9 +3,9 @@ import type { EngineInterface } from 'claude-code'
 
 import { ensureDetail } from './detail'
 import { quietly } from './failures'
-import { replyMutation } from './page-documents'
+import { postedOf, replyMutation } from './ask-reply'
 import { ask } from './graphql'
-import { CLOSED, decideArm, decidePost, mayTakeBack, openedBox, postedOf, replyId, sayOf, tooLong } from './reply-model'
+import { CLOSED, decideArm, decidePost, mayTakeBack, openedBox, replyId, sayOf, tooLong } from './reply-model'
 import { refusalOf } from './write-model'
 import { claimWrite, forgetWrite, setWrite } from './writes'
 
