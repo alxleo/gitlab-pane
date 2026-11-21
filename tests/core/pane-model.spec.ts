@@ -7,6 +7,7 @@ import { cardKey, projectOf } from '../../hooks/hosts.ts'
 import { shortHash } from '../../hooks/identity.ts'
 import { pinKey } from '../../hooks/mr-url.ts'
 import { toCard } from '../../hooks/mr-card.ts'
+import { MERGED_ROW_SIZE } from '../../hooks/landed-model.ts'
 import { buildPane, inboxBand, MINE_SHOWN } from '../../hooks/pane-model.ts'
 import type { PaneInput, Piece, RowModel } from '../../hooks/pane-model.ts'
 import { pickedRepo, REPO_ALL } from '../../hooks/repo-filter.ts'
@@ -62,9 +63,9 @@ test('beside the tabs, the age of the cards, and ↻ dim while this session read
   const failed = { fetchedAt: NOW - 600_000, error: 'connection refused', hosts: { [HOST]: { fetchedAt: NOW - 600_000, error: 'connection refused' } } }
   expect(modelOf([], { poll: failed }).status).toEqual({ text: 'updated 10m ago', isWarning: true })
   expect(modelOf([], { poll: failed }).footer).toMatchObject({ text: 'GitLab read failed: connection refused; showing 10m old data', isWarning: true })
-  // Whether a raised MR wakes Claude is a bell, struck through once wakes are off.
-  expect(modelOf([]).wake).toBe('🔔')
-  expect(modelOf([], { isWaking: false }).wake).toBe('🔕')
+  // Whether a raised MR wakes Claude is a bell, struck through once wakes are off, which says so under the pointer.
+  expect(modelOf([]).wake).toEqual({ mark: '🔔', hint: 'raised MRs wake Claude' })
+  expect(modelOf([], { isWaking: false }).wake).toEqual({ mark: '🔕', hint: "raised MRs don't wake Claude" })
 })
 
 test('the band above the prompt says the inbox news only while the pane shows no tabs that say it, and gives way to a survey', () => {
@@ -332,11 +333,13 @@ test("the user's merged MRs fold last in Mine without joining its count, its fol
 test('an open merged section leaves the list less room, by what its rows may take, and a folded one leaves it all', () => {
   const cards = [51, 52, 53, 54, 55].map(iid => toCard(HOST, rawMr(iid)))
   const landed = [landedOf(61), landedOf(62)]
-  const drawn = (over: Partial<PaneInput>) => modelOf(cards, { landed, ...over }, () => 1_000, 4_000).mine.rows.filter(row => row.fit.isDrawn).length
-  expect(drawn({})).toBe(4)
-  expect(drawn({ expanded: ['merged'] })).toBe(2)
+  // Room for four cards of 1,000 and the two merged rows' room besides, so opening them takes exactly that.
+  const room = 4_000 + 2 * MERGED_ROW_SIZE
+  const drawn = (over: Partial<PaneInput>) => modelOf(cards, { landed, ...over }, () => 1_000, room).mine.rows.filter(row => row.fit.isDrawn).length
+  expect(drawn({})).toBe(5)
+  expect(drawn({ expanded: ['merged'] })).toBe(4)
   // Nothing to say, nothing taken.
-  expect(drawn({ landed: [], expanded: ['merged'] })).toBe(4)
+  expect(drawn({ landed: [], expanded: ['merged'] })).toBe(5)
 })
 
 test('an MR the list still draws is not also said merged, and the section follows the repo picked as the list does', () => {
@@ -398,7 +401,7 @@ test("a search finds the user's merged MRs and others' in the inbox as links, le
   const inbox: InboxMr[] = [
     { host: HOST, path: 'g/p', iid: 71, title: 'Retry the queue', url: `https://${HOST}/g/p/-/merge_requests/71`, author: 'sam', authorName: 'Sam', isMine: false },
   ].map(each => ({ ...each, state: 'opened', isDraft: false, inQueue: false, isFollowed: false, cutoff: null, signals: [] }))
-  const model = modelOf(cards, { landed, inbox, search: 'retry', expanded: ['merged'] }, () => 1_000, 5_000)
+  const model = modelOf(cards, { landed, inbox, search: 'retry', expanded: ['merged'] }, () => 1_000, 2 * MERGED_ROW_SIZE + 3_500)
   expect(model.found?.heading).toBe('Found · 7')
   expect(model.found?.merged.map(row => row.key)).toEqual([cardKey(HOST, 'g/p', 61)])
   expect(model.found?.inbox).toEqual([
@@ -411,7 +414,7 @@ test("a search finds the user's merged MRs and others' in the inbox as links, le
   ])
   // The merged section is what the search found of it, so it is not drawn again below.
   expect(model.merged).toBeNull()
-  // Two link rows take what two merged rows do (1,400 of 5,000), leaving three cards of 1,000.
+  // Two link rows take what two merged rows do, leaving three cards of 1,000.
   expect(model.found?.rows.filter(row => row.fit.isDrawn)).toHaveLength(3)
   expect(model.leftOut).toBe('2 more MRs left out to stay within what the app draws.')
 })

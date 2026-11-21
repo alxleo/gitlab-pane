@@ -12,7 +12,9 @@ export function kitOf($: EngineInterface, e: RenderInput<'Pane'>, now: number) {
   const Select = e.surface !== 'mobile' ? elements.Select : undefined
   // So may an Input, so a phone has no search box.
   const Input = e.surface !== 'mobile' ? elements.Input : undefined
-  return { ...elements, Svg, Select, Input, e, now }
+  // Only the desktop app was seen drawing a description under the pointer; elsewhere a symbol keeps its words beside it.
+  const showsHints = e.surface === 'desktop' && Svg !== undefined
+  return { ...elements, Svg, Select, Input, showsHints, e, now }
 }
 
 export type Kit = ReturnType<typeof kitOf>

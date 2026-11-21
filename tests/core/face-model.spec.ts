@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { faceFacts, REVIEW_MARK, THREAD_MARK } from '../../hooks/face-model.ts'
+import { HINT_ROOM } from '../../hooks/drawing.ts'
+import { faceFacts, REVIEW_MARK, REVIEW_STATE, THREAD_MARK } from '../../hooks/face-model.ts'
 import type { Note, Person, PersonState } from '../../types'
 
 const STATES = Object.keys(REVIEW_MARK).filter((state): state is PersonState => state in REVIEW_MARK)
@@ -32,6 +33,18 @@ test('every face, with or without a picture, draws its badge in both shades insi
       // An open thread is the badge unless they asked for changes, which outranks it.
       expect(face.glyph).toBe(person.state !== 'requested_changes' && person.openThreads > 0 ? THREAD_MARK.glyph : REVIEW_MARK[person.state].glyph)
       expect(face.alt).toContain(person.name)
+    })
+  )
+})
+
+test("a face's hover says its badge in the Badge table's words, with the threads they hold, short enough for a narrow pane", () => {
+  fc.assert(
+    fc.property(personArb, fc.nat(999), (person, openThreads) => {
+      const face = faceFacts({ ...person, openThreads }, undefined)
+      expect(face.hint.startsWith(REVIEW_STATE[person.state])).toBe(true)
+      expect(face.hint.endsWith('open thread') || face.hint.endsWith('open threads')).toBe(face.glyph === THREAD_MARK.glyph)
+      expect(face.hint.length).toBeLessThanOrEqual(HINT_ROOM)
+      expect(face.alt).toBe(`${person.name}, ${face.hint}`)
     })
   )
 })

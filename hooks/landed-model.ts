@@ -6,7 +6,7 @@ import { shorten } from './graphemes.ts'
 import { cardKey, projectOf } from './hosts.ts'
 import { shortHash } from './identity.ts'
 import { recentOf } from './landed.ts'
-import { statusMark } from './status.ts'
+import { markWord, statusMark } from './status.ts'
 import type { Glyph, Tone } from './status.ts'
 
 import type { Landed } from '../types'
@@ -19,17 +19,18 @@ export const mrLinkText = (iid: number, title: string): string => `${LINK.mr} !$
 
 /**
  * The most characters an open row draws to, which the list leaves room for in the drawing budget for each: five rows of the
- * longest title and addresses the model allows measured 3,440 in all, under 700 each.
+ * longest title and addresses the model allows, with the chips their link and mark show once the pointer rests, measured
+ * 7,659 in all, under 1,600 each.
  */
-export const MERGED_ROW_SIZE = 700
+export const MERGED_ROW_SIZE = 1_600
 
 type Link = { href: string; text: string }
 
 /**
- * The build of the commit that landed: its mark in its status's colour, then where its pipeline is, or `none` when GitLab ran
- * none; or the words saying that the commit could not be told, so no build is drawn.
+ * The build of the commit that landed: its mark in its status's colour with its status in words for the hover, then where its
+ * pipeline is, or `none` when GitLab ran none; or the words saying that the commit could not be told, so no build is drawn.
  */
-type BuildFacts = { kind: 'mark'; glyph: Glyph; tone: Tone; link: Link | null } | { kind: 'unknown'; words: string }
+type BuildFacts = { kind: 'mark'; glyph: Glyph; tone: Tone; word: string; link: Link | null } | { kind: 'unknown'; words: string }
 
 export type MergedRow = {
   /** The MR's card key, unique across hosts, and the short form of it the row's box is keyed by. */
@@ -58,7 +59,13 @@ function buildOf(each: Landed): BuildFacts {
     return { kind: 'unknown', words: UNKNOWN_BUILD }
   }
   const { glyph, tone } = statusMark(each.build?.status)
-  return { kind: 'mark', glyph, tone, link: each.build !== null ? { href: each.build.url, text: `${LINK.pipeline} ${each.targetBranch}` } : null }
+  return {
+    kind: 'mark',
+    glyph,
+    tone,
+    word: markWord(each.build?.status),
+    link: each.build !== null ? { href: each.build.url, text: `${LINK.pipeline} ${each.targetBranch}` } : null,
+  }
 }
 
 /**

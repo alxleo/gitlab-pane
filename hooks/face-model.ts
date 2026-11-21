@@ -47,6 +47,8 @@ export type FaceFacts = {
   tone: Tone
   /** The badge's glyph, the person's mark where no Svg is drawn. */
   glyph: string
+  /** What the badge says, in the Badge table's words: the face's hover, and its `alt` after the name. */
+  hint: string
   alt: string
   /** Their initials on a disc, or a robot. */
   plain: SvgSource
@@ -96,10 +98,12 @@ export function faceFacts(person: Person, picture: string | undefined): FaceFact
   const around = (inner: SvgSource): SvgSource =>
     svg`<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='-3 -3 22 22'>${followingTheme(raw([inner, badge]))}</svg>`
   const disc = person.isBot ? BOT_MARKS : discMarks(person.username, 16, person.initials)
+  const hint = `${REVIEW_STATE[person.state]}${mark === THREAD_MARK ? `, ${plural(person.openThreads, 'open thread')}` : ''}`
   return {
     tone: mark.tone,
     glyph: mark.glyph,
-    alt: `${person.name}, ${REVIEW_STATE[person.state]}${mark === THREAD_MARK ? `, ${plural(person.openThreads, 'open thread')}` : ''}`,
+    hint,
+    alt: `${person.name}, ${hint}`,
     plain: around(disc),
     picture:
       picture !== undefined && picture !== ''

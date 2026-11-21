@@ -1,36 +1,22 @@
-// A pipeline's stage strip as plain data. One image per row. Passed stages are drawn as runs of a repeating square and
-// counted in the image's tooltip; any other stage is its own square with its name, state and time. A surface without
-// Svg gets a glyph per stage, from `tones`. Pure; the draw layer only puts the source in an Svg.
+// A pipeline's stage strip as plain data. One image per row. Passed stages are drawn as runs of a repeating square; any
+// other stage is its own square. What each stage is (its name, state and time) is the strip's description, a line a stage,
+// with the passed ones counted in one, shown once the pointer rests on it. A surface without Svg gets a glyph per stage, from
+// `tones`. Pure; the draw layer only puts the source in an Svg.
 import { duration, plural, ranFor } from './format.ts'
-import { followingTheme, stageTone, tonePaint } from './status.ts'
+import { followingTheme, stageTone, STATUS_WORD, tonePaint } from './status.ts'
 import type { Tone } from './status.ts'
 import { raw, svg } from './svg.ts'
 import type { SvgSource } from './svg.ts'
 
-import type { CiStatus, Stage } from '../types'
-
-const STATUS_WORD: Record<CiStatus, string> = {
-  success: 'passed',
-  failed: 'failed',
-  running: 'running',
-  pending: 'queued',
-  created: 'not started',
-  manual: 'waiting on a manual job',
-  scheduled: 'scheduled',
-  skipped: 'skipped',
-  canceled: 'canceled',
-  canceling: 'canceling',
-  preparing: 'preparing',
-  waiting_for_resource: 'waiting for a resource',
-  waiting_for_callback: 'waiting for a callback',
-  unknown: 'in a state this pane does not know',
-}
+import type { Stage } from '../types'
 
 export type StripModel = {
   /** One tone per stage, for a surface that draws a glyph for each. */
   tones: Tone[]
   width: number
   alt: string
+  /** The description, a line each: how many stages passed, then every other stage as `stageLine` says it, in order. */
+  hint: string[]
   source: SvgSource
 }
 
@@ -46,7 +32,7 @@ const passed = (stage: Stage | undefined): boolean => stage?.status === 'success
 export function stripModel(stages: Stage[], now: number): StripModel {
   const marks = stages.map((stage, i) => {
     if (!passed(stage)) {
-      return svg`<use href='#s' x='${i * 12}' ${tonePaint('fill', stageTone(stage.status))}><title>${stageLine(stage, now)}</title></use>`
+      return svg`<use href='#s' x='${i * 12}' ${tonePaint('fill', stageTone(stage.status))}/>`
     }
     if (passed(stages[i - 1])) {
       return svg``
@@ -60,7 +46,8 @@ export function stripModel(stages: Stage[], now: number): StripModel {
     tones: stages.map(stage => stageTone(stage.status)),
     width,
     alt: `${stages.length} stages`,
+    hint: [...(count > 0 ? [`${plural(count, 'stage')} passed`] : []), ...stages.filter(stage => !passed(stage)).map(stage => stageLine(stage, now))],
     // Passed runs fill with the pattern, so it is there only when a stage passed.
-    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${raw(count > 0 ? svg`<title>${plural(count, 'stage')} passed</title>` : svg``)}${followingTheme(raw([svg`<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>`, ...marks]))}</svg>`,
+    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${followingTheme(raw([svg`<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>`, ...marks]))}</svg>`,
   }
 }

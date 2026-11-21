@@ -1,13 +1,16 @@
 import type { EngineInterface, RenderChildren } from 'claude-code'
 
+import { CONTROL, opens } from './drawing'
 import { face } from './faces'
 import type { InboxRow } from './found-model'
+import { AT_END, hinted } from './hint'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
 import { openReading } from './panes'
 import { togglePin } from './shared'
 import type { RowModel } from './pane-model'
+import { markWord, statusMark } from './status'
 import { strip } from './strip'
 
 /** The parts of a row the pane fits to its room. */
@@ -45,7 +48,7 @@ function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['m
             <Text dimColor>{move.label}</Text>
           ),
         ]),
-    ...(row.head !== null ? [<Link href={row.head.href}>{row.head.text}</Link>] : []),
+    ...(row.head !== null ? [hinted(kit, `hint-head-${row.suffix}`, opens('commit'), <Link href={row.head.href}>{row.head.text}</Link>)] : []),
     ...(trailing !== null ? [<Text dimColor>{trailing}</Text>] : []),
     ...(move !== null && move.failed !== null ? [<Text color="warning">{move.failed}</Text>] : []),
   ]
@@ -53,8 +56,8 @@ function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['m
 
 /**
  * One part of a row's card from the row model: its title line, its second line with or without pictures on the faces, and
- * the one comment it quotes. Only what the model decided is drawn here. Nothing on a card shows or hides on a hover: the
- * MR's page, a press on the title away, holds the rest of it.
+ * the one comment it quotes. Only what the model decided is drawn here. Nothing on a card shows or hides on a hover but a
+ * symbol's description, drawn over the card (`hinted`): the MR's page, a press on the title away, holds the rest of it.
  */
 export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowPart): RenderChildren {
   const { Box, Text, Button, Link } = kit
@@ -86,7 +89,14 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
             {row.ago}
           </Text>
           {/* The star at the top right, as anywhere else, dim while hollow: the label alone, which the desktop app draws. */}
-          {pin !== null && <Button key={pin.key} plain dimColor={pin.mark === '☆'} label={pin.mark} onPress={() => togglePin($, pin.press, pin.mr)} />}
+          {pin !== null &&
+            hinted(
+              kit,
+              scope('hint-pin'),
+              pin.hint,
+              <Button key={pin.key} plain dimColor={pin.mark === CONTROL.pin.mark} label={pin.mark} onPress={() => togglePin($, pin.press, pin.mr)} />,
+              AT_END
+            )}
         </Box>
       )
     }
@@ -107,12 +117,20 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           )}
           {/* A Link takes no flex props, so this box keeps the links whole when the line wraps. */}
           <Box flexDirection="row" gap={1} flexShrink={0}>
-            <Link href={row.mr.href}>{row.mr.text}</Link>
-            {row.ticket !== null && (row.ticket.href !== null ? <Link href={row.ticket.href}>{row.ticket.text}</Link> : <Text dimColor>{row.ticket.text}</Text>)}
-            {row.repo !== null && <Link href={row.repo.href}>{row.repo.text}</Link>}
+            {hinted(kit, scope('hint-mr'), opens('mr'), <Link href={row.mr.href}>{row.mr.text}</Link>)}
+            {row.ticket !== null &&
+              (row.ticket.href !== null ? (
+                hinted(kit, scope('hint-ticket'), opens('jira'), <Link href={row.ticket.href}>{row.ticket.text}</Link>)
+              ) : (
+                <Text dimColor>{row.ticket.text}</Text>
+              ))}
+            {row.repo !== null && hinted(kit, scope('hint-repo'), opens('repo'), <Link href={row.repo.href}>{row.repo.text}</Link>)}
           </Box>
-          {row.strip !== null && strip(kit, row.strip)}
-          {row.pipeline !== null ? <Link href={row.pipeline.href}>{row.pipeline.text}</Link> : <Text dimColor>no pipeline</Text>}
+          {/* The strip says its stages, a line each, once the pointer rests on it. */}
+          {row.strip !== null && hinted(kit, scope('hint-strip'), row.strip.hint, strip(kit, row.strip))}
+          {row.pipeline !== null
+            ? hinted(kit, scope('hint-pipeline'), opens('pipeline'), <Link href={row.pipeline.href}>{row.pipeline.text}</Link>)
+            : noPipeline(kit, scope('hint-pipeline'))}
           {row.verdict !== null
             ? said.length > 0 && (
                 <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
@@ -125,13 +143,18 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
                   <Text color={row.blocker.tone}>{row.blocker.text}</Text>
                 </Box>
               )}
-          {/* A name opens the MR's page on that person's comments alone. */}
-          {row.people.map(person => (
-            <Box flexDirection="row" alignItems="center" flexShrink={0}>
-              {face(kit, person, withPictures)}
-              <Button key={scope(`person-${person.username}`)} plain label={person.label} onPress={() => openReading($, row.key, person.username)} />
-            </Box>
-          ))}
+          {/* A name opens the MR's page on that person's comments alone; the face or the name says where they stand. */}
+          {row.people.map(person =>
+            hinted(
+              kit,
+              scope(`hint-person-${person.username}`),
+              person.hint,
+              <Box flexDirection="row" alignItems="center" flexShrink={0}>
+                {face(kit, person, withPictures)}
+                <Button key={scope(`person-${person.username}`)} plain label={person.label} onPress={() => openReading($, row.key, person.username)} />
+              </Box>
+            )
+          )}
         </Box>
       )
     }
@@ -147,14 +170,20 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
   }
 }
 
+/** No pipeline: its mark, which says so under the pointer, or the words where nothing hovers. */
+function noPipeline(kit: Kit, key: string): RenderChildren {
+  const { Text } = kit
+  const { glyph, tone } = statusMark(undefined)
+  return kit.showsHints ? hinted(kit, key, markWord(undefined), <Text color={tone}>{glyph}</Text>) : <Text dimColor>{markWord(undefined)}</Text>
+}
+
 /** An inbox MR a search found: its link, then its repo and who wrote it, dim. */
 export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
   const { Box, Text, Link } = kit
   return (
     <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
-      <Box flexShrink={0}>
-        <Link href={row.mr.href}>{row.mr.text}</Link>
-      </Box>
+      {/* A Link takes no flex props, so this box keeps it whole when the line wraps. */}
+      <Box flexShrink={0}>{hinted(kit, `hint-${row.boxKey}`, opens('mr'), <Link href={row.mr.href}>{row.mr.text}</Link>)}</Box>
       <Text dimColor size="footnote">
         {row.about}
       </Text>
@@ -173,9 +202,7 @@ export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
   return (
     <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
       {/* A Link takes no flex props, so this box keeps it whole when the line wraps. */}
-      <Box flexShrink={0}>
-        <Link href={row.mr.href}>{row.mr.text}</Link>
-      </Box>
+      <Box flexShrink={0}>{hinted(kit, `hint-mr-${row.boxKey}`, opens('mr'), <Link href={row.mr.href}>{row.mr.text}</Link>)}</Box>
       <Text dimColor size="footnote">
         {row.ago}
       </Text>
@@ -183,8 +210,11 @@ export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
         <Text dimColor>{build.words}</Text>
       ) : (
         <Box flexDirection="row" gap={1} flexShrink={0}>
-          <Text color={build.tone}>{build.glyph}</Text>
-          {build.link !== null ? <Link href={build.link.href}>{build.link.text}</Link> : <Text dimColor>no pipeline</Text>}
+          {hinted(kit, `hint-build-${row.boxKey}`, build.word, <Text color={build.tone}>{build.glyph}</Text>)}
+          {/* Under the pointer the mark says there is none; where nothing hovers, the words do. */}
+          {build.link !== null
+            ? hinted(kit, `hint-pipeline-${row.boxKey}`, opens('pipeline'), <Link href={build.link.href}>{build.link.text}</Link>)
+            : !kit.showsHints && <Text dimColor>{build.word}</Text>}
         </Box>
       )}
     </Box>

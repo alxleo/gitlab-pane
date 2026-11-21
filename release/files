@@ -27,6 +27,8 @@ hooks/gitlab-operations.ts
 hooks/gitlab-status.ts
 hooks/graphemes.ts
 hooks/graphql.ts
+hooks/hint-chip.ts
+hooks/hint.tsx
 hooks/hosts.ts
 hooks/identity.ts
 hooks/in-flight.ts

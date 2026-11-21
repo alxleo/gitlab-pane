@@ -11,7 +11,33 @@ import type {
 } from '../hooks/gitlab.generated.ts'
 import type { CheckStatus, MergeStatus } from '../types'
 import { present } from '../hooks/decode.ts'
+import { LINK } from '../hooks/drawing.ts'
 import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/mr-fragments.ts'
+
+/** An element of a drawn tree, as far as `unhinted` reads one. */
+type DrawnNode = { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
+
+const isNode = (node: unknown): node is DrawnNode => typeof node === 'object' && node !== null && (!('children' in node) || Array.isArray(node.children))
+
+/**
+ * The symbols a desktop drawing shows without a chip to say what they mean: a picture, a link led by a link mark, or a label
+ * of symbols and digits alone (`☆`, `○`, `✓1`, `!140`), anywhere but inside a box keyed `hint-`. Every symbol says what it
+ * means once the pointer rests, so this is empty on every desktop view; a symbol drawn some new way shows up here.
+ */
+export const unhinted = (node: unknown, isHinted = false): string[] => {
+  if (!isNode(node)) {
+    return []
+  }
+  const key = node.props?.['key']
+  const here = isHinted || (node.type === 'Box' && typeof key === 'string' && key.startsWith('hint-'))
+  const text = [...(node.children ?? []), node.props?.['label']].filter((part): part is string => typeof part === 'string').join('')
+  const isSymbol =
+    node.type === 'Svg' ||
+    (node.type === 'Link' && Object.values(LINK).some(mark => text.startsWith(mark))) ||
+    ((node.type === 'Text' || node.type === 'Button' || node.type === 'Link') && text.trim() !== '' && !/\p{L}/u.test(text))
+  const said = node.type === 'Svg' ? String(node.props?.['alt']) : text
+  return [...(isSymbol && !here ? [`${String(node.type)} ${said}`] : []), ...(node.children ?? []).flatMap(child => unhinted(child, here))]
+}
 
 /** The host the made-up GitLab answers as, unless a test says another. */
 export const HOST = 'gitlab.com'

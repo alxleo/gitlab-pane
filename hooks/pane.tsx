@@ -3,8 +3,9 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 import { drawFound, drawMerged, drawPart } from './card'
 import type { RowPart } from './card'
 import { filterRepo, setSearch, toggle, toggleWake } from './choices'
-import { CHROME_SIZE, DRAWING_BUDGET, measure } from './drawing'
+import { CHROME_SIZE, CONTROL, DRAWING_BUDGET, measure } from './drawing'
 import { quietly } from './failures'
+import { hinted, TOP_RIGHT } from './hint'
 import { inboxNews } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { kitOf } from './kit'
@@ -168,7 +169,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Box flexGrow={1} flexShrink={1}>
               <Input key="search" label="🔍" placeholder="!iid, ticket, title, branch or author" value={search} submitLabel="find" onSubmit={text => setSearch($, text)} />
             </Box>
-            {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => setSearch($, '')} />}
+            {search !== '' &&
+              hinted(kit, 'hint-search-clear', CONTROL.clear.hint, <Button key="search-clear" plain label={CONTROL.clear.mark} onPress={() => setSearch($, '')} />, TOP_RIGHT)}
           </Box>,
         ]
       : []
@@ -214,10 +216,17 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. Each
   // symbol is its Button's label, alone: the desktop app draws a label in place of the children. ↻ reads the MRs and the
   // inbox alike, and is dim while either read is out.
+  // Their descriptions draw below them, the top row having no room above, and back from the right edge.
   const controls = (
     <Box flexDirection="row" gap={2} flexShrink={0}>
-      <Button key="refresh" plain dimColor={model.isRefreshing} label="↻" onPress={() => quietly($, refresh($))} />
-      <Button key="wake" plain label={model.wake} onPress={() => toggleWake($)} />
+      {hinted(
+        kit,
+        'hint-refresh',
+        CONTROL.refresh.hint,
+        <Button key="refresh" plain dimColor={model.isRefreshing} label={CONTROL.refresh.mark} onPress={() => quietly($, refresh($))} />,
+        TOP_RIGHT
+      )}
+      {hinted(kit, 'hint-wake', model.wake.hint, <Button key="wake" plain label={model.wake.mark} onPress={() => toggleWake($)} />, TOP_RIGHT)}
     </Box>
   )
   const topRow = (...left: RenderChildren[]) => (

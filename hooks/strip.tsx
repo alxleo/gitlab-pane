@@ -13,5 +13,5 @@ export function strip(kit: Kit, model: StripModel) {
       </Box>
     )
   }
-  return <Svg isInteractive width={model.width} height={10} alt={model.alt} source={model.source} />
+  return <Svg width={model.width} height={10} alt={model.alt} source={model.source} />
 }

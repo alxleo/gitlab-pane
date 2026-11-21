@@ -3,7 +3,8 @@
 // one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to, which it asks once for
 // each piece it needs and never for a piece it will not use.
 import { badges, byAttention, hasLeft, isMergeable } from './attention.ts'
-import { LINK, titleKey } from './drawing.ts'
+import { CONTROL, LINK, titleKey } from './drawing.ts'
+import type { Control } from './drawing.ts'
 import { ago, pipelineTime, plural } from './format.ts'
 import { shortHash } from './identity.ts'
 import { firstRunLines } from './first-run.ts'
@@ -47,6 +48,8 @@ export type PersonRow = {
   tone: Tone
   /** The mark a surface without Svg draws. */
   glyph: string
+  /** What the face's badge says, under the pointer. */
+  hint: string
   alt: string
   plain: SvgSource
   picture: SvgSource | null
@@ -87,7 +90,7 @@ export type RowModel = {
    * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
    * would stop its wakes. The mark is all that is drawn, a star filled on an MR pinned here; `press` is what it does.
    */
-  pin: { key: string; press: 'pin' | 'unpin'; mark: '☆' | '★'; mr: Pinned } | null
+  pin: ({ key: string; press: 'pin' | 'unpin'; mr: Pinned } & Control<'pin' | 'unpin'>) | null
   /** Whether a face can be drawn with its picture. */
   hasPictures: boolean
   /** What of the row fits the drawing. */
@@ -160,8 +163,8 @@ export type PaneModel = {
   isRefreshing: boolean
   /** What is wrong with the last read, or what it left out; empty when nothing is. */
   footer: PaneLine
-  /** Whether a raised MR wakes Claude: the bell drawn, struck through when off. */
-  wake: '🔔' | '🔕'
+  /** Whether a raised MR wakes Claude: the bell drawn, struck through when off, and its hover. */
+  wake: Control<'wakeOn' | 'wakeOff'>
 }
 
 /** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
@@ -187,10 +190,10 @@ function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowMod
   // The pin is made from the card's own host, project and number, so its key is the card's.
   const mr = { url: card.url, host: card.host, path: card.path, iid: card.iid }
   if (pinned === undefined) {
-    return { key: `pin-${suffix}`, press: 'pin', mark: '☆', mr }
+    return { key: `pin-${suffix}`, press: 'pin', ...CONTROL.pin, mr }
   }
   // A pin kept from before origins were recorded counts as raised, as it wakes.
-  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, press: 'unpin', mark: '★', mr } : null
+  return pinned.origin === 'watched' ? { key: `pin-${suffix}`, press: 'unpin', ...CONTROL.unpin, mr } : null
 }
 
 /** A row as data; its faces take their pictures where the room allows. */
@@ -238,6 +241,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
       label: `${callOf(person, i)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`,
       tone: person.face.tone,
       glyph: person.face.glyph,
+      hint: person.face.hint,
       alt: person.face.alt,
       plain: person.face.plain,
       picture: person.face.picture,
@@ -391,6 +395,6 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     status: statusOf(input.poll, now),
     isRefreshing: input.isReading || input.isSyncing,
     footer: footerOf(input.poll, now),
-    wake: input.isWaking ? '🔔' : '🔕',
+    wake: input.isWaking ? CONTROL.wakeOn : CONTROL.wakeOff,
   }
 }
