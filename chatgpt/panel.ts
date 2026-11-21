@@ -3,7 +3,7 @@
 import { App, applyDocumentTheme, applyHostFonts, applyHostStyleVariables } from '@modelcontextprotocol/ext-apps'
 import { OpenAIExtensions } from '@openai/mcp-extensions/app'
 
-import { ARMED_MS } from '../hooks/next-move.ts'
+import { ARMED_MS } from '../hooks/write-model.ts'
 import type { RowModel } from '../hooks/pane-model.ts'
 import type { Panel } from './read.ts'
 import { panelIn } from './result.ts'
