@@ -3,7 +3,7 @@ import fc from 'fast-check'
 
 import { excerpt, lead } from '../../hooks/format.ts'
 import { cleanBody } from '../../hooks/mr-card.ts'
-import { MAX_ROUNDS, cutToFit, flatOf, partsOf } from '../../hooks/markdown.ts'
+import { MAX_ROUNDS, cutToFit, flatOf, linkMarkdown, partsOf } from '../../hooks/markdown.ts'
 import type { Part } from '../../hooks/markdown.ts'
 import { HOST } from '../fixtures.ts'
 
@@ -25,6 +25,13 @@ test('code keeps the tags it quotes; HTML elsewhere becomes Markdown or goes, as
   expect(flat).toContain('<script>run()</script>')
   expect(flat).toContain('Line one  \nline two, **bold**, *slanted*, [a link](https://x.test/a) and plain.')
   expect(flat).toContain('> Reviewed by a bot.')
+})
+
+test('a link the pane draws is one link whatever its words and address hold, and none for an address that is not http(s)', () => {
+  expect(linkMarkdown('🎫 ABC-1', 'https://jira.example.com/browse/ABC-1')).toBe('[🎫 ABC-1](https://jira.example.com/browse/ABC-1)')
+  expect(linkMarkdown('a [b](c) *d*', 'https://x.example/a_(b)<c>')).toBe('[a \\[b\\]\\(c\\) \\*d\\*](https://x.example/a_%28b%29%3Cc%3E)')
+  expect(linkMarkdown('x', 'javascript:alert(1)')).toBeNull()
+  expect(linkMarkdown('x', 'https://a b')).toBeNull()
 })
 
 test('a table cell keeps its line when a <br> breaks it', () => {

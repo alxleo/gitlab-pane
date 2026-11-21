@@ -112,6 +112,19 @@ export function inboxDrawn(rule: string, keys: string[]): void {
 /** The cards of `rule` the inbox last drew, or none if it has not drawn that rule. */
 export const cardsDrawn = (rule: string): string[] | undefined => inboxCardsDrawn.get(rule)
 
+// The last text typed into each box, numbered: a pause in typing acts on a text only while nothing was typed after it.
+const typedLast = new Map<string, number>()
+
+/** `name`'s box was just typed into: gives the number of this change, which `isLastTyped` compares. */
+export function typed(name: string): number {
+  const mark = (typedLast.get(name) ?? 0) + 1
+  typedLast.set(name, mark)
+  return mark
+}
+
+/** Whether the change `mark` is still the last one typed into `name`'s box. */
+export const isLastTyped = (name: string, mark: number): boolean => typedLast.get(name) === mark
+
 /** A session starting finds out again what each host lacks, and finds each token again where a session before it left one. */
 export function forgetProbed(): void {
   lacking.clear()

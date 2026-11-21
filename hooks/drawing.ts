@@ -10,6 +10,9 @@ export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', 
  */
 export const DRAWING_BUDGET = 85_000
 
+/** Beside a search or a repo pick that narrows the list: a glyph and a word, drawn in the theme's blue. */
+export const FILTERED = '⧩ filtered'
+
 /** What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos. */
 export const CHROME_SIZE = 6_000
 

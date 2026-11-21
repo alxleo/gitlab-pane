@@ -3,12 +3,12 @@
 import type { Badge } from './attention.ts'
 import { LINK } from './drawing.ts'
 import { REVIEW_STATE } from './face-model.ts'
-import { plural } from './format.ts'
+import { drawnLine, excerpt, plural } from './format.ts'
 import { ticketUrl } from './jira.ts'
 import { cardFacts } from './row-facts.ts'
 import type { Tone } from './status.ts'
 
-import type { MrCard, Note, Person, Problems, Ticket } from '../types'
+import type { FailureKind, MrCard, Note, Person, Problems, Ticket, TicketDetail, Under } from '../types'
 
 /** What a page draws beside the MR itself: what was read about its ticket, and whether Jira can be read here. */
 export type PageContext = {
@@ -67,7 +67,7 @@ export function pageHead(card: MrCard, ctx: PageContext): PageHead {
     facts.ticket === null
       ? ''
       : jira !== undefined
-        ? `${facts.ticket} · ${jira.type} · ${jira.status}: ${jira.summary}`
+        ? `${facts.ticket} · ${drawnLine(jira.type)} · ${drawnLine(jira.status)}: ${drawnLine(jira.summary)}`
         : `${facts.ticket}: ${isJiraUnavailable ? 'Jira is not available here' : 'not read from Jira yet'}`
   // Every marker the page has words for, the one GitLab's verdict is about too: the page says who can approve, which the
   // verdict's "needs 1 approval" does not.
@@ -86,6 +86,74 @@ export function pageHead(card: MrCard, ctx: PageContext): PageHead {
       href: badge.kind === 'manual' ? manualJob(card) : null,
     })),
   }
+}
+
+/** The room a comment or a description opened under a card has: a glance, the whole a press further. */
+const UNDER_ROOM = 320
+
+/**
+ * What opens under a card in place of a page. A person: where they stand, their newest comment, and the way on to all of
+ * them on the MR's page. A ticket: its type and status, summary and assignee, and the start of its description.
+ */
+export type UnderBlock =
+  | { kind: 'person'; heading: string; latest: { label: string; text: string } | null; more: string | null }
+  | { kind: 'ticket'; heading: string; lines: string[]; isReading: boolean }
+
+/**
+ * A person's say on `card`. Their newest note leads once the MR is read whole (`isWhole`): the shared card keeps one note a
+ * person, their open thread before their newest, so until then none is quoted.
+ */
+export function personUnder(card: MrCard, username: string, isWhole: boolean): UnderBlock {
+  const page = personPage(card, username)
+  const person = card.people.find(each => each.username === username)
+  if (page === null || person === undefined) {
+    // Left the MR since the panel opened: the panel says so, for `✕` to close, rather than stay open unseen.
+    return { kind: 'person', heading: `${username} · no longer on this MR`, latest: null, more: null }
+  }
+  const newest = person.notes.reduce<Note | null>((best, note) => (best === null || note.at > best.at ? note : best), null)
+  // The way on to their comments whole, on the MR's page: the one quoted here may be cut short.
+  const more = person.noteCount > 1 ? `all ${plural(person.noteCount, 'comment')} ›` : newest !== null ? 'read it whole ›' : null
+  return {
+    kind: 'person',
+    heading: page.heading,
+    latest: newest !== null && isWhole ? { label: newest.isOpen ? 'open thread' : 'comment', text: excerpt(newest.body, UNDER_ROOM) } : null,
+    more,
+  }
+}
+
+/** The most panels open under cards at once: each is a whole MR or ticket read and kept, so past it the first opened closes. */
+export const PANELS_MOST = 5
+
+/**
+ * What is open under the cards once `under` is pressed on `card`: it takes the place of what that card had open, or closes
+ * when it is that; other cards keep theirs, the first opened closing past `PANELS_MOST`. Newest opened last.
+ */
+export function toggledUnders(unders: Readonly<Record<string, Under>>, card: string, under: Under): Record<string, Under> {
+  const now = unders[card]
+  const others = Object.entries(unders).filter(([key]) => key !== card)
+  return Object.fromEntries(now !== undefined && now.kind === under.kind && now.id === under.id ? others : [...others, [card, under] as const].slice(-PANELS_MOST))
+}
+
+/** What a ticket's panel says when reading it failed: `/gitlab` says why, but nothing of an optional tool not installed. */
+const failedSay = (failed: FailureKind): string => (failed === 'not-installed' ? 'Jira is not available here.' : 'Jira could not be read; /gitlab says why.')
+
+/**
+ * A ticket's say: what the quarter-hourly read knows at once, and what reading it whole adds, once that is in. While none
+ * is in, it is being read; a read that failed says so (`failed`), for this ticket alone.
+ */
+export function ticketUnder(key: string, ticket: Ticket | undefined, detail: TicketDetail | undefined): UnderBlock {
+  const heading = ticket !== undefined ? `${key} · ${drawnLine(ticket.type)} · ${drawnLine(ticket.status)}` : key
+  const summary = drawnLine(ticket?.summary ?? '')
+  const said =
+    detail === undefined
+      ? []
+      : detail.failed !== undefined
+        ? [failedSay(detail.failed)]
+        : !detail.isFound
+          ? ['Jira says nothing of this ticket to you.']
+          : [...(detail.assignee !== '' ? [`Assigned to ${detail.assignee}`] : []), detail.description !== '' ? detail.description : 'No description.']
+  const lines = [...(summary !== '' ? [summary] : []), ...said]
+  return { kind: 'ticket', heading, lines, isReading: detail === undefined }
 }
 
 /** `bot`, `@handle`, or nothing where the name is written like the handle ("Mel.Northcote") and would say it twice. */

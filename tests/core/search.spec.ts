@@ -98,8 +98,10 @@ test('a ticket named by the branch alone ranks above a title word that only star
   expect(find('ABC-150', [title, branch])).toEqual([1, 2])
 })
 
-test('a search is kept to its first 200 characters, none cut in half', () => {
+test('a search is kept to its first 200 characters, none cut in half, and safe to draw', () => {
   expect(keptSearch('order history')).toBe('order history')
+  // Pasted control characters, which a drawing refuses and which would blank the pane for as long as the search is kept.
+  expect(keptSearch('totals\u001b[31m\u0007 ')).toBe('totals [31m')
   expect(keptSearch('a'.repeat(5_000))).toBe('a'.repeat(200))
   expect(keptSearch(`${'a'.repeat(199)}👍🏽`)).toBe('a'.repeat(199))
 })

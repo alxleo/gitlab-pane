@@ -15,7 +15,7 @@ export const withProblem = (all: Problems, source: ProblemSource, error: unknown
  * Whether a failure only says that an optional tool is not installed. acli is not needed for the pane to work, so its
  * absence is not a failure to list in `/gitlab`: a ticket says it where it matters.
  */
-export const isAbsentOptional = (source: string, kind: FailureKind): boolean => source === 'jira' && kind === 'not-installed'
+export const isAbsentOptional = (source: string, kind: FailureKind): boolean => (source === 'jira' || source === 'jira-ticket') && kind === 'not-installed'
 
 /** The sources only the session that reads GitLab works for: what it tells the others, who read nothing and so could say nothing. */
 const LEADER_SOURCES: readonly ProblemSource[] = ['gitlab', 'jira-moves', 'usual', 'avatars', 'suggested']

@@ -237,6 +237,10 @@ test('the band above the prompt says the inbox news while the pane is not shown,
   expect(await pane.find({ type: 'Button', key: 'back-top' })).toBeUndefined()
   expect((await pane.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
   expect(await bandOf(shown)).toBeUndefined()
+  // Something typed on Mine, never entered, before the pane closes.
+  await pane.press({ key: 'tab-mine' })
+  await pane.input({ key: (await pane.findAll({ type: 'Input' }))[0]?.key ?? '', text: 'rename', kind: 'change' })
+  await clock.advance(300)
   await shown.unmount()
   await pane.unmount()
 
@@ -260,6 +264,10 @@ test('the band above the prompt says the inbox news while the pane is not shown,
   expect(await bandOf(band)).toBeUndefined()
   const opened = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await opened.find({ type: 'Button', key: 'tab-inbox' }))?.props.variant).toBe('primary')
+  // Leaving Mine for the inbox this way draws the search box again holding what the list is searched for.
+  await opened.press({ key: 'tab-mine' })
+  expect((await opened.findAll({ type: 'Input' }))[0]?.props.value).toBe('rename')
+  await opened.press({ key: 'tab-inbox' })
 
   // Everything marked seen, there is no news, and the band stays away with the pane closed again.
   await opened.press({ key: 'inbox-rule-on-my-mrs' })
@@ -520,18 +528,18 @@ test("a search draws your merged MRs and others' inbox MRs that match as links u
   const linkWords = async () => (await ui.findAll({ type: 'Link' })).map(link => link.text.replace(String(link.props.href), '')).filter(text => text.startsWith('🔀'))
   const texts = async () => (await ui.findAll({ type: 'Text' })).map(text => text.text)
 
-  await ui.input({ key: 'search', text: 'thing' })
+  await ui.input({ key: 'search-0', text: 'thing' })
   expect(await texts()).toEqual(expect.arrayContaining(['Merged', 'Inbox']))
   expect(await linkWords()).toEqual(expect.arrayContaining(['🔀 !11 thing 11', '🔀 !12 thing 12', '🔀 !13 thing 13', '🔀 !2 thing 2']))
-  await ui.input({ key: 'search', text: 'abc12' })
+  await ui.input({ key: 'search-0', text: 'abc12' })
   expect(await texts()).toEqual(expect.arrayContaining(['Found · 1', 'Merged']))
   expect(await texts()).not.toContain('Inbox')
   expect(await linkWords()).toEqual(['🔀 !12 thing 12'])
-  await ui.input({ key: 'search', text: 'zebra' })
+  await ui.input({ key: 'search-0', text: 'zebra' })
   expect(await texts()).toEqual(expect.arrayContaining(['Found · 0', 'Nothing the pane holds matches.']))
   // What is pasted is kept to its first 200 characters, which the box draws back.
-  await ui.input({ key: 'search', text: 'x'.repeat(300) })
-  expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('x'.repeat(200))
+  await ui.input({ key: 'search-0', text: 'x'.repeat(300) })
+  expect((await ui.find({ type: 'Input', key: 'search-0' }))?.props.value).toBe('x'.repeat(200))
   await ui.unmount()
 })
 
@@ -565,7 +573,8 @@ test('a build that passed is asked for once and kept, a running one at every rea
   await ui.unmount()
 })
 
-test('a build that failed and was retried to success loses its mark on the fold once the recheck period has passed, and not before', async ($, on) => {
+// Forty minutes of polls: about a second here, and up to four on CI's runners, too near the five a test gets by default.
+test('a build that failed and was retried to success loses its mark on the fold once the recheck period has passed, and not before', { timeoutMs: 20_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world: World = { ...emptyWorld(), merged: [merged(21, 1, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
   const gitlab = engine(on, world)
