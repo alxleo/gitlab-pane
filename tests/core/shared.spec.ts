@@ -244,7 +244,10 @@ test('an MR whose jobs could not be read keeps the jobs its row had of the same 
 
 test('a pinned MR is asked for by its path and number, one query each, and a project of its own host', () => {
   expect(
-    pinnedQuery({ ...pin(7), path: 'g/q' }, { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true }).variables
+    pinnedQuery(
+      { ...pin(7), path: 'g/q' },
+      { hasMergeVerdict: true, hasReviewStates: true, hasTodoEntity: true, hasDiffLines: true, hasCommentFilter: true, hasSuggestedApprovers: true }
+    ).variables
   ).toEqual({
     path: 'g/q',
     iid: '7',

@@ -2,6 +2,7 @@
 // (a file all sessions rewrite whole, capped at 4 MiB) and through `$.state`, and a card is kept to what a row and a wake
 // say. What only an MR's page says (the description, the threads' words, the jobs that neither failed nor wait) is read
 // again for the one MR the person opens: `withDetail` puts it back. Pure.
+import { isAwaited } from './face-model.ts'
 import { excerpt } from './format.ts'
 import { cleanBody } from './mr-card.ts'
 import { listedJobs } from './job-lines.ts'
@@ -35,11 +36,22 @@ export const slimChecks = (checks: MergeStatus | null): MergeStatus | null => {
 }
 
 /**
+ * The reviewers a shared card keeps, each of whom is on the card as a person: every review asked for that has no verdict
+ * yet, which decides whether the card suggests a reviewer (`suggestionRoom`), else the first person asked, as whether one
+ * is asked is what moves a ticket in Jira.
+ */
+function sharedReviewers(card: MrCard): MrCard['reviewers'] {
+  const asked = card.reviewers.filter(reviewer => !reviewer.isBot && reviewer.username !== card.author)
+  const awaited = asked.filter(isAwaited)
+  return awaited.length > 0 ? awaited : asked.slice(0, 1)
+}
+
+/**
  * The card without its heavy words: no description (its first line stays as `lead`), each person's latest note as an
  * excerpt (`noteCount` still says how many), the first few open threads as excerpts with no replies and the first few failed
- * jobs, the rest counted; of the stages' jobs only those the card lists, and when each ran only where a row shows it. The
- * first person other than the author asked to review stays of the reviewers, each of whom is on the card as a person: whether one is asked is
- * what moves a ticket in Jira. The store every session rewrites whole holds fifty of these in a few hundred kilobytes.
+ * jobs, the rest counted; of the stages' jobs only those the card lists, and when each ran only where a row shows it; of
+ * the reviewers, those `sharedReviewers` keeps. The store every session rewrites whole holds fifty of these in a few
+ * hundred kilobytes.
  */
 export function slimCard(card: MrCard): MrCard {
   const { pipeline } = card
@@ -59,7 +71,7 @@ export function slimCard(card: MrCard): MrCard {
       held: card.threadsLeft.held + left.filter(note => held.has(note.author)).length,
     },
     mergeStatus: slimChecks(card.mergeStatus),
-    reviewers: card.reviewers.filter(reviewer => !reviewer.isBot && reviewer.username !== card.author).slice(0, 1),
+    reviewers: sharedReviewers(card),
     ...(pipeline !== undefined
       ? {
           pipeline: {

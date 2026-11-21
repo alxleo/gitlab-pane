@@ -6,7 +6,7 @@ import { browseUrl } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { keptCards, keptCardsByKey } from './snapshot.ts'
 
-import type { MrCard, Pinned, PollState, ReadClock, Role, Ticket, Usual } from '../types'
+import type { MrCard, Pinned, PollState, ReadClock, Role, Suggested, Ticket, Usual } from '../types'
 
 // What GitLab, Jira and avatar fetches gave, and the polling's bookkeeping. The engine reads an atom only in the file that
 // declares it, so everything that reads or writes these goes through the functions below.
@@ -17,6 +17,7 @@ const detailsAtom = atom({ plugin: 'gitlab-pane', key: 'details' } as const, {})
 const ticketsAtom = atom({ plugin: 'gitlab-pane', key: 'tickets' } as const, {})
 const usualAtom = atom({ plugin: 'gitlab-pane', key: 'usual' } as const, {})
 const avatarsAtom = atom({ plugin: 'gitlab-pane', key: 'avatars' } as const, {})
+const suggestedAtom = atom({ plugin: 'gitlab-pane', key: 'suggested' } as const, {})
 const announcedAtom = atom({ plugin: 'gitlab-pane', key: 'announced' } as const, {})
 const unreachableAtom = atom({ plugin: 'gitlab-pane', key: 'unreachable' } as const, [])
 const jiraAtom = atom({ plugin: 'gitlab-pane', key: 'jira' } as const, '')
@@ -40,11 +41,12 @@ const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnData($: EngineInterface) {
-  const [pinned, rows, details, avatars, tickets, usual, poll, isReading, browse] = await Promise.all([
+  const [pinned, rows, details, avatars, suggested, tickets, usual, poll, isReading, browse] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, detailsAtom),
     read($, avatarsAtom),
+    read($, suggestedAtom),
     read($, ticketsAtom),
     read($, usualAtom),
     read($, pollAtom),
@@ -52,7 +54,7 @@ export async function drawnData($: EngineInterface) {
     read($, jiraAtom),
   ])
   // The cards outlive a reload, so new code meets cards an older version kept: those in another shape are left out.
-  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, tickets, usual, poll, isReading, browse }
+  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, suggested, tickets, usual, poll, isReading, browse }
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
@@ -142,6 +144,15 @@ export async function setDetails($: EngineInterface, isWanted: (key: string) => 
 export async function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {
   if (!isEqual(await read($, announcedAtom), announced)) {
     await update($, announcedAtom, () => announced)
+  }
+}
+export function readSuggestedKnown($: EngineInterface): Promise<Suggested> {
+  return read($, suggestedAtom)
+}
+/** Who GitLab suggested for each MR, by card key: only the MRs that want suggestions, so it never outgrows them. */
+export async function setSuggested($: EngineInterface, kept: Suggested): Promise<void> {
+  if (!isEqual(await read($, suggestedAtom), kept)) {
+    await update($, suggestedAtom, () => kept)
   }
 }
 export async function setAvatars($: EngineInterface, kept: Record<string, string>): Promise<void> {

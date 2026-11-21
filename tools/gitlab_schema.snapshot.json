@@ -1325,6 +1325,22 @@
             "deprecationReason": null,
             "description": null,
             "isDeprecated": false,
+            "name": "approvalState",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "OBJECT",
+                "name": "MergeRequestApprovalState",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
             "name": "approvalsLeft",
             "type": {
               "kind": "SCALAR",
@@ -2090,6 +2106,42 @@
         "enumValues": null,
         "fields": [
           {
+            "args": [
+              {
+                "defaultValue": null,
+                "deprecationReason": null,
+                "description": null,
+                "isDeprecated": false,
+                "name": "first",
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "suggestedApprovers",
+            "type": {
+              "kind": "OBJECT",
+              "name": "UserCoreConnection",
+              "ofType": null
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "MergeRequestApprovalState",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": [
+          {
             "args": [],
             "deprecationReason": null,
             "description": null,
@@ -2440,6 +2492,144 @@
         "interfaces": [],
         "kind": "OBJECT",
         "name": "MergeRequestReviewerConnection",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": null,
+        "inputFields": [
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "clientMutationId",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "iid",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": "REPLACE",
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "operationMode",
+            "type": {
+              "kind": "ENUM",
+              "name": "MutationOperationMode",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "projectPath",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "ID",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "reviewerUsernames",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "interfaces": null,
+        "kind": "INPUT_OBJECT",
+        "name": "MergeRequestSetReviewersInput",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": null,
+        "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "errors",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                }
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "mergeRequest",
+            "type": {
+              "kind": "OBJECT",
+              "name": "MergeRequest",
+              "ofType": null
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "MergeRequestSetReviewersPayload",
         "possibleTypes": null
       },
       {
@@ -2876,12 +3066,70 @@
               "name": "MergeRequestAcceptPayload",
               "ofType": null
             }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
+                "deprecationReason": null,
+                "description": null,
+                "isDeprecated": false,
+                "name": "input",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "INPUT_OBJECT",
+                    "name": "MergeRequestSetReviewersInput",
+                    "ofType": null
+                  }
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "mergeRequestSetReviewers",
+            "type": {
+              "kind": "OBJECT",
+              "name": "MergeRequestSetReviewersPayload",
+              "ofType": null
+            }
           }
         ],
         "inputFields": null,
         "interfaces": [],
         "kind": "OBJECT",
         "name": "Mutation",
+        "possibleTypes": null
+      },
+      {
+        "description": null,
+        "enumValues": [
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "APPEND"
+          },
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "REMOVE"
+          },
+          {
+            "deprecationReason": null,
+            "description": null,
+            "isDeprecated": false,
+            "name": "REPLACE"
+          }
+        ],
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "kind": "ENUM",
+        "name": "MutationOperationMode",
         "possibleTypes": null
       },
       {

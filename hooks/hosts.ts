@@ -64,6 +64,9 @@ export function parseTokens(setting: unknown, hosts: readonly string[], home: st
 /** `https://<host>`: where a host's pages and uploads live. */
 export const siteOf = (host: string): string => `https://${host}`
 
+/** A URL GitLab gave, made absolute: it gives an uploaded avatar as a path on its own host and a Gravatar one as a full URL. */
+export const absoluteUrl = (host: string, url: string | null | undefined): string | null => (isFilled(url) ? (url.startsWith('/') ? `${siteOf(host)}${url}` : url) : null)
+
 /** `host/group/project`: where an MR lives, the identity the pane groups, filters and keeps run times by. */
 export const projectOf = (host: string, path: string): string => `${host}/${path}`
 

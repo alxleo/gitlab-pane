@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { dataOf, decodeGraphql, present, timeOf } from '../../hooks/decode.ts'
+import { dataOf, decodeGraphql, present, suggestedRecord, timeOf } from '../../hooks/decode.ts'
 import { readSnapshot } from '../../hooks/inbox-snapshot.ts'
 import { readTickets } from '../../hooks/jira.ts'
 
@@ -51,6 +51,14 @@ test('what the outside tools print is checked, not cast', async () => {
     landed: [],
   })
   expect(readSnapshot({ at: 'soon', hosts: {}, mrs: [] })).toBeNull()
+  // Who GitLab suggested, as the store keeps it: an entry or a person in another shape is left out.
+  expect(
+    suggestedRecord({
+      'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: 7, isBot: false }, { username: 'x' }, null] },
+      'gitlab.com/g/p!2': { people: [] },
+    })
+  ).toEqual({ 'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: null, isBot: false }] } })
+  expect(suggestedRecord([])).toEqual({})
   expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })
   expect(() => decodeGraphql([])).toThrow('GitLab answered something other than an object')
   expect(() => decodeGraphql({ data: 'x' })).toThrow('data that is not an object')

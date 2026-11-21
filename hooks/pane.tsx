@@ -16,7 +16,6 @@ import { refresh } from './poll'
 import { drawReading } from './reading'
 import { pickedRepo } from './repo-filter'
 import { drawnReply } from './replies'
-import { drawnWrites } from './writes'
 import { withDetail } from './slim'
 import { view } from './view'
 
@@ -27,6 +26,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     rows,
     details,
     avatars,
+    suggested,
     tickets,
     usual,
     expanded,
@@ -42,6 +42,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     browse,
     failures,
     pressed,
+    writes,
     here,
     now,
   } = await view($)
@@ -101,6 +102,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       isWaking,
       failures,
       pressed,
+      suggested,
+      writes,
       here,
     },
     now,
@@ -239,7 +242,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             head: pageHead(reading, { tickets, browse, failures }),
             now,
             reply: await drawnReply($),
-            writes: await drawnWrites($),
+            writes,
           }),
           back('back-bottom'),
         ]

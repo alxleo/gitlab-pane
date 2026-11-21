@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 
 import { Failure } from '../../hooks/failure.ts'
 import { FOLLOW_MS, FOLLOW_TRIES } from '../../hooks/next-move.ts'
-import { liveOf, LOST, refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
+import { ARMED_MS, confirmedPress, liveOf, LOST, refusalOf, SENT_HOLDS_MS } from '../../hooks/write-model.ts'
 
 import type { FailureKind, Write } from '../../types'
 
@@ -28,4 +28,25 @@ test('a write sent longer ago than any is followed says its answer was lost, rat
   const handed: Write = { kind: 'conflicts', state: 'handed', on: 'abc123', at: 0 }
   expect(liveOf(handed, 86_400_000)).toBe(handed)
   expect(liveOf(undefined, 0)).toBeUndefined()
+})
+
+test('a write a second press confirms goes only on a live arm of the same kind for the same thing; any other press arms it', () => {
+  const at = 1_000
+  const armed: Write = { kind: 'reviewer', state: 'armed', on: 'ines', at: 0 }
+  expect(confirmedPress('reviewer', armed, 'ines', at, 'make')).toEqual({ kind: 'reviewer', state: 'sent', on: 'ines', at })
+  // A first press, one for someone else, one of another kind, or `arm` itself, arms.
+  expect(confirmedPress('reviewer', undefined, 'ines', at, 'make')).toEqual({ kind: 'reviewer', state: 'armed', on: 'ines', at })
+  expect(confirmedPress('reviewer', armed, 'mel', at, 'make')?.state).toBe('armed')
+  expect(confirmedPress('merge', armed, 'ines', at, 'make')?.state).toBe('armed')
+  expect(confirmedPress('reviewer', armed, 'ines', at, 'arm')?.state).toBe('armed')
+  // An arm past its time has run out though its timer never ran, as after a reload: the press arms again.
+  expect(confirmedPress('reviewer', armed, 'ines', ARMED_MS, 'make')?.state).toBe('sent')
+  expect(confirmedPress('reviewer', armed, 'ines', ARMED_MS + 1, 'make')?.state).toBe('armed')
+  // A failure or an add GitLab made is no arm: the press arms again.
+  expect(confirmedPress('reviewer', { ...armed, state: 'failed', say: 'no' }, 'ines', at, 'make')?.state).toBe('armed')
+  expect(confirmedPress('reviewer', { ...armed, state: 'handed' }, 'ines', at, 'make')?.state).toBe('armed')
+  // While one is out nothing replaces it; one a closed session left long ago no longer holds.
+  const sent: Write = { ...armed, state: 'sent' }
+  expect(confirmedPress('reviewer', sent, 'ines', at, 'make')).toBeNull()
+  expect(confirmedPress('reviewer', sent, 'ines', SENT_HOLDS_MS + 1, 'make')?.state).toBe('armed')
 })
