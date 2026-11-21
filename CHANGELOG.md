@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.5](https://github.com/alxleo/gitlab-pane/compare/v0.4.4...v0.4.5) (2026-11-21)
+
+
+### Features
+
+* **mine:** search as you type, and open a person or ticket under its card instead of a page ([#128](https://github.com/alxleo/gitlab-pane/issues/128)) ([38caa0c](https://github.com/alxleo/gitlab-pane/commit/38caa0cd43da939b5b34b4aaf2931db335ff540b))
+* **pane:** a card short of a reviewer offers whom GitLab suggests, faded, and two presses add them ([#132](https://github.com/alxleo/gitlab-pane/issues/132)) ([be69ec6](https://github.com/alxleo/gitlab-pane/commit/be69ec6093c10c11b639024aafec898b2e80427f))
+
+
+### Bug Fixes
+
+* **release:** rename main's release folder so `--ref release` checks out the branch ([#135](https://github.com/alxleo/gitlab-pane/issues/135)) ([3916823](https://github.com/alxleo/gitlab-pane/commit/3916823963dc4dd468b13de1c417dd798f16611c))
+
 ## [0.4.4](https://github.com/alxleo/gitlab-pane/compare/v0.4.3...v0.4.4) (2026-11-21)
 
 
