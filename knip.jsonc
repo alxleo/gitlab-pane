@@ -16,13 +16,19 @@
     "tests/*.test.ts",
     "tests/core/*.spec.ts",
     // Named by setupFiles in vitest.config.ts. knip would load that config to find it, and loading it needs the engine declarations tsconfig.json extends, which a fresh clone lacks.
-    "tests/core/setup.ts"
+    "tests/core/setup.ts",
+    // The ChatGPT plugin's scripts a person runs by their path (the others are named by package.json and the workflows),
+    // its server, which build.ts names to esbuild, and its panel, which panel-build.ts names to esbuild.
+    "chatgpt/install.ts",
+    "chatgpt/harness.ts",
+    "chatgpt/server.ts",
+    "chatgpt/panel.ts"
   ],
   "vitest": false,
   // knip would load oxlint.config.ts to read it, and loading it goes through tsconfig.json, which extends the engine
   // declarations a fresh clone lacks. Its one plugin, tools/lint_rules.ts, is an entry already (tools/*.ts).
   "oxlint": false,
-  "project": ["hooks/**/*.{ts,tsx}", "tests/**/*.ts", "tools/**/*.{ts,tsx}", "types/**/*.ts"],
+  "project": ["hooks/**/*.{ts,tsx}", "tests/**/*.ts", "tools/**/*.{ts,tsx}", "types/**/*.ts", "chatgpt/*.ts"],
   "ignoreDependencies": [
     // The engine provides these at runtime and its declarations are laid into .claude-plugin/types, so no package holds them.
     "claude-code",

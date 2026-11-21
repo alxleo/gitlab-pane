@@ -47,6 +47,15 @@
       "depTypeTemplate": "stable channel",
       "datasourceTemplate": "npm",
       "versioningTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "The Codex check.yml installs the ChatGPT plugin with from the release tree, as ChatGPT's desktop app does with the Codex it bundles (chatgpt/codex-check.ts).",
+      "managerFilePatterns": ["/^\\.github/workflows/check\\.yml$/"],
+      "matchStrings": ["CODEX_VERSION: \"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "@openai/codex",
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
     }
   ]
 }

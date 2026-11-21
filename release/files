@@ -5,6 +5,9 @@
 .claude-plugin/plugin.json
 # The tree is also a marketplace of its own, so a team can pin a released version by tag (see CONTRIBUTING.md).
 release/marketplace.json .claude-plugin/marketplace.json
+# And a Codex marketplace, which ChatGPT's desktop app reads before the Claude one: it lists the ChatGPT plugin, which
+# tools/release_tree.ts builds into chatgpt/ (chatgpt/build.ts), as no file here can be.
+release/codex-marketplace.json .agents/plugins/marketplace.json
 LICENSE
 README.md
 types/index.d.ts
@@ -21,6 +24,7 @@ hooks/faces.tsx
 hooks/failure.ts
 hooks/failures.ts
 hooks/format.ts
+hooks/gitlab-answer.ts
 hooks/gitlab-document.ts
 hooks/gitlab-features.ts
 hooks/gitlab-operations.ts

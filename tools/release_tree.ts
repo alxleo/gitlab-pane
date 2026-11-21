@@ -18,10 +18,15 @@
 //   - a .ts or .tsx file under hooks/ is shipped and nothing loads it
 //   - plugin.json names a `types` file the tree does not hold
 //   - the README links or shows a relative path (the tree holds no docs/ or CONTRIBUTING.md): links there are absolute
+//
+// The tree also holds the ChatGPT plugin, built into chatgpt/ by chatgpt/build.ts at the tree's version, beside the Codex
+// marketplace that lists it (release/files). It fails when that package lacks its server or panel, its manifests name
+// another version, or its mcp.json does not name the Agent Plugins schema, without which ChatGPT starts no server.
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
+import { buildPackage, modVersion } from '../chatgpt/build.ts'
 import { isRecord, parseJson } from '../hooks/decode.ts'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -397,6 +402,37 @@ function verify(tree: string): string[] {
   return problems
 }
 
+/** The Agent Plugins schema a plugin's mcp.json names; ChatGPT's Codex reads the file only when it does. */
+const MCP_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json'
+
+/** What is wrong with the ChatGPT plugin in the tree: a missing part, another version, or an mcp.json Codex would skip. */
+function verifyChatgpt(tree: string): string[] {
+  const problems: string[] = []
+  const folder = join(tree, 'chatgpt')
+  for (const part of ['dist/server.mjs', 'dist/panel.bundled.html', 'plugin.json', '.codex-plugin/plugin.json', 'mcp.json']) {
+    if (!isFile(join(folder, part))) {
+      problems.push(`chatgpt/${part} is not in the tree`)
+    }
+  }
+  const versionOf = (file: string): unknown => {
+    const parsed = isFile(file) ? parseJson(readFileSync(file, 'utf8')) : null
+    return isRecord(parsed) ? parsed.version : undefined
+  }
+  const version = versionOf(join(tree, '.claude-plugin', 'plugin.json'))
+  for (const manifest of ['plugin.json', '.codex-plugin/plugin.json']) {
+    const named = versionOf(join(folder, manifest))
+    if (named !== version) {
+      problems.push(`chatgpt/${manifest} names version ${String(named)}, the tree ${String(version)}`)
+    }
+  }
+  const mcp = join(folder, 'mcp.json')
+  const parsed = isFile(mcp) ? parseJson(readFileSync(mcp, 'utf8')) : null
+  if (!isRecord(parsed) || parsed.$schema !== MCP_SCHEMA) {
+    problems.push(`chatgpt/mcp.json does not name ${MCP_SCHEMA}: ChatGPT would install the plugin and start no server`)
+  }
+  return problems
+}
+
 function filesUnder(folder: string): string[] {
   return readdirSync(folder, { withFileTypes: true }).flatMap(each => (each.isDirectory() ? filesUnder(join(folder, each.name)) : [join(folder, each.name)]))
 }
@@ -413,17 +449,22 @@ function report(tree: string, problems: readonly string[]): number {
   return 0
 }
 
-function main(args: readonly string[]): number {
+/** The tree at `tree`: the listed files, then the ChatGPT plugin built beside them, then every check. */
+async function buildAndCheck(tree: string): Promise<number> {
+  const copied = build(tree)
+  await buildPackage(join(tree, 'chatgpt'), modVersion())
+  return report(tree, [...selfCheck(), ...copied, ...verify(tree), ...verifyChatgpt(tree)])
+}
+
+async function main(args: readonly string[]): Promise<number> {
   const [command, folder] = args
   if (command === 'build' && folder !== undefined && args.length === 2) {
-    const tree = resolve(folder)
-    return report(tree, [...selfCheck(), ...build(tree), ...verify(tree)])
+    return buildAndCheck(resolve(folder))
   }
   if (command === 'check' && args.length === 1) {
     const scratch = mkdtempSync(join(tmpdir(), 'release-tree-'))
     try {
-      const tree = join(scratch, 'tree')
-      return report(tree, [...selfCheck(), ...build(tree), ...verify(tree)])
+      return await buildAndCheck(join(scratch, 'tree'))
     } finally {
       rmSync(scratch, { recursive: true, force: true })
     }
@@ -432,4 +473,4 @@ function main(args: readonly string[]): number {
   return 2
 }
 
-process.exitCode = main(process.argv.slice(2))
+process.exitCode = await main(process.argv.slice(2))
