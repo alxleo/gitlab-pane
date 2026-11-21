@@ -455,12 +455,15 @@ function report(tree: string, problems: readonly string[]): number {
 async function buildAndCheck(tree: string): Promise<number> {
   const copied = build(tree)
   await buildPackage(join(tree, 'chatgpt'), modVersion())
-  return report(tree, [...selfCheck(), ...branchFree(), ...copied, ...verify(tree), ...verifyChatgpt(tree)])
+  return report(tree, [...selfCheck(), ...branchFree(readdirSync(ROOT)), ...copied, ...verify(tree), ...verifyChatgpt(tree)])
 }
 
-/** Codex follows releases by `git checkout release` in a clone of main: a path of that name there makes it ambiguous. */
-const branchFree = (): string[] =>
-  existsSync(join(ROOT, BRANCH)) ? [`main has a path named ${BRANCH}, so \`git checkout ${BRANCH}\`, which Codex runs to follow releases, is ambiguous: name it otherwise`] : []
+/**
+ * Codex follows releases by `git checkout release` in a clone of main: a path of that name at the root, among `names`,
+ * makes it ambiguous.
+ */
+export const branchFree = (names: readonly string[]): string[] =>
+  names.includes(BRANCH) ? [`main has a path named ${BRANCH}, so \`git checkout ${BRANCH}\`, which Codex runs to follow releases, is ambiguous: name it otherwise`] : []
 
 async function main(args: readonly string[]): Promise<number> {
   const [command, folder] = args
@@ -479,4 +482,7 @@ async function main(args: readonly string[]): Promise<number> {
   return 2
 }
 
-process.exitCode = await main(process.argv.slice(2))
+// Run as a command, not when its spec imports it.
+if (import.meta.main) {
+  process.exitCode = await main(process.argv.slice(2))
+}
