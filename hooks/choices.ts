@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import { isEqual } from './equal'
 import { quietly } from './failures'
 import { isLastTyped, typed } from './in-flight'
+import { toggledUnders } from './page-lines'
 import { keptRepo } from './repo-filter'
 import { keptSearch } from './search'
 
@@ -69,17 +70,9 @@ export function clearSearch($: EngineInterface): void {
   quietly($, Promise.all([update($, searchAtom, () => ''), update($, searchBoxAtom, box => ({ drawn: '', round: box.round + 1 }))]))
 }
 
-/**
- * Opens `kind` `id` under the card `card`, in place of whatever that card had open, or closes it when it is what the card
- * has open. Other cards keep theirs. Gives what the card has open now.
- */
+/** Opens `kind` `id` under the card `card`, or closes it (`toggledUnders`). Gives what the card has open now. */
 export async function toggleUnder($: EngineInterface, card: string, kind: 'person' | 'ticket', id: string): Promise<Under | null> {
-  const open = await update($, undersAtom, unders => {
-    const now = unders[card]
-    return now !== undefined && now.kind === kind && now.id === id
-      ? Object.fromEntries(Object.entries(unders).filter(([key]) => key !== card))
-      : { ...unders, [card]: { kind, id } }
-  })
+  const open = await update($, undersAtom, unders => toggledUnders(unders, card, { kind, id }))
   return open[card] ?? null
 }
 

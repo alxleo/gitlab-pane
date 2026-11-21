@@ -8,7 +8,7 @@ import { ticketUrl } from './jira.ts'
 import { cardFacts } from './row-facts.ts'
 import type { Tone } from './status.ts'
 
-import type { FailureKind, MrCard, Note, Person, Problems, Ticket, TicketDetail } from '../types'
+import type { FailureKind, MrCard, Note, Person, Problems, Ticket, TicketDetail, Under } from '../types'
 
 /** What a page draws beside the MR itself: what was read about its ticket, and whether Jira can be read here. */
 export type PageContext = {
@@ -118,6 +118,19 @@ export function personUnder(card: MrCard, username: string, isWhole: boolean): U
     latest: newest !== null && isWhole ? { label: newest.isOpen ? 'open thread' : 'comment', text: excerpt(newest.body, UNDER_ROOM) } : null,
     more,
   }
+}
+
+/** The most panels open under cards at once: each is a whole MR or ticket read and kept, so past it the first opened closes. */
+export const PANELS_MOST = 5
+
+/**
+ * What is open under the cards once `under` is pressed on `card`: it takes the place of what that card had open, or closes
+ * when it is that; other cards keep theirs, the first opened closing past `PANELS_MOST`. Newest opened last.
+ */
+export function toggledUnders(unders: Readonly<Record<string, Under>>, card: string, under: Under): Record<string, Under> {
+  const now = unders[card]
+  const others = Object.entries(unders).filter(([key]) => key !== card)
+  return Object.fromEntries(now !== undefined && now.kind === under.kind && now.id === under.id ? others : [...others, [card, under] as const].slice(-PANELS_MOST))
 }
 
 /** What a ticket's panel says when reading it failed: `/gitlab` says why, but nothing of an optional tool not installed. */

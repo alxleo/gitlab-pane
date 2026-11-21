@@ -945,9 +945,37 @@ test(
     await clock.settle()
     expect(jiraWholeReads.length).toBe(2)
     expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    // Past the quarter hour, a read that fails keeps what the last one that worked gave.
+    await ui.press(link)
+    await clock.advance(20 * 60_000)
+    fake.jiraDown = 'whole'
+    await ui.press(link)
+    await clock.settle()
+    expect(jiraWholeReads.length).toBe(3)
+    expect(await ui.find({ type: 'Text', text: 'Assigned to Ines Mendel' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Jira could not be read; /gitlab says why.' })).toBeUndefined()
     await ui.unmount()
   }
 )
+
+test('people opened under several cards at once each say their newest comment, however their reads overlap', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const said = (iid: number) => {
+    const latest = { resolvable: true, resolved: true, notes: { nodes: [note(`Newest on ${iid}.`, 'tim', { createdAt: new Date(NOW - 60_000).toISOString() })] } }
+    return rawMr(iid, { ...SHOWN, reviewers: { nodes: [reviewer('tim', 'APPROVED')] }, discussions: { nodes: [thread(`Open on ${iid}.`, 'tim'), latest] } })
+  }
+  engine(on, { mrs: [said(21), said(22), said(23), said(24)], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const keys = (await ui.findAll({ type: 'Button' })).flatMap(button => (button.key?.startsWith('person-tim-') === true ? [button.key] : []))
+  expect(keys).toHaveLength(4)
+  // Pressed together, so the MRs' whole reads are out together.
+  await Promise.all(keys.map(key => ui.press({ key })))
+  await clock.settle()
+  expect((await ui.findAll({ type: 'Text', text: /^Newest on \d+\.$/u })).length).toBe(4)
+  await ui.unmount()
+})
 
 test(
   "a ticket opened under a card and the quarter-hourly read of statuses fail apart: neither's failure or success speaks for the other",

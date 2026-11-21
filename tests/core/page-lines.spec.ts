@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
 import { toCard } from '../../hooks/mr-card.ts'
-import { pageHead, personPage, personUnder, ticketUnder } from '../../hooks/page-lines.ts'
+import { PANELS_MOST, pageHead, personPage, personUnder, ticketUnder, toggledUnders } from '../../hooks/page-lines.ts'
 import { HOST, gitlabSays, job, note, pipe, rawMr, reviewer, stage, thread } from '../fixtures.ts'
 
 const JIRA = { tickets: {}, browse: 'https://jira.example.com/browse/', failures: {} }
@@ -112,4 +112,20 @@ test('a ticket opened under a card says what the quarter-hourly read knows at on
   // What Jira says is drawn without the control characters a drawing refuses, which could blank the whole list.
   const hostile = { type: 'Ta\u0007sk', status: 'In\nReview', isDone: false, summary: 'Fix\u001b[31m it\r' }
   expect(ticketUnder('ABC-4', hostile, undefined)).toMatchObject({ heading: 'ABC-4 · Ta sk · In Review', lines: ['Fix [31m it'] })
+})
+
+test('a press opens a panel under its card in place of the card’s last, closes it when it is that, and keeps the most open, the first opened going', () => {
+  const tim = { kind: 'person' as const, id: 'tim' }
+  const ticket = { kind: 'ticket' as const, id: 'ABC-1' }
+  expect(toggledUnders({}, 'a!1', tim)).toEqual({ 'a!1': tim })
+  // Another card's stays open; the same card's other thing takes its place; the same thing again closes it.
+  expect(toggledUnders({ 'a!1': tim }, 'a!2', ticket)).toEqual({ 'a!1': tim, 'a!2': ticket })
+  expect(toggledUnders({ 'a!1': tim }, 'a!1', ticket)).toEqual({ 'a!1': ticket })
+  expect(toggledUnders({ 'a!1': tim, 'a!2': ticket }, 'a!1', tim)).toEqual({ 'a!2': ticket })
+  // Each is a whole MR read and kept, so past the most the first opened closes.
+  const full = Object.fromEntries(Array.from({ length: PANELS_MOST }, (_, at) => [`a!${at}`, tim]))
+  const more = toggledUnders(full, 'a!99', ticket)
+  expect(Object.keys(more)).toHaveLength(PANELS_MOST)
+  expect(more['a!0']).toBeUndefined()
+  expect(more['a!99']).toEqual(ticket)
 })

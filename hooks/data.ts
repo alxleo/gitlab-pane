@@ -143,12 +143,16 @@ export async function setRows($: EngineInterface, rows: MrCard[]): Promise<void>
     await update($, rowsAtom, () => rows)
   }
 }
-/** Keeps the whole cards of the MRs `isWanted` names and puts `card` among them, if given. */
+/**
+ * Keeps the whole cards of the MRs `isWanted` names and puts `card` among them, if given. Each write starts from the cards
+ * as they are then, so whole reads that end together, one per panel open, all keep their card.
+ */
 export async function setDetails($: EngineInterface, isWanted: (key: string) => boolean, card?: MrCard): Promise<void> {
+  const kept = (known: Readonly<Record<string, MrCard>>) =>
+    Object.fromEntries([...Object.entries(known), ...(card !== undefined ? [[card.key, card] as const] : [])].filter(([key]) => isWanted(key)))
   const known = await read($, detailsAtom)
-  const next = Object.fromEntries([...Object.entries(known), ...(card !== undefined ? [[card.key, card] as const] : [])].filter(([key]) => isWanted(key)))
-  if (!isEqual(known, next)) {
-    await update($, detailsAtom, () => next)
+  if (!isEqual(known, kept(known))) {
+    await update($, detailsAtom, kept)
   }
 }
 export async function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {
