@@ -573,7 +573,8 @@ test('a build that passed is asked for once and kept, a running one at every rea
   await ui.unmount()
 })
 
-test('a build that failed and was retried to success loses its mark on the fold once the recheck period has passed, and not before', async ($, on) => {
+// Forty minutes of polls: about a second here, and up to four on CI's runners, too near the five a test gets by default.
+test('a build that failed and was retried to success loses its mark on the fold once the recheck period has passed, and not before', { timeoutMs: 20_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world: World = { ...emptyWorld(), merged: [merged(21, 1, { mergeCommitSha: MERGE_COMMIT })], pipelines: [{ sha: MERGE_COMMIT, ref: 'main', id: 700, status: 'FAILED' }] }
   const gitlab = engine(on, world)
