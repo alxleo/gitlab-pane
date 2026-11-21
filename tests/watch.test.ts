@@ -1533,6 +1533,40 @@ test('an MR too long for its page shows what fits of the description, then links
   await ui.unmount()
 })
 
+test('an MR with 180 failed jobs lists every one on its page under one description, and keeps its thread and description', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const stages = Array.from({ length: 9 }, (_, s) =>
+    stage(
+      `stage${s}`,
+      'FAILED',
+      Array.from({ length: 20 }, (_job, j) => job(`job${s}-${j}-${'x'.repeat(30)}`, 'FAILED'))
+    )
+  )
+  const mr = rawMr(12, {
+    description: 'Why this change.',
+    headPipeline: pipe('FAILED', { stages: { nodes: stages } }),
+    discussions: { nodes: [thread('Still whole.', 'reviewer')] },
+  })
+  engine(on, { mrs: [mr], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+
+  const links = (await ui.findAll({ type: 'Link' })).map(link => link.text)
+  expect(links.filter(text => /✗ job\d/u.test(text))).toHaveLength(180)
+  expect(links.some(text => text.includes('is on GitLab'))).toBe(false)
+  const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
+  expect(text).toContain('Why this change.')
+  expect(text).toContain('Still whole.')
+  // Each link opens its job's log, so the list says it once, not once a link.
+  const jobs = (await ui.findAll({ type: 'Box' })).find(keyed('hint-jobs'))
+  expect(hintsIn(jobs).map(hint => hint.lines)).toEqual([['✗ failed', 'each opens its log']])
+  expect(hintsIn(await ui.drawn()).filter(hint => hint.lines.includes('each opens its log'))).toHaveLength(1)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
+  await ui.unmount()
+})
+
 test('a reply under a thread is sent only once confirmed and then shows in the thread; one GitLab refuses says why and keeps its text', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const asked = thread('Rename tmp to something that says what it holds.', 'reviewer')
@@ -2211,7 +2245,12 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
       surface === 'terminal'
         ? pictures.length === 0 && squares !== undefined
         : alts.some(alt => /^\d+ stages$/u.test(alt)) &&
-            (surface !== 'desktop' || (said.some(words => words.startsWith('2 stages passed')) && said.some(words => words.includes('build · running'))))
+            (surface === 'desktop'
+              ? said.some(words => words.startsWith('2 stages passed')) && said.some(words => words.includes('build · running'))
+              : // Where no description shows, the picture says its stages as its own title, as the app's tooltip.
+                [/<title>2 stages passed[\n<]/u, /<title>[^<]*build · running/u].every(title =>
+                  pictures.some(svg => svg.props?.isInteractive === true && title.test(String(svg.props.source)))
+                ))
     ).toBe(true)
     // Each description is a region of its own, which the app keeps apart by its key, so no two share one.
     expect(new Set(hints.map(hint => hint.key)).size).toBe(hints.length)

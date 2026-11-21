@@ -2,8 +2,10 @@ import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
 import { HINT_ROOM } from '../../hooks/drawing.ts'
-import { HIDDEN, HINT_DELAY_MS, HINT_LINES, hintChip, isWaiting, waitStep } from '../../hooks/hint-chip.ts'
+import { cellsOf } from '../../hooks/graphemes.ts'
+import { HIDDEN, HINT_DELAY_MS, HINT_LINES, hintChip, isWaiting, regionStep, waitStep } from '../../hooks/hint-chip.ts'
 import type { Wait } from '../../hooks/hint-chip.ts'
+import { textArb } from './arbitrary.ts'
 
 /** The wait after a run of moments: whether the region was shown, and when. */
 const run = (moments: readonly [boolean, number][]): Wait => moments.reduce<Wait>((wait, [isVisible, now]) => waitStep(wait, isVisible, now), HIDDEN)
@@ -78,22 +80,45 @@ test("a description's box has a cell across for each of its widest line's, and t
   expect(hintChip('李小龍').cells).toBe(8)
 })
 
-test('a description from GitLab draws as lines of words: no control character, no line past the room, at most so many lines', () => {
+test('a description from GitLab draws as lines of words: nothing unseen, no box past the room, at most so many lines', () => {
   expect(hintChip(`build\u0001 ·\n failed`).lines).toEqual(['build · failed'])
-  expect(hintChip('x'.repeat(300)).lines[0]?.length).toBe(HINT_ROOM)
+  // A right-to-left override or a zero-width space could turn a name around; the joiners that spell an emoji stay.
+  expect(hintChip('‮xx​yy').lines).toEqual(['xxyy'])
+  expect(hintChip('👩‍💻').lines).toEqual(['👩‍💻'])
+  // Words that are all unseen marks say nothing, so the symbol draws without a description.
+  expect(hintChip('\u0001‮').lines).toEqual([])
+  expect(cellsOf(hintChip('x'.repeat(300)).lines[0] ?? '')).toBe(HINT_ROOM)
+  // Cut by the cells a line takes, so a name in wide letters fits the same box.
+  expect(hintChip('李'.repeat(60)).cells).toBeLessThanOrEqual(HINT_ROOM + 2)
   const stages = hintChip(Array.from({ length: 40 }, (_, i) => `stage ${i} · failed`))
   expect(stages.lines).toHaveLength(HINT_LINES)
   expect(stages.lines.at(-1)).toBe(`and ${40 - HINT_LINES + 1} more`)
   expect(stages.rows).toBe(HINT_LINES)
   fc.assert(
-    fc.property(fc.array(fc.string(), { maxLength: 50 }), words => {
+    fc.property(fc.array(fc.oneof(fc.string(), fc.string({ unit: 'grapheme' }), textArb), { maxLength: 50 }), words => {
       const chip = hintChip(words)
       expect(chip.lines.length).toBeLessThanOrEqual(HINT_LINES)
+      expect(chip.cells).toBeLessThanOrEqual(HINT_ROOM + 2)
       for (const line of chip.lines) {
-        expect(line.length).toBeLessThanOrEqual(HINT_ROOM)
-        expect(line).not.toMatch(/\p{Cc}/u)
+        expect(cellsOf(line)).toBeLessThanOrEqual(HINT_ROOM)
+        expect(line).not.toMatch(/\p{Cc}|(?![‌‍])\p{Cf}/u)
+        expect(line).not.toBe('')
       }
       expect(chip.rows).toBe(Math.max(1, chip.lines.length))
     })
   )
+})
+
+test("a region's size tells it whether its box shows: it starts its clock when shown, and stops it once the words show or it hides", () => {
+  const shown = { columns: 14, rows: 1 }
+  const hidden = { columns: 0, rows: 0 }
+  const first = regionStep(HIDDEN, shown, 1_000)
+  expect(first).toEqual({ wait: { since: 1_000, isShown: false }, tick: 'start' })
+  expect(regionStep(first.wait, shown, 1_100).tick).toBe('keep')
+  expect(regionStep(first.wait, shown, 1_000 + HINT_DELAY_MS)).toEqual({ wait: { since: 1_000, isShown: true }, tick: 'stop' })
+  expect(regionStep(first.wait, hidden, 1_200)).toEqual({ wait: HIDDEN, tick: 'stop' })
+  // Laid out with no width or no height, the box is hidden whatever the other says.
+  expect(regionStep(HIDDEN, { columns: 14, rows: 0 }, 1).wait).toBe(HIDDEN)
+  expect(regionStep(HIDDEN, { columns: 0, rows: 1 }, 1).wait).toBe(HIDDEN)
+  expect(regionStep(HIDDEN, hidden, 1)).toEqual({ wait: HIDDEN, tick: 'keep' })
 })

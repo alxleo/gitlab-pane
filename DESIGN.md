@@ -170,7 +170,7 @@ The words are the tables' own:
 | A pipeline mark | its status (`passed`, `waiting on a manual job`; `STATUS_WORD`); `○` says `no pipeline`, in place of those words on a card |
 | An inbox count | its event's words, above: a card counts `✓2 💬1` in place of `2 approved · 1 commented`; what blocks a merge (changes requested, a failed pipeline, can't merge) keeps its words |
 | The stage strip | its stages, a line each: how many passed, then every other stage's name, state and time |
-| A job on an MR's page | `failed` or `allowed to fail`, and that it opens its log |
+| The failed jobs on an MR's page | one description for the list: what `✗` and `⚠` mean, and that each opens its log |
 | An inbox avatar | who it is |
 
 The controls drawn as a symbol alone say what a press does, or what is on (`CONTROL`):
@@ -185,7 +185,8 @@ The controls drawn as a symbol alone say what a press does, or what is on (`CONT
 | ✕ | end the search |
 | ✓ | mark seen |
 
-- Only the desktop app was seen drawing a description, so it alone draws them. The terminal, VS Code and a phone keep the words a symbol replaces.
+- Only the desktop app was seen drawing a description, so it alone draws them. The terminal, VS Code and a phone keep the words a symbol replaces, and there the stage strip carries its stages as its picture's own title.
+- Text from GitLab in a description (a name, a stage) loses the marks that draw nothing and only steer text, such as a right-to-left override; words left with nothing to say draw no description.
 - A description from the tables above fits `HINT_ROOM`, 36 cells, so it stays inside a narrow pane; any line past it (a stage's long name, text from GitLab) is cut with `…`, and a list past `HINT_LINES` ends with how many more. Wide letters count two cells. One costs about 350 characters of the drawing, counted with its row; the top row's are in `CHROME_SIZE`. With every symbol described, the heaviest list the tests make (fifty MRs of 180 failed jobs each) draws 8 cards where it drew 15, and counts the rest.
 - Every symbol is drawn through `hinted`, the one component, with its words from these tables. The tests hold it: `unhinted` (`tests/fixtures.ts`) walks a desktop drawing of Mine, an MR's page, a person's page, the inbox and a search, and fails on any picture, link, or label of symbols alone that has no description.
 

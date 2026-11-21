@@ -1,9 +1,9 @@
 // What a symbol's description says, how much room it takes, and when it shows: the one rule every symbol follows, on
 // plain data. The engine reveals a hidden box the moment the pointer touches its symbol and has no delay of its own, so the
-// box holds a region (`hint-wait.tsx`) that runs `waitStep` and draws the words only once the pointer has rested there.
+// box holds a region (`hint-wait.tsx`) that hands `regionStep` its size and the time, and draws what it answers.
 import { HINT_ROOM } from './drawing.ts'
 import { drawnLine } from './format.ts'
-import { cellsOf, shorten } from './graphemes.ts'
+import { cellsOf, shortenToCells } from './graphemes.ts'
 
 /**
  * Milliseconds the pointer rests on a symbol before its description shows, every time it comes back: tooltips commonly
@@ -18,16 +18,22 @@ export const HINT_TICK_MS = 100
 export const HINT_LINES = 8
 
 export type HintChip = {
-  /** What it says, a line each, each one line of at most `HINT_ROOM` characters. */
+  /** What it says, a line each, each one line of at most `HINT_ROOM` cells; none for words that are all unseen marks. */
   lines: string[]
   /** Cells across and rows down the box that holds it: its widest line and the room either side, and a row a line. */
   cells: number
   rows: number
 }
 
-/** `words` as a description draws them: whole lines cleaned and cut to `HINT_ROOM`, a long list cut to `HINT_LINES`. */
+/**
+ * Marks that draw nothing and only steer the text (a right-to-left override, a zero-width space), which a name from GitLab
+ * could use to turn a description around. The two joiners stay: emoji and some scripts are spelled with them.
+ */
+const UNSEEN = /(?![‌‍])\p{Cf}/gu
+
+/** `words` as a description draws them: lines cleaned and cut to `HINT_ROOM` cells, a long list cut to `HINT_LINES`. */
 export function hintChip(words: string | readonly string[]): HintChip {
-  const every = (typeof words === 'string' ? [words] : words).map(each => shorten(drawnLine(each), HINT_ROOM))
+  const every = (typeof words === 'string' ? [words] : words).map(each => shortenToCells(drawnLine(each.replace(UNSEEN, '')), HINT_ROOM)).filter(line => line !== '')
   const lines = every.length > HINT_LINES ? [...every.slice(0, HINT_LINES - 1), `and ${every.length - HINT_LINES + 1} more`] : every
   return { lines, cells: Math.max(0, ...lines.map(cellsOf)) + 2, rows: Math.max(1, lines.length) }
 }
@@ -54,3 +60,16 @@ export function waitStep(wait: Wait, isVisible: boolean, now: number): Wait {
 
 /** Whether a region must look at the clock: shown, its words not yet. */
 export const isWaiting = (wait: Wait): boolean => wait.since !== null && !wait.isShown
+
+/** What a region does about its clock after a step: start it, stop it, or leave it as it is. */
+export type Tick = 'start' | 'stop' | 'keep'
+
+/**
+ * A region's whole decision, as it is laid out (`columns` and `rows`, both 0 while its box is hidden) or its clock ticks: the
+ * wait it now has, and what it does about its clock. The region draws its words when `wait.isShown`, and nothing else.
+ */
+export function regionStep(wait: Wait, size: { columns: number; rows: number }, now: number): { wait: Wait; tick: Tick } {
+  const next = waitStep(wait, size.columns > 0 && size.rows > 0, now)
+  const [was, is] = [isWaiting(wait), isWaiting(next)]
+  return { wait: next, tick: was === is ? 'keep' : is ? 'start' : 'stop' }
+}

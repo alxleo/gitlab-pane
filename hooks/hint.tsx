@@ -29,6 +29,9 @@ export function hinted(kit: Kit, key: string, words: string | readonly string[],
     return symbol
   }
   const chip = hintChip(words)
+  if (chip.lines.length === 0) {
+    return symbol
+  }
   const props: HintWaitProps = { lines: chip.lines }
   return (
     <Box key={key} flexShrink={0}>

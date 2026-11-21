@@ -136,10 +136,10 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   }
 
   const pipeline = mr.pipeline
-  const jobs = [
-    ...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗', hint: 'failed: opens its log' })),
-    ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠', hint: 'allowed to fail: opens its log' })),
-  ]
+  const jobs = [...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗' })), ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠' }))]
+  // One description for the whole list: every link opens its job's log, and a list of a hundred and more jobs leaves room for
+  // the threads and the description only if its links are bare.
+  const jobsSay = [...((pipeline?.failed.length ?? 0) > 0 ? ['✗ failed'] : []), ...((pipeline?.amber.length ?? 0) > 0 ? ['⚠ allowed to fail'] : []), 'each opens its log']
   /**
    * Under a thread, the way to answer it: a quiet `↩ reply`, then one box at a time, then the text to confirm, since it
    * posts as you. A phone may not have been sent a text field, and a thread read without where its replies go has none:
@@ -215,9 +215,16 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
             <Text weight="semibold" color="error">
               {plural(jobs.length, 'failed job')}
             </Text>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {jobs.map(({ job, glyph, hint }) => out(`hint-job-${shortHash(job.url)}`, hint, job.url, `${glyph} ${job.name}`))}
-            </Box>
+            {hinted(
+              kit,
+              'hint-jobs',
+              jobsSay,
+              <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+                {jobs.map(({ job, glyph }) => (
+                  <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
+                ))}
+              </Box>
+            )}
           </Box>,
         ]
       : []),

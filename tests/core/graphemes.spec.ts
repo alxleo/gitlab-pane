@@ -1,11 +1,26 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { cellsOf, cut, leading, shorten } from '../../hooks/graphemes.ts'
+import { cellsOf, cut, leading, shorten, shortenToCells } from '../../hooks/graphemes.ts'
 import { textArb } from './arbitrary.ts'
 
 // A family is three people joined by zero-width joiners, written as escapes so the joiners can be seen.
 const FAMILY = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}'
+
+test('a line cut to so many cells keeps whole characters, ends in an ellipsis, and fits the cells and four units a cell', () => {
+  expect(shortenToCells('opens the MR', 12)).toBe('opens the MR')
+  expect(shortenToCells('opens the MR', 8)).toBe('opens t…')
+  expect(shortenToCells('李小龍李小龍', 7)).toBe('李小龍…')
+  expect(shortenToCells(`${FAMILY}${FAMILY}`, 3)).toBe(`${FAMILY}…`)
+  fc.assert(
+    fc.property(textArb, fc.integer({ min: 2, max: 40 }), (text, room) => {
+      const line = shortenToCells(text, room)
+      expect(cellsOf(line)).toBeLessThanOrEqual(room)
+      expect(line.length).toBeLessThanOrEqual(4 * room)
+      expect(line === text || (line.endsWith('…') && text.startsWith(line.slice(0, -1)))).toBe(true)
+    })
+  )
+})
 
 test('a wide letter or a picture takes two cells, any other character one, however many code points it is made of', () => {
   expect(cellsOf('opens the MR')).toBe(12)

@@ -18,6 +18,8 @@ export type StripModel = {
   /** The description, a line each: how many stages passed, then every other stage as `stageLine` says it, in order. */
   hint: string[]
   source: SvgSource
+  /** The same picture with the description as its title, for a surface that shows no description of its own. */
+  titled: SvgSource
 }
 
 /** `build · passed · ran 3m`; a stage none of whose jobs ran says only its state. */
@@ -42,12 +44,20 @@ export function stripModel(stages: Stage[], now: number): StripModel {
   })
   const count = stages.filter(passed).length
   const width = stages.length * 12
+  const hint = [...(count > 0 ? [`${plural(count, 'stage')} passed`] : []), ...stages.filter(stage => !passed(stage)).map(stage => stageLine(stage, now))]
+  // Passed runs fill with the pattern, so it is there only when a stage passed.
+  const drawing = followingTheme(
+    raw([
+      svg`<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>`,
+      ...marks,
+    ])
+  )
   return {
     tones: stages.map(stage => stageTone(stage.status)),
     width,
     alt: `${stages.length} stages`,
-    hint: [...(count > 0 ? [`${plural(count, 'stage')} passed`] : []), ...stages.filter(stage => !passed(stage)).map(stage => stageLine(stage, now))],
-    // Passed runs fill with the pattern, so it is there only when a stage passed.
-    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${followingTheme(raw([svg`<defs><rect id='s' width='10' height='10' rx='2'/>${raw(count > 0 ? svg`<pattern id='p' width='12' height='10' patternUnits='userSpaceOnUse'><use href='#s' ${tonePaint('fill', 'success')}/></pattern>` : svg``)}</defs>`, ...marks]))}</svg>`,
+    hint,
+    source: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'>${drawing}</svg>`,
+    titled: svg`<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='10'><title>${hint.join('\n')}</title>${drawing}</svg>`,
   }
 }
