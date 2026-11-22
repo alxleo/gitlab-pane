@@ -68,6 +68,8 @@ test("the README's polling intervals are the ones the sessions poll at", () => {
     [],
     // Jira
     [TICKETS_EVERY_MS],
+    // a ticket opened under its card, read whole again on opening once as old as the quarter-hourly read lets a ticket be
+    [TICKETS_EVERY_MS],
     // Jira moves: after a read, and again a while after a failed ask
     [RETRY_MS],
     // avatars, once per face; glab's token, once per host

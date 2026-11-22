@@ -1,6 +1,7 @@
 // What the search box finds among the MRs the pane already holds: an MR by its number (`!512`, `512`), a ticket however
 // it is spelled (`ABC-123`, `abc123`), or words of its title, branch, repo or author. Pure, on plain data; the pane says
 // what each MR is called, and this says which match and in what order.
+import { drawnLine } from './format.ts'
 import { cut } from './graphemes.ts'
 
 /**
@@ -20,8 +21,11 @@ const TIER = { iid: 8, ticket: 4, start: 2, part: 1 } as const
 /** The most a search holds: more is pasted, not typed, and it is drawn back in the box. */
 const SEARCH_ROOM = 200
 
-/** What of a search is kept: its first `SEARCH_ROOM` characters, none cut in half, so the box never outgrows the drawing. */
-export const keptSearch = (text: string): string => cut(text, SEARCH_ROOM, SEARCH_ROOM)
+/**
+ * What of a search is kept: its first `SEARCH_ROOM` characters, none cut in half, so the box never outgrows the drawing,
+ * on one line without the control characters a drawing refuses, as it is drawn back in the box for as long as it is kept.
+ */
+export const keptSearch = (text: string): string => cut(drawnLine(text), SEARCH_ROOM, SEARCH_ROOM)
 
 /** Letters whose stroke or form no decomposition takes off, as their plain letter. */
 const PLAIN: Readonly<Record<string, string>> = { ł: 'l', ø: 'o', đ: 'd', ħ: 'h', ı: 'i', ŧ: 't' }

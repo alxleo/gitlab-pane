@@ -8,7 +8,10 @@ import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
-/** Text made one line a Text draws: each control character a space, each run of spaces one, none at either end. */
+/**
+ * A line of someone else's words as a drawing takes it: a control character (a carriage return, an escape, a line break) is
+ * refused in drawn text and can blank the whole pane, so each is a space, and runs of spaces are one.
+ */
 export const drawnLine = (text: string): string =>
   text
     .replace(/\p{Cc}/gu, ' ')
@@ -42,7 +45,7 @@ function proseLines(body: GitLabMarkdown): string[] {
 export function excerpt(body: GitLabMarkdown, room = 160): string {
   const first = proseLines(body).find(text => text.replace(/[#*_>\s-]/gu, '').length > 0) ?? ''
   // Underscores stay: in a review they are mostly names (`fn_name`), rarely emphasis.
-  return shorten(first.replace(/^[#>\s]+|[*`]/gu, '').trim(), room)
+  return shorten(drawnLine(first.replace(/^[#>\s]+|[*`]/gu, '')), room)
 }
 
 /** The first paragraph under the headings, as one plain line. */

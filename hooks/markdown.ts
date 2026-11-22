@@ -26,6 +26,21 @@ const brand = <Stamp extends MarkdownText | GitLabMarkdown = MarkdownText>(text:
 export const EMPTY_MARKDOWN = brand('')
 
 /**
+ * One link, its words and address escaped so neither reads as Markdown: what the pane draws where a plain click is the
+ * pane's own (a ticket opening under its card) and a modified click opens the address, as the Markdown element does.
+ * Null for an address that is not http(s), which the element would draw as words.
+ */
+export function linkMarkdown(label: string, href: string): MarkdownText | null {
+  if (!/^https?:\/\/\S+$/u.test(href)) {
+    return null
+  }
+  const words = label.replace(/[\\[\]()*_`<>~|!#]/gu, '\\$&')
+  // encodeURIComponent leaves brackets as they are, which would end the link early.
+  const address = href.replace(/[()<>]/gu, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+  return brand(`[${words}](${address})`)
+}
+
+/**
  * The longest start of `markdown` whose drawing fits `room`, ended at a paragraph, a line or a word; empty if none does.
  * `sizeOf` measures a candidate's drawing.
  */

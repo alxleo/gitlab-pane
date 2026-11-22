@@ -24,6 +24,7 @@ export const CONTROL = {
   pin: { mark: '☆', hint: 'pin to this session' },
   unpin: { mark: '★', hint: 'unpin from this session' },
   clear: { mark: '✕', hint: 'end the search' },
+  close: { mark: '✕', hint: 'close what is open under the card' },
   seen: { mark: '✓', hint: 'mark seen' },
 } as const
 
@@ -43,9 +44,12 @@ export const HINT_ROOM = 36
  */
 export const DRAWING_BUDGET = 85_000
 
+/** Beside a search or a repo pick that narrows the list: a glyph and a word, drawn in the theme's blue. */
+export const FILTERED = '⧩ filtered'
+
 /**
- * What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos, and the chips that say
- * what ↻, 🔔 and the search's ✕ do, about 350 characters each.
+ * What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos, and the descriptions
+ * of ↻, 🔔 and the search's ✕, about 350 characters each.
  */
 export const CHROME_SIZE = 7_000
 

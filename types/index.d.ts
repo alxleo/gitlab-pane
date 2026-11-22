@@ -462,8 +462,11 @@ export type InboxState = {
  */
 export type FailureKind = 'not-installed' | 'no-token' | 'unauthorized' | 'network' | 'timeout' | 'bad-answer' | 'server' | 'failed' | 'unknown'
 
-/** What a background job reports failing, by where it ran. */
-export type ProblemSource = 'gitlab' | 'jira' | 'jira-moves' | 'usual' | 'avatars' | 'suggested' | 'inbox' | 'merged' | 'pane' | 'store'
+/**
+ * What a background job reports failing, by where it ran. `jira` is the quarter-hourly read of every ticket's status, and
+ * `jira-ticket` the read of one ticket opened under a card: neither one's failure or success says anything of the other.
+ */
+export type ProblemSource = 'gitlab' | 'jira' | 'jira-ticket' | 'jira-moves' | 'usual' | 'avatars' | 'suggested' | 'inbox' | 'merged' | 'pane' | 'store'
 
 /** The last failure of each source, for `/gitlab` to list; a source that works again has none. */
 export type Problems = { [Source in ProblemSource]?: { message: string; kind: FailureKind; at: number } }
@@ -485,6 +488,26 @@ export type Choices = {
   /** Whether a pinned MR's news wakes the session. */
   wake: boolean
 }
+
+/**
+ * What the search box is drawn holding, apart from what is searched for: the desktop keeps what is typed through a redraw
+ * while the box is drawn holding the same text as before, so this changes on Enter and ✕ alone, never while typing. `round`
+ * counts the ✕ presses: each draws a new box, empty, whatever was typed into the one before.
+ */
+export type SearchBox = { drawn: string; round: number }
+
+/**
+ * What is open under a card, in place of a page: a person's say on it, or its ticket. One thing a card; any number of
+ * cards, so opening one never closes another and no card moves under the pointer.
+ */
+export type Under = { kind: 'person' | 'ticket'; id: string }
+
+/**
+ * What a ticket says beyond its line on the card, read from Jira when it is opened under one, and when (`at`); `isFound`
+ * false when Jira answered without it (a key it does not know, or one hidden from you). `failed`, when the last read of it
+ * failed, and why: each ticket's own, so a panel open under one card never speaks for another's.
+ */
+export type TicketDetail = { assignee: string; description: string; isFound: boolean; at: number; failed?: FailureKind }
 
 /** Why the pane's last scroll did not move, and how far going back from an MR's page got; `/gitlab` reports both. */
 export type Scrolling = { refused: string; goingBack: string }
@@ -517,8 +540,14 @@ declare module 'claude-code' {
       suggested: Suggested
       /** What the person chose in the pane. */
       choices: Choices
-      /** What was searched for in the box above Mine, as Enter left it; empty while no search is on. */
+      /** What is searched for in the box above Mine, as typing last paused on it or Enter left it; empty while no search is on. */
       search: string
+      /** What the search box is drawn holding, and how many times ✕ has emptied it. */
+      searchBox: SearchBox
+      /** What is open under the cards of the list, by card key. */
+      unders: Record<string, Under>
+      /** Tickets' descriptions and assignees by key, read when each was first opened under a card. */
+      ticketDetails: Record<string, TicketDetail>
       /** Per card key, `<pipeline id>:<what>` already announced. */
       announced: Record<string, string[]>
       poll: PollState

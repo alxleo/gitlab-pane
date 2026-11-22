@@ -1,6 +1,16 @@
 import { expect, test } from 'vitest'
 
-import { serialised } from '../../hooks/in-flight.ts'
+import { isLastTyped, serialised, typed } from '../../hooks/in-flight.ts'
+
+test('a pause in typing acts only on the last change typed into its box, whatever another box was typed into since', () => {
+  const first = typed('box-a')
+  const other = typed('box-b')
+  expect(isLastTyped('box-a', first)).toBe(true)
+  const second = typed('box-a')
+  expect(isLastTyped('box-a', first)).toBe(false)
+  expect(isLastTyped('box-a', second)).toBe(true)
+  expect(isLastTyped('box-b', other)).toBe(true)
+})
 
 test('a read that fails does not stop the one queued behind it', async () => {
   const order: string[] = []

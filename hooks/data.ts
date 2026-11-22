@@ -2,11 +2,11 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import { isEqual } from './equal.ts'
-import { browseUrl } from './jira.ts'
+import { browseUrl, keptTicketDetails } from './jira.ts'
 import { pinKey } from './mr-url.ts'
 import { keptCards, keptCardsByKey } from './snapshot.ts'
 
-import type { MrCard, Pinned, PollState, ReadClock, Role, Suggested, Ticket, Usual } from '../types'
+import type { MrCard, Pinned, PollState, ReadClock, Role, Suggested, Ticket, TicketDetail, Usual } from '../types'
 
 // What GitLab, Jira and avatar fetches gave, and the polling's bookkeeping. The engine reads an atom only in the file that
 // declares it, so everything that reads or writes these goes through the functions below.
@@ -15,6 +15,7 @@ const hostsAtom = atom({ plugin: 'gitlab-pane', key: 'hosts' } as const, ['gitla
 const rowsAtom = atom({ plugin: 'gitlab-pane', key: 'rows' } as const, [])
 const detailsAtom = atom({ plugin: 'gitlab-pane', key: 'details' } as const, {})
 const ticketsAtom = atom({ plugin: 'gitlab-pane', key: 'tickets' } as const, {})
+const ticketDetailsAtom = atom({ plugin: 'gitlab-pane', key: 'ticketDetails' } as const, {})
 const usualAtom = atom({ plugin: 'gitlab-pane', key: 'usual' } as const, {})
 const avatarsAtom = atom({ plugin: 'gitlab-pane', key: 'avatars' } as const, {})
 const suggestedAtom = atom({ plugin: 'gitlab-pane', key: 'suggested' } as const, {})
@@ -41,20 +42,36 @@ const readsAtom = atom({ plugin: 'gitlab-pane', key: 'reads' } as const, {
 
 /** What the pane draws from; reading it here makes the pane redraw when any of it changes. */
 export async function drawnData($: EngineInterface) {
-  const [pinned, rows, details, avatars, suggested, tickets, usual, poll, isReading, browse] = await Promise.all([
+  const [pinned, rows, details, avatars, suggested, tickets, ticketDetails, usual, poll, isReading, browse] = await Promise.all([
     read($, pinnedAtom),
     read($, rowsAtom),
     read($, detailsAtom),
     read($, avatarsAtom),
     read($, suggestedAtom),
     read($, ticketsAtom),
+    read($, ticketDetailsAtom),
     read($, usualAtom),
     read($, pollAtom),
     read($, readingAtom),
     read($, jiraAtom),
   ])
   // The cards outlive a reload, so new code meets cards an older version kept: those in another shape are left out.
-  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, suggested, tickets, usual, poll, isReading, browse }
+  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, suggested, tickets, ticketDetails, usual, poll, isReading, browse }
+}
+
+/** What reading the ticket `key` whole last gave, if it has been. */
+export async function heldTicket($: EngineInterface, key: string): Promise<TicketDetail | undefined> {
+  return (await read($, ticketDetailsAtom))[key]
+}
+
+/** Whether the last read of any ticket held failed, so a panel still says so. */
+export async function isAnyTicketFailed($: EngineInterface): Promise<boolean> {
+  return Object.values(await read($, ticketDetailsAtom)).some(detail => detail.failed !== undefined)
+}
+
+/** Keeps what Jira said of a ticket read whole, letting go of the oldest read past those held (`keptTicketDetails`). */
+export async function knowTicketDetail($: EngineInterface, key: string, detail: TicketDetail): Promise<void> {
+  await update($, ticketDetailsAtom, previous => keptTicketDetails(previous, key, detail))
 }
 
 export function readPinned($: EngineInterface): Promise<Pinned[]> {
@@ -133,12 +150,16 @@ export async function setRows($: EngineInterface, rows: MrCard[]): Promise<void>
     await update($, rowsAtom, () => rows)
   }
 }
-/** Keeps the whole cards of the MRs `isWanted` names and puts `card` among them, if given. */
+/**
+ * Keeps the whole cards of the MRs `isWanted` names and puts `card` among them, if given. Each write starts from the cards
+ * as they are then, so whole reads that end together, one per panel open, all keep their card.
+ */
 export async function setDetails($: EngineInterface, isWanted: (key: string) => boolean, card?: MrCard): Promise<void> {
+  const kept = (known: Readonly<Record<string, MrCard>>) =>
+    Object.fromEntries([...Object.entries(known), ...(card !== undefined ? [[card.key, card] as const] : [])].filter(([key]) => isWanted(key)))
   const known = await read($, detailsAtom)
-  const next = Object.fromEntries([...Object.entries(known), ...(card !== undefined ? [[card.key, card] as const] : [])].filter(([key]) => isWanted(key)))
-  if (!isEqual(known, next)) {
-    await update($, detailsAtom, () => next)
+  if (!isEqual(known, kept(known))) {
+    await update($, detailsAtom, kept)
   }
 }
 export async function setAnnounced($: EngineInterface, announced: Record<string, string[]>): Promise<void> {

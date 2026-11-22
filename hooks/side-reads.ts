@@ -1,6 +1,9 @@
 import type { EngineInterface } from 'claude-code'
 
 import {
+  heldTicket,
+  isAnyTicketFailed,
+  knowTicketDetail,
   knowTickets,
   markTicketsRead,
   markUnreachable,
@@ -25,7 +28,7 @@ import { moveTickets, readUsers } from './jira-mover'
 import { readSuggested, suggestedQuery } from './ask-suggested'
 import { readUsual, usualQuery } from './ask-usual'
 import { ask, askVariant } from './graphql'
-import { readTickets, searchArgs } from './jira'
+import { detailArgs, readTicketDetails, readTickets, searchArgs } from './jira'
 import { ticketOf } from './format'
 import { pictureUri, sizedAvatar } from './picture'
 import { isPassDue } from './snapshot'
@@ -62,6 +65,36 @@ export async function readJira($: EngineInterface, rows: readonly MrCard[], now:
   }
   await clear($, 'jira')
   await knowTickets($, found.value)
+}
+
+/**
+ * A ticket opened under a card, read whole: its description and assignee, which the quarter-hourly read leaves out. What
+ * was read is drawn at once, and read again on an opening once it is as old as the quarter-hourly read lets a ticket be. A
+ * ticket Jira answers without is kept as not found. A failure is kept with the ticket (`failed`), so its panel says so and
+ * no other's does, and asked again at its next opening; what an earlier read gave is kept over it. `/gitlab` says the last
+ * such failure (`jira-ticket`), apart from the quarter-hourly read's, while any ticket's panel still says it failed.
+ */
+export function ensureTicket($: EngineInterface, key: string): Promise<void> {
+  return joined(`ticket:${key}`, async () => {
+    const now = await $.clock.now()
+    const held = await heldTicket($, key)
+    if ((await readBrowse($)) === '' || (held !== undefined && held.failed === undefined && now - held.at < TICKETS_EVERY_MS)) {
+      return
+    }
+    const found = await runJson($, 'acli', detailArgs(key), readTicketDetails, { timeoutMs: 60_000 })
+    if (!found.ok) {
+      await record($, 'jira-ticket', failureOf(found))
+      if (held === undefined || held.failed !== undefined) {
+        await knowTicketDetail($, key, { assignee: '', description: '', isFound: false, at: now, failed: found.kind })
+      }
+      return
+    }
+    const detail = found.value[key]
+    await knowTicketDetail($, key, detail !== undefined ? { ...detail, isFound: true, at: now } : { assignee: '', description: '', isFound: false, at: now })
+    if (!(await isAnyTicketFailed($))) {
+      await clear($, 'jira-ticket')
+    }
+  })
 }
 
 /**

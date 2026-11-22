@@ -1,18 +1,21 @@
 import type { EngineInterface, RenderChildren } from 'claude-code'
 
-import { CONTROL, opens } from './drawing'
+import { CONTROL, LINK, opens } from './drawing'
 import { face } from './faces'
 import type { InboxRow } from './found-model'
 import { AT_END, hinted } from './hint'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
-import { openReading } from './panes'
+import type { UnderBlock } from './page-lines'
+import { openReading, openUnder } from './panes'
 import { pressSuggested } from './reviewers'
 import { togglePin } from './shared'
 import type { RowModel } from './pane-model'
 import { markWord, statusMark } from './status'
 import { strip } from './strip'
+
+import type { Under } from '../types'
 
 /** The parts of a row the pane fits to its room. */
 export type RowPart = 'line1' | 'line2' | 'faces' | 'said'
@@ -55,10 +58,71 @@ function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['m
   ]
 }
 
+/** What the ticket's link says under the pointer: where a click opens it, and where a ⌘ click does. */
+const TICKET_SAYS = ['opens the ticket under the card', '⌘ click opens it in Jira']
+
+/**
+ * The ticket the title names: with a Jira site set, a link whose plain click opens the ticket under the card and whose ⌘,
+ * ctrl or alt click opens it in Jira, as the Markdown element does with a link it answers; else its key, dim.
+ */
+function ticketLink($: EngineInterface, kit: Kit, row: RowModel, ticket: NonNullable<RowModel['ticket']>): RenderChildren {
+  const { Text, Markdown } = kit
+  return ticket.link !== null ? (
+    <Markdown key={`ticket-${row.suffix}`} text={ticket.link} onLinkPress={() => openUnder($, row.key, 'ticket', ticket.key)} />
+  ) : (
+    <Text dimColor>{ticket.text}</Text>
+  )
+}
+
+/**
+ * What is open under a card, in place of a page: a person's say on the MR, newest comment first, or its ticket as Jira tells
+ * it. The way on goes to the whole (the MR's page on that person, or the ticket in Jira); `✕` closes it, as a second press
+ * on what opened it does.
+ */
+export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: UnderBlock, open: Under, href: string | null): RenderChildren {
+  const { Box, Text, Button, Link } = kit
+  const close = hinted(
+    kit,
+    `hint-under-close-${row.suffix}`,
+    CONTROL.close.hint,
+    <Button key={`under-close-${row.suffix}`} plain dimColor label={CONTROL.close.mark} onPress={() => openUnder($, row.key, open.kind, open.id)} />,
+    AT_END
+  )
+  const heading = (
+    <Box flexDirection="row" columnGap={1} alignItems="center">
+      <Box flexGrow={1} flexShrink={1}>
+        <Text weight="semibold">{block.heading}</Text>
+      </Box>
+      {close}
+    </Box>
+  )
+  if (block.kind === 'person') {
+    return (
+      <Box key={`under-${row.suffix}`} flexDirection="column" paddingLeft={2} marginTop={1}>
+        {heading}
+        {block.latest !== null && <Text dimColor>{`newest, ${block.latest.label}:`}</Text>}
+        {block.latest !== null && <Text>{block.latest.text}</Text>}
+        {block.more !== null && <Button key={`under-more-${row.suffix}`} plain label={block.more} onPress={() => openReading($, row.key, open.id)} />}
+      </Box>
+    )
+  }
+  return (
+    <Box key={`under-${row.suffix}`} flexDirection="column" paddingLeft={2} marginTop={1}>
+      {heading}
+      {block.lines.map(line => (
+        <Text>{line}</Text>
+      ))}
+      {block.isReading && <Text dimColor>reading Jira…</Text>}
+      {href !== null && hinted(kit, `hint-under-jira-${row.suffix}`, opens('jira'), <Link href={href}>{`${LINK.jira} open in Jira`}</Link>)}
+    </Box>
+  )
+}
+
 /**
  * One part of a row's card from the row model: its title line, its second line with or without pictures on the faces, and
  * the one comment it quotes. Only what the model decided is drawn here. Nothing on a card shows or hides on a hover but a
- * symbol's description, drawn over the card (`hinted`): the MR's page, a press on the title away, holds the rest of it.
+ * symbol's description, drawn out of the flow (`hinted`): what a press on a name or a ticket opens goes under the card, and
+ * the MR's page, a press on the title away, holds the rest.
  */
 export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowPart): RenderChildren {
   const { Box, Text, Button, Link } = kit
@@ -120,11 +184,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
           <Box flexDirection="row" gap={1} flexShrink={0}>
             {hinted(kit, scope('hint-mr'), opens('mr'), <Link href={row.mr.href}>{row.mr.text}</Link>)}
             {row.ticket !== null &&
-              (row.ticket.href !== null ? (
-                hinted(kit, scope('hint-ticket'), opens('jira'), <Link href={row.ticket.href}>{row.ticket.text}</Link>)
-              ) : (
-                <Text dimColor>{row.ticket.text}</Text>
-              ))}
+              (row.ticket.link !== null ? hinted(kit, scope('hint-ticket'), TICKET_SAYS, ticketLink($, kit, row, row.ticket)) : ticketLink($, kit, row, row.ticket))}
             {row.repo !== null && hinted(kit, scope('hint-repo'), opens('repo'), <Link href={row.repo.href}>{row.repo.text}</Link>)}
           </Box>
           {/* The strip says its stages, a line each, once the pointer rests on it. */}
@@ -144,7 +204,8 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
                   <Text color={row.blocker.tone}>{row.blocker.text}</Text>
                 </Box>
               )}
-          {/* A name opens the MR's page on that person's comments alone; the face or the name says where they stand. */}
+          {/* A name opens what that person says on the MR under the card, the list staying where it is; a second press closes
+              it. The face or the name says where they stand. */}
           {row.people.map(person =>
             hinted(
               kit,
@@ -152,7 +213,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
               person.hint,
               <Box flexDirection="row" alignItems="center" flexShrink={0}>
                 {face(kit, person, withPictures)}
-                <Button key={scope(`person-${person.username}`)} plain label={person.label} onPress={() => openReading($, row.key, person.username)} />
+                <Button key={scope(`person-${person.username}`)} plain label={person.label} onPress={() => openUnder($, row.key, 'person', person.username)} />
               </Box>
             )
           )}
@@ -191,7 +252,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
       const { said } = row
       return said !== null ? (
         <Box paddingLeft={2}>
-          <Button key={scope('said')} plain label={said.label} onPress={() => openReading($, row.key, said.username)} />
+          <Button key={scope('said')} plain label={said.label} onPress={() => openUnder($, row.key, 'person', said.username)} />
         </Box>
       ) : null
     }

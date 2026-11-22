@@ -17,6 +17,7 @@ export const README = {
     [],
     [900000],
     [900000],
+    [900000],
     [],
     [],
     [2000, 15000, 45000],
@@ -72,6 +73,7 @@ export const DESIGN = {
     ['☆', 'pin to this session'],
     ['★', 'unpin from this session'],
     ['✕', 'end the search'],
+    ['✕', 'close what is open under the card'],
     ['✓', 'mark seen'],
   ],
   inboxEvents: [
