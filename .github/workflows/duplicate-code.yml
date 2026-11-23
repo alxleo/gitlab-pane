@@ -1,0 +1,68 @@
+name: Duplicate code
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Optional Git ref for the Reprise diff
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/duplicate-code.yml
+      - tools/duplicates.ts
+      - reprise.toml
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  duplicate-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - name: Prepare the three detectors
+        env:
+          PMD_VERSION: '7.29.0'
+          PMD_SHA256: d27177c185b837fa57f097e482d1253468aa035379c5eb2671fa0a279109b179
+          JSCPD_VERSION: '5.4.3'
+          JSCPD_SHA256: a19d719331b21a047a7537f982566dabcf6d6e5f51581c3b80d9c420979cc92c
+          REPRISE_REV: a9d63a9fb7d3f38b066de6866a0d9d15bd63e043
+        run: |
+          work=$(mktemp -d "$RUNNER_TEMP/duplicate-code.XXXXXXXX")
+          cd "$work"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/pmd/pmd/releases/download/pmd_releases/$PMD_VERSION/pmd-dist-$PMD_VERSION-bin.zip" -o pmd.zip
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/kucherenko/jscpd/releases/download/v$JSCPD_VERSION/jscpd-linux-x64-gnu.tar.gz" -o jscpd.tar.gz
+          printf '%s  %s\n' "$PMD_SHA256" pmd.zip "$JSCPD_SHA256" jscpd.tar.gz | sha256sum --check
+          unzip -q pmd.zip
+          mkdir bin
+          tar -xzf jscpd.tar.gz -C bin jscpd
+          git init -q reprise
+          git -C reprise fetch --no-tags --depth=1 https://github.com/ctxloom/reprise.git "$REPRISE_REV"
+          git -C reprise checkout --detach "$REPRISE_REV"
+          printf '[toolchain]\nchannel = "1.95.0"\nprofile = "minimal"\n' > reprise/rust-toolchain.toml
+          (cd reprise && cargo build --release --locked --bin reprise)
+          cp reprise/target/release/reprise bin/
+          printf '%s\n' "$work/pmd-bin-$PMD_VERSION/bin" "$work/bin" >> "$GITHUB_PATH"
+      - name: Write the advisory report
+        env:
+          BASE: ${{ inputs.base }}
+        run: |
+          args=()
+          if [[ -n "$BASE" ]]; then
+            args+=(--base "$BASE")
+          fi
+          node tools/duplicates.ts "${args[@]}"

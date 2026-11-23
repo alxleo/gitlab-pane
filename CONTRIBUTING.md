@@ -63,6 +63,14 @@ npm run check && npm test    # everything a commit and a push must pass
 
 Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. `check.yml` also validates and tests the plugin on `CLAUDE_CODE_STABLE`, the version npm's `stable` tag names, which is what the stable release channel installs and usually older than the pin; Renovate keeps it on that tag. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
 
+## Duplicate-code sweep
+
+Open **Actions → Duplicate code → Run workflow** for a technical-debt sweep. The run summary folds PMD-CPD's TypeScript copy-paste matches, jscpd's TypeScript and TSX matches, and Reprise's structural matches into one report. Leave `base` empty for a full scan. Set it to a Git ref to have Reprise compare against the merge base of that ref and the selected checkout. The report is advisory. Workflow runs on pull requests are limited to changes to the report tooling itself.
+
+An agent can trace the reported paths, collapse overlapping results and verify whether the copies implement a rule that should change together. Fix a verified issue in the change that exposed it when the fix belongs there. For an occasional sweep, pick the independent fixes that eliminate work or prevent a plausible repeat bug. A repeated test setup, query shape or comment-only drift alert can be intentional or harmless.
+
+For a local run with the three binaries on PATH, use `node tools/duplicates.ts`, optionally with `--base origin/main`. The workflow pins the detector versions.
+
 ## GitLab's types
 
 Each question the pane asks GitLab is one `hooks/ask-*.ts` module: its `/* GraphQL */` documents, the request, the cost, and how its answer reads. A new question is a new module, added to `hooks/gitlab-operations.ts` (and `tsconfig.core.json`, `release-tree/files`); a document names the fragments it spreads and `documentOf` appends them, so no list of fragments is kept by hand. Edit a document, run `npm run schema -- types`, commit `hooks/gitlab.generated.ts`: a field the schema lets be null is `| null` there, and the code must handle it.
