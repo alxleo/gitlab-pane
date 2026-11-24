@@ -53,6 +53,16 @@ export function versionFrom(printed: string | undefined): string {
 }
 
 /**
+ * What to say when `claude --version` printed no version, and how to fix it. With nothing to start (npm ci never ran)
+ * there is an error and no output at all; an install with --ignore-scripts leaves a stub that says why on stderr, and the
+ * rebuild puts the binary in place.
+ */
+export function noVersion(claude: string, ran: { readonly error?: Error | undefined; readonly stderr?: string | null | undefined }): string {
+  const said = ran.error !== undefined ? ran.error.message : ((ran.stderr ?? '').trim().split('\n', 1)[0] ?? '')
+  return `\`${claude} --version\` printed no version${said !== '' ? ` (${said})` : ''}. Run npm ci, which installs the Claude Code package.json pins, or, after an install with --ignore-scripts, npm rebuild @anthropic-ai/claude-code.`
+}
+
+/**
  * How claude is run to unpack the skill: in `work`, so it reads no project's settings or instructions, with nothing of
  * this environment but PATH, a home, config folder and temp folder inside `work`, and an API address nothing answers. So
  * it has no credential of yours to send; it may still reach Anthropic unauthenticated, which spends nothing.
@@ -120,11 +130,7 @@ if (import.meta.main) {
   const ran = spawnSync(pinnedClaude(root), ['--version'], { encoding: 'utf8', timeout: 30_000 })
   const version = versionFrom(ran.stdout)
   if (version === '') {
-    // An install with --ignore-scripts leaves a stub that says so on stderr; the rebuild puts the binary in place.
-    const said = ran.stderr.trim().split('\n', 1)[0] ?? ''
-    fail(
-      `\`${pinnedClaude(root)} --version\` printed no version${said !== '' ? ` (${said})` : ''}. Run npm ci, which installs the Claude Code package.json pins, or, after an install with --ignore-scripts, npm rebuild @anthropic-ai/claude-code.`
-    )
+    fail(noVersion(pinnedClaude(root), ran))
   }
   const target = join(dest, 'claude-code', 'index.d.ts')
   const current = existsSync(target) && existsSync(join(dest, 'tsconfig.json')) && head(target) === stamp(version)
