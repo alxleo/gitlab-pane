@@ -24,7 +24,7 @@ import {
   user,
 } from './fixtures'
 import type { Mr } from './fixtures'
-import type { CiJobStatus, PipelineStatusEnum, ReplyMutation, ReplyMutationVariables } from '../hooks/gitlab.generated'
+import type { AddReviewerMutation, AddReviewerMutationVariables, CiJobStatus, PipelineStatusEnum, ReplyMutation, ReplyMutationVariables } from '../hooks/gitlab.generated'
 import type { RawResponse } from '../hooks/gitlab-request'
 import { argumentNotAccepted, moveAnswers, undefinedField } from './gitlab_fake'
 import type { Answers } from './gitlab_fake'
@@ -118,6 +118,10 @@ type Fake = {
   runs?: number[]
   /** Whom GitLab suggests to approve each MR; no one unless set. */
   suggested?: { username: string; name: string; bot: boolean; avatarUrl: string | null }[]
+  /** A GitLab without suggested approvers, as the Community Edition or an older paid one is. */
+  lacksSuggestions?: boolean
+  /** What GitLab answers an add of a reviewer; it adds them unless a test sets this. */
+  addReviewer?: (variables: AddReviewerMutationVariables) => RawResponse<AddReviewerMutation>
 }
 
 const SIX_RUNS = [600, 660, 720, 780, 840, 900]
@@ -140,6 +144,11 @@ const threadId = (at: number) => `gid://gitlab/Discussion/d${at}`
 const NO_REPLY = (): RawResponse<ReplyMutation> => ({
   data: { createNote: null },
   errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }],
+})
+
+/** What GitLab answers an add of a reviewer when the test set none: it adds them. */
+const ADDS = (variables: AddReviewerMutationVariables): RawResponse<AddReviewerMutation> => ({
+  data: { mergeRequestSetReviewers: { errors: [], mergeRequest: { reviewers: { nodes: [{ username: variables.username }] } } } },
 })
 
 /** What a current GitLab answers for the MRs `fake` holds; `reads` hears of each operation but the run times. */
@@ -280,10 +289,13 @@ function engine(
             () => fake.timedOut ?? []
           ),
           Usual: () => pipelinesRan(fake.runs ?? SIX_RUNS),
-          Suggested: () => ({ data: { project: { mergeRequest: { approvalState: { suggestedApprovers: { nodes: fake.suggested ?? [] } } } } } }),
+          Suggested: () =>
+            fake.lacksSuggestions === true
+              ? undefinedField('MergeRequestApprovalState', 'suggestedApprovers')
+              : { data: { project: { mergeRequest: { approvalState: { suggestedApprovers: { nodes: fake.suggested ?? [] } } } } } },
           AddReviewer: variables => {
             added.push(`${variables.iid} ${variables.username}`)
-            return { data: { mergeRequestSetReviewers: { errors: [], mergeRequest: { reviewers: { nodes: [{ username: variables.username }] } } } } }
+            return (fake.addReviewer ?? ADDS)(variables)
           },
           ...moveAnswers(
             () => fake.mrs,
@@ -1431,7 +1443,9 @@ test('a card short of a reviewer offers whom GitLab suggests, faded: a press arm
   expect((await suggestion())?.props['label']).toBe('+ Ines')
   await ui.press({ key: (await suggestion())?.key ?? '' })
   await clock.settle()
-  await ui.press({ key: (await suggestion())?.key ?? '' })
+  // A double click on the armed press: both presses land on the one drawn, and only the first sends.
+  const confirm = (await suggestion())?.key ?? ''
+  await Promise.all([ui.press({ key: confirm }), ui.press({ key: confirm })])
   await clock.settle()
   expect(added).toEqual(['12 ines.mendel'])
   expect(toasts).toContain('!12: asked ines.mendel to review')
@@ -1473,6 +1487,105 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await terminal.findAll({ type: 'Button' })).map(button => button.props['label'])).toContain('+ IM')
   await terminal.unmount()
+  await ui.unmount()
+})
+
+/** The MR the user raised, short of a reviewer, and how many times GitLab was asked whom to suggest for it. */
+const suggestionSetup = (gitlab: { requests: string[] }) => ({
+  own: rawMr(12, { author: { username: 'me' } }),
+  asked: () => gitlab.requests.filter(request => request.endsWith(' Suggested')).length,
+})
+const suggestButtons = async (ui: { findAll: (query: { type: string }) => Promise<FoundElement[]> }) =>
+  (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('suggest-') === true)
+const problemsSaid = async ($: Engine) =>
+  (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
+
+test('a GitLab without suggested approvers is asked once and never again, suggests no one, and reports nothing amiss', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [], isDown: false, suggested: [user('ines.mendel')], lacksSuggestions: true }
+  const { gitlab } = engine(on, fake)
+  const { own, asked } = suggestionSetup(gitlab)
+  fake.mrs = [own]
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(asked()).toBe(1)
+  expect(await suggestButtons(ui)).toEqual([])
+  // The MR changes, which would ask a host that has the field again: this one has learned it lacks it.
+  fake.mrs = [{ ...own, updatedAt: new Date(NOW + 30_000).toISOString() }]
+  await clock.advance(2 * 60_000)
+  expect(asked()).toBe(1)
+  expect(await suggestButtons(ui)).toEqual([])
+  expect(await problemsSaid($)).not.toContain('suggested:')
+  await ui.unmount()
+})
+
+test('an ask for suggestions that fails keeps the faces suggested before, says why in /gitlab, and is asked again at the next read', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const fake: Fake = { mrs: [], isDown: false, suggested: [user('ines.mendel')] }
+  let isSuggestedDown = false
+  const { gitlab } = engine(on, fake, {}, {}, { glitch: operation => (operation === 'Suggested' && isSuggestedDown ? 503 : undefined) })
+  const { own, asked } = suggestionSetup(gitlab)
+  fake.mrs = [own]
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(asked()).toBe(1)
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  // The MR changes and GitLab fails the ask: Ines is still suggested, and /gitlab says why.
+  isSuggestedDown = true
+  fake.mrs = [{ ...own, updatedAt: new Date(NOW + 30_000).toISOString() }]
+  await clock.advance(60_000)
+  expect(asked()).toBeGreaterThan(1)
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  expect(await problemsSaid($)).toMatch(/suggested: .*503/u)
+  // Nothing has changed since, but the ask failed, so the next read asks again; once it answers, the problem is gone
+  // and the MR is not asked again until it changes.
+  const failed = asked()
+  await clock.advance(60_000)
+  expect(asked()).toBeGreaterThan(failed)
+  isSuggestedDown = false
+  await clock.advance(60_000)
+  expect(await problemsSaid($)).not.toContain('suggested:')
+  const answered = asked()
+  await clock.advance(3 * 60_000)
+  expect(asked()).toBe(answered)
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  await ui.unmount()
+})
+
+test('an add GitLab refuses says why beside the face, amber, and in a toast, and is not said as added; pressed again, it arms afresh', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // A token with only read_api: GitLab refuses the write with no payload.
+  const refused = (): RawResponse<AddReviewerMutation> => ({
+    data: { mergeRequestSetReviewers: null },
+    errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }],
+  })
+  const fake: Fake = { mrs: [], isDown: false, suggested: [user('ines.mendel')], addReviewer: refused }
+  const { gitlab, added, toasts } = engine(on, fake)
+  const { own } = suggestionSetup(gitlab)
+  fake.mrs = [own]
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const press = async () => {
+    await ui.press({ key: (await suggestButtons(ui))[0]?.key ?? '' })
+    await clock.settle()
+  }
+  await press()
+  await press()
+  expect(added).toEqual(['12 ines.mendel'])
+  const why = await ui.find({ type: 'Text', text: /adding a reviewer needs api$/u })
+  expect(why?.props['color']).toBe('warning')
+  expect(why?.text).toMatch(/^gitlab\.com refused: /u)
+  expect(toasts.some(toast => /^!12: gitlab\.com refused: .*adding a reviewer needs api$/u.test(toast))).toBe(true)
+  expect(await ui.find({ type: 'Text', text: 'Ines added' })).toBeUndefined()
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  // Pressed again, it arms, and the refusal, now old news, goes.
+  await press()
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ add Ines as a reviewer? press again'])
+  expect(await ui.find({ type: 'Text', text: /adding a reviewer needs api$/u })).toBeUndefined()
+  expect(added).toEqual(['12 ines.mendel'])
   await ui.unmount()
 })
 
