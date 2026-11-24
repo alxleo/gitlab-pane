@@ -1810,7 +1810,7 @@ test('a person opened under a card says their newest comment once the MR is read
   await ui.unmount()
 })
 
-test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed badge, with no ring, on a card with no border', async ($, on) => {
+test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed badge, with no ring, on a card with no border but a line down its left', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
@@ -1846,9 +1846,17 @@ test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed bad
   expect(alts).toContain('Tessa R, requested changes')
   expect(alts).toContain('Mel Northcote, not reviewed yet')
   // Where the MR stands is in its marks and words: no card draws a border, and a blank line sets each card apart (the rows
-  // above the cards keep one too on the desktop, for what their symbols say).
+  // above the cards keep one too on the desktop, for what their symbols say). A narrow Box down the card's left edge is
+  // filled with the theme key of what holds it, here the grey of "needs 1 approval", which the app paints in each theme.
   expect(boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle !== undefined)).toEqual([])
-  expect(boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1 && box.props.paddingX === 1)).toHaveLength(1)
+  const cards = boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1 && box.props.paddingRight === 1)
+  expect(cards).toHaveLength(1)
+  const [edge] = boxesOf(cards[0])
+    .slice(1)
+    .filter(box => box.props?.backgroundColor !== undefined)
+  expect(edge?.props).toMatchObject({ backgroundColor: 'subtle', flexShrink: 0 })
+  expect(Number(edge?.props?.width)).toBeLessThan(1)
+  expect((await ui.findAll({ type: 'Text' })).map(text => text.text)).toContain('👤 needs 1 approval')
 
   await ui.unmount()
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })

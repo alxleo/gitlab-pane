@@ -74,6 +74,11 @@ export type RowModel = {
   /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
   said: { label: string; username: string } | null
   /**
+   * The colour of the line down the card's left edge: its verdict's, else what holds it without one, else grey. It
+   * repeats the colour of words already on the card, so it is never the only thing that says where the MR stands.
+   */
+  edge: Tone
+  /**
    * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
    * would stop its wakes. The mark is all that is drawn, a star filled on an MR pinned here; `press` is what it does.
    */
@@ -207,6 +212,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     blocker: blocker !== undefined ? { text: `${blocker.glyph} ${blocker.words}${facts.row.length > 1 ? ` +${facts.row.length - 1}` : ''}`, tone: blocker.tone } : null,
     ...faceRows(facts, { hasSvg, writes: input.writes, key: card.key, suffix, now }),
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
+    edge: facts.verdict?.tone ?? blocker?.tone ?? 'subtle',
     pin: pinOf(
       card,
       input.pinned.find(one => pinKey(one) === card.key),

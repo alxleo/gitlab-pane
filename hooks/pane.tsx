@@ -22,6 +22,9 @@ import { drawnReply } from './replies'
 import { isCurrentWhole, withDetail } from './slim'
 import { view } from './view'
 
+/** How wide the line down a card's left edge is, in cells: about three pixels, with the card's words a cell in as before. */
+const EDGE_WIDTH = 0.4
+
 /** The GitLab pane: what each MR waits on at a glance, the whole of it a press away. It draws; the modules beside it hold the state. */
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const {
@@ -95,16 +98,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
     return drawn(row, 'under', at => drawUnder($, at, row, block, under, under.kind === 'ticket' ? ticketUrl(browse, under.id) : null))
   }
-  // No border: where the MR stands is said by its marks and words, never by a colour alone. A blank line below each card
-  // keeps one card's lines together and apart from the next, and is where a symbol on it says what it means.
-  const cardBox = (row: RowModel, children: RenderChildren[]) => (
-    <Box key={row.boxKey} flexDirection="column" paddingX={1} marginBottom={1}>
-      {children}
+  // No border, which the app paints black when given both themes' shades: a narrow Box down the card's left edge, filled
+  // with the theme key of its verdict, which the app paints in each theme's own shade. It repeats the colour of the card's
+  // words, never says anything alone. A blank line below each card keeps one card's lines together and apart from the
+  // next, and is where a symbol on it says what it means.
+  const cardBox = (row: RowModel, parts: RenderChildren[], hint: RenderChildren) => (
+    <Box key={row.boxKey} flexDirection="row" paddingRight={1} marginBottom={1}>
+      <Box width={EDGE_WIDTH} flexShrink={0} backgroundColor={row.edge} />
+      <Box flexDirection="column" flexGrow={1} flexShrink={1} marginLeft={1 - EDGE_WIDTH}>
+        {parts}
+      </Box>
+      {hint}
     </Box>
   )
-  // What a card adds around its parts: its own box and the line under it, the same for every card but for its key.
+  // What a card adds around its parts: its own box, its left line and the line under it, the same for every card but for
+  // its key and colour.
   const lineFrame = hintLineFrame(kit)
-  const frameOf = (row: RowModel) => measure(cardBox(row, [])) + lineFrame
+  const frameOf = (row: RowModel) => measure(cardBox(row, [], null)) + lineFrame
   const sizeOf = (row: RowModel, piece: Piece): number => {
     // A JSON array of three costs the three and four characters between and around them.
     switch (piece) {
@@ -156,13 +166,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     const { fit } = row
     const under = underOf(row)
     const parts = [partOf(row, 'line1'), fit.hasFaces ? partOf(row, 'faces') : partOf(row, 'line2'), partOf(row, 'said'), ...(under !== null ? [under] : [])]
-    return cardBox(row, [
-      ...parts.map(part => part.element),
+    return cardBox(
+      row,
+      parts.map(part => part.element),
       hintLine(
         kit,
         parts.flatMap(part => part.reveals)
-      ),
-    ])
+      )
+    )
   }
 
   const { mine, parked, drafts, others, merged } = model
