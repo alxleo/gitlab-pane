@@ -9,11 +9,14 @@ import {
   REVIEW_MARK,
   REVIEW_STATE,
   reviewerId,
+  SUGGESTED_MARK,
   SUGGESTED_MOST,
+  SUGGESTED_SAYS,
   suggestedFace,
   suggestedOf,
   suggestedPress,
   suggestionRoom,
+  suggestionWhy,
   THREAD_MARK,
   suggestionsFor,
 } from '../hooks/face-model'
@@ -68,35 +71,49 @@ test("a face's description says its badge in the Badge table's words, with the t
   )
 })
 
-test('a suggested face is the same face under a veil that washes it out, lighter in the dark theme, with no badge or glyph', () => {
+test('a suggested face is the same face under a veil that washes it out, lighter in the dark theme, badged ＋ over the veil', () => {
+  const veil = "<circle cx='8' cy='8' r='8' fill='#ffffff8c' style='fill:light-dark(#ffffff8c,#9c9c9c73)'/>"
   fc.assert(
     fc.property(personArb, fc.constantFrom(undefined, 'https://gitlab.com/a.png'), (person, picture) => {
-      const face = suggestedFace(person, picture)
+      const face = suggestedFace(person, picture, ['Core team', 'approved 3 of the last 30 here'])
       const reviewed = faceFacts(person, picture)
       expect(face.picture === null).toBe(reviewed.picture === null)
       const pairs = [[face.plain, reviewed.plain] as const, ...(face.picture !== null && reviewed.picture !== null ? [[face.picture, reviewed.picture] as const] : [])]
       for (const [source, badged] of pairs) {
-        // The same size as a badged face, so a row does not shift when they become a reviewer; the veil is the last thing
-        // drawn, over the whole face, and it alone follows the theme: white on the light pane, the dim grey on the dark one,
-        // never the dark pane's own near-black, which made the face muddy.
+        // The same size as a badged face, so a row does not shift when they become a reviewer. The veil lies over the whole
+        // face, white on the light pane, the dim grey on the dark one, never the dark pane's own near-black, which made the
+        // face muddy; the ＋ badge is drawn last, over the veil, as sharp as any reviewer's badge.
         expect(source).toMatch(/^<svg xmlns='http:\/\/www.w3.org\/2000\/svg' width='22' height='22' viewBox='-3 -3 22 22'><g style='color-scheme:light dark'>/u)
-        expect(source).toMatch(/<circle cx='8' cy='8' r='8' fill='#ffffff8c' style='fill:light-dark\(#ffffff8c,#9c9c9c73\)'\/><\/g><\/svg>$/u)
-        expect(source.match(/light-dark\(/gu)).toHaveLength(1)
+        expect(source.indexOf(veil)).toBeGreaterThan(0)
+        expect(source.indexOf(SUGGESTED_MARK.drawing.kind === 'stroke' ? SUGGESTED_MARK.drawing.path : '')).toBeGreaterThan(source.indexOf(veil))
+        expect(source).toMatch(/<\/g><\/svg>$/u)
         expect(source).not.toContain('stroke-dasharray')
-        expect(source.length).toBeLessThan(badged.length)
+        expect(badged.endsWith('</g></svg>')).toBe(true)
       }
-      expect(face.glyph).toBe('')
+      // The glyph is the mark a surface without Svg draws; the words say it is a suggestion, and why them, a line each.
+      expect(face.glyph).toBe('+')
       expect(face.alt).toBe(`${person.name}, suggested reviewer`)
-      expect(face.hint).toBe('suggested reviewer')
+      expect(face.hint).toEqual([SUGGESTED_SAYS, 'Core team', 'approved 3 of the last 30 here'])
     })
   )
+  expect(SUGGESTED_SAYS.length).toBeLessThanOrEqual(HINT_ROOM)
 })
 
-const ines: Suggestion = { username: 'ines', name: 'Ines Mendel', avatarUrl: null, isBot: false }
-const mel: Suggestion = { username: 'mel', name: 'Mel Northcote', avatarUrl: 'https://gitlab.com/m.png', isBot: false }
-const tess: Suggestion = { username: 'tess', name: 'Tess Rowe', avatarUrl: null, isBot: false }
+const owner = { team: null, approved: 0, outOf: 30 }
+const ines: Suggestion = { username: 'ines', name: 'Ines Mendel', avatarUrl: null, isBot: false, ...owner }
+const mel: Suggestion = { username: 'mel', name: 'Mel Northcote', avatarUrl: 'https://gitlab.com/m.png', isBot: false, ...owner }
+const tess: Suggestion = { username: 'tess', name: 'Tess Rowe', avatarUrl: null, isBot: false, ...owner }
 
-test('a card short of reviewers suggests whom GitLab suggests, in its order, never the author, a bot or anyone on the MR', () => {
+test('why someone is suggested says the rule that names them and how often they approve here, and nothing it does not know', () => {
+  expect(suggestionWhy({ ...ines, team: 'Core team (evolution)', approved: 16 })).toEqual(['Core team (evolution)', 'approved 16 of the last 30 here'])
+  expect(suggestionWhy({ ...ines, approved: 4 })).toEqual(['approved 4 of the last 30 here'])
+  expect(suggestionWhy({ ...ines, team: 'code owner of /src/' })).toEqual(['code owner of /src/'])
+  expect(suggestionWhy(ines)).toEqual([])
+  const toCome = toCard(HOST, rawMr(1, { approvalsLeft: 1 }))
+  expect(suggestedOf(toCome, [{ ...ines, team: 'Core team' }])[0]?.why).toEqual(['Core team'])
+})
+
+test('a card short of reviewers suggests its code owners, best first, never the author, a bot or anyone on the MR', () => {
   const cardWith = (...nodes: ReturnType<typeof reviewer>[]) => toCard(HOST, rawMr(1, { approvalsLeft: 2, approvalsRequired: 2, reviewers: { nodes } }))
   const card = cardWith(reviewer('rae', 'REVIEWED'))
   const all: Suggestion[] = [{ ...ines, username: 'alex' }, { ...ines, username: 'rae' }, { ...ines, username: 'bot', isBot: true }, ines, mel, tess]
@@ -149,16 +166,16 @@ test('the press beside a suggested face arms first, adds on the second, says whe
   const at = 1_000
   const held = (over: Partial<Write> & Pick<Write, 'state'>): Write =>
     over.state === 'failed' ? { kind: 'reviewer', on: 'ines', at, say: 'no', ...over } : { kind: 'reviewer', on: 'ines', at, ...over, state: over.state }
-  expect(suggestedPress('Ines', undefined, at)).toEqual({ label: '+ Ines', does: 'arm', isArmed: false, failed: null })
-  expect(suggestedPress('Ines', held({ state: 'armed' }), at)).toEqual({ label: '+ add Ines as a reviewer? press again', does: 'make', isArmed: true, failed: null })
+  expect(suggestedPress('Ines', undefined, at)).toEqual({ label: 'add Ines', does: 'arm', isArmed: false, failed: null })
+  expect(suggestedPress('Ines', held({ state: 'armed' }), at)).toEqual({ label: 'add Ines as a reviewer? press again', does: 'make', isArmed: true, failed: null })
   // An arm past its time has run out though its timer never ran, as after a reload: a press arms afresh, so it says so.
   expect(suggestedPress('Ines', held({ state: 'armed' }), at + ARMED_MS)).toMatchObject({ does: 'make', isArmed: true })
-  expect(suggestedPress('Ines', held({ state: 'armed' }), at + ARMED_MS + 1)).toEqual({ label: '+ Ines', does: 'arm', isArmed: false, failed: null })
-  expect(suggestedPress('Ines', held({ state: 'sent' }), at)).toEqual({ label: '+ adding Ines…', does: null, isArmed: false, failed: null })
+  expect(suggestedPress('Ines', held({ state: 'armed' }), at + ARMED_MS + 1)).toEqual({ label: 'add Ines', does: 'arm', isArmed: false, failed: null })
+  expect(suggestedPress('Ines', held({ state: 'sent' }), at)).toEqual({ label: 'adding Ines…', does: null, isArmed: false, failed: null })
   // Added, until a read shows them as a reviewer; never longer than a sent write is followed.
   expect(suggestedPress('Ines', held({ state: 'handed' }), at + SENT_HOLDS_MS - 1)).toEqual({ label: 'Ines added', does: null, isArmed: false, failed: null })
   expect(suggestedPress('Ines', held({ state: 'handed' }), at + SENT_HOLDS_MS).does).toBe('arm')
-  expect(suggestedPress('Ines', held({ state: 'failed', say: 'gitlab.com refused' }), at)).toEqual({ label: '+ Ines', does: 'arm', isArmed: false, failed: 'gitlab.com refused' })
+  expect(suggestedPress('Ines', held({ state: 'failed', say: 'gitlab.com refused' }), at)).toEqual({ label: 'add Ines', does: 'arm', isArmed: false, failed: 'gitlab.com refused' })
   expect(reviewerId('gitlab.com/g/p!1', 'ines')).toBe('reviewer:gitlab.com/g/p!1:ines')
 })
 
@@ -172,15 +189,15 @@ test('the ledger forgets the adds on MRs no longer listed, and keeps every other
   expect(isAddKept('reply:https://gitlab.com/g/p/-/merge_requests/2#note_1', [])).toBe(true)
 })
 
-test('a row names its faces by first name, its suggested ones after a +, each with the press its add holds, and keeps initials for a shared name', () => {
+test('a row names its faces by first name, its suggested ones after add, each with the press its add holds, and keeps initials for a shared name', () => {
   const card = toCard(HOST, rawMr(1, { approvalsLeft: 2, reviewers: { nodes: [] }, approvedBy: { nodes: [user('ines.other')] } }))
   const facts = cardFacts(card, {}, [{ ...ines, name: 'Ines Other', username: 'ines.o2' }, mel])
   const row = (writes: Record<string, Write>, hasSvg = true) => faceRows(facts, { hasSvg, writes, key: card.key, suffix: '1-x', now: 0 })
   const plain = row({})
   expect(plain.people.map(person => person.label)).toEqual([facts.people[0]?.initials])
-  expect(plain.suggested.map(person => person.label)).toEqual([`+ ${facts.suggested[0]?.initials}`, '+ Mel'])
+  expect(plain.suggested.map(person => person.label)).toEqual([`add ${facts.suggested[0]?.initials}`, 'add Mel'])
   expect(plain.suggested.map(person => person.key)).toEqual([expect.stringMatching(/^suggest-.+-1-x$/u), expect.stringMatching(/^suggest-.+-1-x$/u)])
   expect(row({ [reviewerId(card.key, 'mel')]: { kind: 'reviewer', state: 'armed', on: 'mel', at: 0 } }).suggested[1]?.press.isArmed).toBe(true)
   // Without Svg, the initials are what a row calls everyone.
-  expect(row({}, false).suggested[1]?.label).toBe('+ MN')
+  expect(row({}, false).suggested[1]?.label).toBe('add MN')
 })

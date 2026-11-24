@@ -249,8 +249,11 @@ export type HostFeatures = {
   hasSuggestedApprovers: boolean
 }
 
-/** Someone GitLab suggests to approve an MR (`ask-suggested.ts`), whom a card offers to add as a reviewer. */
-export type Suggestion = { username: string; name: string; avatarUrl: string | null; isBot: boolean }
+/**
+ * Someone who owns an MR's code (`ask-suggested.ts`), whom a card offers to add as a reviewer: `team` is the approval rule
+ * that names them, when GitLab shows the rules; `approved` is how many of the project's last `outOf` merged MRs they approved.
+ */
+export type Suggestion = { username: string; name: string; avatarUrl: string | null; isBot: boolean; team: string | null; approved: number; outOf: number }
 
 /** Who GitLab suggested for an MR, by card key, as read at the MR's `updatedAt` (`on`); a newer MR is asked again. */
 export type Suggested = Record<string, { on: string; people: Suggestion[] }>

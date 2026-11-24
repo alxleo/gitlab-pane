@@ -204,7 +204,8 @@ export function drawPart($: EngineInterface, kit: HomedKit, row: RowModel, part:
               </Box>
             )
           )}
-          {/* Someone suggested as a reviewer, faded: `+` and their name arms adding them, and armed, a second press adds them. */}
+          {/* Someone suggested as a reviewer, faded and badged ＋: `add` and their name arms adding them, and armed, a second
+              press adds them. */}
           {row.suggested.flatMap(person => {
             const { does, isArmed, failed } = person.press
             const press = () => {

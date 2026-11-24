@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { CHECK_TONE } from '../hooks/attention'
 import { CONTROL, LINK, LINK_OPENS } from '../hooks/drawing'
-import { REVIEW_MARK, REVIEW_STATE, THREAD_MARK } from '../hooks/face-model'
+import { REVIEW_MARK, REVIEW_STATE, SUGGESTED_MARK, SUGGESTED_SAYS, THREAD_MARK } from '../hooks/face-model'
 import { CI_STATUSES } from '../hooks/gitlab-status'
 import { VERB } from '../hooks/inbox-pane'
 import { RULES } from '../hooks/inbox-rules'
@@ -104,7 +104,11 @@ test("DESIGN's merge-check tones are CHECK_TONE's, every check once", () => {
 
 test("DESIGN's badges, link marks, controls and inbox events are the code's, in its order", () => {
   const states = Object.keys(REVIEW_STATE).filter((state): state is PersonState => state in REVIEW_STATE)
-  expect(DESIGN.badges).toEqual([...states.map(state => [REVIEW_MARK[state].glyph, REVIEW_STATE[state]]), [THREAD_MARK.glyph, 'holds an open thread']])
+  expect(DESIGN.badges).toEqual([
+    ...states.map(state => [REVIEW_MARK[state].glyph, REVIEW_STATE[state]]),
+    [THREAD_MARK.glyph, 'holds an open thread'],
+    [SUGGESTED_MARK.glyph, SUGGESTED_SAYS],
+  ])
   const links = Object.keys(LINK).filter((link): link is keyof typeof LINK => link in LINK)
   expect(DESIGN.links).toEqual(links.map(link => [LINK[link], LINK_OPENS[link]]))
   expect(DESIGN.controls).toEqual(Object.values(CONTROL).map(control => [control.mark, control.hint]))

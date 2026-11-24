@@ -35,6 +35,7 @@ import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
 import { DRAWING_BUDGET, opens } from '../hooks/drawing'
+import { SUGGESTED_MARK } from '../hooks/face-model'
 import { HINT_DELAY_MS } from '../hooks/hint-chip'
 import { toCard } from '../hooks/mr-card'
 import { MERGED_ROW_SIZE } from '../hooks/landed-model'
@@ -117,8 +118,10 @@ type Fake = {
   reply?: (variables: ReplyMutationVariables) => RawResponse<ReplyMutation>
   /** How long, in seconds, the project's recent successful MR pipelines ran; six of 10 to 15 minutes unless set. */
   runs?: number[]
-  /** Whom GitLab suggests to approve each MR; no one unless set. */
+  /** Whom GitLab names as eligible to approve each MR, in no order; no one unless set. */
   suggested?: { username: string; name: string; bot: boolean; avatarUrl: string | null }[]
+  /** Who approved each of the project's last merged MRs, newest first; none unless set. */
+  approvedLately?: { username: string; name: string; bot: boolean; avatarUrl: string | null }[][]
   /** A GitLab without suggested approvers, as the Community Edition or an older paid one is. */
   lacksSuggestions?: boolean
   /** What GitLab answers an add of a reviewer; it adds them unless a test sets this. */
@@ -296,7 +299,14 @@ function engine(
           Suggested: () =>
             fake.lacksSuggestions === true
               ? undefinedField('MergeRequestApprovalState', 'suggestedApprovers')
-              : { data: { project: { mergeRequest: { approvalState: { suggestedApprovers: { nodes: fake.suggested ?? [] } } } } } },
+              : {
+                  data: {
+                    project: {
+                      mergeRequest: { approvalState: { rules: [], suggestedApprovers: { nodes: fake.suggested ?? [] } } },
+                      mergeRequests: { nodes: (fake.approvedLately ?? []).map(nodes => ({ approvedBy: { nodes } })) },
+                    },
+                  },
+                },
           AddReviewer: variables => {
             added.push(`${variables.iid} ${variables.username}`)
             return (fake.addReviewer ?? ADDS)(variables)
@@ -1422,11 +1432,17 @@ const suggestAsks = (gitlab: { requests: string[] }) => gitlab.requests.filter(r
 const suggestButtons = async (ui: { findAll: (query: { type: string }) => Promise<FoundElement[]> }) =>
   (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('suggest-') === true)
 
-test('a card short of a reviewer offers whom GitLab suggests, faded: a press arms adding them, a second adds them once, and they become a reviewer', async ($, on) => {
+test('a card short of a reviewer offers the code owner who approves most, faded and badged ＋: a press arms adding them, a second adds them once, and they become a reviewer', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  // Never the author. The user is `me`; !13 is someone else's, and asking for its reviews is theirs.
+  // Never the author. The user is `me`; !13 is someone else's, and asking for its reviews is theirs. GitLab names Tessa
+  // before Ines, in no order, but Ines approved more of the last merged MRs, so she is the one suggested.
   const own = ownMr()
-  const fake: Fake = { mrs: [own, rawMr(13)], isDown: false, suggested: [user('me'), user('ines.mendel'), user('tessa.rowe')] }
+  const fake: Fake = {
+    mrs: [own, rawMr(13)],
+    isDown: false,
+    suggested: [user('me'), user('tessa.rowe'), user('ines.mendel')],
+    approvedLately: [[user('ines.mendel')], [user('tessa.rowe'), user('ines.mendel')], [user('me')]],
+  }
   const { added, toasts, avatars, store, gitlab } = engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -1436,21 +1452,22 @@ test('a card short of a reviewer offers whom GitLab suggests, faded: a press arm
   await clock.advance(60_000)
   expect(suggestAsks(gitlab)).toBe(1)
   const suggestion = async () => (await suggestButtons(ui))[0]
-  // Faded, with no badge, as adding a reviewer is the author's to do.
+  // The suggested reviewer is faded with a ＋ badge over the veil.
   const faded = (await ui.findAll({ type: 'Svg' })).find(svg => svg.props['alt'] === 'Ines Mendel, suggested reviewer')
   expect(String(faded?.props['source'])).toContain("style='fill:light-dark(#ffffff8c,#9c9c9c73)'")
-  expect((await suggestion())?.props).toMatchObject({ label: '+ Ines', plain: true, dimColor: true })
+  expect(String(faded?.props['source'])).toContain(SUGGESTED_MARK.drawing.kind === 'stroke' ? SUGGESTED_MARK.drawing.path : 'a plus')
+  expect((await suggestion())?.props).toMatchObject({ label: 'add Ines', plain: true, dimColor: true })
   expect(await suggestButtons(ui)).toHaveLength(1)
   // Their picture is fetched like anyone's on the pane, and the store carries the suggestion to the sessions that draw.
   expect(avatars.some(url => url.includes('ines.mendel'))).toBe(true)
   expect(JSON.stringify(store.get('suggested'))).toContain('ines.mendel')
   await ui.press({ key: (await suggestion())?.key ?? '' })
   await clock.settle()
-  expect((await suggestion())?.props).toMatchObject({ label: '+ add Ines as a reviewer? press again', variant: 'primary' })
+  expect((await suggestion())?.props).toMatchObject({ label: 'add Ines as a reviewer? press again', variant: 'primary' })
   expect(added).toEqual([])
   // Left alone, the armed press is taken back.
   await clock.advance(10_000)
-  expect((await suggestion())?.props['label']).toBe('+ Ines')
+  expect((await suggestion())?.props['label']).toBe('add Ines')
   await ui.press({ key: (await suggestion())?.key ?? '' })
   await clock.settle()
   // A double click on the armed press: both presses land on the one drawn, and only the first sends.
@@ -1476,7 +1493,7 @@ test('a card short of a reviewer offers whom GitLab suggests, faded: a press arm
 test('after a reload the faces suggested before stay, and GitLab is not asked again, while the inbox has not said who the user is', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const own = ownMr()
-  const ines = { username: 'ines.mendel', name: 'Ines Mendel', avatarUrl: null, isBot: false }
+  const ines = { username: 'ines.mendel', name: 'Ines Mendel', avatarUrl: null, isBot: false, team: 'Core team', approved: 2, outOf: 30 }
   const stored = { suggested: { 'gitlab.com/g/p!12': { on: '2026-10-23T14:00:00Z', people: [ines] } } }
   // The inbox's read of the user's MRs, which says who the user is, has not answered since the reload.
   const { gitlab, store } = engine(
@@ -1495,9 +1512,10 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   expect((await ui.findAll({ type: 'Svg' })).map(svg => svg.props['alt'])).toContain('Ines Mendel, suggested reviewer')
   expect(suggestAsks(gitlab)).toBe(0)
   expect(JSON.stringify(store.get('suggested'))).toContain('ines.mendel')
-  // A surface with no pictures says the suggestion by the `+` before the initials it calls everyone by.
+  // A surface with no pictures says the suggestion by the badge's `+`, then `add` and the initials it calls everyone by.
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await terminal.findAll({ type: 'Button' })).map(button => button.props['label'])).toContain('+ IM')
+  expect((await terminal.findAll({ type: 'Button' })).map(button => button.props['label'])).toContain('add IM')
+  expect(await terminal.find({ type: 'Text', text: '+' })).toBeDefined()
   await terminal.unmount()
   await ui.unmount()
 })
@@ -1533,13 +1551,13 @@ test('an ask for suggestions that fails keeps the faces suggested before, says w
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(asked()).toBe(1)
-  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines'])
   // The MR changes and GitLab fails the ask: Ines is still suggested, and /gitlab says why.
   isSuggestedDown = true
   fake.mrs = [{ ...own, updatedAt: new Date(NOW + 30_000).toISOString() }]
   await clock.advance(60_000)
   expect(asked()).toBeGreaterThan(1)
-  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines'])
   expect(await said()).toMatch(/suggested: .*503/u)
   // Nothing has changed since, but the ask failed, so the next read asks again; once it answers, the problem is gone
   // and the MR is not asked again until it changes.
@@ -1552,7 +1570,7 @@ test('an ask for suggestions that fails keeps the faces suggested before, says w
   const answered = asked()
   await clock.advance(3 * 60_000)
   expect(asked()).toBe(answered)
-  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines'])
   await ui.unmount()
 })
 
@@ -1579,10 +1597,10 @@ test('an add GitLab refuses says why beside the face, amber, and in a toast, and
   expect(why?.text).toMatch(/^gitlab\.com refused: /u)
   expect(toasts.some(toast => /^!12: gitlab\.com refused: .*adding a reviewer needs api$/u.test(toast))).toBe(true)
   expect(await ui.find({ type: 'Text', text: 'Ines added' })).toBeUndefined()
-  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines'])
   // Pressed again, it arms, and the refusal, now old news, goes.
   await press()
-  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ add Ines as a reviewer? press again'])
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines as a reviewer? press again'])
   expect(await ui.find({ type: 'Text', text: /adding a reviewer needs api$/u })).toBeUndefined()
   expect(added).toEqual(['12 ines.mendel'])
   await ui.unmount()
@@ -2372,7 +2390,7 @@ test('a passed MR that waits on an approval is drawn as a running one is: its li
   await ui.unmount()
 })
 
-test('a face is one small drawing: about 490 characters with an empty badge, 640 with a filled one, in both shades, 390 faded', async ($, on) => {
+test('a face is one small drawing: about 490 characters with an empty badge, 640 with a filled one, in both shades, 730 faded with its ＋', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [
     { ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null },
@@ -2389,8 +2407,8 @@ test('a face is one small drawing: about 490 characters with an empty badge, 640
   expect((await faceOf('Mel')).length).toBeLessThan(500)
   expect((await faceOf('Ines')).length).toBeLessThan(650)
   expect(await faceOf('Mel')).toContain('>MN</text>')
-  // A suggested face wears no badge: the disc, and the veil over it in both shades.
-  expect((await faceOf('Tessa')).length).toBeLessThan(400)
+  // A suggested face: the disc, the veil over it and the ＋ badge over that, each in both shades.
+  expect((await faceOf('Tessa')).length).toBeLessThan(750)
   expect(await faceOf('Tessa')).toContain('>TR</text>')
   await ui.unmount()
 })

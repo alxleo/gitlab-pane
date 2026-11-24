@@ -51,13 +51,27 @@ test('what the outside tools print is checked, not cast', async () => {
     landed: [],
   })
   expect(readSnapshot({ at: 'soon', hosts: {}, mrs: [] })).toBeNull()
-  // Who GitLab suggested, as the store keeps it: an entry or a person in another shape is left out.
+  // Who was suggested, as the store and the atom keep it: an entry in another shape, or with anyone in another shape (as
+  // one kept before suggestions were ranked), is left out whole, so it is asked again.
+  const ines = { username: 'ines', name: 'Ines', avatarUrl: 7, isBot: false, team: 'Core team', approved: 2, outOf: 30 }
   expect(
     suggestedRecord({
-      'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: 7, isBot: false }, { username: 'x' }, null] },
+      'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [ines, { username: 'x' }, null] },
       'gitlab.com/g/p!2': { people: [] },
+      'gitlab.com/g/p!3': { on: '2026-10-23T15:00:00Z', people: [ines, { ...ines, username: 'mel', team: 4 }] },
+      'gitlab.com/g/p!4': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: null, isBot: false }] },
+      'gitlab.com/g/p!5': { on: '2026-10-23T15:00:00Z', people: [] },
     })
-  ).toEqual({ 'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: null, isBot: false }] } })
+  ).toEqual({
+    'gitlab.com/g/p!3': {
+      on: '2026-10-23T15:00:00Z',
+      people: [
+        { ...ines, avatarUrl: null },
+        { ...ines, username: 'mel', avatarUrl: null, team: null },
+      ],
+    },
+    'gitlab.com/g/p!5': { on: '2026-10-23T15:00:00Z', people: [] },
+  })
   expect(suggestedRecord([])).toEqual({})
   expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })
   expect(() => decodeGraphql([])).toThrow('GitLab answered something other than an object')

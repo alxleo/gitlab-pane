@@ -1,6 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import { suggestedRecord } from './decode'
 import { isEqual } from './equal'
 import { browseUrl, keptTicketDetails } from './jira'
 import { pinKey } from './mr-url'
@@ -55,8 +56,8 @@ export async function drawnData($: EngineInterface) {
     read($, readingAtom),
     read($, jiraAtom),
   ])
-  // The cards outlive a reload, so new code meets cards an older version kept: those in another shape are left out.
-  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, suggested, tickets, ticketDetails, usual, poll, isReading, browse }
+  // The cards and suggestions outlive a reload, so new code meets what an older version kept: those in another shape are left out.
+  return { pinned, rows: keptCards(rows), details: keptCardsByKey(details), avatars, suggested: suggestedRecord(suggested), tickets, ticketDetails, usual, poll, isReading, browse }
 }
 
 /** What reading the ticket `key` whole last gave, if it has been. */
@@ -167,8 +168,9 @@ export async function setAnnounced($: EngineInterface, announced: Record<string,
     await update($, announcedAtom, () => announced)
   }
 }
-export function readSuggestedKnown($: EngineInterface): Promise<Suggested> {
-  return read($, suggestedAtom)
+/** Who was suggested for each MR, less what an older version kept in another shape, which is then asked again. */
+export async function readSuggestedKnown($: EngineInterface): Promise<Suggested> {
+  return suggestedRecord(await read($, suggestedAtom))
 }
 /** Who GitLab suggested for each MR, by card key: only the MRs that want suggestions, so it never outgrows them. */
 export async function setSuggested($: EngineInterface, kept: Suggested): Promise<void> {
