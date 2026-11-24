@@ -65,4 +65,4 @@ jobs:
           if [[ -n "$BASE" ]]; then
             args+=(--base "$BASE")
           fi
-          node tools/duplicates.ts "${args[@]}"
+          node --import ./tools/resolve_ts.ts tools/duplicates.ts "${args[@]}"

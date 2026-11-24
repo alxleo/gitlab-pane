@@ -8,10 +8,10 @@ import type {
   ReviewerFieldsFragment,
   ThreadFieldsFragment,
   CommentFieldsFragment,
-} from '../hooks/gitlab.generated.ts'
+} from '../hooks/gitlab.generated'
 import type { CheckStatus, MergeStatus } from '../types'
-import { present } from '../hooks/decode.ts'
-import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/mr-fragments.ts'
+import { present } from '../hooks/decode'
+import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/mr-fragments'
 
 /** An element of a drawn tree, as far as `unhinted` reads one. */
 type DrawnNode = { type?: unknown; props?: Record<string, unknown>; hover?: unknown; children?: unknown[] }

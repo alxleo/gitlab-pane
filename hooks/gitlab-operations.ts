@@ -1,40 +1,40 @@
 // Every operation the pane sends GitLab, gathered from the modules that own them: each `ask-*.ts` module holds one question's
 // documents, its request, its cost and how its answer reads. This file only adds them up, for the sender (which retries a read
 // and never a write), the schema check (tools/gitlab_schema.ts) and the fakes in the tests.
-import { ADD_REVIEWER_ASK } from './ask-add-reviewer.ts'
-import type { AddReviewerOperations } from './ask-add-reviewer.ts'
-import { AUTHORED_ASK } from './ask-authored.ts'
-import type { AuthoredOperations } from './ask-authored.ts'
-import { FAILURES_ASK } from './ask-failures.ts'
-import type { FailuresOperations } from './ask-failures.ts'
-import { INBOX_AUTHORED_ASK } from './ask-inbox-authored.ts'
-import type { InboxAuthoredOperations } from './ask-inbox-authored.ts'
-import { INBOX_BRIEF_ASK } from './ask-inbox-brief.ts'
-import type { InboxBriefOperations } from './ask-inbox-brief.ts'
-import { INBOX_FOLLOW_ASK } from './ask-inbox-follow.ts'
-import type { InboxFollowOperations } from './ask-inbox-follow.ts'
-import { INBOX_QUEUE_ASK } from './ask-inbox-queue.ts'
-import type { InboxQueueOperations } from './ask-inbox-queue.ts'
-import { INBOX_TODOS_ASK } from './ask-inbox-todos.ts'
-import type { InboxTodosOperations } from './ask-inbox-todos.ts'
-import { LANDED_ASK } from './ask-landed.ts'
-import type { LandedOperations } from './ask-landed.ts'
-import { MERGE_ASK } from './ask-merge.ts'
-import type { MergeOperations } from './ask-merge.ts'
-import { MERGE_STATUS_ASK } from './ask-merge-status.ts'
-import type { MergeStatusOperations } from './ask-merge-status.ts'
-import { MOVE_STATE_ASK } from './ask-move-state.ts'
-import type { MoveStateOperations } from './ask-move-state.ts'
-import { PINNED_ASK } from './ask-pinned.ts'
-import type { PinnedOperations } from './ask-pinned.ts'
-import { REPLY_ASK } from './ask-reply.ts'
-import type { ReplyOperations } from './ask-reply.ts'
-import { SUGGESTED_ASK } from './ask-suggested.ts'
-import type { SuggestedOperations } from './ask-suggested.ts'
-import { THREADS_ASK } from './ask-threads.ts'
-import type { ThreadsOperations } from './ask-threads.ts'
-import { USUAL_ASK } from './ask-usual.ts'
-import type { UsualOperations } from './ask-usual.ts'
+import { ADD_REVIEWER_ASK } from './ask-add-reviewer'
+import type { AddReviewerOperations } from './ask-add-reviewer'
+import { AUTHORED_ASK } from './ask-authored'
+import type { AuthoredOperations } from './ask-authored'
+import { FAILURES_ASK } from './ask-failures'
+import type { FailuresOperations } from './ask-failures'
+import { INBOX_AUTHORED_ASK } from './ask-inbox-authored'
+import type { InboxAuthoredOperations } from './ask-inbox-authored'
+import { INBOX_BRIEF_ASK } from './ask-inbox-brief'
+import type { InboxBriefOperations } from './ask-inbox-brief'
+import { INBOX_FOLLOW_ASK } from './ask-inbox-follow'
+import type { InboxFollowOperations } from './ask-inbox-follow'
+import { INBOX_QUEUE_ASK } from './ask-inbox-queue'
+import type { InboxQueueOperations } from './ask-inbox-queue'
+import { INBOX_TODOS_ASK } from './ask-inbox-todos'
+import type { InboxTodosOperations } from './ask-inbox-todos'
+import { LANDED_ASK } from './ask-landed'
+import type { LandedOperations } from './ask-landed'
+import { MERGE_ASK } from './ask-merge'
+import type { MergeOperations } from './ask-merge'
+import { MERGE_STATUS_ASK } from './ask-merge-status'
+import type { MergeStatusOperations } from './ask-merge-status'
+import { MOVE_STATE_ASK } from './ask-move-state'
+import type { MoveStateOperations } from './ask-move-state'
+import { PINNED_ASK } from './ask-pinned'
+import type { PinnedOperations } from './ask-pinned'
+import { REPLY_ASK } from './ask-reply'
+import type { ReplyOperations } from './ask-reply'
+import { SUGGESTED_ASK } from './ask-suggested'
+import type { SuggestedOperations } from './ask-suggested'
+import { THREADS_ASK } from './ask-threads'
+import type { ThreadsOperations } from './ask-threads'
+import { USUAL_ASK } from './ask-usual'
+import type { UsualOperations } from './ask-usual'
 
 /** The operations the pane sends, by name, with what each takes and answers: the fakes in the tests key on this. */
 export type Operations = AuthoredOperations &
@@ -82,7 +82,7 @@ export const DOCUMENTS: { readonly [Name in keyof Operations]: string } = {
 }
 
 /**
- * What GitLab's `queryComplexity` scores each read, which `node tools/gitlab_schema.ts check` measures against gitlab.com,
+ * What GitLab's `queryComplexity` scores each read, which `npm run schema -- check` measures against gitlab.com,
  * with no sign-in. A query may cost no more than the limit, and the check also fails any document that scores other than
  * this, or more than COMPLEXITY_SHARE of the limit it reports, so a change to a document states its cost.
  */

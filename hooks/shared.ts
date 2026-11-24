@@ -3,8 +3,8 @@ import type { EngineInterface } from 'claude-code'
 import { pinMr, readPinned, unpinKeys } from './data'
 import { quietly } from './failures'
 import { pinKey } from './mr-url'
-import { isPublished, PINS_PREFIX, readPinsRecord, readSnapshot, REFRESH_KEY, SNAPSHOT_KEY, unionPins } from './snapshot.ts'
-import type { PinsRecord, Snapshot } from './snapshot.ts'
+import { isPublished, PINS_PREFIX, readPinsRecord, readSnapshot, REFRESH_KEY, SNAPSHOT_KEY, unionPins } from './snapshot'
+import type { PinsRecord, Snapshot } from './snapshot'
 
 import type { Pinned } from '../types'
 

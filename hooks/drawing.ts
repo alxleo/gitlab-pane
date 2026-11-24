@@ -1,4 +1,4 @@
-import { shortHash } from './identity.ts'
+import { shortHash } from './identity'
 
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
 export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬', commit: '📍' } as const
@@ -33,7 +33,7 @@ export type Control<K extends keyof typeof CONTROL> = (typeof CONTROL)[K]
 
 /**
  * Cells a hover description may take. It draws from the start of the line under its block, so a longer one would run past
- * a narrow pane's edge; `tests/core/drawing.spec.ts` holds every description to it.
+ * a narrow pane's edge; `specs/drawing.spec.ts` holds every description to it.
  */
 export const HINT_ROOM = 36
 

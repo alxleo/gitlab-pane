@@ -1,10 +1,10 @@
 // pane-shot: photograph the pane in the running Claude desktop app as the person sees it, and press its buttons by what they read.
 //
-//   node tools/pane_shot.ts windows                                    the Claude app's windows on screen
-//   node tools/pane_shot.ts capture -o pane.png                        the pane as it is now
-//   node tools/pane_shot.ts capture --to bottom -o bottom.png          scrolled to its end first
-//   node tools/pane_shot.ts tour -o shots/                             top to bottom, a page per file
-//   node tools/pane_shot.ts press "read whole" Mine -o after.png       click buttons by what they read, then capture
+//   node --import ./tools/resolve_ts.ts tools/pane_shot.ts windows                                    the Claude app's windows on screen
+//   node --import ./tools/resolve_ts.ts tools/pane_shot.ts capture -o pane.png                        the pane as it is now
+//   node --import ./tools/resolve_ts.ts tools/pane_shot.ts capture --to bottom -o bottom.png          scrolled to its end first
+//   node --import ./tools/resolve_ts.ts tools/pane_shot.ts tour -o shots/                             top to bottom, a page per file
+//   node --import ./tools/resolve_ts.ts tools/pane_shot.ts press "read whole" Mine -o after.png       click buttons by what they read, then capture
 //
 // (`npm run shot -- …` is the same; `--help` says more.) Mac only. `pane_rig.ts` checks what the engine is handed with no
 // screen; this checks what the desktop app draws and does with it. The pane is found by reading its title off the window
@@ -58,11 +58,11 @@ const SETTLE_MS = { park: 800, scroll: 600, click: 1500, raise: 400 }
 
 const USAGE = `pane-shot: photograph the pane in the running Claude desktop app, and press its buttons by what they read. Mac only.
 
-  node tools/pane_shot.ts windows                       the Claude app's windows on screen, largest first
-  node tools/pane_shot.ts capture -o FILE.png           the pane as it is now
-  node tools/pane_shot.ts capture --to top|bottom -o FILE.png
-  node tools/pane_shot.ts tour -o FOLDER [--pages N]    scrolled to its top, then a page per file to its end, then back
-  node tools/pane_shot.ts press TEXT... [-o FILE.png]   click each button by its words, in order, then capture
+  node --import ./tools/resolve_ts.ts tools/pane_shot.ts windows                       the Claude app's windows on screen, largest first
+  node --import ./tools/resolve_ts.ts tools/pane_shot.ts capture -o FILE.png           the pane as it is now
+  node --import ./tools/resolve_ts.ts tools/pane_shot.ts capture --to top|bottom -o FILE.png
+  node --import ./tools/resolve_ts.ts tools/pane_shot.ts tour -o FOLDER [--pages N]    scrolled to its top, then a page per file to its end, then back
+  node --import ./tools/resolve_ts.ts tools/pane_shot.ts press TEXT... [-o FILE.png]   click each button by its words, in order, then capture
 
 Options:
   --pane TITLE      the pane's title as its header reads (default GitLab; "GitLab · Mine" matches)

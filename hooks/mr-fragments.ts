@@ -9,8 +9,8 @@ import type {
   ReviewerFieldsFragment,
   ReviewerPlainFragment,
   ThreadFieldsFragment,
-} from './gitlab.generated.ts'
-import { present } from './decode.ts'
+} from './gitlab.generated'
+import { present } from './decode'
 
 /**
  * Every document the pane sends is a static GraphQL text with its values passed as variables, never spliced in. The

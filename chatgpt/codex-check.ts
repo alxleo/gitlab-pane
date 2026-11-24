@@ -3,7 +3,7 @@
 // which tools the plugin's server has. It fails unless Codex starts the server and sees both tools. A plugin can install
 // and still start no server (an mcp.json Codex skips), which only this shows.
 //
-//   node chatgpt/codex-check.ts --tree DIR [--codex BIN]
+//   node --import ./tools/resolve_ts.ts chatgpt/codex-check.ts --tree DIR [--codex BIN]
 import { strict as assert } from 'node:assert'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
@@ -60,7 +60,7 @@ async function toolsOf(codex: string, home: string, name: string): Promise<strin
 
 const { values } = parseArgs({ options: { tree: { type: 'string' }, codex: { type: 'string' } } })
 if (values.tree === undefined) {
-  throw new Error('usage: node chatgpt/codex-check.ts --tree DIR [--codex BIN]')
+  throw new Error('usage: node --import ./tools/resolve_ts.ts chatgpt/codex-check.ts --tree DIR [--codex BIN]')
 }
 const tree = resolve(values.tree)
 const codex = values.codex ?? (existsSync(BUNDLED) ? BUNDLED : 'codex')

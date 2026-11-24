@@ -1,12 +1,12 @@
 // What an MR's page says beyond the MR's own words: its ticket as Jira tells it, what stands before a merge, and, for a page
 // opened on one person, who they are and where they stand. The page draws each as it comes. Pure.
-import type { Badge } from './attention.ts'
-import { LINK } from './drawing.ts'
-import { REVIEW_STATE } from './face-model.ts'
-import { drawnLine, excerpt, plural } from './format.ts'
-import { ticketUrl } from './jira.ts'
-import { cardFacts } from './row-facts.ts'
-import type { Tone } from './status.ts'
+import type { Badge } from './attention'
+import { LINK } from './drawing'
+import { REVIEW_STATE } from './face-model'
+import { drawnLine, excerpt, plural } from './format'
+import { ticketUrl } from './jira'
+import { cardFacts } from './row-facts'
+import type { Tone } from './status'
 
 import type { FailureKind, MrCard, Note, Person, Problems, Ticket, TicketDetail, Under } from '../types'
 

@@ -2,9 +2,9 @@
 // URI the tool names and drives it through ext-apps' AppBridge, as ChatGPT does. It fails on any error the panel throws or
 // shows, in any frame.
 //
-//   node chatgpt/panel-test.ts          the server in memory against the made-up GitLab: every row drawn, then ✓ merge
+//   node --import ./tools/resolve_ts.ts chatgpt/panel-test.ts          the server in memory against the made-up GitLab: every row drawn, then ✓ merge
 //                                       pressed twice on !405, which the made-up GitLab merges
-//   node chatgpt/panel-test.ts --live   the packaged server (chatgpt/package, `node chatgpt/build.ts` first)
+//   node --import ./tools/resolve_ts.ts chatgpt/panel-test.ts --live   the packaged server (chatgpt/package, `node --import ./tools/resolve_ts.ts chatgpt/build.ts` first)
 //                                       over stdio, as ChatGPT launches it, against your real GitLab: every row drawn,
 //                                       and nothing pressed
 import { strict as assert } from 'node:assert'

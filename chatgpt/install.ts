@@ -4,7 +4,7 @@
 // Codex takes each build as new rather than keeping the copy it cached. Then, in ChatGPT, install "GitLab MRs" from the
 // "Personal" marketplace (once), quit the app and open a new chat.
 //
-//   node chatgpt/install.ts
+//   node --import ./tools/resolve_ts.ts chatgpt/install.ts
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'

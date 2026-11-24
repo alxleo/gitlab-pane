@@ -1,8 +1,8 @@
-import { TAIL_JOBS } from './job-tail.ts'
-import { advance, wakeLine, wakeTails } from './wake.ts'
-import type { Failures } from './wake.ts'
-import { pinKey } from './mr-url.ts'
-import type { ModelLine } from './model-text.ts'
+import { TAIL_JOBS } from './job-tail'
+import { advance, wakeLine, wakeTails } from './wake'
+import type { Failures } from './wake'
+import { pinKey } from './mr-url'
+import type { ModelLine } from './model-text'
 
 import type { JobLink, MrCard, Pinned } from '../types'
 

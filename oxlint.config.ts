@@ -1,7 +1,7 @@
 // The lint gate: `npm run lint` locally, in the commit hook and in CI, and tools/check_core.ts on a core file as it is edited.
 // oxlint, with its type-aware rules run by tsgolint, which is built on TypeScript 7 (its version names the TypeScript inside,
 // so renovate.json raises the two together). Each file is type-checked in the project of the nearest tsconfig.json: the
-// root's for hooks/, tests/ and tools/screens/, tools/tsconfig.json for the dev tools, the store probe's own for the probe.
+// root's for hooks/, tests/, specs/ and tools/screens/, tools/tsconfig.json for the dev tools, the store probe's own for the probe.
 //
 // Each rule is here to make the careless way of writing code the one that fails. There are no per-file allowlists and no
 // disable comments: tools/check_files.ts refuses `oxlint-` and `eslint-` directives in any file, where no comment can switch
@@ -72,7 +72,7 @@ export default defineConfig({
             },
           },
         ],
-        // The core imports core files by their .ts path, the types contract, and nothing of the engine; and a .ts module in
+        // The core imports core files without their extension, the types contract, and nothing of the engine; and a .ts module in
         // hooks/ that leans on nothing of the engine (no engine import, package, or module that leans) must be in the core.
         // The rule reads the core from tsconfig.core.json.
         'local/core-imports': 'error',

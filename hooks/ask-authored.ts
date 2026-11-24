@@ -1,14 +1,14 @@
 // The MR list: the user's authored MRs, whole or as the changes since a moment, their pipelines without the jobs. What it
 // asks, what that costs, and what its answer holds: the MRs, how many GitLab timed out, and which to read again with their jobs.
-import type { AuthoredPlainQuery, AuthoredPlainQueryVariables, AuthoredQuery, AuthoredQueryVariables } from './gitlab.generated.ts'
-import { dataOf, present } from './decode.ts'
-import { documentOf } from './gitlab-document.ts'
-import { isCurrent } from './gitlab-features.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { ciStatusOf } from './gitlab-status.ts'
-import { siteOf } from './hosts.ts'
-import { MR_FRAGMENTS } from './mr-fragments.ts'
-import type { ListedPipeline, RawMr } from './mr-fragments.ts'
+import type { AuthoredPlainQuery, AuthoredPlainQueryVariables, AuthoredQuery, AuthoredQueryVariables } from './gitlab.generated'
+import { dataOf, present } from './decode'
+import { documentOf } from './gitlab-document'
+import { isCurrent } from './gitlab-features'
+import type { RawResponse, Request } from './gitlab-request'
+import { ciStatusOf } from './gitlab-status'
+import { siteOf } from './hosts'
+import { MR_FRAGMENTS } from './mr-fragments'
+import type { ListedPipeline, RawMr } from './mr-fragments'
 
 import type { HostFeatures, Pinned } from '../types'
 

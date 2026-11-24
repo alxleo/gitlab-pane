@@ -2,8 +2,8 @@
 // merge, a rebase, a reply). A write is confirmed for what the person saw, sent once and never again on its own, and
 // one whose answer was lost may still have been made, so it is said to be unknown, never failed outright. writes.ts holds
 // the entries; each feature decides its presses, says what it sends and how it is drawn. Pure.
-import { kindOf, messageOf } from './failure.ts'
-import { foreign } from './model-text.ts'
+import { kindOf, messageOf } from './failure'
+import { foreign } from './model-text'
 
 import type { Write } from '../types'
 

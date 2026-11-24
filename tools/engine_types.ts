@@ -1,6 +1,6 @@
 // Lays the Claude Code API declarations out the way the engine does when it loads this mod from a folder:
 // .claude-plugin/types/claude-code/index.d.ts, with the tsconfig.json the declarations' header documents, which the root
-// tsconfig.json extends. The folder is git-ignored; nothing from Anthropic is committed. Run: node tools/engine_types.ts
+// tsconfig.json extends. The folder is git-ignored; nothing from Anthropic is committed. Run: node --import ./tools/resolve_ts.ts tools/engine_types.ts
 //
 // The declarations ship inside the claude binary as the bundled plugin-authoring skill, which the binary unpacks to
 // $CLAUDE_CODE_TMPDIR/claude-<uid>/bundled-skills/<version>/<hash>/ the first time the skill's prompt is built. That needs no sign-in:

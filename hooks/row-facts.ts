@@ -1,14 +1,14 @@
 // What an MR card says that depends on the card alone, not on the time: its badges, verdict, words, the one comment it
 // quotes and the head a merge would take. It is the costly part of a row, so `buildPane` works it out for the rows it draws and no others. Pure, on plain
 // data.
-import { isMergeable, rank, rowBadges, trailingOf, verdictOf } from './attention.ts'
-import type { Badge, Verdict } from './attention.ts'
-import { LINK } from './drawing.ts'
-import { faceFacts, suggestedFace, suggestedOf } from './face-model.ts'
-import type { FaceFacts, PersonFacts } from './face-model.ts'
-import { excerpt, shortTitle, ticketOf } from './format.ts'
-import { shorten } from './graphemes.ts'
-import { firstName } from './identity.ts'
+import { isMergeable, rank, rowBadges, trailingOf, verdictOf } from './attention'
+import type { Badge, Verdict } from './attention'
+import { LINK } from './drawing'
+import { faceFacts, suggestedFace, suggestedOf } from './face-model'
+import type { FaceFacts, PersonFacts } from './face-model'
+import { excerpt, shortTitle, ticketOf } from './format'
+import { shorten } from './graphemes'
+import { firstName } from './identity'
 
 import type { MrCard, Person, Suggestion } from '../types'
 

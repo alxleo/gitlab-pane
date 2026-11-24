@@ -2,15 +2,15 @@
 // followers adopt, and the pins every session publishes under a key of its own. The store is one JSON file all sessions
 // rewrite whole (capped at 4 MiB), so the snapshot holds slim cards only (slim.ts) and changes its `version` only when
 // something a session draws changed. This file decides and checks; shared.ts reads and writes the store.
-import { isRecord } from './decode.ts'
-import { isEqual } from './equal.ts'
-import { hostStatuses } from './hosts.ts'
-import type { HostRead } from './hosts.ts'
-import { tailOf } from './job-tail.ts'
-import { foreign } from './model-text.ts'
-import { pinKey } from './mr-url.ts'
-import { isSettled } from './status.ts'
-import type { Failures } from './wake.ts'
+import { isRecord } from './decode'
+import { isEqual } from './equal'
+import { hostStatuses } from './hosts'
+import type { HostRead } from './hosts'
+import { tailOf } from './job-tail'
+import { foreign } from './model-text'
+import { pinKey } from './mr-url'
+import { isSettled } from './status'
+import type { Failures } from './wake'
 
 import type { FailureKind, HostStatus, MrCard, Pinned } from '../types'
 

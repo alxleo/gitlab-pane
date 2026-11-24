@@ -1,9 +1,9 @@
 // What a symbol's description says, how much room it takes, and when it shows: the one rule every symbol follows, on
 // plain data. The engine reveals a hidden box the moment the pointer touches its symbol and has no delay of its own, so the
 // box holds a region (`hint-wait.tsx`) that hands `regionStep` its size and the time, and draws what it answers.
-import { HINT_ROOM } from './drawing.ts'
-import { drawnLine } from './format.ts'
-import { cellsOf, shortenToCells } from './graphemes.ts'
+import { HINT_ROOM } from './drawing'
+import { drawnLine } from './format'
+import { cellsOf, shortenToCells } from './graphemes'
 
 /**
  * Milliseconds the pointer rests on a symbol before its description shows, every time it comes back: tooltips commonly

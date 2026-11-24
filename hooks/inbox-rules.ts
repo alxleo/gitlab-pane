@@ -1,8 +1,8 @@
 // The inbox's built-in rules, and how they turn what GitLab said into sections. Plain data in, plain data out: the engine
 // side (inbox.ts) reads GitLab, keeps the snapshot and the seen marks, and calls these.
-import { cut } from './graphemes.ts'
-import { cardKey } from './hosts.ts'
-import { shortHash } from './identity.ts'
+import { cut } from './graphemes'
+import { cardKey } from './hosts'
+import { shortHash } from './identity'
 
 import type { InboxActivity, InboxItem, InboxKind, InboxMr, InboxSection, InboxSnapshot } from '../types'
 

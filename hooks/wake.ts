@@ -1,8 +1,8 @@
-import { badges, isMergeable } from './attention.ts'
-import { pipelineTime, ticketOf } from './format.ts'
-import { jobIdOf, quotedTail } from './job-tail.ts'
-import { commas, dotted, EMPTY, foreign, line, NAME_ROOM, URL_ROOM, type ModelLine } from './model-text.ts'
-import { isSettled, statusMark } from './status.ts'
+import { badges, isMergeable } from './attention'
+import { pipelineTime, ticketOf } from './format'
+import { jobIdOf, quotedTail } from './job-tail'
+import { commas, dotted, EMPTY, foreign, line, NAME_ROOM, URL_ROOM, type ModelLine } from './model-text'
+import { isSettled, statusMark } from './status'
 
 import type { CiStatus, JobLink, MergeStatus, MrCard } from '../types'
 

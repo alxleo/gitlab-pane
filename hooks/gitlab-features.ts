@@ -1,6 +1,6 @@
 // What a host has of GitLab's newer fields, learned from the errors it answers: an older self-managed GitLab refuses a whole
 // document for one field it lacks, so the pane learns the lack once and sends the variant without that field from then on.
-import type { RawResponse } from './gitlab-request.ts'
+import type { RawResponse } from './gitlab-request'
 
 import type { HostFeatures } from '../types'
 

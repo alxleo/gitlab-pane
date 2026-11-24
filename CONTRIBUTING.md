@@ -23,7 +23,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), oxlint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
 | `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |
 | `npm run knip` | No unused file, export, type or dependency; each entry point in `knip.jsonc` has its reason. |
-| `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `tools/`, `chatgpt/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, by `.ts` path, and a `hooks/` module that imports nothing of the engine, no package and no module that does is in the core; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
+| `npm run lint` | [oxlint](https://oxc.rs) over `hooks/`, `tests/`, `specs/`, `tools/`, `chatgpt/` (`oxlint.config.ts`): no `x as T`, `any`, `!` or module state; `hooks/` files within 400 lines; the core imports core files only, without the `.ts` extension, and a `hooks/` module that imports nothing of the engine, no package and no module that does is in the core; type-aware rules through `oxlint-tsgolint`, which is TypeScript 7 inside. The local rules are `tools/lint_rules.ts`, tested in `tools/lint_rules.spec.ts`. |
 | `npm run types` | TypeScript 7 over `tsconfig.core.json`, `tsconfig.json`, `tools/store-probe/tsconfig.json`, `tools/tsconfig.json` and `chatgpt/tsconfig.json`. |
 | `npm run schema -- types --check` | `hooks/gitlab.generated.ts` is what graphql-codegen makes of the snapshot and the documents. |
 | `npm run release-tree -- check` | The tree built from `release-tree/files` loads only what it holds, and holds the ChatGPT plugin, built at the tree's version with an `mcp.json` ChatGPT reads. |
@@ -69,7 +69,7 @@ Open **Actions → Duplicate code → Run workflow** for a technical-debt sweep.
 
 An agent can trace the reported paths, collapse overlapping results and verify whether the copies implement a rule that should change together. Fix a verified issue in the change that exposed it when the fix belongs there. For an occasional sweep, pick the independent fixes that eliminate work or prevent a plausible repeat bug. A repeated test setup, query shape or comment-only drift alert can be intentional or harmless.
 
-For a local run with the three binaries on PATH, use `node tools/duplicates.ts`, optionally with `--base origin/main`. The workflow pins the detector versions.
+For a local run with the three binaries on PATH, use `node --import ./tools/resolve_ts.ts tools/duplicates.ts`, optionally with `--base origin/main`. The workflow pins the detector versions.
 
 ## GitLab's types
 

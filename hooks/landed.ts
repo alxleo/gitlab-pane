@@ -2,14 +2,14 @@
 // commit each put on its target branch, and what is left to ask GitLab of each (the squash commit, the build). Pure, on plain
 // data; landed-read.ts asks. The inbox carries the list (its snapshot is the one every session already shares), so a session
 // that only draws has it without asking GitLab for anything.
-import { mergedNodes } from './ask-inbox-authored.ts'
-import { isFilled, isRecord, timeOf } from './decode.ts'
-import type { InboxAuthoredQuery } from './gitlab.generated.ts'
-import { CI_STATUSES } from './gitlab-status.ts'
-import { cut } from './graphemes.ts'
-import { siteOf } from './hosts.ts'
-import { TITLE_ROOM } from './inbox-rules.ts'
-import { isSettled } from './status.ts'
+import { mergedNodes } from './ask-inbox-authored'
+import { isFilled, isRecord, timeOf } from './decode'
+import type { InboxAuthoredQuery } from './gitlab.generated'
+import { CI_STATUSES } from './gitlab-status'
+import { cut } from './graphemes'
+import { siteOf } from './hosts'
+import { TITLE_ROOM } from './inbox-rules'
+import { isSettled } from './status'
 
 import type { CiStatus, Landed, LandedBuild } from '../types'
 

@@ -1,7 +1,7 @@
 // pane-rig: drive the GitLab pane through a real, headless Claude Code engine, standing in for the desktop app.
 //
-//   node tools/pane_rig.ts flow                                       draw the pane once GitLab has answered
-//   node tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press back-top
+//   node --import ./tools/resolve_ts.ts tools/pane_rig.ts flow                                       draw the pane once GitLab has answered
+//   node --import ./tools/resolve_ts.ts tools/pane_rig.ts flow --press tab-mine --press scroll:25 --press open-42 --press back-top
 //
 // (`npm run rig -- flow …` is the same.) The engine and the desktop's half of the protocol are tools/pane_engine.ts. Row
 // numbers are the rig's own estimate; which keys are present, and the order of the asks, are what it gets right. A step
@@ -112,7 +112,9 @@ async function main(): Promise<number> {
     },
   })
   if (positionals[0] !== 'flow') {
-    console.error('usage: node tools/pane_rig.ts flow [--press KEY|scroll:ROW]... [--wait-rows S] [--settle-ms MS] [--body-rows N] [--show N] [--log FILE]')
+    console.error(
+      'usage: node --import ./tools/resolve_ts.ts tools/pane_rig.ts flow [--press KEY|scroll:ROW]... [--wait-rows S] [--settle-ms MS] [--body-rows N] [--show N] [--log FILE]'
+    )
     return 2
   }
   return flow({

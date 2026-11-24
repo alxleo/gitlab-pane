@@ -1,7 +1,7 @@
 // The end of a failed job's log, as lines the model may read. A log is written by whoever can push to the repo (a job
 // prints what its script prints), so it is data twice over: every line goes through `foreign`, and the block says plainly
 // that it is quoted output and not an instruction. Pure.
-import { EMPTY, foreign, line, type ModelLine } from './model-text.ts'
+import { EMPTY, foreign, line, type ModelLine } from './model-text'
 
 /** The most lines of a log a wake carries, the last ones: where a job says why it failed. */
 export const TAIL_LINES = 20

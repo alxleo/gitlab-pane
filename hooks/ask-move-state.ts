@@ -1,8 +1,8 @@
 // What a move needs just before it is made, and after a rebase until it is done: one MR, read fresh.
-import type { MoveStateQuery, MoveStateQueryVariables } from './gitlab.generated.ts'
-import { dataOf, isSome } from './decode.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import type { Fresh } from './next-move.ts'
+import type { MoveStateQuery, MoveStateQueryVariables } from './gitlab.generated'
+import { dataOf, isSome } from './decode'
+import type { RawResponse, Request } from './gitlab-request'
+import type { Fresh } from './next-move'
 
 const MOVE_STATE = /* GraphQL */ `
   query MoveState($path: ID!, $iid: String!) {

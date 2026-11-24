@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { isEqual } from './equal.ts'
-import { browseUrl, keptTicketDetails } from './jira.ts'
-import { pinKey } from './mr-url.ts'
-import { keptCards, keptCardsByKey } from './snapshot.ts'
+import { isEqual } from './equal'
+import { browseUrl, keptTicketDetails } from './jira'
+import { pinKey } from './mr-url'
+import { keptCards, keptCardsByKey } from './snapshot'
 
 import type { MrCard, Pinned, PollState, ReadClock, Role, Suggested, Ticket, TicketDetail, Usual } from '../types'
 

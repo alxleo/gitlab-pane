@@ -3,7 +3,7 @@
 // nothing in it may import from outside the package, and the Node that ChatGPT's desktop app finds needs no TypeScript.
 // Both manifests take the mod's version (`.claude-plugin/plugin.json`, which releases raise), so one number names both.
 //
-//   node chatgpt/build.ts [--out chatgpt/package] [--version X.Y.Z]
+//   node --import ./tools/resolve_ts.ts chatgpt/build.ts [--out chatgpt/package] [--version X.Y.Z]
 //
 // `install.ts` installs the package on this machine, `tools/release_tree.ts` puts it in the release tree.
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

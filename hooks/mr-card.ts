@@ -1,15 +1,15 @@
 // The card for an MR, from its fields as any variant of the MR documents gives them (mr-fragments.ts): who to talk to, its
 // pipeline, its open threads. The modules that ask GitLab (ask-authored.ts, ask-pinned.ts) hand over the raw MR; this makes
 // what the pane draws and keeps of it.
-import { isFilled, isSome, present } from './decode.ts'
-import { ciStatusOf, reviewStateOf } from './gitlab-status.ts'
-import { absoluteUrl, cardKey, projectOf, siteOf } from './hosts.ts'
-import { lead, ranOf } from './format.ts'
-import { initials } from './identity.ts'
-import { fromGitLab } from './markdown.ts'
-import { threadsOf } from './mr-fragments.ts'
-import type { ListedPipeline, NodeOf, RawJob, RawMr, RawNote, RawReviewer, RawStage, RawUser, Thread } from './mr-fragments.ts'
-import { firstDifference } from './order.ts'
+import { isFilled, isSome, present } from './decode'
+import { ciStatusOf, reviewStateOf } from './gitlab-status'
+import { absoluteUrl, cardKey, projectOf, siteOf } from './hosts'
+import { lead, ranOf } from './format'
+import { initials } from './identity'
+import { fromGitLab } from './markdown'
+import { threadsOf } from './mr-fragments'
+import type { ListedPipeline, NodeOf, RawJob, RawMr, RawNote, RawReviewer, RawStage, RawUser, Thread } from './mr-fragments'
+import { firstDifference } from './order'
 
 import type { GitLabMarkdown, Job, JobLink, MrCard, Note, Person, PersonState, ReviewState } from '../types'
 

@@ -1,10 +1,10 @@
 // Adding a reviewer to an MR: one of the documents that change GitLab, sent once the person has confirmed it. GitLab tells
 // the reviewer, so a mistaken press reaches a real person; the pane arms it first.
-import type { AddReviewerMutation, AddReviewerMutationVariables } from './gitlab.generated.ts'
-import { present } from './decode.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { why } from './write-model.ts'
-import type { Refusal } from './write-model.ts'
+import type { AddReviewerMutation, AddReviewerMutationVariables } from './gitlab.generated'
+import { present } from './decode'
+import type { RawResponse, Request } from './gitlab-request'
+import { why } from './write-model'
+import type { Refusal } from './write-model'
 
 // `APPEND` always: left out, GitLab takes the list as the MR's whole set of reviewers and drops everyone else on it.
 const ADD_REVIEWER = /* GraphQL */ `

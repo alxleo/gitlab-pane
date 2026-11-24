@@ -1,5 +1,5 @@
-import { raw, svg } from './svg.ts'
-import type { RawSvg } from './svg.ts'
+import { raw, svg } from './svg'
+import type { RawSvg } from './svg'
 
 import type { CiStatus } from '../types'
 

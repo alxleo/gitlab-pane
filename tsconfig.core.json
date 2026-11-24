@@ -3,6 +3,8 @@
   // core file that imports 'claude-code' fails to compile here, which is the layering rule enforced by the compiler.
   // types/index.d.ts is the plugin's contract and `claude plugin validate` makes it one self-contained file, so the
   // domain types cannot move out of it; its `declare module 'claude-code'` block needs no engine to compile.
+  // No allowImportingTsExtensions: the engine's own check refuses a `.ts` import path, so core files import each other
+  // without one, and Node runs them from source with tools/resolve_ts.ts loaded first.
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -11,7 +13,6 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true,
     "target": "ES2023",
     "lib": ["ES2023"],
     "module": "ESNext",

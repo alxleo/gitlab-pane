@@ -62,9 +62,9 @@ test('a Markdown PR skips application lint, builds and tests but still checks do
     'npm install --global',
     'npm run check:fast',
     'npm test',
-    'node tools/release_tree.ts build',
+    'node --import ./tools/resolve_ts.ts tools/release_tree.ts build',
     'npm install --prefix "$RUNNER_TEMP/codex"',
-    'node chatgpt/probe.ts',
+    'node --import ./tools/resolve_ts.ts chatgpt/probe.ts',
     'npm install --prefix "$RUNNER_TEMP/stable"',
     'stable=',
   ]) {

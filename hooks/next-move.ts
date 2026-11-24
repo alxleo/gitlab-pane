@@ -1,11 +1,11 @@
 // The one move the pane can make for an MR, or none: merge it, rebase it, or hand its conflicts to Claude. Each is offered
 // only where GitLab's checks name it and the signed-in user may make it, so a card has a move only when that move is what
 // moves the MR along; waiting on people, on a pipeline or on a fix stays as quiet as it was. Pure, on plain data.
-import { checkWords, failureTone, verdictOf } from './attention.ts'
-import type { MergeStrategyEnum } from './gitlab.generated.ts'
-import { foreign, line, URL_ROOM, type ModelLine } from './model-text.ts'
-import { confirmedPress, liveOf, why } from './write-model.ts'
-import type { Refusal } from './write-model.ts'
+import { checkWords, failureTone, verdictOf } from './attention'
+import type { MergeStrategyEnum } from './gitlab.generated'
+import { foreign, line, URL_ROOM, type ModelLine } from './model-text'
+import { confirmedPress, liveOf, why } from './write-model'
+import type { Refusal } from './write-model'
 
 import type { MoveKind, MrCard, Pressed, Write } from '../types'
 

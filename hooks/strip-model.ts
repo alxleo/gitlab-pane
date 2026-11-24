@@ -2,11 +2,11 @@
 // other stage is its own square. What each stage is (its name, state and time) is the strip's description, a line a stage,
 // with the passed ones counted in one, shown once the pointer rests on it. A surface without Svg gets a glyph per stage, from
 // `tones`. Pure; the draw layer only puts the source in an Svg.
-import { duration, plural, ranFor } from './format.ts'
-import { followingTheme, stageTone, STATUS_WORD, tonePaint } from './status.ts'
-import type { Tone } from './status.ts'
-import { raw, svg } from './svg.ts'
-import type { SvgSource } from './svg.ts'
+import { duration, plural, ranFor } from './format'
+import { followingTheme, stageTone, STATUS_WORD, tonePaint } from './status'
+import type { Tone } from './status'
+import { raw, svg } from './svg'
+import type { SvgSource } from './svg'
 
 import type { Stage } from '../types'
 

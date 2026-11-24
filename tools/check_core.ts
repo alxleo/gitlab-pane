@@ -8,11 +8,14 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
 import { coreFiles } from './core.ts'
 
 const ROOT = process.env['CLAUDE_PROJECT_DIR'] ?? join(import.meta.dirname, '..')
+// oxlint loads oxlint.config.ts and the local rules, which import the core: Node finds its files with this loaded first.
+const RESOLVE_TS = pathToFileURL(join(import.meta.dirname, 'resolve_ts.ts')).href
 
 const readJson = (file: string): unknown => parseJson(readFileSync(file, 'utf8'))
 
@@ -62,7 +65,7 @@ function main(): number {
     return 2
   }
   const out = tools.map(tool => {
-    const ran = spawnSync(process.execPath, [tool.script, ...tool.args], { cwd: ROOT, encoding: 'utf8' })
+    const ran = spawnSync(process.execPath, ['--import', RESOLVE_TS, tool.script, ...tool.args], { cwd: ROOT, encoding: 'utf8' })
     const said = `${ran.stdout}${ran.stderr}`.trim()
     // A tool that exits 0 found nothing, whatever it prints (Biome says how many files it checked).
     if (ran.status === 0) {

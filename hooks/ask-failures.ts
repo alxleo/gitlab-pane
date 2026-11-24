@@ -1,8 +1,8 @@
 // Why a raised MR's failed jobs failed, asked only when its pipeline has just failed: one small query then, and no field
 // on every read for a message few reads need. A host too old to have the field answers an error, and the wake goes without.
-import type { FailuresQuery, FailuresQueryVariables } from './gitlab.generated.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { jobIdOf } from './job-tail.ts'
+import type { FailuresQuery, FailuresQueryVariables } from './gitlab.generated'
+import type { RawResponse, Request } from './gitlab-request'
+import { jobIdOf } from './job-tail'
 
 const FAILURES = /* GraphQL */ `
   query Failures($path: ID!, $iid: String!) {

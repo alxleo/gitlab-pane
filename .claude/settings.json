@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/check_core.ts\"",
+            "command": "node --import \"$CLAUDE_PROJECT_DIR/tools/resolve_ts.ts\" \"$CLAUDE_PROJECT_DIR/tools/check_core.ts\"",
             "timeout": 60
           }
         ]

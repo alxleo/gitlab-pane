@@ -1,13 +1,13 @@
 // What a search on the Mine tab shows: the MRs the pane holds that match, wherever they are kept. Open MRs as their cards,
 // in every repo and fold; the user's MRs merged lately as the merged section's rows; others' MRs from the inbox as one link
 // each. Pure, on plain data; the draw files only map it to elements.
-import { cardKey } from './hosts.ts'
-import { shortHash } from './identity.ts'
-import { LANDED_SHOWN, LANDED_WITHIN_MS } from './landed.ts'
-import { mergedModel, mrLinkText } from './landed-model.ts'
-import type { MergedRow } from './landed-model.ts'
-import { found } from './search.ts'
-import type { Findable, Query } from './search.ts'
+import { cardKey } from './hosts'
+import { shortHash } from './identity'
+import { LANDED_SHOWN, LANDED_WITHIN_MS } from './landed'
+import { mergedModel, mrLinkText } from './landed-model'
+import type { MergedRow } from './landed-model'
+import { found } from './search'
+import type { Findable, Query } from './search'
 
 import type { InboxMr, Landed, MrCard } from '../types'
 

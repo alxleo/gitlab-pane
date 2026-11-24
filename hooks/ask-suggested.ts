@@ -2,10 +2,10 @@
 // those who approved. A field of GitLab's paid tiers, so a Community Edition host lacks it, and a project without rules
 // answers none. Asked only for MRs that still need approvals, one at a time, never in the list's own document: GitLab
 // scores it 21 and it calls Gitaly for each MR.
-import type { SuggestedQuery, SuggestedQueryVariables } from './gitlab.generated.ts'
-import { present } from './decode.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { absoluteUrl } from './hosts.ts'
+import type { SuggestedQuery, SuggestedQueryVariables } from './gitlab.generated'
+import { present } from './decode'
+import type { RawResponse, Request } from './gitlab-request'
+import { absoluteUrl } from './hosts'
 
 import type { HostFeatures, Suggestion } from '../types'
 

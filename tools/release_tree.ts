@@ -1,7 +1,7 @@
 // release-tree: the files the plugin ships, copied out of the repository and checked.
 //
-//   node tools/release_tree.ts build DIR    copy the files named in release-tree/files into DIR (made empty first), then check them
-//   node tools/release_tree.ts check        build into a scratch directory and check, leaving nothing behind
+//   node --import ./tools/resolve_ts.ts tools/release_tree.ts build DIR    copy the files named in release-tree/files into DIR (made empty first), then check them
+//   node --import ./tools/resolve_ts.ts tools/release_tree.ts check        build into a scratch directory and check, leaving nothing behind
 //
 // (`npm run release-tree -- build DIR` is the same.) Installing the plugin copies its whole source, and the repository holds
 // far more than runs: tools, tests, screenshots, fonts, and the npm package that runs them. The release job publishes the
@@ -11,7 +11,7 @@
 // `import type`, not `export type`), in the built tree and not in the repository, so a file the allowlist forgot is found
 // as a file that is missing. Each `import` and `export … from` statement is classified on its own. It fails when:
 //
-//   - a listed file is missing, listed twice, a directory, or a development file (tools/, tests/, package.json, a tsconfig)
+//   - a listed file is missing, listed twice, a directory, or a development file (tools/, tests/, specs/, package.json, a tsconfig)
 //   - a module that loads imports a relative path the tree does not hold, or a package other than 'claude-code'
 //     (the mod cannot load npm packages)
 //   - a module that loads calls `import(…)`: the engine refuses dynamic import
@@ -36,7 +36,7 @@ const BRANCH = 'release'
 const SUFFIXES = ['.ts', '.tsx', '.js', '.mjs']
 const ENGINE = 'claude-code'
 // What the plugin never needs and a team must not receive, even if the allowlist were to name it.
-const DEVELOPMENT = /^(tools|tests|docs|\.github|node_modules)\/|^package(-lock)?\.json$|^tsconfig[^/]*\.json$/u
+const DEVELOPMENT = /^(tools|tests|specs|docs|\.github|node_modules)\/|^package(-lock)?\.json$|^tsconfig[^/]*\.json$/u
 const LINK = /\]\((?<md>[^)\s]+)|\b(?:src|href)=["'](?<html>[^"']+)/gu
 
 type Entry = { readonly source: string; readonly destination: string }
@@ -482,7 +482,7 @@ async function main(args: readonly string[]): Promise<number> {
       rmSync(scratch, { recursive: true, force: true })
     }
   }
-  console.error('usage: node tools/release_tree.ts build DIR | check')
+  console.error('usage: node --import ./tools/resolve_ts.ts tools/release_tree.ts build DIR | check')
   return 2
 }
 

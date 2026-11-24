@@ -1,8 +1,8 @@
 // One MR whole, for /mrs: its description and its threads. inbox-brief.ts makes the briefing the model reads of it.
-import type { InboxBriefQuery, InboxBriefQueryVariables } from './gitlab.generated.ts'
-import { documentOf } from './gitlab-document.ts'
-import type { Request } from './gitlab-request.ts'
-import { INBOX_FRAGMENTS } from './inbox-fragments.ts'
+import type { InboxBriefQuery, InboxBriefQueryVariables } from './gitlab.generated'
+import { documentOf } from './gitlab-document'
+import type { Request } from './gitlab-request'
+import { INBOX_FRAGMENTS } from './inbox-fragments'
 
 // 30 notes of 100 threads is `COMPLEXITY.InboxBrief`.
 const INBOX_BRIEF = /* GraphQL */ `

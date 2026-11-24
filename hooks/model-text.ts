@@ -3,7 +3,7 @@
  * by whoever can open an MR, so it enters a line only through `foreign`; the rest of a line is this code's own words.
  */
 
-import { shorten } from './graphemes.ts'
+import { shorten } from './graphemes'
 
 /** One line of text for the model: no line breaks or control characters in what GitLab supplied. */
 export type ModelLine = string & { readonly __brand: 'ModelLine' }

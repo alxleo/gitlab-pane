@@ -103,7 +103,7 @@ jobs:
       - if: steps.markdown-scope.outputs.markdown_only != '1'
         name: The release tree builds, validates and loads only what it holds
         run: |
-          node tools/release_tree.ts build "$RUNNER_TEMP/tree"
+          node --import ./tools/resolve_ts.ts tools/release_tree.ts build "$RUNNER_TEMP/tree"
           claude plugin validate --strict "$RUNNER_TEMP/tree"
           claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
           claude plugin validate --strict .claude-plugin/marketplace.json
@@ -114,8 +114,8 @@ jobs:
       - if: steps.markdown-scope.outputs.markdown_only != '1'
         name: The release tree's ChatGPT plugin installs in Codex and starts its server
         run: |
-          node chatgpt/probe.ts --server "$RUNNER_TEMP/tree/chatgpt/dist/server.mjs"
-          node chatgpt/codex-check.ts --tree "$RUNNER_TEMP/tree" --codex "$RUNNER_TEMP/codex/node_modules/.bin/codex"
+          node --import ./tools/resolve_ts.ts chatgpt/probe.ts --server "$RUNNER_TEMP/tree/chatgpt/dist/server.mjs"
+          node --import ./tools/resolve_ts.ts chatgpt/codex-check.ts --tree "$RUNNER_TEMP/tree" --codex "$RUNNER_TEMP/codex/node_modules/.bin/codex"
       # The stable channel's Claude Code beside the pinned one: the plugin's own validation and tests, not the dev
       # checks, which read the pinned engine's declarations and pictures.
       - if: steps.markdown-scope.outputs.markdown_only != '1'
@@ -213,7 +213,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          node tools/release_tree.ts build "$RUNNER_TEMP/tree"
+          node --import ./tools/resolve_ts.ts tools/release_tree.ts build "$RUNNER_TEMP/tree"
           # What is published passes the same validation as a pull request's tree.
           claude plugin validate --strict "$RUNNER_TEMP/tree"
           claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"

@@ -2,7 +2,7 @@
 // tool names, which needs no token. With --live it also calls the tool once, which reads your GitLab. Prints a verdict,
 // never the MRs: no titles or project paths reach the terminal.
 //
-//   node chatgpt/probe.ts [--server chatgpt/package/dist/server.mjs] [--live]
+//   node --import ./tools/resolve_ts.ts chatgpt/probe.ts [--server chatgpt/package/dist/server.mjs] [--live]
 import { strict as assert } from 'node:assert'
 import { parseArgs } from 'node:util'
 

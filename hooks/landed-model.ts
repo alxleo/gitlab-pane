@@ -1,13 +1,13 @@
 // What the Mine tab says of the user's own MRs merged lately: one folded line, and a row each once it is opened. Pure, on
 // plain data; the draw files only map it to elements.
-import { LINK } from './drawing.ts'
-import { ago, plural, shortTitle } from './format.ts'
-import { shorten } from './graphemes.ts'
-import { cardKey, projectOf } from './hosts.ts'
-import { shortHash } from './identity.ts'
-import { recentOf } from './landed.ts'
-import { markWord, statusMark } from './status.ts'
-import type { Glyph, Tone } from './status.ts'
+import { LINK } from './drawing'
+import { ago, plural, shortTitle } from './format'
+import { shorten } from './graphemes'
+import { cardKey, projectOf } from './hosts'
+import { shortHash } from './identity'
+import { recentOf } from './landed'
+import { markWord, statusMark } from './status'
+import type { Glyph, Tone } from './status'
 
 import type { Landed } from '../types'
 

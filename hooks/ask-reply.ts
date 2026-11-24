@@ -1,8 +1,8 @@
 // The reply under a thread: one of the two documents that change anything in GitLab, posted as the token's owner once the
 // person has confirmed it.
-import type { ReplyMutation, ReplyMutationVariables } from './gitlab.generated.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import type { Refusal } from './write-model.ts'
+import type { ReplyMutation, ReplyMutationVariables } from './gitlab.generated'
+import type { RawResponse, Request } from './gitlab-request'
+import type { Refusal } from './write-model'
 
 // A reply of quick actions alone runs them and keeps no note, which `commandsOnly` says.
 const REPLY = /* GraphQL */ `

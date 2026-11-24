@@ -1,11 +1,11 @@
 // The review queue: open MRs the user is a reviewer of. Those the user has approved already are told apart by the reader.
-import type { InboxQueueQuery } from './gitlab.generated.ts'
-import { present, timeOf } from './decode.ts'
-import { documentOf } from './gitlab-document.ts'
-import type { Request } from './gitlab-request.ts'
-import { INBOX_FRAGMENTS } from './inbox-fragments.ts'
-import { actorOf, cutoffOf, mrOf, noteSignals, PLAIN } from './inbox-signals.ts'
-import type { Found } from './inbox-signals.ts'
+import type { InboxQueueQuery } from './gitlab.generated'
+import { present, timeOf } from './decode'
+import { documentOf } from './gitlab-document'
+import type { Request } from './gitlab-request'
+import { INBOX_FRAGMENTS } from './inbox-fragments'
+import { actorOf, cutoffOf, mrOf, noteSignals, PLAIN } from './inbox-signals'
+import type { Found } from './inbox-signals'
 
 import type { InboxMr, InboxSignal } from '../types'
 

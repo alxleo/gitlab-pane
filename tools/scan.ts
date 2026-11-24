@@ -1,7 +1,7 @@
 // The security scanners, run here when they are installed and said to be skipped when they are not.
 //
-//   node tools/scan.ts            gitleaks over every commit, actionlint and zizmor over .github/workflows   (npm run scan)
-//   node tools/scan.ts --staged   gitleaks over the staged change only, which is what the commit hook runs
+//   node --import ./tools/resolve_ts.ts tools/scan.ts            gitleaks over every commit, actionlint and zizmor over .github/workflows   (npm run scan)
+//   node --import ./tools/resolve_ts.ts tools/scan.ts --staged   gitleaks over the staged change only, which is what the commit hook runs
 //
 // gitleaks, actionlint and zizmor are not Node tools, so npm cannot install them. CI runs all three with their official
 // actions (check.yml), over the whole history for gitleaks, and that is the gate. Here they are a convenience: install

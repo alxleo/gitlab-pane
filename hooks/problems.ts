@@ -1,5 +1,5 @@
 // What `/gitlab` says about background failures: the last one per source, as plain data the atom in failures.ts holds.
-import { kindOf } from './failure.ts'
+import { kindOf } from './failure'
 
 import type { FailureKind, Problems, ProblemSource } from '../types'
 

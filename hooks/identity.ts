@@ -1,7 +1,7 @@
 // A person's identity on the pane: the hash behind keys and colours, the initials, the first name. Pure, so the Mine tab
 // and the Inbox, which meet the same person through a display name and a username, draw one and the same disc.
 
-import { leading } from './graphemes.ts'
+import { leading } from './graphemes'
 
 /**
  * A string's hash, stable across runs; short keys and the pick of a colour both come from it. It runs over UTF-16 code

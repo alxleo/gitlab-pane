@@ -1,13 +1,13 @@
 // The user's own open MRs with their latest notes, and the ones merged since a date, who merged them and what landed: one
 // answer that the inbox's rules, the Jira moves and the Mine tab's merged section each read their part of.
-import type { InboxAuthoredQuery, InboxAuthoredQueryVariables } from './gitlab.generated.ts'
-import { present, timeOf } from './decode.ts'
-import { documentOf } from './gitlab-document.ts'
-import type { Request } from './gitlab-request.ts'
-import { cardKey } from './hosts.ts'
-import { INBOX_FRAGMENTS } from './inbox-fragments.ts'
-import { actorOf, cutoffOf, mrOf, noteSignals, PLAIN } from './inbox-signals.ts'
-import type { Found } from './inbox-signals.ts'
+import type { InboxAuthoredQuery, InboxAuthoredQueryVariables } from './gitlab.generated'
+import { present, timeOf } from './decode'
+import { documentOf } from './gitlab-document'
+import type { Request } from './gitlab-request'
+import { cardKey } from './hosts'
+import { INBOX_FRAGMENTS } from './inbox-fragments'
+import { actorOf, cutoffOf, mrOf, noteSignals, PLAIN } from './inbox-signals'
+import type { Found } from './inbox-signals'
 
 import type { InboxMr, OwnMrs } from '../types'
 

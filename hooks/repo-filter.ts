@@ -1,6 +1,6 @@
 // The repo filter above Mine: which repos it offers, which one is picked, and when a pick stops counting.
 
-import { LINK } from './drawing.ts'
+import { LINK } from './drawing'
 
 import type { MrCard } from '../types'
 

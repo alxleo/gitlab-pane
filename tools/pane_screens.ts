@@ -1,15 +1,15 @@
 // pane-screens: the README's screenshots of the GitLab pane, drawn by the mod's own code and photographed headless.
 //
-//   node tools/pane_screens.ts render                      write docs/screens/<scene>.png (light) and <scene>-dark.png for every scene
-//   node tools/pane_screens.ts render --scene inbox        one scene
-//   node tools/pane_screens.ts render --out /tmp/shots     somewhere else, to compare two runs
-//   node tools/pane_screens.ts render --verify             draw twice, fail unless both are byte-identical
-//   node tools/pane_screens.ts render --check              draw, and fail unless docs/screens already holds exactly these PNGs; writes nothing
-//   node tools/pane_screens.ts render --out /tmp/pr --delta-against origin/main
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts render                      write docs/screens/<scene>.png (light) and <scene>-dark.png for every scene
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts render --scene inbox        one scene
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts render --out /tmp/shots     somewhere else, to compare two runs
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts render --verify             draw twice, fail unless both are byte-identical
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts render --check              draw, and fail unless docs/screens already holds exactly these PNGs; writes nothing
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts render --out /tmp/pr --delta-against origin/main
 //                                                          a pull request's pictures: each scene, `<scene>-before.png` as main
 //                                                          draws it, and `<scene>-delta.png`, the change at full strength and
 //                                                          outlined, all else faded (tools/screen_delta.ts says what changed)
-//   node tools/pane_screens.ts setup [--with-deps]         fetch the Chromium it photographs with (once per Playwright version)
+//   node --import ./tools/resolve_ts.ts tools/pane_screens.ts setup [--with-deps]         fetch the Chromium it photographs with (once per Playwright version)
 //
 // (`npm run screens -- <command>` is the same.) How it works, so nobody has to remember it:
 //
@@ -355,10 +355,10 @@ function setup(withDeps: boolean): number {
 
 // ---- the command line ---------------------------------------------------------------------------------------------------
 
-const USAGE = `usage: node tools/pane_screens.ts render [--out DIR] [--scene NAME]... [--width PX] [--scale N] [--claude BIN] [--keep DIR] [--verify] [--check [--fresh DIR]] [--allow-unknown]
-       node tools/pane_screens.ts render --out DIR --delta-against REF [--scene NAME]...
-       node tools/pane_screens.ts scenes [--claude BIN]
-       node tools/pane_screens.ts setup [--with-deps]`
+const USAGE = `usage: node --import ./tools/resolve_ts.ts tools/pane_screens.ts render [--out DIR] [--scene NAME]... [--width PX] [--scale N] [--claude BIN] [--keep DIR] [--verify] [--check [--fresh DIR]] [--allow-unknown]
+       node --import ./tools/resolve_ts.ts tools/pane_screens.ts render --out DIR --delta-against REF [--scene NAME]...
+       node --import ./tools/resolve_ts.ts tools/pane_screens.ts scenes [--claude BIN]
+       node --import ./tools/resolve_ts.ts tools/pane_screens.ts setup [--with-deps]`
 
 /** Every scene drawn under the engine, no browser: what \`npm test\` runs, so a change that breaks a scene fails there. */
 function scenesOnly(claude: string): number {

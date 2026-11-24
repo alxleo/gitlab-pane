@@ -1,6 +1,6 @@
 // Where an arrow key puts the pane's focus ring on the inbox. The engine keeps the ring and draws it; this only says which
 // of the inbox's buttons is next, on plain data, so the arrows walk the cards one at a time instead of every button.
-import { shortHash } from './identity.ts'
+import { shortHash } from './identity'
 
 import type { InboxItem } from '../types'
 

@@ -1,9 +1,9 @@
 // What the commit a merge put on its target branch ran there, for the Mine tab's merged MRs (landed.ts says which to ask).
-import type { LandedQuery, LandedQueryVariables } from './gitlab.generated.ts'
-import { dataOf, isFilled, present } from './decode.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { ciStatusOf } from './gitlab-status.ts'
-import { siteOf } from './hosts.ts'
+import type { LandedQuery, LandedQueryVariables } from './gitlab.generated'
+import { dataOf, isFilled, present } from './decode'
+import type { RawResponse, Request } from './gitlab-request'
+import { ciStatusOf } from './gitlab-status'
+import { siteOf } from './hosts'
 
 import type { LandedBuild } from '../types'
 
