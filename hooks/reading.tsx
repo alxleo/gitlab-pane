@@ -3,9 +3,9 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure, opens } from './drawing'
 import { ago, plural } from './format'
 import { hinted, hintLine, hintRoom, homed } from './hint'
+import type { HomedKit } from './hint'
 import { shortHash } from './identity'
 import { kitOf } from './kit'
-import type { Kit } from './kit'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
@@ -35,7 +35,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   const { Box, Text, Button, Link, Markdown, Code, Input } = $.ui.resolve(e)
   const kit = kitOf($, e, now)
   /** A link to GitLab with what its mark opens shown once the pointer rests on it, in the line under the block `at` draws. */
-  const out = (at: Kit, key: string, words: string, href: string, text: string) => hinted(at, key, words, <Link href={href}>{text}</Link>)
+  const out = (at: HomedKit, key: string, words: string, href: string, text: string) => hinted(at, key, words, <Link href={href}>{text}</Link>)
   /** Such a link on a line of its own, the page's gap under it holding what it opens. */
   const alone = (key: string, words: string, href: string, text: string) => {
     const at = homed(kit, key)
@@ -70,7 +70,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   }
 
   /** A note's byline: who wrote it, or, on a page opened on its writer, whether it is in an open thread. */
-  const byline = (at: Kit, note: Note, who: string) => (
+  const byline = (at: HomedKit, note: Note, place: string, who: string) => (
     <Box flexDirection="row" gap={1}>
       <Box flexShrink={0}>
         <Text weight="semibold">{who}</Text>
@@ -80,15 +80,19 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           {[note.where, ago(note.at, now)].filter(Boolean).join(' · ')}
         </Text>
       </Box>
-      {out(at, `hint-note-${shortHash(note.url)}`, opens('comment'), note.url, LINK.comment)}
+      {out(at, `hint-note-${place}`, opens('comment'), note.url, LINK.comment)}
     </Box>
   )
-  // A note is a block of its own, a gap under it: its 💬 says what it opens there, not over the note's first line.
-  const said = (note: Note, who = note.author) => {
-    const at = homed(kit, `note-${note.url}`)
+  /**
+   * A note is a block of its own, a gap under it: its 💬 says what it opens there, not over the note's first line. It is
+   * named by its place on the page (`t2`, `t2.1`, `b0`, `p3`), not its address: a note GitLab gives none of links to its MR,
+   * so two such notes would share one, and the engine draws nothing of a tree with a key twice.
+   */
+  const said = (note: Note, place: string, who = note.author) => {
+    const at = homed(kit, `note-${place}`)
     return (
       <Box flexDirection="column" marginBottom={hintRoom(at)}>
-        {byline(at, note, who)}
+        {byline(at, note, place, who)}
         {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
         {hintLine(at)}
       </Box>
@@ -143,7 +147,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   // Opened on one person: what they wrote, and the way on to the whole MR.
   const person = focus !== '' ? personPage(mr, focus) : null
   if (person !== null) {
-    const notes = fitting(person.notes.map(({ note, label }) => said(note, label)))
+    const notes = fitting(person.notes.map(({ note, label }, i) => said(note, `p${i}`, label)))
     return [
       ...head,
       <Text weight="semibold">{person.heading}</Text>,
@@ -215,12 +219,12 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       cancel,
     ]
   }
-  const threads = mr.openThreads.map(thread => (
+  const threads = mr.openThreads.map((thread, t) => (
     <Box flexDirection="column" gap={1}>
       {thread.excerpt !== undefined && <Code source={thread.excerpt.hunk} format="diff" path={thread.excerpt.path} wrap="truncate-end" />}
-      {said(thread)}
-      {(thread.replies ?? []).map(answer => (
-        <Box paddingLeft={2}>{said(answer)}</Box>
+      {said(thread, `t${t}`)}
+      {(thread.replies ?? []).map((answer, r) => (
+        <Box paddingLeft={2}>{said(answer, `t${t}.${r}`)}</Box>
       ))}
       {answering(thread)}
     </Box>
@@ -256,7 +260,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           ...threads,
         ]
       : []),
-    ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(note => said(note))] : []),
+    ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map((note, i) => said(note, `b${i}`))] : []),
   ]
 
   const kept = fitting(blocks)

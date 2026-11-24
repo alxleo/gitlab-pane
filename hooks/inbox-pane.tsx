@@ -5,8 +5,8 @@ import { isFilled } from './decode'
 import { ago, shortTitle } from './format'
 import { CONTROL, measure, opens } from './drawing'
 import { hinted, hintLine, homed } from './hint'
+import type { HomedKit } from './hint'
 import { kitOf } from './kit'
-import type { Kit } from './kit'
 import { firstName, initials, shortHash } from './identity'
 import { reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
@@ -65,7 +65,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const names = new Map(ruled.flatMap(section => section.items).map(item => [item.author, item.authorName]))
 
   /** An initials disc, coloured by username; where the surface draws no Svg, nothing. */
-  const avatar = (home: Kit, username: string, key: string) =>
+  const avatar = (home: HomedKit, username: string, key: string) =>
     Svg !== undefined ? (
       <Box flexShrink={0}>
         {hinted(
@@ -78,7 +78,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     ) : null
 
   /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
-  const event = (home: Kit, mr: string, one: InboxActivity, at: number, isWhole: boolean) => {
+  const event = (home: HomedKit, mr: string, one: InboxActivity, at: number, isWhole: boolean) => {
     const verb = VERB[one.kind]
     const when = ago(one.at, now)
     const said = one.excerpt !== '' ? `“${one.excerpt}”` : ''

@@ -4,6 +4,7 @@ import { CONTROL, LINK, opens } from './drawing'
 import { face } from './faces'
 import type { InboxRow } from './found-model'
 import { hinted, hintLine, hintRoom, homed } from './hint'
+import type { HomedKit } from './hint'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
@@ -39,7 +40,7 @@ function verdictWords(kit: Kit, verdict: Verdict): RenderChildren[] {
  * while it is under way. On a merge, the head it takes follows it; then `trailing`, the blockers that trail a verdict the
  * move says; then why its last press failed, amber, so nothing before it moves when a failure comes or goes.
  */
-function moveParts($: EngineInterface, kit: Kit, row: RowModel, move: Verdict['move'], trailing: string | null): RenderChildren[] {
+function moveParts($: EngineInterface, kit: HomedKit, row: RowModel, move: Verdict['move'], trailing: string | null): RenderChildren[] {
   const { Text, Button, Link } = kit
   const press = move?.press ?? null
   return [
@@ -79,7 +80,7 @@ function ticketLink($: EngineInterface, kit: Kit, row: RowModel, ticket: NonNull
  * it. The way on goes to the whole (the MR's page on that person, or the ticket in Jira); `✕` closes it, as a second press
  * on what opened it does.
  */
-export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: UnderBlock, open: Under, href: string | null): RenderChildren {
+export function drawUnder($: EngineInterface, kit: HomedKit, row: RowModel, block: UnderBlock, open: Under, href: string | null): RenderChildren {
   const { Box, Text, Button, Link } = kit
   const close = hinted(
     kit,
@@ -123,7 +124,7 @@ export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: Un
  * symbol's description, in the blank line under the card (`hinted`): what a press on a name or a ticket opens goes under the card, and
  * the MR's page, a press on the title away, holds the rest.
  */
-export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowPart): RenderChildren {
+export function drawPart($: EngineInterface, kit: HomedKit, row: RowModel, part: RowPart): RenderChildren {
   const { Box, Text, Button, Link } = kit
   const scope = (what: string) => `${what}-${row.suffix}`
   // The desktop app refuses a whole drawing over one element it does not take, so controls hold plain strings:
@@ -258,7 +259,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
 }
 
 /** No pipeline: its mark, which says so under the pointer, or the words where nothing hovers. */
-function noPipeline(kit: Kit, key: string): RenderChildren {
+function noPipeline(kit: HomedKit, key: string): RenderChildren {
   const { Text } = kit
   const { glyph, tone } = statusMark(undefined)
   return kit.showsHints ? hinted(kit, key, markWord(undefined), <Text color={tone}>{glyph}</Text>) : <Text dimColor>{markWord(undefined)}</Text>

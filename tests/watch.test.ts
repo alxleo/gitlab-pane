@@ -34,7 +34,7 @@ import type { Answers } from './gitlab_fake'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
-import { DRAWING_BUDGET } from '../hooks/drawing'
+import { DRAWING_BUDGET, opens } from '../hooks/drawing'
 import { HINT_DELAY_MS } from '../hooks/hint-chip'
 import { toCard } from '../hooks/mr-card'
 import { MERGED_ROW_SIZE } from '../hooks/landed-model'
@@ -1919,6 +1919,23 @@ test('an MR too long for its page shows what fits of the description, then links
   await ui.unmount()
 })
 
+test('two notes GitLab gives no address of each say what their 💬 opens on the MR page, which still draws', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // Without an address of its own a note links to its MR, so two such notes share every address they have.
+  const unaddressed = (body: string) => ({ ...thread(body, 'reviewer'), notes: { nodes: [note(body, 'reviewer', { url: null })] } })
+  engine(on, { mrs: [rawMr(12, { discussions: { nodes: [unaddressed('First thread.'), unaddressed('Second thread.')] } })], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
+  expect(text).toContain('First thread.')
+  expect(text).toContain('Second thread.')
+  expect(unhinted(await ui.drawn())).toEqual([])
+  expect(hintsIn(await ui.drawn()).filter(hint => hint.lines.includes(opens('comment')))).toHaveLength(2)
+  await ui.unmount()
+})
+
 test('an MR with 180 failed jobs, one allowed to, lists every one on its page under one description, and keeps its thread and description', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const stages = Array.from({ length: 9 }, (_, s) =>
@@ -1949,6 +1966,7 @@ test('an MR with 180 failed jobs, one allowed to, lists every one on its page un
   // Each link opens its job's log, so the list says it once, not once a link, with what each mark it holds means.
   const jobs = (await ui.findAll({ type: 'Box' })).find(keyed('hint-jobs'))
   expect(saysOf(await ui.drawn(), jobs?.key)).toEqual(['✗ failed', '⚠ allowed to fail', 'each opens its log'])
+  expect(unhinted(await ui.drawn())).toEqual([])
   expect(hintsIn(await ui.drawn()).filter(hint => hint.lines.includes('each opens its log'))).toHaveLength(1)
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   await ui.unmount()
@@ -2587,6 +2605,20 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.unmount()
 })
 
+test('two hundred small cards stay inside the budget: each card counts its own box and the line under it, not only what it holds', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const approvers = [reviewer('ines.mendel', 'APPROVED'), reviewer('tessa.r', 'APPROVED')]
+  const mrs = Array.from({ length: 200 }, (_, i) => rawMr(1000 + i, { reviewers: { nodes: approvers }, approvedBy: { nodes: approvers.map(({ username }) => user(username)) } }))
+  engine(on, { mrs, isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'more' })
+  expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
+  await ui.unmount()
+})
+
 test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's buttons", { options: { jiraUrl: 'https://jira.example.com/' } }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const pipelines: PipelineStatusEnum[] = ['SUCCESS', 'FAILED', 'RUNNING', 'MANUAL']
@@ -2688,9 +2720,18 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     expect(await ui.find({ type: 'Link', text: '🎫 ABC-1 · Task · In Progress: Make the thing work' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'fix/thing-103 → main · +10 −2 · 1 file' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
+    // The page says what each of its symbols means too, each in the blank row under its block.
+    await allHinted()
     await ui.press({ key: 'back-top' })
     // The title is a plain button, not a link: it opens the MR's page, while 🔀 !iid leaves for GitLab.
     expect((await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.props.label).toBe('thing 103')
+    // So does the page opened on one person, from what opens under the card.
+    await ui.press({ key: timKey })
+    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('under-more-'))?.key ?? '' })
+    expect(await ui.find({ type: 'Button', key: 'page-whole' })).toBeDefined()
+    await allHinted()
+    await ui.press({ key: 'back-top' })
+    await ui.press({ key: timKey })
 
     // The repos are one picker, which takes one row however many there are: a repo narrows the list, All shows it whole.
     expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()
