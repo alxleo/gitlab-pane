@@ -237,10 +237,10 @@ function answersFor(
   }
 }
 
-/** The MR as a GitLab without `reviewState` sends it: its reviewers carry no `mergeRequestInteraction`. */
 /** What `/gitlab` answers: the pane's health, and the problems the background reads last failed with. */
 const gitlabCommand = ($: Engine) => $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
 
+/** The MR as a GitLab without `reviewState` sends it: its reviewers carry no `mergeRequestInteraction`. */
 const plain = (mr: Mr) => ({
   ...mr,
   reviewers: { nodes: (mr.reviewers?.nodes ?? []).map(one => (one === null ? null : { username: one.username, name: one.name, bot: one.bot, avatarUrl: one.avatarUrl })) },
