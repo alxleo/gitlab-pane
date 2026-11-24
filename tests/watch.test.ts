@@ -1818,7 +1818,10 @@ test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed bad
     { ...reviewer('mel.northcote', 'UNREVIEWED'), avatarUrl: null },
     { ...reviewer('cal.voss', 'REVIEW_STARTED'), avatarUrl: null },
   ]
-  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people } })], isDown: false })
+  // Beside it, one GitLab says can merge and one with a conflict, whose lines are green and red.
+  const mergeable = rawMr(13, { approvalsLeft: 0, approvedBy: { nodes: [user('ines.mendel')] }, mergeabilityChecks: checks() })
+  const conflicted = rawMr(14, { mergeabilityChecks: checks({ CONFLICT: 'FAILED' }) })
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people } }), mergeable, conflicted], isDown: false })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
@@ -1850,13 +1853,22 @@ test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed bad
   // filled with the theme key of what holds it, here the grey of "needs 1 approval", which the app paints in each theme.
   expect(boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle !== undefined)).toEqual([])
   const cards = boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1 && box.props.paddingRight === 1)
-  expect(cards).toHaveLength(1)
-  const [edge] = boxesOf(cards[0])
-    .slice(1)
-    .filter(box => box.props?.backgroundColor !== undefined)
-  expect(edge?.props).toMatchObject({ backgroundColor: 'subtle', flexShrink: 0 })
-  expect(Number(edge?.props?.width)).toBeLessThan(1)
-  expect((await ui.findAll({ type: 'Text' })).map(text => text.text)).toContain('👤 needs 1 approval')
+  expect(cards).toHaveLength(3)
+  const edgeOf = (iid: number) => {
+    const card = cards.find(box => JSON.stringify(box).includes(`!${iid}`))
+    return boxesOf(card)
+      .slice(1)
+      .find(box => box.props?.backgroundColor !== undefined)?.props
+  }
+  expect(edgeOf(12)).toMatchObject({ backgroundColor: 'subtle', flexShrink: 0 })
+  expect(Number(edgeOf(12)?.width)).toBeLessThan(1)
+  expect(edgeOf(13)?.backgroundColor).toBe('success')
+  expect(edgeOf(14)?.backgroundColor).toBe('error')
+  // Each repeats words on its card: what holds the first, and GitLab's verdict on the other two.
+  const texts = (await ui.findAll({ type: 'Text' })).map(text => text.text)
+  expect(texts).toEqual(expect.arrayContaining(['👤 needs 1 approval', 'conflict']))
+  const words = [...texts, ...(await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))]
+  expect(words.some(text => text.startsWith('✓ merge'))).toBe(true)
 
   await ui.unmount()
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })

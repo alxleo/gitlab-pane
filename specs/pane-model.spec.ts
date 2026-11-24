@@ -164,13 +164,14 @@ test('a card’s left line is the colour of its verdict, or of what holds it wit
     mergeable: { ...toCard(HOST, rawMr(2, { ...approved, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() },
     failed: { ...toCard(HOST, rawMr(4, { headPipeline: pipe('FAILED') })), mergeStatus: gitlabSays({ CI_MUST_PASS: 'failed' }) },
     conflict: { ...toCard(HOST, rawMr(5, { headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays({ CONFLICT: 'failed' }) },
+    threads: { ...toCard(HOST, rawMr(7, { headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays({ DISCUSSIONS_NOT_RESOLVED: 'failed' }) },
     // With no merge checks read, the pane's own marker holds it, and the line takes that marker's colour.
     unread: toCard(HOST, rawMr(6, { headPipeline: pipe('SUCCESS') })),
   }
   const { mine } = modelOf(Object.values(cards))
   const rowOf = (card: MrCard) => mine.rows.find(row => row.key === card.key)
   const edges = Object.fromEntries(Object.entries(cards).map(([name, card]) => [name, rowOf(card)?.edge]))
-  expect(edges).toEqual({ waiting: 'subtle', mergeable: 'success', failed: 'error', conflict: 'error', unread: 'subtle' })
+  expect(edges).toEqual({ waiting: 'subtle', mergeable: 'success', failed: 'error', conflict: 'error', threads: 'warning', unread: 'subtle' })
   // Never colour alone: the line repeats the colour of words already on the card.
   for (const card of Object.values(cards)) {
     const row = rowOf(card)
