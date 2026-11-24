@@ -1,0 +1,5 @@
+[scan]
+exclude = ["**/*.generated.ts"]
+
+[cache]
+enabled = false
