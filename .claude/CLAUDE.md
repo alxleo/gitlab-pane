@@ -16,7 +16,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 | Rule | Detail |
 | --- | --- |
 | The core is pure code on plain data | The files in `include` of `tsconfig.core.json`: the one list (`tools/core.ts` reads it for the linter and `tools/check_core.ts`). `claude-code` is not importable there. A new file joins by being listed, and a `.ts` file in `hooks/` that imports nothing of the engine, no package and no module that does must be (`local/core-imports`). |
-| Imports | A core file imports core files by their `.ts` path, and `../types`. Other files import without extensions. `tools/*.ts` import `gitlab-operations.ts` and `decode.ts` under plain Node. |
+| Imports | `claude plugin validate` type-checks `hooks/`, `types/` and `tests/` with the engine's own compiler options, which refuse a `.ts` import path. So files there, and `specs/`, import without extensions; a core file imports core files and `../types`. `tools/` and `chatgpt/` import by `.ts` path, and Node runs them with `--import ./tools/resolve_ts.ts`, which finds the core's extensionless imports. |
 | New logic | On plain data goes in the core, with a test on plain data. Engine-facing files stay thin: `pane.tsx`, `card.tsx`, `poll.ts`, `choices.ts`, `data.ts`, `inbox.ts`, `replies.ts`, `register.tsx`. |
 | `chatgpt/` | The ChatGPT plugin ([chatgpt/README.md](../chatgpt/README.md)): a stdio MCP server and an MCP App panel on the core's rows and moves. It imports core files by `.ts` path and nothing of the engine; logic it needs on plain data goes in the core. Its made-up GitLab answers through `tests/gitlab_fake.ts`. |
 | `fromGitLab` (`markdown.ts`) | Turns text into GitLab's Markdown to draw; only `mr-card.ts` imports it (`local/only-importers`). Anything else gets such text from `cleanBody`. |
@@ -54,7 +54,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 ## Toolchain
 
-- Node only: every tool, check and hook is TypeScript run by Node (`node tools/<name>.ts` or an `npm run` script). No bash, no Python. A new tool is a `tools/*.ts` file under the same lint. The only shell is a workflow's `run:` lines.
+- Node only: every tool, check and hook is TypeScript run by Node (`node --import ./tools/resolve_ts.ts tools/<name>.ts` or an `npm run` script). No bash, no Python. A new tool is a `tools/*.ts` file under the same lint. The only shell is a workflow's `run:` lines.
 - One `package.json` and one `package-lock.json`; the published tree leaves both out. Git hooks are written by `simple-git-hooks` from `package.json`; no script lives in the repository.
 - gitleaks, actionlint and zizmor are not Node tools: CI runs them; `npm run scan` runs those installed.
 - Formatting is Biome's (`biome.jsonc`, formatter only): never hand-format, run `npm run format`. oxlint sets no formatting rule; keep it that way, so the two cannot disagree. A tool that generates a file formats its output through `tools/format.ts`.
@@ -73,6 +73,6 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 
 ## Tests
 
-- Pure logic: `tests/core/<module>.spec.ts` (Vitest and fast-check, plain Node), named after the core module it tests. `tests/*.test.ts` (`claude plugin test`) is only for wiring, drawing, wakes end to end, the budgets and the scenes. Shared data: `tests/fixtures.ts`. A dev tool's own tests sit beside it as `tools/<tool>.spec.ts` (Vitest, checked by `tools/tsconfig.json`); the local lint rules are tested there with oxlint's `RuleTester`.
+- Pure logic: `specs/<module>.spec.ts` (Vitest and fast-check, plain Node), named after the core module it tests. Not under `tests/`: validate type-checks that folder with no packages. `tests/*.test.ts` (`claude plugin test`) is only for wiring, drawing, wakes end to end, the budgets and the scenes. Shared data: `tests/fixtures.ts`. A dev tool's own tests sit beside it as `tools/<tool>.spec.ts` (Vitest, checked by `tools/tsconfig.json`); the local lint rules are tested there with oxlint's `RuleTester`.
 - A test name is a sentence saying what happens: `a pipeline that failed twice shows its latest failure`.
-- `tests/core/reconcile.spec.ts` is the model of a pure test; `tests/watch.test.ts` is the engine smoke test. Property tests use a fixed seed (`tests/core/setup.ts`); fast-check prints the seed and path of a counterexample.
+- `specs/reconcile.spec.ts` is the model of a pure test; `tests/watch.test.ts` is the engine smoke test. Property tests use a fixed seed (`specs/setup.ts`); fast-check prints the seed and path of a counterexample.

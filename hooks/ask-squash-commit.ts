@@ -1,7 +1,7 @@
 // The squash commit a merge put on its target branch, which GraphQL lacks, so it is read over REST from the MR's entity
 // (landed.ts says when; landed-read.ts asks).
-import { isRecord, parseJson } from './decode.ts'
-import { Failure } from './failure.ts'
+import { isRecord, parseJson } from './decode'
+import { Failure } from './failure'
 
 /** The REST path of an MR, whose entity names its squash commit. */
 export const mergeRequestPath = (path: string, iid: number): string => `projects/${encodeURIComponent(path)}/merge_requests/${iid}`

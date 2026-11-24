@@ -1,5 +1,6 @@
 {
+  // The engine's own compiler options, from the declarations it lays, and nothing added: `claude plugin validate` checks
+  // hooks/, types/ and tests/ with exactly these, so tsc fails here wherever it would. The core's specs ride along.
   "extends": "./.claude-plugin/types/tsconfig.json",
-  "compilerOptions": { "allowImportingTsExtensions": true },
-  "include": [".claude-plugin/types", "hooks", "types", "tests", "tools/screens"]
+  "include": [".claude-plugin/types", "hooks", "types", "tests", "specs", "tools/screens"]
 }

@@ -1,11 +1,11 @@
 // What the inbox's answers mean, whichever read gave them: an MR they name, and the signals on it its notes carry. Plain
 // data in, plain data out; each `ask-inbox-*.ts` module reads its own answer with these, and inbox.ts keeps the result.
-import { present, timeOf } from './decode.ts'
-import { cut } from './graphemes.ts'
-import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules.ts'
-import { foreign } from './model-text.ts'
+import { present, timeOf } from './decode'
+import { cut } from './graphemes'
+import { ACTOR_ROOM, EXCERPT_ROOM, HORIZON_MS, RULES } from './inbox-rules'
+import { foreign } from './model-text'
 
-import type { InboxMrFieldsFragment, InboxNoteFieldsFragment } from './gitlab.generated.ts'
+import type { InboxMrFieldsFragment, InboxNoteFieldsFragment } from './gitlab.generated'
 
 import type { InboxKind, InboxMr, InboxSignal } from '../types'
 

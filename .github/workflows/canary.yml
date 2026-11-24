@@ -73,7 +73,7 @@ jobs:
         env:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/tree-setup
         run: |
-          node tools/release_tree.ts build "$RUNNER_TEMP/tree"
+          node --import ./tools/resolve_ts.ts tools/release_tree.ts build "$RUNNER_TEMP/tree"
           claude plugin marketplace add "$RUNNER_TEMP/tree"
           claude plugin install gitlab-pane@gitlab-pane
           # The JSON, not the listing: the listing's lines change between versions (a folder install gained "Read from").

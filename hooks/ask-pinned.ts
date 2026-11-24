@@ -1,12 +1,12 @@
 // One MR read on its own, with its pipeline's jobs: a pinned MR the list lacks (someone else's, or merged), an MR whose row
 // draws from the jobs the list leaves out, and an MR's page.
-import type { PinnedPlainQuery, PinnedQuery, PinnedQueryVariables } from './gitlab.generated.ts'
-import { dataOf, isSome } from './decode.ts'
-import { documentOf } from './gitlab-document.ts'
-import { isCurrent } from './gitlab-features.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { MR_FRAGMENTS } from './mr-fragments.ts'
-import type { RawMr } from './mr-fragments.ts'
+import type { PinnedPlainQuery, PinnedQuery, PinnedQueryVariables } from './gitlab.generated'
+import { dataOf, isSome } from './decode'
+import { documentOf } from './gitlab-document'
+import { isCurrent } from './gitlab-features'
+import type { RawResponse, Request } from './gitlab-request'
+import { MR_FRAGMENTS } from './mr-fragments'
+import type { RawMr } from './mr-fragments'
 
 import type { HostFeatures, Pinned } from '../types'
 

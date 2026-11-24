@@ -1,7 +1,7 @@
 // How long a project's MR pipelines usually run, from its recent successful ones.
-import type { UsualQuery, UsualQueryVariables } from './gitlab.generated.ts'
-import { present } from './decode.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
+import type { UsualQuery, UsualQueryVariables } from './gitlab.generated'
+import { present } from './decode'
+import type { RawResponse, Request } from './gitlab-request'
 
 import type { Usual } from '../types'
 

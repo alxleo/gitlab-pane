@@ -4,8 +4,8 @@
  * Markdown or goes, as GitLab's sanitiser would drop it. Code is left exactly as written, tags and all.
  */
 
-import { cut } from './graphemes.ts'
-import { replaceAnchors, replaceFences, replaceLinks, replacePairs, replaceSpans } from './closers.ts'
+import { cut } from './graphemes'
+import { replaceAnchors, replaceFences, replaceLinks, replacePairs, replaceSpans } from './closers'
 
 import type { GitLabMarkdown } from '../types'
 
@@ -116,7 +116,7 @@ export const MAX_ROUNDS = 8
  * A pattern's `replace` stays inside the loop, on the text it last made, which is how CodeQL's
  * `js/incomplete-multi-character-sanitization` knows the strip is repeated; a `replace` handed in from outside is not. The
  * function step makes no `replace` call, so there is nothing for CodeQL to ask of it; the properties in
- * `tests/core/markdown.spec.ts` are what hold its cut to account.
+ * `specs/markdown.spec.ts` are what hold its cut to account.
  */
 function removeAll(text: string, ...steps: (RegExp | ((text: string) => string))[]): string {
   let rest = text
@@ -156,7 +156,7 @@ const marked = (text: string, opener: RegExp, sign: string): string =>
  * is read up to that `<`, not to the end of the text once for every `<` in it. `TAG` below reads on to the `>` whatever it
  * crosses, so a tag with a `<` in its attributes is still cut out, but as plain text and not as a link, a bullet or a fold.
  * Each element with a closer is read by `closers.ts`, which finds an opener's closer without reading to the end of the
- * text for every opener that has none, and reads every text as the pattern it names does (`tests/core/closers.spec.ts`).
+ * text for every opener that has none, and reads every text as the pattern it names does (`specs/closers.spec.ts`).
  */
 function markdownOf(text: string): string {
   const pictures = replacePairs(

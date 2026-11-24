@@ -1,9 +1,9 @@
 // The merge: one of the two documents that change anything in GitLab, sent once the person has pressed for it.
-import type { MergeMutation, MergeMutationVariables, MergeStrategyEnum } from './gitlab.generated.ts'
-import { isSome } from './decode.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { why } from './write-model.ts'
-import type { Refusal } from './write-model.ts'
+import type { MergeMutation, MergeMutationVariables, MergeStrategyEnum } from './gitlab.generated'
+import { isSome } from './decode'
+import type { RawResponse, Request } from './gitlab-request'
+import { why } from './write-model'
+import type { Refusal } from './write-model'
 
 // A write: never scored, since scoring sends the document. The head is the one the verdict was read on, and GitLab
 // refuses the merge if the branch has moved since. `squash` is always sent: left out, GitLab takes it as false and writes

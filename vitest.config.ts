@@ -15,7 +15,7 @@ const refuseAllBut = (...allowed: string[]): string[] => ['--permission', `--all
 
 /** The two kinds of spec Vitest runs, each with what its Node allows. */
 export const PROJECTS = [
-  { extends: true, test: { name: 'core', include: ['tests/core/**/*.spec.ts'], execArgv: refuseAllBut() } },
+  { extends: true, test: { name: 'core', include: ['specs/**/*.spec.ts'], execArgv: refuseAllBut() } },
   {
     extends: true,
     test: {
@@ -29,10 +29,11 @@ export const PROJECTS = [
   },
 ]
 
-// The core under plain Node: no transforms, no plugins, no aliases. The core files import each other by their .ts path,
-// which Vite resolves as it finds it. Only tests/core/*.spec.ts and the dev tools' own tools/*.spec.ts run here; the
-// engine's runner takes *.test.ts and *.test.tsx (`claude plugin test`), so neither picks up the other's files. The tools'
-// specs sit beside the tools because tools/tsconfig.json, with Node's types, is the project that checks both.
+// The core under plain Node: no transforms, no plugins, no aliases. The core files import each other without an extension,
+// which Vite resolves as it finds it. Only specs/*.spec.ts and the dev tools' own tools/*.spec.ts run here; the engine's
+// runner takes *.test.ts and *.test.tsx (`claude plugin test`), so neither picks up the other's files. The core's specs are
+// outside tests/ because `claude plugin validate` type-checks that folder with no packages, and these import Vitest. The
+// tools' specs sit beside the tools because tools/tsconfig.json, with Node's types, is the project that checks both.
 // The one setting beyond the tests' location: Vite reads a tsconfig to strip types, and the core's is the one that does not
 // extend the engine's declarations, which are git-ignored and absent on a fresh clone.
 // The config is checked against Vitest's type, not built by defineConfig: loading vitest/config reads /proc on Linux, which
@@ -40,5 +41,5 @@ export const PROJECTS = [
 export default {
   tsconfig: 'tsconfig.core.json',
   // No test here takes half a second; one that takes two has started doing something these tests are not for.
-  test: { environment: 'node', setupFiles: ['tests/core/setup.ts'], testTimeout: 2_000, projects: PROJECTS },
+  test: { environment: 'node', setupFiles: ['specs/setup.ts'], testTimeout: 2_000, projects: PROJECTS },
 } satisfies ViteUserConfig

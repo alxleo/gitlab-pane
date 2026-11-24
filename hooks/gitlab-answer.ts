@@ -1,9 +1,9 @@
 // How a GitLab host's answer is read and which token a host is sent, on plain data: the mod's `graphql.ts` and `tokens.ts`
 // (through the session's `$`) and the ChatGPT plugin's `chatgpt/read.ts` (through Node) send and run what these decide.
-import { decodeGraphql, isRecord, parseJson } from './decode.ts'
-import { Failure } from './failure.ts'
-import { bareHost } from './hosts.ts'
-import type { RawResponse } from './gitlab-request.ts'
+import { decodeGraphql, isRecord, parseJson } from './decode'
+import { Failure } from './failure'
+import { bareHost } from './hosts'
+import type { RawResponse } from './gitlab-request'
 
 /** A host's answer to a request: its HTTP status and its body as text. */
 export type Answer = { status: number; text: string }

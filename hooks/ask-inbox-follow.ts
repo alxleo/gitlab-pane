@@ -1,12 +1,12 @@
 // The MRs of a person or a project the inboxFollow setting names: the open ones with their latest notes, and the ones merged
 // since a date. A user or project the host does not know answers null, which is no MRs, not an error.
-import type { InboxFollowProjectQuery, InboxFollowProjectQueryVariables, InboxFollowUserQuery, InboxFollowUserQueryVariables } from './gitlab.generated.ts'
-import { present, timeOf } from './decode.ts'
-import { documentOf } from './gitlab-document.ts'
-import type { Request } from './gitlab-request.ts'
-import { INBOX_FRAGMENTS } from './inbox-fragments.ts'
-import { actorOf, cutoffOf, mrOf, noteSignals, PLAIN } from './inbox-signals.ts'
-import type { Found } from './inbox-signals.ts'
+import type { InboxFollowProjectQuery, InboxFollowProjectQueryVariables, InboxFollowUserQuery, InboxFollowUserQueryVariables } from './gitlab.generated'
+import { present, timeOf } from './decode'
+import { documentOf } from './gitlab-document'
+import type { Request } from './gitlab-request'
+import { INBOX_FRAGMENTS } from './inbox-fragments'
+import { actorOf, cutoffOf, mrOf, noteSignals, PLAIN } from './inbox-signals'
+import type { Found } from './inbox-signals'
 
 import type { InboxMr } from '../types'
 

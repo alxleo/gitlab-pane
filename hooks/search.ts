@@ -1,8 +1,8 @@
 // What the search box finds among the MRs the pane already holds: an MR by its number (`!512`, `512`), a ticket however
 // it is spelled (`ABC-123`, `abc123`), or words of its title, branch, repo or author. Pure, on plain data; the pane says
 // what each MR is called, and this says which match and in what order.
-import { drawnLine } from './format.ts'
-import { cut } from './graphemes.ts'
+import { drawnLine } from './format'
+import { cut } from './graphemes'
 
 /**
  * What a typed search looks for: each word folded to letters and digits. One typed with `!` is an MR's number alone; the repo

@@ -1,11 +1,11 @@
 // A pipeline's stage strip as plain data. One image per row. Passed stages are drawn as runs of a repeating square and
 // counted in the image's tooltip; any other stage is its own square with its name, state and time. A surface without
 // Svg gets a glyph per stage, from `tones`. Pure; the draw layer only puts the source in an Svg.
-import { duration, plural, ranFor } from './format.ts'
-import { followingTheme, stageTone, tonePaint } from './status.ts'
-import type { Tone } from './status.ts'
-import { raw, svg } from './svg.ts'
-import type { SvgSource } from './svg.ts'
+import { duration, plural, ranFor } from './format'
+import { followingTheme, stageTone, tonePaint } from './status'
+import type { Tone } from './status'
+import { raw, svg } from './svg'
+import type { SvgSource } from './svg'
 
 import type { CiStatus, Stage } from '../types'
 

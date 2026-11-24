@@ -1,7 +1,7 @@
 // pane-preview: the GitLab pane as this checkout draws it, live in a browser, with your real GitLab data.
 //
-//   node tools/pane_preview.ts                       serve http://127.0.0.1:4780 until stopped
-//   node tools/pane_preview.ts --port 4781           another port, for a second checkout
+//   node --import ./tools/resolve_ts.ts tools/pane_preview.ts                       serve http://127.0.0.1:4780 until stopped
+//   node --import ./tools/resolve_ts.ts tools/pane_preview.ts --port 4781           another port, for a second checkout
 //
 // (`npm run preview -- …` is the same; `--help` says more. `.claude/launch.json` starts it for the Claude app's browser
 // pane.) It joins the two tools that already stand in for the desktop app: tools/pane_engine.ts runs a headless engine
@@ -32,7 +32,7 @@ const BODY_MOST = 256 * 1024
 
 export const USAGE = `pane-preview: the GitLab pane as this checkout draws it, live in a browser, from your real GitLab data.
 
-  node tools/pane_preview.ts [--port N] [--width PX] [--log FILE]
+  node --import ./tools/resolve_ts.ts tools/pane_preview.ts [--port N] [--width PX] [--log FILE]
 
 Options:
   --port N        the port on 127.0.0.1 to serve (default ${DEFAULT_PORT}); it stops if the port is taken

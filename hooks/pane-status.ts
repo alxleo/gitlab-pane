@@ -1,6 +1,6 @@
 // What the pane's header and footer say of the last read: how old the cards are, and what went wrong with it or what it left out.
 // Pure, on plain data.
-import { ago, plural } from './format.ts'
+import { ago, plural } from './format'
 
 import type { PollState } from '../types'
 

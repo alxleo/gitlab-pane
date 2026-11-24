@@ -1,7 +1,7 @@
 // Small hand-written decoders for what the outside tools print: each takes `unknown` and gives a typed value or throws
 // with a message the pane can show. No library, since a mod's npm packages cannot be relied on at runtime.
-import { Failure } from './failure.ts'
-import type { RawResponse } from './gitlab-request.ts'
+import { Failure } from './failure'
+import type { RawResponse } from './gitlab-request'
 
 import type { Suggested, Usual } from '../types'
 

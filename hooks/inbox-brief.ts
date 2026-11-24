@@ -1,10 +1,10 @@
 // The briefing `/mrs` hands the model: MRs with their descriptions and threads. Everything other people wrote enters it line
 // by line through `foreign`, behind a margin no line of theirs can forge, and it goes only to the conversation's context.
-import { cut } from './graphemes.ts'
-import { foreign, line, lines, NAME_ROOM, URL_ROOM } from './model-text.ts'
-import type { ModelLine } from './model-text.ts'
+import { cut } from './graphemes'
+import { foreign, line, lines, NAME_ROOM, URL_ROOM } from './model-text'
+import type { ModelLine } from './model-text'
 
-import type { Brief } from './ask-inbox-brief.ts'
+import type { Brief } from './ask-inbox-brief'
 
 /** Characters of one description, of one comment, and of all the threads of one MR that the briefing carries. */
 const DESCRIPTION_ROOM = 6_000

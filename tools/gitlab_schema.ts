@@ -1,11 +1,11 @@
 // gitlab-schema: checks every query the pane sends GitLab against gitlab.com's live schema, and keeps the types of its answers.
 //
-//   node tools/gitlab_schema.ts check                          fetch the schema, check the queries, the snapshot and the generated types
-//   node tools/gitlab_schema.ts check --schema saved.json      check against an introspection answer saved earlier
-//   node tools/gitlab_schema.ts check --save saved.json        keep the fetched schema, to compare later
-//   node tools/gitlab_schema.ts snapshot                       fetch the schema and keep the part the queries use, in tools/
-//   node tools/gitlab_schema.ts types                          write hooks/gitlab.generated.ts from the snapshot and the queries
-//   node tools/gitlab_schema.ts types --check                  fail if that file differs from what the snapshot and queries give; no network
+//   node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts check                          fetch the schema, check the queries, the snapshot and the generated types
+//   node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts check --schema saved.json      check against an introspection answer saved earlier
+//   node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts check --save saved.json        keep the fetched schema, to compare later
+//   node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts snapshot                       fetch the schema and keep the part the queries use, in tools/
+//   node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts types                          write hooks/gitlab.generated.ts from the snapshot and the queries
+//   node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts types --check                  fail if that file differs from what the snapshot and queries give; no network
 //
 // (`npm run schema -- <command>` is the same.) What it catches, before anyone sees an empty pane:
 //
@@ -107,9 +107,9 @@ const EXPERIMENT = 'Status: Experiment'
 // GitLab's own directives take its own types, which the queries never use.
 const STANDARD_DIRECTIVES = new Set(['skip', 'include', 'deprecated', 'specifiedBy', 'oneOf'])
 
-const USAGE = `usage: node tools/gitlab_schema.ts check [--schema FILE] [--save FILE]
-       node tools/gitlab_schema.ts snapshot [--schema FILE]
-       node tools/gitlab_schema.ts types [--check]`
+const USAGE = `usage: node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts check [--schema FILE] [--save FILE]
+       node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts snapshot [--schema FILE]
+       node --import ./tools/resolve_ts.ts tools/gitlab_schema.ts types [--check]`
 
 /** The check could not be made; exit 2, apart from the queries being wrong (exit 1). */
 class SchemaError extends Error {}

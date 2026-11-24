@@ -1,9 +1,9 @@
 // A reply to a thread on an MR's page, on plain data: the lines of the diff the thread was left on as one hunk to draw,
 // and the reply box. How far a reply got is its entry in the ledger of writes (write-model.ts); what GitLab's answer to a
 // reply means is ask-reply.ts's. Pure; replies.ts holds the box and sends the reply.
-import { shorten } from './graphemes.ts'
-import { liveOf } from './write-model.ts'
-import type { Refusal } from './write-model.ts'
+import { shorten } from './graphemes'
+import { liveOf } from './write-model'
+import type { Refusal } from './write-model'
 
 import type { ReplyBox, Write } from '../types'
 

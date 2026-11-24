@@ -1,7 +1,7 @@
 // Checks a merge from the panel end to end against the made-up GitLab, through the MCP server as the panel calls it:
 // one press only arms, a second merges and is followed until GitLab says merged, and the model cannot see the tool.
 //
-//   node chatgpt/move-check.ts
+//   node --import ./tools/resolve_ts.ts chatgpt/move-check.ts
 import { strict as assert } from 'node:assert'
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'

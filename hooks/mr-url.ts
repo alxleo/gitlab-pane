@@ -1,4 +1,4 @@
-import { bareHost, cardKey } from './hosts.ts'
+import { bareHost, cardKey } from './hosts'
 
 import type { Pinned } from '../types'
 

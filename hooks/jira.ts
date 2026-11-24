@@ -1,9 +1,9 @@
-import { field, records, text } from './decode.ts'
-import { LINK } from './drawing.ts'
-import { drawnLine } from './format.ts'
-import { cut } from './graphemes.ts'
-import { linkMarkdown } from './markdown.ts'
-import type { MarkdownText } from './markdown.ts'
+import { field, records, text } from './decode'
+import { LINK } from './drawing'
+import { drawnLine } from './format'
+import { cut } from './graphemes'
+import { linkMarkdown } from './markdown'
+import type { MarkdownText } from './markdown'
 
 import type { Ticket, TicketDetail } from '../types'
 

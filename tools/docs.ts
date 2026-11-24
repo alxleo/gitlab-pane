@@ -1,7 +1,7 @@
 // docs: holds README.md, DESIGN.md and CONTRIBUTING.md to the code, so a table there cannot drift from what the plugin does.
 //
-//   node tools/docs.ts write     read the docs' tables into tests/docs.generated.ts
-//   node tools/docs.ts check     fail if the settings table is not plugin.json's userConfig, CONTRIBUTING's scripts table not package.json's
+//   node --import ./tools/resolve_ts.ts tools/docs.ts write     read the docs' tables into tests/docs.generated.ts
+//   node --import ./tools/resolve_ts.ts tools/docs.ts check     fail if the settings table is not plugin.json's userConfig, CONTRIBUTING's scripts table not package.json's
 //                                scripts, or that file is not what the docs say
 //
 // (`npm run docs -- <command>` is the same; `check` is part of `npm run check`.) The check is in two halves, because the tests
@@ -243,7 +243,7 @@ function main(args: readonly string[]): number {
     }
     return failed
   }
-  console.error('usage: node tools/docs.ts write | check')
+  console.error('usage: node --import ./tools/resolve_ts.ts tools/docs.ts write | check')
   return 2
 }
 

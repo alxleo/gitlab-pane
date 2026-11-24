@@ -1,7 +1,7 @@
 // A rebase of an MR's branch onto its target, which GraphQL lacks, so it goes over REST (moves.ts sends it).
-import { isRecord, parseJson } from './decode.ts'
-import { why } from './write-model.ts'
-import type { Refusal } from './write-model.ts'
+import { isRecord, parseJson } from './decode'
+import { why } from './write-model'
+import type { Refusal } from './write-model'
 
 /** The REST path that starts a rebase of the MR; GitLab answers `202 {"rebase_in_progress": true}` when it takes it. */
 export const rebasePath = (path: string, iid: number): string => `projects/${encodeURIComponent(path)}/merge_requests/${iid}/rebase`

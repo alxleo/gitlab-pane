@@ -1,5 +1,5 @@
 // The addresses `/mrs` takes besides an MR's URL: `repo!iid`, `group/project!iid`, and a git remote for the repo of the session.
-import { bareHost } from './hosts.ts'
+import { bareHost } from './hosts'
 
 /** An MR named by its project path, whole or from the end (`p`, `g/p`), and its number. */
 export type MrRef = { path: string; iid: number }

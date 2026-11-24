@@ -1,8 +1,8 @@
-import { isRecord, parseJson, stringRecord } from '../hooks/decode.ts'
-import type { Operations } from '../hooks/gitlab-operations.ts'
-import type { RawResponse } from '../hooks/gitlab-request.ts'
-import type { MergeStrategyEnum } from '../hooks/gitlab.generated.ts'
-import type { Mr } from './fixtures.ts'
+import { isRecord, parseJson, stringRecord } from '../hooks/decode'
+import type { Operations } from '../hooks/gitlab-operations'
+import type { RawResponse } from '../hooks/gitlab-request'
+import type { MergeStrategyEnum } from '../hooks/gitlab.generated'
+import type { Mr } from './fixtures'
 
 /** GitLab's answer to each operation the pane sends, typed by the document's generated types. A test sets the ones it needs. */
 export type Answers = {

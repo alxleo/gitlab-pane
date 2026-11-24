@@ -8,10 +8,10 @@ import type {
   ReviewerFieldsFragment,
   ThreadFieldsFragment,
   CommentFieldsFragment,
-} from '../hooks/gitlab.generated.ts'
+} from '../hooks/gitlab.generated'
 import type { CheckStatus, MergeStatus } from '../types'
-import { present } from '../hooks/decode.ts'
-import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/mr-fragments.ts'
+import { present } from '../hooks/decode'
+import type { ListedPipeline, RawJob, RawNote, RawPipeline, RawStage } from '../hooks/mr-fragments'
 
 /** The host the made-up GitLab answers as, unless a test says another. */
 export const HOST = 'gitlab.com'

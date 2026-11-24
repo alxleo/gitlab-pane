@@ -1,8 +1,8 @@
-import { shorten } from './graphemes.ts'
-import { flatOf } from './markdown.ts'
-import { replaceLinks } from './closers.ts'
-import { line, type ModelLine } from './model-text.ts'
-import { isSettled } from './status.ts'
+import { shorten } from './graphemes'
+import { flatOf } from './markdown'
+import { replaceLinks } from './closers'
+import { line, type ModelLine } from './model-text'
+import { isSettled } from './status'
 
 import type { GitLabMarkdown, Job, MrCard, Ran, Stage, Usual } from '../types'
 

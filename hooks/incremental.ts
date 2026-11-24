@@ -4,10 +4,10 @@
 // when another MR merges into its target and it starts to conflict, or when a rule changes, so those are read another
 // way: a running pipeline's MR is read on its own, the merge verdicts are read for all MRs every time, and a whole read
 // comes round every `FULL_EVERY_MS` for the rest. Pure, on plain data.
-import type { AuthoredScope } from './ask-authored.ts'
-import type { GitLabVerdict } from './ask-merge-status.ts'
-import type { Cursor } from './snapshot.ts'
-import { isSettled } from './status.ts'
+import type { AuthoredScope } from './ask-authored'
+import type { GitLabVerdict } from './ask-merge-status'
+import type { Cursor } from './snapshot'
+import { isSettled } from './status'
 
 import type { MrCard } from '../types'
 

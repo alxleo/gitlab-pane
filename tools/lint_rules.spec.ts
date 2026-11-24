@@ -39,24 +39,25 @@ const ALLOWED = [{ allowed: { 'hooks/made-up.ts': { name: 'brand', isExported: f
 
 tester.run('core-imports', ruleNamed('core-imports'), {
   valid: [
-    { name: 'a core file imports another by its .ts path', filename: CORE_FILE, code: "import { isRecord } from './decode.ts'" },
+    { name: 'a core file imports another without its extension', filename: CORE_FILE, code: "import { isRecord } from './decode'" },
+    { name: 'a core file imports a core file whose name has a dot', filename: CORE_FILE, code: "import type { CiJobStatus } from './gitlab.generated'" },
     { name: 'a core file imports the types contract', filename: CORE_FILE, code: "import type { Mr } from '../types'" },
-    { name: 'a core file re-exports a core file', filename: CORE_FILE, code: "export { isRecord } from './decode.ts'" },
+    { name: 'a core file re-exports a core file', filename: CORE_FILE, code: "export { isRecord } from './decode'" },
     { name: 'a package other than the engine is left to tsconfig.core.json', filename: CORE_FILE, code: "import { parse } from 'graphql'" },
     { name: 'a file outside the core imports what it likes', filename: ENGINE_FILE, code: "import { h } from 'claude-code'\nimport { cardOf } from './card'" },
     { name: 'a hooks file outside the core that imports the engine stays out', filename: HOOK, code: "import type { Ui } from 'claude-code'\nimport { isRecord } from './decode'" },
     {
       name: 'a hooks file outside the core that imports a file outside the core stays out',
       filename: HOOK,
-      code: "import { isRecord } from './decode.ts'\nimport { cardOf } from './card'",
+      code: "import { isRecord } from './decode'\nimport { cardOf } from './card'",
     },
     { name: 'a hooks file outside the core that computes an import() stays out', filename: HOOK, code: 'export const late = (name: string) => import(name)' },
-    { name: 'a pure-looking .tsx file stays out, its JSX being the engine’s', filename: join(ROOT, 'hooks', 'made-up.tsx'), code: "import { isRecord } from './decode.ts'" },
-    { name: 'a pure file outside hooks/ is left alone', filename: join(ROOT, 'tests', 'core', 'made-up.spec.ts'), code: "import { isRecord } from '../../hooks/decode.ts'" },
+    { name: 'a pure-looking .tsx file stays out, its JSX being the engine’s', filename: join(ROOT, 'hooks', 'made-up.tsx'), code: "import { isRecord } from './decode'" },
+    { name: 'a pure file outside hooks/ is left alone', filename: join(ROOT, 'specs', 'made-up.spec.ts'), code: "import { isRecord } from '../hooks/decode'" },
     {
       name: 'a hooks file outside the core that imports a package stays out, as the core is compiled with no host’s types',
       filename: HOOK,
-      code: "import { readFileSync } from 'node:fs'\nexport { isRecord } from './decode.ts'",
+      code: "import { readFileSync } from 'node:fs'\nexport { isRecord } from './decode'",
     },
     {
       name: 'a module outside the core that imports a cycle outside it, one of which imports a package, stays out',
@@ -67,7 +68,7 @@ tester.run('core-imports', ruleNamed('core-imports'), {
   ],
   invalid: [
     { name: 'a core file imports a file outside the core', filename: CORE_FILE, code: "import { paneOf } from './pane'", errors: [{ messageId: 'outside' }] },
-    { name: 'a core file imports a core file without its extension', filename: CORE_FILE, code: "import { isRecord } from './decode'", errors: [{ messageId: 'outside' }] },
+    { name: 'a core file imports a core file by its .ts path', filename: CORE_FILE, code: "import { isRecord } from './decode.ts'", errors: [{ messageId: 'outside' }] },
     { name: 'a core file reaches a dev tool', filename: CORE_FILE, code: "import { ROOT } from '../tools/core.ts'", errors: [{ messageId: 'outside' }] },
     { name: 'a core file re-exports all of a file outside the core', filename: CORE_FILE, code: "export * from './card.tsx'", errors: [{ messageId: 'outside' }] },
     { name: 'a core file names its module in import()', filename: CORE_FILE, code: "export const late = () => import('./pane.tsx')", errors: [{ messageId: 'outside' }] },

@@ -6,10 +6,10 @@
 //
 // Every decision is here, on plain data; jira-mover.ts only reads the store, runs acli and applies what these say:
 // `plan` a pass, `afterSearch` once Jira said where the tickets are, `endOf` (or `noStep`) for each move, `endPass` last.
-import { field, text } from './decode.ts'
-import { ticketOf } from './format.ts'
-import { isTicketKey } from './jira.ts'
-import type { Transition } from './jira.ts'
+import { field, text } from './decode'
+import { ticketOf } from './format'
+import { isTicketKey } from './jira'
+import type { Transition } from './jira'
 
 import type { MoveTargets, MrCard, OwnMrs, Ticket } from '../types'
 

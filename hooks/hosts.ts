@@ -1,6 +1,6 @@
 // The GitLab hosts the pane talks to, and what names things on them. A host is a bare name such as `gitlab.com` or
 // `git.example.com:8443`; the pane always speaks https to it.
-import { isFilled } from './decode.ts'
+import { isFilled } from './decode'
 
 import type { HostStatus } from '../types'
 

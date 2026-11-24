@@ -1,6 +1,6 @@
 // What every question to GitLab is made of: the request the pane sends, and the answer GitLab gives. Each `ask-*.ts` module
 // builds its own requests and reads its own answers; gitlab-operations.ts names every operation they send.
-import type { Operations } from './gitlab-operations.ts'
+import type { Operations } from './gitlab-operations'
 
 /**
  * A document with the operation name it carries, its variables, and (in the type alone, never set) what GitLab answers

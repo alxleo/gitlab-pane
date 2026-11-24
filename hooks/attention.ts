@@ -1,7 +1,7 @@
-import type { MergeabilityCheckIdentifier } from './gitlab.generated.ts'
-import { amberCount, failedCount, looseCount, plural, threadCount } from './format.ts'
-import { firstDifference } from './order.ts'
-import { isSettled, type Tone } from './status.ts'
+import type { MergeabilityCheckIdentifier } from './gitlab.generated'
+import { amberCount, failedCount, looseCount, plural, threadCount } from './format'
+import { firstDifference } from './order'
+import { isSettled, type Tone } from './status'
 
 import type { MergeCheck, MergeStatus, MrCard, Person } from '../types'
 

@@ -1,8 +1,8 @@
 // GitLab's own merge checks of the user's open MRs, and what it says of merging each: asked beside the list, never inside it.
-import type { MergeStatusQuery } from './gitlab.generated.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { checkStatusOf } from './gitlab-status.ts'
-import { cardKey } from './hosts.ts'
+import type { MergeStatusQuery } from './gitlab.generated'
+import type { RawResponse, Request } from './gitlab-request'
+import { checkStatusOf } from './gitlab-status'
+import { cardKey } from './hosts'
 
 import type { HostFeatures, MergeStatus, Merging } from '../types'
 

@@ -1,14 +1,14 @@
 // A person's face as plain data: the Svg source for it with and without their picture, and the mark a surface that draws
 // no Svg uses; who a card suggests adding as a reviewer, faded, and what the press beside them says. Pure; the draw layer
 // only puts the source in an Svg. Built once for a card, until the card or a picture changes.
-import { BOT_MARKS, discMarks } from './avatar.ts'
-import { plural } from './format.ts'
-import { initials, shortHash } from './identity.ts'
-import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status.ts'
-import type { Shades, Tone } from './status.ts'
-import { raw, svg } from './svg.ts'
-import type { RawSvg, SvgSource } from './svg.ts'
-import { ARMED_MS, SENT_HOLDS_MS } from './write-model.ts'
+import { BOT_MARKS, discMarks } from './avatar'
+import { plural } from './format'
+import { initials, shortHash } from './identity'
+import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status'
+import type { Shades, Tone } from './status'
+import { raw, svg } from './svg'
+import type { RawSvg, SvgSource } from './svg'
+import { ARMED_MS, SENT_HOLDS_MS } from './write-model'
 
 import type { MrCard, Person, PersonState, Suggestion, Write } from '../types'
 

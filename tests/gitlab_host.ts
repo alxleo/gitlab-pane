@@ -1,4 +1,4 @@
-import { parseJson } from '../hooks/decode.ts'
+import { parseJson } from '../hooks/decode'
 import type { On, RenderSurface } from 'claude-code'
 
 import { mergeRequestRead, rebased, sent, serve, traced } from './gitlab_fake'

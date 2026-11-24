@@ -1,11 +1,11 @@
 // What an MR's page needs of its threads beyond their words, read beside the whole MR when the page opens and never for the
 // list: where a reply to each goes, and the lines of the diff it was left on.
-import { isFilled, isSome, present } from './decode.ts'
-import type { ThreadsPlainQuery, ThreadsQuery, ThreadsQueryVariables } from './gitlab.generated.ts'
-import { documentOf } from './gitlab-document.ts'
-import type { RawResponse, Request } from './gitlab-request.ts'
-import { hunkOf } from './reply-model.ts'
-import type { DiffLine } from './reply-model.ts'
+import { isFilled, isSome, present } from './decode'
+import type { ThreadsPlainQuery, ThreadsQuery, ThreadsQueryVariables } from './gitlab.generated'
+import { documentOf } from './gitlab-document'
+import type { RawResponse, Request } from './gitlab-request'
+import { hunkOf } from './reply-model'
+import type { DiffLine } from './reply-model'
 
 import type { HostFeatures, MrCard } from '../types'
 

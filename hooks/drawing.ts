@@ -1,4 +1,4 @@
-import { shortHash } from './identity.ts'
+import { shortHash } from './identity'
 
 /** What a link opens, said before its words: a Link holds text alone, and an emoji costs two characters, a logo hundreds. */
 export const LINK = { mr: '🔀', jira: '🎫', repo: '📁', pipeline: '🚦', comment: '💬', commit: '📍' } as const

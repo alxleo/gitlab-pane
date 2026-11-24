@@ -2,11 +2,11 @@
 // (a file all sessions rewrite whole, capped at 4 MiB) and through `$.state`, and a card is kept to what a row and a wake
 // say. What only an MR's page says (the description, the threads' words, the jobs that neither failed nor wait) is read
 // again for the one MR the person opens: `withDetail` puts it back. Pure.
-import { isAwaited } from './face-model.ts'
-import { excerpt } from './format.ts'
-import { cleanBody } from './mr-card.ts'
-import { listedJobs } from './job-lines.ts'
-import { isSettled } from './status.ts'
+import { isAwaited } from './face-model'
+import { excerpt } from './format'
+import { cleanBody } from './mr-card'
+import { listedJobs } from './job-lines'
+import { isSettled } from './status'
 
 import type { Job, MergeStatus, MrCard, Note } from '../types'
 

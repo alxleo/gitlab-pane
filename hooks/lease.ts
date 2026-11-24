@@ -1,4 +1,4 @@
-import { isRecord } from './decode.ts'
+import { isRecord } from './decode'
 
 import type { Role } from '../types'
 

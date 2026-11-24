@@ -2,7 +2,7 @@
 // thread entrypoint, and the panel that draws it. Runs over stdio, so it runs on the user's machine, inside the network
 // that reaches their GitLab, with the token they already have.
 //
-//   node chatgpt/dist/server.mjs   the packaged server `node chatgpt/build.ts` writes, beside the panel it bundled,
+//   node chatgpt/dist/server.mjs   the packaged server `node --import ./tools/resolve_ts.ts chatgpt/build.ts` writes, beside the panel it bundled,
 //                                  which mcp.json launches
 //   GITLAB_PANE_HOST=host          read that host instead of gitlab.com
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
@@ -142,7 +142,7 @@ export function createServer({ html, connectTo = connect, now = Date.now }: Serv
 // Run as the program, not imported: `import.meta.main` is newer than the Node 22 the package names, so the path is compared.
 if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   if (!existsSync(BUILT_PANEL)) {
-    throw new Error('no panel beside the server: run `node chatgpt/build.ts` and start chatgpt/dist/server.mjs')
+    throw new Error('no panel beside the server: run `node --import ./tools/resolve_ts.ts chatgpt/build.ts` and start chatgpt/dist/server.mjs')
   }
   await createServer({ html: readFileSync(BUILT_PANEL, 'utf8') }).connect(new StdioServerTransport())
 }

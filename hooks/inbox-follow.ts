@@ -1,5 +1,5 @@
 // The `inboxFollow` setting: people and projects whose MRs the Following rule lists. Plain data, so a test needs no engine.
-import { isFilled } from './decode.ts'
+import { isFilled } from './decode'
 
 import type { InboxFollow } from '../types'
 

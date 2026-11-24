@@ -1,7 +1,7 @@
 // The inbox snapshot as it travels: read back from the plugin store, where the reader's leader keeps it for the other
 // sessions, and carried over a read in which a host did not answer. Plain data, so a test needs no engine.
-import { field, isRecord, records, text, textOrNull } from './decode.ts'
-import { keptLanded } from './landed.ts'
+import { field, isRecord, records, text, textOrNull } from './decode'
+import { keptLanded } from './landed'
 
 import type { FailureKind, InboxHost, InboxKind, InboxMr, InboxSignal, InboxSnapshot } from '../types'
 

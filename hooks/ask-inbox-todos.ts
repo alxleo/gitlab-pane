@@ -1,11 +1,11 @@
 // What was addressed to the user and is still pending in GitLab's own to-do list; the pane never marks one done.
-import type { InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated.ts'
-import { present, timeOf } from './decode.ts'
-import { documentOf } from './gitlab-document.ts'
-import type { Request } from './gitlab-request.ts'
-import { INBOX_FRAGMENTS } from './inbox-fragments.ts'
-import { actorOf, excerptOf, mrOf, PLAIN } from './inbox-signals.ts'
-import type { Found } from './inbox-signals.ts'
+import type { InboxTodosPlainQuery, InboxTodosQuery } from './gitlab.generated'
+import { present, timeOf } from './decode'
+import { documentOf } from './gitlab-document'
+import type { Request } from './gitlab-request'
+import { INBOX_FRAGMENTS } from './inbox-fragments'
+import { actorOf, excerptOf, mrOf, PLAIN } from './inbox-signals'
+import type { Found } from './inbox-signals'
 
 import type { HostFeatures, InboxKind, InboxMr, InboxSignal } from '../types'
 

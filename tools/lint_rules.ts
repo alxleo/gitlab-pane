@@ -564,8 +564,8 @@ const onlyImporters = defineRule({
   },
 })
 
-/** What a module name in an import reaches: the engine, a package, a core file (by its `.ts` path or without it), the types contract, or another file. */
-type Reached = 'engine' | 'package' | 'core-by-path' | 'core-unextended' | 'contract' | 'other'
+/** What a module name in an import reaches: the engine, a package, a core file (without its extension or by its `.ts` path), the types contract, or another file. */
+type Reached = 'engine' | 'package' | 'core' | 'core-by-path' | 'contract' | 'other'
 
 function reached(include: readonly string[], importer: string, specifier: string): Reached {
   if (specifier === 'claude-code' || specifier.startsWith('claude-code/')) {
@@ -577,16 +577,13 @@ function reached(include: readonly string[], importer: string, specifier: string
   const target = relative(ROOT, resolve(dirname(importer), specifier))
     .split(sep)
     .join('/')
-  if (specifier.endsWith('.ts') && include.includes(target)) {
-    return 'core-by-path'
-  }
-  if (/\.[a-z]+$/u.test(specifier)) {
-    return 'other'
-  }
   if (include.includes(`${target}/index.d.ts`)) {
     return 'contract'
   }
-  return include.includes(`${target}.ts`) ? 'core-unextended' : 'other'
+  if (include.includes(`${target}.ts`)) {
+    return 'core'
+  }
+  return specifier.endsWith('.ts') && include.includes(target) ? 'core-by-path' : 'other'
 }
 
 /**
@@ -651,8 +648,9 @@ function leans(include: readonly string[], folder: string, file: string, specifi
 }
 
 /**
- * What the core may import: core files, each by its `.ts` path (tools/gitlab_schema.ts runs gitlab-operations.ts under plain
- * Node, which needs the extension), the types contract (`../types`), and no part of the engine (`claude-code`). The core is
+ * What the core may import: core files, each without its extension (`claude plugin validate` type-checks hooks/ and tests/
+ * with the engine's compiler options, which refuse a `.ts` path; Node runs the core from source with tools/resolve_ts.ts
+ * loaded first), the types contract (`../types`), and no part of the engine (`claude-code`). The core is
  * what tsconfig.core.json includes, read when the rule starts. Every way a module is named counts: `import`, `export … from`,
  * `export * from`, `import x = require()`, a type's `import('…')`, and `import()`, whose argument must then be written out.
  *
@@ -668,9 +666,9 @@ const coreImports = defineRule({
     schema: [{ type: 'object', properties: { modules: { type: 'string' } }, additionalProperties: false }],
     messages: {
       engine: 'The core runs on plain data and imports nothing from the engine. Put engine code in a file outside the core.',
-      outside: 'The core imports only core files, each with its .ts extension, and ../types. If this module is pure, add it to tsconfig.core.json.',
+      outside: 'The core imports only core files, each without its .ts extension, and ../types. If this module is pure, add it to tsconfig.core.json.',
       unnamed: 'An `import()` in the core names its module as a string, so the core-imports rule can check it.',
-      pure: 'This module imports nothing of the engine, no package and no file that does, so it is pure: add it to tsconfig.core.json, and import core files by their .ts path. A host global it uses (a timer, fetch) comes from the engine’s $ instead.',
+      pure: 'This module imports nothing of the engine, no package and no file that does, so it is pure: add it to tsconfig.core.json, and import core files without their extension. A host global it uses (a timer, fetch) comes from the engine’s $ instead.',
     },
   },
   create(context) {
@@ -694,7 +692,7 @@ const coreImports = defineRule({
       const reaches = reached(include, context.filename, specifier)
       if (reaches === 'engine') {
         context.report({ node, messageId: 'engine' })
-      } else if (reaches === 'core-unextended' || reaches === 'other') {
+      } else if (reaches === 'core-by-path' || reaches === 'other') {
         context.report({ node, messageId: 'outside' })
       }
     }

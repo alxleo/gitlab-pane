@@ -42,7 +42,7 @@ The panel offers each MR's one move as the core's `nextMove` names it. A press g
 ## Try a change in ChatGPT
 
 ```bash
-node chatgpt/install.ts
+node --import ./tools/resolve_ts.ts chatgpt/install.ts
 ```
 
 Then install "GitLab MRs" from the "Personal" marketplace in ChatGPT's Plugins Directory (once), quit the app with ⌘Q, and open the panel in a new local chat. Each build gets its own version, so ChatGPT takes it as new.

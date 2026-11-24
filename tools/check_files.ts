@@ -1,7 +1,7 @@
 // File hygiene over every file git tracks or would add: json and yaml parse, no merge markers, large files or private keys,
 // no linter directives, one final newline, no trailing whitespace.
 //
-//   node tools/check_files.ts          (npm run files)
+//   node --import ./tools/resolve_ts.ts tools/check_files.ts          (npm run files)
 //
 // JSON and YAML parse; no merge-conflict markers, private keys or large files; no `oxlint-` or `eslint-` directive in a
 // script's comments (tools/directives.ts says why that is checked here and not by the linter); text files end with one
