@@ -58,38 +58,26 @@ export const usualRecord = (value: unknown): Record<string, Usual> =>
       )
     : {}
 
-/** Who GitLab suggested for each MR, as the store keeps it; an entry or a person in another shape is left out. */
+/**
+ * Whom to suggest for each MR, as the store and the state keep it. An entry in another shape, or with anyone in another
+ * shape, is left out whole, so it is asked again: one kept before suggestions were ranked has no `outOf`, even with no one in it.
+ */
 export const suggestedRecord = (value: unknown): Suggested =>
   isRecord(value)
     ? Object.fromEntries(
         Object.entries(value).flatMap(([key, entry]) => {
-          if (!isRecord(entry) || typeof entry.on !== 'string') {
+          if (!isRecord(entry) || typeof entry.on !== 'string' || typeof entry.outOf !== 'number' || !Array.isArray(entry.people)) {
             return []
           }
           const people = records(entry.people).flatMap(suggestionOf)
-          // An entry with someone in another shape (kept before suggestions were ranked) is left out whole, so it is asked again.
-          return Array.isArray(entry.people) && people.length === entry.people.length ? [[key, { on: entry.on, people }]] : []
+          return people.length === entry.people.length ? [[key, { on: entry.on, outOf: entry.outOf, people }]] : []
         })
       )
     : {}
 
 const suggestionOf = (person: Record<string, unknown>): Suggestion[] =>
-  typeof person.username === 'string' &&
-  typeof person.name === 'string' &&
-  typeof person.isBot === 'boolean' &&
-  typeof person.approved === 'number' &&
-  typeof person.outOf === 'number'
-    ? [
-        {
-          username: person.username,
-          name: person.name,
-          avatarUrl: textOrNull(person.avatarUrl),
-          isBot: person.isBot,
-          team: textOrNull(person.team),
-          approved: person.approved,
-          outOf: person.outOf,
-        },
-      ]
+  typeof person.username === 'string' && typeof person.name === 'string' && typeof person.isBot === 'boolean' && typeof person.approved === 'number'
+    ? [{ username: person.username, name: person.name, avatarUrl: textOrNull(person.avatarUrl), isBot: person.isBot, team: textOrNull(person.team), approved: person.approved }]
     : []
 
 /** The objects in a list; anything else in it, or a non-list, gives none. */

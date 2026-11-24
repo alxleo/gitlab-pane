@@ -251,12 +251,15 @@ export type HostFeatures = {
 
 /**
  * Someone who owns an MR's code (`ask-suggested.ts`), whom a card offers to add as a reviewer: `team` is the approval rule
- * that names them, when GitLab shows the rules; `approved` is how many of the project's last `outOf` merged MRs they approved.
+ * that names them, when GitLab shows the rules; `approved` is how many of the project's last merged MRs they approved.
  */
-export type Suggestion = { username: string; name: string; avatarUrl: string | null; isBot: boolean; team: string | null; approved: number; outOf: number }
+export type Suggestion = { username: string; name: string; avatarUrl: string | null; isBot: boolean; team: string | null; approved: number }
 
-/** Who GitLab suggested for an MR, by card key, as read at the MR's `updatedAt` (`on`); a newer MR is asked again. */
-export type Suggested = Record<string, { on: string; people: Suggestion[] }>
+/** Whom to suggest for an MR, best first, and how many of the project's last merged MRs ranked them (`outOf`). */
+export type Suggestions = { outOf: number; people: Suggestion[] }
+
+/** Whom to suggest for each MR, by card key, as read at the MR's `updatedAt` (`on`); a newer MR is asked again. */
+export type Suggested = Record<string, Suggestions & { on: string }>
 
 /** A Jira ticket as acli read it; `isDone` says whether Jira counts its status as done, whatever the workflow calls it, or null when Jira did not say. */
 export type Ticket = { type: string; status: string; isDone: boolean | null; summary: string }

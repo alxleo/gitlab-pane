@@ -10,7 +10,7 @@ import { raw, svg } from './svg'
 import type { RawSvg, SvgSource } from './svg'
 import { ARMED_MS, SENT_HOLDS_MS } from './write-model'
 
-import type { MrCard, Person, PersonState, Suggestion, Write } from '../types'
+import type { MrCard, Person, PersonState, Suggestion, Suggestions, Write } from '../types'
 
 export const REVIEW_STATE: Record<PersonState, string> = {
   approved: 'approved',
@@ -157,10 +157,13 @@ export function suggestedFace(person: Person, picture: string | undefined, why: 
   }
 }
 
-/** Why someone is suggested, a line each: the approval rule that names them, and how often they approve here. */
-export function suggestionWhy(suggestion: Suggestion): string[] {
-  return [...(suggestion.team !== null ? [suggestion.team] : []), ...(suggestion.approved > 0 ? [`approved ${suggestion.approved} of the last ${suggestion.outOf} here`] : [])]
+/** Why someone is suggested, a line each: the approval rule that names them, and how many of the last `outOf` merged MRs they approved. */
+export function suggestionWhy(suggestion: Suggestion, outOf: number): string[] {
+  return [...(suggestion.team !== null ? [suggestion.team] : []), ...(suggestion.approved > 0 ? [`approved ${suggestion.approved} of the last ${outOf} here`] : [])]
 }
+
+/** No one to suggest. */
+export const NO_SUGGESTIONS: Suggestions = { outOf: 0, people: [] }
 
 /** Someone a card suggests as a reviewer, and why them (`suggestionWhy`). */
 export type SuggestedPerson = Person & { why: string[] }
@@ -206,10 +209,10 @@ export function suggestionsFor(card: MrCard, user: string | null): 'ask' | 'keep
  * and anyone already on the MR, as many as there is room for, each with why them. Their initials are told apart from
  * those of the people on the card.
  */
-export function suggestedOf(card: MrCard, suggestions: readonly Suggestion[]): SuggestedPerson[] {
+export function suggestedOf(card: MrCard, suggestions: Suggestions): SuggestedPerson[] {
   const on = new Set([card.author, ...card.people.map(person => person.username), ...card.reviewers.map(reviewer => reviewer.username)])
   const taken = new Set(card.people.map(person => person.initials))
-  return suggestions
+  return suggestions.people
     .filter(each => !each.isBot && !on.has(each.username))
     .slice(0, suggestionRoom(card))
     .map(each => {
@@ -224,7 +227,7 @@ export function suggestedOf(card: MrCard, suggestions: readonly Suggestion[]): S
         openThreads: 0,
         notes: [],
         noteCount: 0,
-        why: suggestionWhy(each),
+        why: suggestionWhy(each, suggestions.outOf),
       }
     })
 }
@@ -257,7 +260,7 @@ export function suggestedPress(call: string, held: Write | undefined, now: numbe
   // An arm past its time has run out whether or not its timer ran, as `confirmedPress` judges it.
   const isArmed = held?.state === 'armed' && now - held.at <= ARMED_MS
   return {
-    label: isArmed ? `add ${call} as a reviewer? press again` : `add ${call}`,
+    label: isArmed ? `add ${call} as a reviewer? press again` : `add ${call}?`,
     does: isArmed ? 'make' : 'arm',
     isArmed,
     failed: held?.state === 'failed' ? held.say : null,

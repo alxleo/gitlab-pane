@@ -1,17 +1,18 @@
 // Who owns an MR's code, to suggest as its reviewers. GitLab's suggested approvers are the eligible approvers of the MR's
 // approval rules, its CODEOWNERS rules among them, less those who approved (`ApprovalState#suggested_approvers`), with no
 // order: the first few of them are any few of the team. So the whole team is asked for, and ranked by how many of the
-// project's last merged MRs each approved; a project whose rules name no one (any member may approve) suggests whoever
-// approved there most. The rule that names someone is their team, when GitLab shows the rules: a token without the
-// "Approval Rule: Read" permission sees none. A field of GitLab's paid tiers, so a Community Edition host lacks it. Asked
-// only for MRs that still need approvals, one at a time, never in the list's own document: GitLab scores it 41 and it
-// calls Gitaly for each MR.
+// project's last merged MRs each approved. A project whose rules name no one (any member may approve) suggests whoever
+// approved there most; that needs the rules, which a token without the "Approval Rule: Read" permission is never shown
+// (GitLab answers an empty list), so such a token is suggested no one there rather than people who may own nothing. The
+// rule that names someone is their team, when GitLab shows the rules. A field of GitLab's paid tiers, so a Community
+// Edition host lacks it. Asked only for MRs that still need approvals, one at a time, never in the list's own document:
+// GitLab scores it 41 and it calls Gitaly for each MR.
 import type { SuggestedQuery, SuggestedQueryVariables } from './gitlab.generated'
 import { present } from './decode'
 import type { RawResponse, Request } from './gitlab-request'
 import { absoluteUrl } from './hosts'
 
-import type { HostFeatures, Suggestion } from '../types'
+import type { HostFeatures, Suggestion, Suggestions } from '../types'
 
 // The last 30 merged MRs say who reviews in a project: enough to rank a team, few enough to stay cheap.
 const SUGGESTED = /* GraphQL */ `
@@ -48,18 +49,25 @@ export const suggestedQuery = (path: string, iid: number, features: HostFeatures
 type User = { username: string; name: string; avatarUrl: string | null; bot: boolean }
 type Rule = { type: string | null; name: string | null; eligibleApprovers: readonly { username: string }[] | null }
 
-/** The team a rule names its approvers as: its name, or for a CODEOWNERS rule, the path it owns; none for "any member". */
+/**
+ * The team a rule names its approvers as: its name, or for a CODEOWNERS rule, the path it owns. None for "any member", nor
+ * for a security or licence rule, whose people approve a finding, not own the code.
+ */
 function teamOf(rule: Rule): string | null {
-  if (rule.type === 'ANY_APPROVER' || rule.name === null || rule.name === '') {
+  if (rule.type === 'ANY_APPROVER' || rule.type === 'REPORT_APPROVER' || rule.name === null || rule.name === '') {
     return null
   }
   return rule.type === 'CODE_OWNER' ? `code owner of ${rule.name}` : rule.name
 }
 
+/** Whether GitLab showed the rules and none names anyone: any member may approve. An empty list may be rules kept from the token. */
+const isAnyMember = (rules: readonly Rule[]): boolean => rules.length > 0 && rules.every(rule => rule.type === 'ANY_APPROVER' || present(rule.eligibleApprovers).length === 0)
+
 /**
  * The people to suggest, best first: those GitLab names as eligible (`eligible`, in its order), ranked by how many of the
  * project's last merged MRs they approved (`approvals`, one list of approvers an MR, newest first), each with the first
- * rule naming them as their team; with none eligible, those who approved most, the most recent first among equals.
+ * rule naming them as their team. Only where the rules name no one (`isAnyMember`), those who approved most, the most
+ * recent first among equals; where they name someone who is not eligible now (the author, or all approved), no one.
  */
 export function rankSuggestions(eligible: readonly User[], approvals: readonly (readonly User[])[], rules: readonly Rule[]): Omit<Suggestion, 'avatarUrl'>[] {
   const counts = new Map<string, number>()
@@ -75,16 +83,16 @@ export function rankSuggestions(eligible: readonly User[], approvals: readonly (
       .filter(rule => present(rule.eligibleApprovers).some(each => each.username === username))
       .map(teamOf)
       .find(team => team !== null) ?? null
-  const pool = eligible.length > 0 ? eligible : [...seen.values()]
+  const pool = eligible.length > 0 || !isAnyMember(rules) ? eligible : [...seen.values()]
   const approvedOf = (user: User): number => counts.get(user.username) ?? 0
   // The sort is stable, so among equals the pool's own order stands.
   return pool
     .toSorted((a, b) => approvedOf(b) - approvedOf(a))
-    .map(user => ({ username: user.username, name: user.name, isBot: user.bot, team: named(user.username), approved: approvedOf(user), outOf: approvals.length }))
+    .map(user => ({ username: user.username, name: user.name, isBot: user.bot, team: named(user.username), approved: approvedOf(user) }))
 }
 
 /** The people to suggest, best first, with their avatars made absolute on `host`; null when GitLab answered no MR. */
-export function readSuggested(host: string, response: RawResponse<SuggestedQuery>): Suggestion[] | null {
+export function readSuggested(host: string, response: RawResponse<SuggestedQuery>): Suggestions | null {
   const project = response.data?.project
   const state = project?.mergeRequest?.approvalState
   if (state === undefined) {
@@ -92,8 +100,9 @@ export function readSuggested(host: string, response: RawResponse<SuggestedQuery
   }
   const approvals = present(project?.mergeRequests?.nodes).map(mr => present(mr.approvedBy?.nodes))
   const avatars = new Map([...present(state.suggestedApprovers?.nodes), ...approvals.flat()].map(user => [user.username, user.avatarUrl]))
-  return rankSuggestions(present(state.suggestedApprovers?.nodes), approvals, present(state.rules)).map(each => ({
+  const people = rankSuggestions(present(state.suggestedApprovers?.nodes), approvals, present(state.rules)).map(each => ({
     ...each,
     avatarUrl: absoluteUrl(host, avatars.get(each.username)),
   }))
+  return { outOf: approvals.length, people }
 }

@@ -136,6 +136,8 @@ function readUsualTimes($: EngineInterface, rows: readonly MrCard[], now: number
 }
 
 const SUGGESTED_STORE = 'suggested'
+/** An MR not answered yet: no one, read at no time, so it is asked at the next read. */
+const NONE_YET: Suggested[string] = { on: '', outOf: 0, people: [] }
 
 /**
  * Who GitLab suggests to approve each MR of the user's that is short of reviewers (`suggestionsFor`), asked again when
@@ -160,11 +162,11 @@ function readSuggestions($: EngineInterface, rows: readonly MrCard[]): Promise<v
       try {
         // A host without the field answers none, and is not asked again.
         const answer = held?.on === card.updatedAt ? null : await askVariant($, card.host, features => suggestedQuery(card.path, card.iid, features))
-        const people = answer !== null ? readSuggested(card.host, answer) : null
-        kept.push([card.key, people !== null ? { on: card.updatedAt, people } : (held ?? { on: '', people: [] })])
+        const read = answer !== null ? readSuggested(card.host, answer) : null
+        kept.push([card.key, read !== null ? { on: card.updatedAt, ...read } : (held ?? NONE_YET)])
       } catch (error) {
         failures.push(asFailure(error, message => `${card.project}: ${message}`))
-        kept.push([card.key, held ?? { on: '', people: [] }])
+        kept.push([card.key, held ?? NONE_YET])
       }
     }
     const next: Suggested = Object.fromEntries(kept)
