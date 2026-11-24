@@ -7,23 +7,25 @@
 // A relative import Node cannot find is tried again with `.ts`; when that is missing too, Node's own error stands. It
 // imports no file of the repository, since none can be found before it runs.
 import { registerHooks } from 'node:module'
+import type { ResolveHookSync } from 'node:module'
 
 /** Whether Node refused `error` because no file answers the import. */
 const isNotFound = (error: unknown): boolean => error instanceof Error && 'code' in error && error.code === 'ERR_MODULE_NOT_FOUND'
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    try {
-      return nextResolve(specifier, context)
-    } catch (error) {
-      if (!isNotFound(error) || !(specifier.startsWith('./') || specifier.startsWith('../'))) {
-        throw error
-      }
-      try {
-        return nextResolve(`${specifier}.ts`, context)
-      } catch {
-        throw error
-      }
+/** Node's resolution, and for a relative import it cannot find, the same with `.ts`; Node's own error when that is missing too. */
+export const resolveTs: ResolveHookSync = (specifier, context, nextResolve) => {
+  try {
+    return nextResolve(specifier, context)
+  } catch (error) {
+    if (!isNotFound(error) || !(specifier.startsWith('./') || specifier.startsWith('../'))) {
+      throw error
     }
-  },
-})
+    try {
+      return nextResolve(`${specifier}.ts`, context)
+    } catch {
+      throw error
+    }
+  }
+}
+
+registerHooks({ resolve: resolveTs })
