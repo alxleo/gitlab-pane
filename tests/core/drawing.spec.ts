@@ -26,13 +26,17 @@ test('a link mark says what it opens, and a pipeline mark its status, or that th
   expect(markWord(undefined)).toBe('no pipeline')
 })
 
-test('a tree is measured as the app receives it: each element in a hover group with the stamp the engine adds to say whose', () => {
+test('a tree is measured as the app receives it: each element in a hover group and each client region as the engine stamps it', () => {
   const plain = { type: 'Box', props: { key: 'a' }, children: [] }
   const grouped = { type: 'Box', props: { key: 'a', hover: { scope: 'hint-x' } }, children: [] }
-  const stamp = ',"group":{"plugin":"gitlab-pane"}'.length
+  const region = { type: 'Client', props: { key: 'w', module: './hint-wait.tsx' } }
+  // As the engine hands them to the app (read off `ui.drawn()`): the group's owner, the region's owner and its path.
+  const groupedDrawn = { ...grouped, group: { plugin: 'gitlab-pane' } }
+  const regionDrawn = { type: 'Client', props: { key: 'w', module: 'hooks/hint-wait.tsx' }, client: { plugin: 'gitlab-pane' } }
   expect(measure(plain)).toBe(JSON.stringify(plain).length)
-  expect(measure(grouped)).toBe(JSON.stringify(grouped).length + stamp)
-  expect(measure([grouped, grouped])).toBe(JSON.stringify([grouped, grouped]).length + 2 * stamp)
+  expect(measure(grouped)).toBe(JSON.stringify(groupedDrawn).length)
+  expect(measure([grouped, grouped])).toBe(JSON.stringify([groupedDrawn, groupedDrawn]).length)
+  expect(measure(region)).toBe(JSON.stringify(regionDrawn).length)
 })
 
 test('each control says something of its own, so two symbols never share a description', () => {

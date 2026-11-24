@@ -60,7 +60,7 @@ const lengthOf = (json: string | undefined): number => (json === undefined ? 0 :
 export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
   try {
     const json = JSON.stringify(tree)
-    return lengthOf(json) + groupsIn(json) * GROUP_STAMP
+    return lengthOf(json) + countOf(json, /"scope":/gu) * GROUP_STAMP + countOf(json, /"module":"\.\//gu) * CLIENT_STAMP
   } catch {
     return unreadable
   }
@@ -69,8 +69,14 @@ export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
 /** What the engine adds to every element in a hover group, saying whose group it is: a symbol and its description each. */
 const GROUP_STAMP = ',"group":{"plugin":"gitlab-pane"}'.length
 
-/** How many elements of a serialized tree join a hover group, as `lengthOf` reads a JSON that may be `undefined`. */
-const groupsIn = (json: string | undefined): number => (json === undefined ? 0 : (json.match(/"scope":/gu)?.length ?? 0))
+/**
+ * What the engine adds to every client region: whose it is, and its module's path from the plugin's root (`hooks/`) where
+ * the pane wrote it from its own folder (`./`).
+ */
+const CLIENT_STAMP = ',"client":{"plugin":"gitlab-pane"}'.length + 'hooks/'.length - './'.length
+
+/** How often `pattern` occurs in a serialized tree, as `lengthOf` reads a JSON that may be `undefined`. */
+const countOf = (json: string | undefined, pattern: RegExp): number => (json === undefined ? 0 : (json.match(pattern)?.length ?? 0))
 
 /**
  * The key of an MR's title button, which the pane scrolls back to after the MR's page. The desktop reports where only

@@ -16,8 +16,11 @@ import type { MarkdownText, Part } from './markdown'
 import type { PageHead } from './page-lines'
 import type { MrCard, Note, ReplyBox, Write } from '../types'
 
-/** Room kept for the link that says the rest is on GitLab. */
-const CUT_NOTE_SIZE = 300
+/**
+ * Room kept for the links that say the rest is on GitLab: the whole page can need two (the description's and the threads'),
+ * each about 950 characters with what its 🌐 means.
+ */
+const CUT_NOTE_SIZE = 2_000
 
 /**
  * How a page is drawn: `folds` are the `<details>` drawn the other way from how GitLab first shows them, `focus` the
