@@ -238,6 +238,9 @@ function answersFor(
 }
 
 /** The MR as a GitLab without `reviewState` sends it: its reviewers carry no `mergeRequestInteraction`. */
+/** What `/gitlab` answers: the pane's health, and the problems the background reads last failed with. */
+const gitlabCommand = ($: Engine) => $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+
 const plain = (mr: Mr) => ({
   ...mr,
   reviewers: { nodes: (mr.reviewers?.nodes ?? []).map(one => (one === null ? null : { username: one.username, name: one.name, bot: one.bot, avatarUrl: one.avatarUrl })) },
@@ -639,7 +642,7 @@ test(
     expect((await ui.find({ type: 'Text', text: /GitLab read failed/u }))?.text).toMatch(
       /^GitLab read failed: git\.empty\.example: no GitLab token for git\.empty\.example: set GITLAB_TOKEN.* · gitlab\.com updated (just now|\d+m ago), git\.corp\.com updated (just now|\d+m ago)$/u
     )
-    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    const answer = await gitlabCommand($)
     expect(answer.text).toContain('gitlab: git.empty.example: no GitLab token for git.empty.example')
     expect(answer.text).toContain('gitlab.com fresh, git.corp.com fresh, git.empty.example stale')
     expect(JSON.stringify(answer)).not.toContain('corp-token')
@@ -855,7 +858,7 @@ test('a Jira site links each ticket key and reads its details', { options: { jir
   // Jira is optional: with acli gone the next read keeps the last tickets, and /gitlab does not call the pane unwell.
   fake.isJiraMissing = true
   await clock.advance(20 * 60_000)
-  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  const answer = await gitlabCommand($)
   expect(jiraReads.length).toBeGreaterThan(1)
   expect(answer.text).toBe('GitLab pane open')
   await ui.unmount()
@@ -967,7 +970,7 @@ test(
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    const gitlab = async () => (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
+    const gitlab = async () => (await gitlabCommand($)).text
     const ticket = (await ui.findAll({ type: 'Markdown' })).find(element => String(element.key).startsWith('ticket-'))
     await ui.press({ key: String(ticket?.key), link: { href: 'https://jira.example.com/browse/ABC-1' } })
     await clock.settle()
@@ -1000,7 +1003,7 @@ test(
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     await clock.settle()
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-    const gitlab = async () => (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
+    const gitlab = async () => (await gitlabCommand($)).text
     const open = async (key: string) => {
       const chip = (await ui.findAll({ type: 'Markdown' })).find(element => String(element.props.text).includes(`${key}]`))
       await ui.press({ key: String(chip?.key), link: { href: `https://jira.example.com/browse/${key}` } })
@@ -1148,7 +1151,7 @@ test(
     await clock.advance(2 * 60_000)
     expect(jiraMoves).toEqual([])
     expect(store.get('jira-move:ABC-1>review')).toMatchObject({ outcome: 'failed' })
-    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    const answer = await gitlabCommand($)
     expect(answer.text).toContain('jira-moves: Error: dial tcp: i/o timeout')
     // Once Jira answers again, after the wait a failed ask has, the ticket, never in review, moves.
     fake.isHistoryDown = false
@@ -1235,7 +1238,7 @@ test(
     expect(jiraMoves).toEqual(['ABC-1 In Review'])
     const failed = store.get('jira-move:ABC-1>review')
     expect(failed).toMatchObject({ outcome: 'failed' })
-    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    const answer = await gitlabCommand($)
     expect(answer.text).toContain('jira-moves: ABC-1: Error: dial tcp: i/o timeout')
     await clock.advance(10 * 60_000)
     expect(jiraMoves).toEqual(['ABC-1 In Review'])
@@ -1264,7 +1267,7 @@ test(
     await clock.advance(2 * 60_000)
     const failed = store.get('jira-move:ABC-1>review')
     expect(failed).toMatchObject({ outcome: 'failed' })
-    const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    const answer = await gitlabCommand($)
     expect(answer.text).toContain('jira-moves: acli is not installed')
     // Not asked again on every read.
     await clock.advance(10 * 60_000)
@@ -1410,27 +1413,33 @@ test('a mergeable MR’s verdict is its merge: one press arms it, a second merge
   await ui.unmount()
 })
 
+/** The MR the user raised, with one approval left and no reviewer: room for one suggestion. */
+const ownMr = () => rawMr(12, { author: { username: 'me' } })
+/** How many times GitLab was asked whom to suggest. */
+const suggestAsks = (gitlab: { requests: string[] }) => gitlab.requests.filter(request => request.endsWith(' Suggested')).length
+/** The presses beside the suggested faces. */
+const suggestButtons = async (ui: { findAll: (query: { type: string }) => Promise<FoundElement[]> }) =>
+  (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('suggest-') === true)
+
 test('a card short of a reviewer offers whom GitLab suggests, faded: a press arms adding them, a second adds them once, and they become a reviewer', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  // One approval left and no reviewer: room for one suggestion, never the author. The user is `me`; !13 is someone
-  // else's, and asking for its reviews is theirs.
-  const own = rawMr(12, { author: { username: 'me' } })
+  // Never the author. The user is `me`; !13 is someone else's, and asking for its reviews is theirs.
+  const own = ownMr()
   const fake: Fake = { mrs: [own, rawMr(13)], isDown: false, suggested: [user('me'), user('ines.mendel'), user('tessa.rowe')] }
   const { added, toasts, avatars, store, gitlab } = engine(on, fake)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const asked = () => gitlab.requests.filter(request => request.endsWith(' Suggested')).length
-  expect(asked()).toBe(1)
+  expect(suggestAsks(gitlab)).toBe(1)
   // An MR that has not changed is not asked again.
   await clock.advance(60_000)
-  expect(asked()).toBe(1)
-  const suggestion = async () => (await ui.findAll({ type: 'Button' })).find(button => button.key?.startsWith('suggest-') === true)
+  expect(suggestAsks(gitlab)).toBe(1)
+  const suggestion = async () => (await suggestButtons(ui))[0]
   // Faded, with no badge; the row that would be quiet keeps its faces, as adding a reviewer is the author's to do.
   const faded = (await ui.findAll({ type: 'Svg' })).find(svg => svg.props['alt'] === 'Ines Mendel, suggested reviewer')
   expect(String(faded?.props['source'])).toContain("style='fill:light-dark(#ffffff8c,#9c9c9c73)'")
   expect((await suggestion())?.props).toMatchObject({ label: '+ Ines', plain: true, dimColor: true })
-  expect((await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('suggest-') === true)).toHaveLength(1)
+  expect(await suggestButtons(ui)).toHaveLength(1)
   // Their picture is fetched like anyone's on the pane, and the store carries the suggestion to the sessions that draw.
   expect(avatars.some(url => url.includes('ines.mendel'))).toBe(true)
   expect(JSON.stringify(store.get('suggested'))).toContain('ines.mendel')
@@ -1463,7 +1472,7 @@ test('a card short of a reviewer offers whom GitLab suggests, faded: a press arm
 
 test('after a reload the faces suggested before stay, and GitLab is not asked again, while the inbox has not said who the user is', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const own = rawMr(12, { author: { username: 'me' } })
+  const own = ownMr()
   const ines = { username: 'ines.mendel', name: 'Ines Mendel', avatarUrl: null, isBot: false }
   const stored = { suggested: { 'gitlab.com/g/p!12': { on: '2026-10-23T14:00:00Z', people: [ines] } } }
   // The inbox's read of the user's MRs, which says who the user is, has not answered since the reload.
@@ -1481,7 +1490,7 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(operations(gitlab.requests)).toContain('Authored')
   expect((await ui.findAll({ type: 'Svg' })).map(svg => svg.props['alt'])).toContain('Ines Mendel, suggested reviewer')
-  expect(gitlab.requests.filter(request => request.endsWith(' Suggested'))).toEqual([])
+  expect(suggestAsks(gitlab)).toBe(0)
   expect(JSON.stringify(store.get('suggested'))).toContain('ines.mendel')
   // A surface with no pictures says the suggestion by the `+` before the initials it calls everyone by.
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -1490,43 +1499,33 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   await ui.unmount()
 })
 
-/** The MR the user raised, short of a reviewer, and how many times GitLab was asked whom to suggest for it. */
-const suggestionSetup = (gitlab: { requests: string[] }) => ({
-  own: rawMr(12, { author: { username: 'me' } }),
-  asked: () => gitlab.requests.filter(request => request.endsWith(' Suggested')).length,
-})
-const suggestButtons = async (ui: { findAll: (query: { type: string }) => Promise<FoundElement[]> }) =>
-  (await ui.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('suggest-') === true)
-const problemsSaid = async ($: Engine) =>
-  (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
-
 test('a GitLab without suggested approvers is asked once and never again, suggests no one, and reports nothing amiss', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [], isDown: false, suggested: [user('ines.mendel')], lacksSuggestions: true }
+  const own = ownMr()
+  const fake: Fake = { mrs: [own], isDown: false, lacksSuggestions: true }
   const { gitlab } = engine(on, fake)
-  const { own, asked } = suggestionSetup(gitlab)
-  fake.mrs = [own]
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(asked()).toBe(1)
+  expect(suggestAsks(gitlab)).toBe(1)
   expect(await suggestButtons(ui)).toEqual([])
   // The MR changes, which would ask a host that has the field again: this one has learned it lacks it.
   fake.mrs = [{ ...own, updatedAt: new Date(NOW + 30_000).toISOString() }]
   await clock.advance(2 * 60_000)
-  expect(asked()).toBe(1)
+  expect(suggestAsks(gitlab)).toBe(1)
   expect(await suggestButtons(ui)).toEqual([])
-  expect(await problemsSaid($)).not.toContain('suggested:')
+  expect((await gitlabCommand($)).text).not.toContain('suggested:')
   await ui.unmount()
 })
 
 test('an ask for suggestions that fails keeps the faces suggested before, says why in /gitlab, and is asked again at the next read', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const fake: Fake = { mrs: [], isDown: false, suggested: [user('ines.mendel')] }
+  const own = ownMr()
+  const fake: Fake = { mrs: [own], isDown: false, suggested: [user('ines.mendel')] }
   let isSuggestedDown = false
   const { gitlab } = engine(on, fake, {}, {}, { glitch: operation => (operation === 'Suggested' && isSuggestedDown ? 503 : undefined) })
-  const { own, asked } = suggestionSetup(gitlab)
-  fake.mrs = [own]
+  const asked = () => suggestAsks(gitlab)
+  const said = async () => (await gitlabCommand($)).text
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -1538,7 +1537,7 @@ test('an ask for suggestions that fails keeps the faces suggested before, says w
   await clock.advance(60_000)
   expect(asked()).toBeGreaterThan(1)
   expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['+ Ines'])
-  expect(await problemsSaid($)).toMatch(/suggested: .*503/u)
+  expect(await said()).toMatch(/suggested: .*503/u)
   // Nothing has changed since, but the ask failed, so the next read asks again; once it answers, the problem is gone
   // and the MR is not asked again until it changes.
   const failed = asked()
@@ -1546,7 +1545,7 @@ test('an ask for suggestions that fails keeps the faces suggested before, says w
   expect(asked()).toBeGreaterThan(failed)
   isSuggestedDown = false
   await clock.advance(60_000)
-  expect(await problemsSaid($)).not.toContain('suggested:')
+  expect(await said()).not.toContain('suggested:')
   const answered = asked()
   await clock.advance(3 * 60_000)
   expect(asked()).toBe(answered)
@@ -1561,10 +1560,7 @@ test('an add GitLab refuses says why beside the face, amber, and in a toast, and
     data: { mergeRequestSetReviewers: null },
     errors: [{ message: "The resource that you are attempting to access does not exist or you don't have permission to perform this action" }],
   })
-  const fake: Fake = { mrs: [], isDown: false, suggested: [user('ines.mendel')], addReviewer: refused }
-  const { gitlab, added, toasts } = engine(on, fake)
-  const { own } = suggestionSetup(gitlab)
-  fake.mrs = [own]
+  const { added, toasts } = engine(on, { mrs: [ownMr()], isDown: false, suggested: [user('ines.mendel')], addReviewer: refused })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -2175,7 +2171,7 @@ test('/gitlab opens the pane and answers in one line, never the MR list', async 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
 
-  const ask = () => $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  const ask = () => gitlabCommand($)
   fake.isPaneBroken = false
   expect((await ask()).text).toContain('pane: ')
   // Once the work that failed succeeds, its failure is no longer true. The pin opens the pane again.
@@ -2317,7 +2313,7 @@ test('an MR whose jobs GitLab will not give keeps the failed jobs its row showed
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const failedJobs = () => readSnapshot(store.get('snapshot'))?.rows.map(row => row.pipeline?.failed.map(one => one.name))
   expect(failedJobs()).toEqual([['lint']])
-  const said = async () => (await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).text
+  const said = async () => (await gitlabCommand($)).text
 
   // GitLab times the MR out when asked for it alone: it answers null beside an error, which is no answer either.
   fake.timedOut = ['12']
@@ -2781,7 +2777,7 @@ test('an MR this session raised before its pane opened stays drawn beside the la
   await clock.advance(10_000)
   isHeld = true
   fake.isPaneBroken = false
-  await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  await gitlabCommand($)
   await clock.advance(4_000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^updated /u }))?.text).toBe('updated 3h ago')
@@ -2928,7 +2924,7 @@ test("a session that reads nothing says what the leader's reads failed with, as 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   // Nothing has been read, so the pane says what to do about it, as it does in the session that tried.
   expect((await ui.find({ type: 'Text', text: /^GitLab: /u }))?.text).toBe('GitLab: cannot be reached: check the network or VPN, then press ↻')
-  const answer = await $.command.run({ command: 'gitlab', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  const answer = await gitlabCommand($)
   expect(answer.text).toContain('gitlab: gitlab.com failed: connection refused (')
   expect(answer.text).toContain(', reported by the session that reads GitLab)')
   await ui.unmount()
