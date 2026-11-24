@@ -68,8 +68,9 @@ export const saysOf = (tree: unknown, key: string | undefined): string[] => {
 /**
  * The symbols a desktop drawing shows without a description to say what they mean: a picture, any link (each says what it
  * opens), or a label of symbols and digits alone (`☆`, `○`, `✓1`), anywhere but inside a box whose hover group reveals
- * exactly one description in `tree`; and every group revealing more than one. Every symbol says what it means once the
- * pointer rests, so this is empty on every desktop view; a symbol drawn some new way shows up here.
+ * exactly one description in `tree`; every group revealing more than one; and every block whose line of descriptions has
+ * no margin under it to lie over. Every symbol says what it means once the pointer rests, in a blank row, so this is empty
+ * on every desktop view; a symbol drawn some new way shows up here.
  */
 export const unhinted = (tree: unknown): string[] => {
   const counts = new Map<string, number>()
@@ -89,7 +90,15 @@ export const unhinted = (tree: unknown): string[] => {
     const text = [...(node.children ?? []), node.props?.['label']].filter((part): part is string => typeof part === 'string').join('')
     const isSymbol = node.type === 'Svg' || node.type === 'Link' || ((node.type === 'Text' || node.type === 'Button') && text.trim() !== '' && !/\p{L}/u.test(text))
     const said = node.type === 'Svg' ? String(node.props?.['alt']) : text
-    return [...(isSymbol && !here ? [`${String(node.type)} ${said}`] : []), ...(node.children ?? []).flatMap(child => walk(child, here))]
+    // A block's line of descriptions lies over the blank row under it, which its own margin and its column's gap make: a
+    // block with none would have its descriptions drawn over what follows it.
+    const holdsLine = (node.children ?? []).some(child => isNode(child) && child.props?.['position'] === 'absolute' && child.props['bottom'] === -1)
+    const isCramped = holdsLine && Number(node.props?.['marginBottom'] ?? 0) < 1
+    return [
+      ...(isSymbol && !here ? [`${String(node.type)} ${said}`] : []),
+      ...(isCramped ? [`${String(node.props?.['key'] ?? node.type)} keeps no room under it for what its symbols say`] : []),
+      ...(node.children ?? []).flatMap(child => walk(child, here)),
+    ]
   }
   const twice = [...counts].filter(([, count]) => count > 1).map(([scope]) => `${scope} reveals ${counts.get(scope)} descriptions`)
   return [...walk(tree, false), ...twice]

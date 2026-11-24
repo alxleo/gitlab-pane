@@ -3,7 +3,7 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 import { CONTROL, LINK, opens } from './drawing'
 import { face } from './faces'
 import type { InboxRow } from './found-model'
-import { hinted, hintLine, homed } from './hint'
+import { hinted, hintLine, hintRoom, homed } from './hint'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
@@ -269,7 +269,7 @@ export function drawFound(listKit: Kit, row: InboxRow): RenderChildren {
   const kit = homed(listKit, row.boxKey)
   const { Box, Text, Link } = kit
   return (
-    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2} marginBottom={hintRoom(kit)}>
       {/* A Link takes no flex props, so this box keeps it whole when the line wraps. */}
       <Box flexShrink={0}>{hinted(kit, `hint-${row.boxKey}`, opens('mr'), <Link href={row.mr.href}>{row.mr.text}</Link>)}</Box>
       <Text dimColor size="footnote">
@@ -290,7 +290,7 @@ export function drawMerged(listKit: Kit, row: MergedRow): RenderChildren {
   const { Box, Text, Link } = kit
   const { build } = row
   return (
-    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
+    <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2} marginBottom={hintRoom(kit)}>
       {/* A Link takes no flex props, so this box keeps it whole when the line wraps. */}
       <Box flexShrink={0}>{hinted(kit, `hint-mr-${row.boxKey}`, opens('mr'), <Link href={row.mr.href}>{row.mr.text}</Link>)}</Box>
       <Text dimColor size="footnote">

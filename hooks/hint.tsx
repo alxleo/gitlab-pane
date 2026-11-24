@@ -51,8 +51,16 @@ export function hinted(kit: Kit, key: string, words: string | readonly string[],
 }
 
 /**
+ * The margin a block keeps under it where its symbols say what they mean. The desktop draws a margin or a gap as half a
+ * text row, so a block's own margin and the gap of the column it sits in make the whole blank row its `hintLine` takes;
+ * a card keeps that margin everywhere, and the terminal, VS Code and a phone need none for a description they never draw.
+ */
+export const hintRoom = (kit: Kit): number => (kit.showsHints ? 1 : 0)
+
+/**
  * The blank line under a block, where what its symbols mean shows, from the line's start: laid over the block's bottom
- * margin or the gap its column leaves, so it moves nothing, however many lines the block wraps to. The block's last child.
+ * margin and the gap its column leaves (`hintRoom`), so it moves nothing, however many lines the block wraps to. The
+ * block's last child.
  */
 export function hintLine(kit: Kit, reveals: readonly RenderChildren[] = revealsOf(kit)): RenderChildren {
   const { Box } = kit

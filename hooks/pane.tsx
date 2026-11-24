@@ -5,7 +5,7 @@ import type { RowPart } from './card'
 import { clearSearch, filterRepo, submitSearch, toggle, toggleWake, typeSearch } from './choices'
 import { CHROME_SIZE, CONTROL, DRAWING_BUDGET, FILTERED, measure } from './drawing'
 import { quietly } from './failures'
-import { hinted, hintLine, homed, revealsOf } from './hint'
+import { hinted, hintLine, hintRoom, homed, revealsOf } from './hint'
 import { inboxNews } from './inbox'
 import { drawInbox } from './inbox-pane'
 import { kitOf } from './kit'
@@ -216,7 +216,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const searchRow =
     Input !== undefined
       ? [
-          <Box flexDirection="row" columnGap={1} alignItems="center">
+          <Box flexDirection="row" columnGap={1} alignItems="center" marginBottom={hintRoom(atSearch)}>
             <Box flexGrow={1} flexShrink={1}>
               <Input
                 key={`search-${searchBox.round}`}
@@ -291,7 +291,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const topRow = (...left: RenderChildren[]) => {
     const at = homed(kit, 'top')
     return (
-      <Box flexDirection="row" columnGap={2} alignItems="center">
+      <Box flexDirection="row" columnGap={2} alignItems="center" marginBottom={hintRoom(at)}>
         <Box flexDirection="row" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1}>
           {left}
         </Box>

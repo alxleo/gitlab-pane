@@ -1743,9 +1743,10 @@ test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed bad
   expect(alts).toContain('Ines Mendel, approved')
   expect(alts).toContain('Tessa R, requested changes')
   expect(alts).toContain('Mel Northcote, not reviewed yet')
-  // Where the MR stands is in its marks and words: no card draws a border, and a blank line sets each card apart.
+  // Where the MR stands is in its marks and words: no card draws a border, and a blank line sets each card apart (the rows
+  // above the cards keep one too on the desktop, for what their symbols say).
   expect(boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle !== undefined)).toEqual([])
-  expect(boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1)).toHaveLength(1)
+  expect(boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1 && box.props.paddingX === 1)).toHaveLength(1)
 
   await ui.unmount()
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })

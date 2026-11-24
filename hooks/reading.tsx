@@ -2,7 +2,7 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure, opens } from './drawing'
 import { ago, plural } from './format'
-import { hinted, hintLine, homed } from './hint'
+import { hinted, hintLine, hintRoom, homed } from './hint'
 import { shortHash } from './identity'
 import { kitOf } from './kit'
 import type { Kit } from './kit'
@@ -40,7 +40,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   const alone = (key: string, words: string, href: string, text: string) => {
     const at = homed(kit, key)
     return (
-      <Box flexDirection="row">
+      <Box flexDirection="row" marginBottom={hintRoom(at)}>
         {out(at, key, words, href, text)}
         {hintLine(at)}
       </Box>
@@ -87,7 +87,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   const said = (note: Note, who = note.author) => {
     const at = homed(kit, `note-${note.url}`)
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" marginBottom={hintRoom(at)}>
         {byline(at, note, who)}
         {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
         {hintLine(at)}
@@ -101,7 +101,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     <Text size="heading" weight="semibold">
       {mr.title}
     </Text>,
-    <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+    <Box flexDirection="row" flexWrap="wrap" columnGap={2} marginBottom={hintRoom(atHead)}>
       {out(atHead, 'hint-page-mr', opens('mr'), mr.url, `${LINK.mr} !${mr.iid}`)}
       {out(atHead, 'hint-page-repo', opens('repo'), mr.repo.url, `${LINK.repo} ${mr.repo.name}`)}
       {verdict !== null && (
@@ -230,7 +230,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   const blocks = [
     ...(jobs.length > 0
       ? [
-          <Box flexDirection="column">
+          <Box flexDirection="column" marginBottom={hintRoom(atJobs)}>
             <Text weight="semibold" color="error">
               {plural(jobs.length, 'failed job')}
             </Text>
