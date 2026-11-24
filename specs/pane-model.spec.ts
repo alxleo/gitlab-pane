@@ -113,7 +113,7 @@ test('each MR is a card in the order of what needs you, its worst blocker in wor
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
 })
 
-test('a row that passed and waits on others keeps its link, pipeline and faces, as one that can merge, runs, failed, is blocked or quotes a person does', () => {
+test('a row that passed and waits on others draws its faces with their pictures, as one that can merge, runs, failed, is blocked or quotes a person does', () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const rows = {
     waiting: toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS'), reviewers: { nodes: [reviewer('tim', 'UNREVIEWED')] } })),
@@ -127,15 +127,15 @@ test('a row that passed and waits on others keeps its link, pipeline and faces, 
   // The waiting one's reviewer has a picture kept, which its faces are drawn with.
   const avatars = Object.fromEntries(rows.waiting.people.flatMap(person => (person.avatarUrl !== null ? [[person.avatarUrl, 'data:image/png;base64,AA']] : [])))
   const model = modelOf(Object.values(rows), { avatars })
-  // Every card is drawn alike: one waiting on others has the same lines as one with a decision to make.
-  const shown = Object.fromEntries(
+  // Every card is drawn alike: with room to spare, each row with a picture kept draws its faces with it, the waiting one too.
+  const faces = Object.fromEntries(
     Object.entries(rows).map(([name, card]) => {
       const row = model.mine.rows.find(each => each.key === card.key)
-      return [name, { mr: row?.mr.text, pipeline: row?.pipeline !== null, faces: row?.fit.hasFaces === row?.hasPictures }]
+      return [name, row?.fit.hasFaces === row?.hasPictures]
     })
   )
-  expect(shown).toEqual(Object.fromEntries(Object.entries(rows).map(([name, card]) => [name, { mr: `🔀 !${card.iid}`, pipeline: true, faces: true }])))
-  expect(model.mine.rows.find(row => row.key === rows.waiting.key)?.hasPictures).toBe(true)
+  expect(faces).toEqual(Object.fromEntries(Object.keys(rows).map(name => [name, true])))
+  expect(model.mine.rows.find(row => row.key === rows.waiting.key)?.fit.hasFaces).toBe(true)
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.verdict?.words).toBe('✓ mergeable')
   // GitLab named no head its checks were made on, so there is none to show.
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.head).toBeNull()

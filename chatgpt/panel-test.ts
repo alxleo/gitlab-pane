@@ -63,6 +63,9 @@ try {
   assert.equal(await panel.locator('#count').textContent(), String(expected))
   const edges = await cards.evaluateAll(nodes => nodes.map(node => [...node.classList].find(name => name.startsWith('edge-')) ?? 'none'))
   assert.ok(!edges.includes('none'), 'every card has a coloured edge')
+  // Every card is drawn alike: one that passed and waits on an approval has its link and faces on a second line too.
+  assert.equal(await panel.locator('li.card .line2').count(), expected, 'every card has its second line')
+  assert.equal(await panel.locator('li.card', { hasText: '!414' }).locator('.line2').count(), 1, 'the MR waiting on an approval has its second line')
   assert.equal(host.uri, panelUri((await panelOf(client)).html), "the panel's URI names its hash")
 
   if (!values.live) {

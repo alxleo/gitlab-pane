@@ -48,7 +48,7 @@ const picture = (source: string, alt: string): HTMLSpanElement => {
   return node
 }
 
-/** The verdict and the MR's one move, as `card.tsx`'s `verdictParts`: the move stands in place of the verdict it answers. */
+/** The verdict and the MR's one move, as `card.tsx` draws them: the move stands in place of the verdict it answers. */
 function verdictParts(row: RowModel): HTMLElement[] {
   const { verdict } = row
   if (verdict === null) {
