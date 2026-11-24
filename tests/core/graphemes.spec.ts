@@ -1,11 +1,46 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { cut, leading, shorten } from '../../hooks/graphemes.ts'
+import { cellsOf, cut, leading, shorten, shortenToCells } from '../../hooks/graphemes.ts'
 import { textArb } from './arbitrary.ts'
 
 // A family is three people joined by zero-width joiners, written as escapes so the joiners can be seen.
 const FAMILY = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}'
+
+test('a line cut to so many cells keeps whole characters, ends in an ellipsis, and fits the cells and four units a cell', () => {
+  expect(shortenToCells('opens the MR', 12)).toBe('opens the MR')
+  expect(shortenToCells('opens the MR', 8)).toBe('opens t…')
+  expect(shortenToCells('李小龍李小龍', 7)).toBe('李小龍…')
+  expect(shortenToCells(`${FAMILY}${FAMILY}`, 3)).toBe(`${FAMILY}…`)
+  // A letter can carry any number of marks and still take one cell, so a line is held to four units a cell as well.
+  const heavy = `a${String.fromCodePoint(0x301).repeat(40)}`.repeat(36)
+  expect(cellsOf(heavy)).toBe(36)
+  expect(shortenToCells(heavy, 36).length).toBeLessThanOrEqual(4 * 36)
+  expect(shortenToCells(heavy, 36).endsWith('…')).toBe(true)
+  fc.assert(
+    fc.property(textArb, fc.integer({ min: 2, max: 40 }), (text, room) => {
+      const line = shortenToCells(text, room)
+      expect(cellsOf(line)).toBeLessThanOrEqual(room)
+      expect(line.length).toBeLessThanOrEqual(4 * room)
+      expect(line === text || (line.endsWith('…') && text.startsWith(line.slice(0, -1)))).toBe(true)
+    })
+  )
+})
+
+test('a wide letter or a picture takes two cells, any other character one, however many code points it is made of', () => {
+  expect(cellsOf('opens the MR')).toBe(12)
+  expect(cellsOf('李小龍')).toBe(6)
+  expect(cellsOf('한글')).toBe(4)
+  expect(cellsOf(`${FAMILY} ok`)).toBe(5)
+  expect(cellsOf('é')).toBe(1)
+  fc.assert(
+    fc.property(textArb, text => {
+      const characters = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].length
+      expect(cellsOf(text)).toBeGreaterThanOrEqual(characters)
+      expect(cellsOf(text)).toBeLessThanOrEqual(2 * characters)
+    })
+  )
+})
 // A person, a skin tone, a joiner and red hair: seven UTF-16 units, one character, and its second code point is no mark.
 const PERSON = '\u{1F9D1}\u{1F3FD}\u{200D}\u{1F9B0}'
 // A flag of black, five tag letters and the tag that cancels them: fourteen units, one character, ending in a tag.

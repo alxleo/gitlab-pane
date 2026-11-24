@@ -21,6 +21,9 @@ import {
   reviewer,
   stage,
   thread,
+  hintsIn,
+  saysOf,
+  unhinted,
   user,
 } from './fixtures'
 import type { Mr } from './fixtures'
@@ -31,7 +34,8 @@ import type { Answers } from './gitlab_fake'
 import { fakeGitLab, fakeSession, ran } from './gitlab_host'
 import type { FakeHost } from './gitlab_host'
 
-import { DRAWING_BUDGET } from '../hooks/drawing'
+import { DRAWING_BUDGET, opens } from '../hooks/drawing'
+import { HINT_DELAY_MS } from '../hooks/hint-chip'
 import { toCard } from '../hooks/mr-card'
 import { MERGED_ROW_SIZE } from '../hooks/landed-model'
 import { REPLY_MOST } from '../hooks/reply-model'
@@ -59,7 +63,7 @@ const PANE = {
   },
 } as const
 
-type Drawn = { type?: string; props?: Record<string, unknown>; hover?: { scope?: string; display?: string }; children?: unknown[] }
+type Drawn = { type?: string; props?: Record<string, unknown>; hover?: { scope?: string; display?: string; backgroundColor?: string }; children?: unknown[] }
 
 /** Every element in a drawn tree, with the `hover` a found element's props leave out. */
 const isDrawn = (node: unknown): node is Drawn => typeof node === 'object' && node !== null && (!('children' in node) || Array.isArray(node.children))
@@ -1848,15 +1852,94 @@ test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed bad
   expect(alts).toContain('Ines Mendel, approved')
   expect(alts).toContain('Tessa R, requested changes')
   expect(alts).toContain('Mel Northcote, not reviewed yet')
-  // Where the MR stands is in its marks and words: no card draws a border, and a blank line sets each card apart.
+  // Where the MR stands is in its marks and words: no card draws a border, and a blank line sets each card apart (the rows
+  // above the cards keep one too on the desktop, for what their symbols say).
   expect(boxesOf(await ui.drawn()).filter(box => box.props?.borderStyle !== undefined)).toEqual([])
-  expect(boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1)).toHaveLength(1)
+  expect(boxesOf(await ui.drawn()).filter(box => box.props?.marginBottom === 1 && box.props.paddingX === 1)).toHaveLength(1)
 
   await ui.unmount()
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const marks = (await terminal.findAll({ type: 'Text' })).map(text => text.text)
   expect(marks).toEqual(expect.arrayContaining(['✓', '✕', '◌', '?']))
   await terminal.unmount()
+})
+
+test('resting the pointer on a symbol tints it and shows what it means in the blank line under its block, moving nothing; a phone keeps the words beside it', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const people = [{ ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }]
+  engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people }, headPipeline: null })], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // The symbol's box and its description are one hover group: the box tints under the pointer, which reveals the
+  // description, drawn hidden from the start of a line laid over the blank line under the block the symbol is in. The block
+  // holds both, so the description sits under the card or row its symbol is on, and the region in it waits before it shows.
+  const hintOf = async (prefix: string) => {
+    const tree = await ui.drawn()
+    const boxes = boxesOf(tree)
+    const symbol = boxes.find(box => typeof box.props?.key === 'string' && box.props.key.startsWith(prefix))
+    const scope = symbol?.hover?.scope
+    const reveal = boxes.find(box => box.hover?.scope === scope && box.hover?.display === 'flex')
+    const line = boxes.find(box => box.children?.includes(reveal) === true)
+    const block = boxes.find(box => box.children?.includes(line) === true)
+    const [chip, ...more] = hintsIn(reveal)
+    return {
+      words: chip?.lines.join(', '),
+      waits: chip !== undefined && more.length === 0,
+      tinted: symbol?.hover?.backgroundColor !== undefined,
+      underBlock: line?.props?.position === 'absolute' && line.props.bottom === -1 && line.props.height === 1 && elementsOf(block).includes(symbol ?? {}),
+      fromStart: reveal?.props?.top === 0 && reveal.props.left === 0,
+      movesNothing: reveal?.props?.position === 'absolute' && reveal.props.display === 'none',
+    }
+  }
+  const under = { waits: true, tinted: true, underBlock: true, fromStart: true, movesNothing: true }
+  expect(await hintOf('hint-mr-12')).toEqual({ ...under, words: 'opens the MR' })
+  expect(await hintOf('hint-person-ines.mendel')).toEqual({ ...under, words: 'approved' })
+  expect(await hintOf('hint-pin')).toEqual({ ...under, words: 'pin to this session' })
+  // The top row's controls say theirs in the gap under the top row.
+  expect(await hintOf('hint-refresh')).toEqual({ ...under, words: 'read GitLab again' })
+  expect(await hintOf('hint-wake')).toEqual({ ...under, words: 'raised MRs wake Claude' })
+  // Without a pipeline the row draws the mark for none, which says so under the pointer, in place of the words.
+  expect(await hintOf('hint-pipeline')).toEqual({ ...under, words: 'no pipeline' })
+  expect(await ui.find({ type: 'Text', text: '○' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'no pipeline' })).toBeUndefined()
+  // Every box drawn hidden is a description out of the flow, so no part of a card shows or hides in place.
+  const hidden = boxesOf(await ui.drawn()).filter(box => box.props?.display === 'none')
+  expect(hidden.length).toBeGreaterThan(5)
+  expect(hidden.filter(box => box.props?.position !== 'absolute')).toEqual([])
+
+  // The region in ↻'s box, run as the app runs it: laid out as the box shows (the pointer on ↻) and hides, its clock moved
+  // on. The words wait on every rest, the second as the first, and go as the box hides.
+  const region = { in: 'hint-refresh-w' }
+  const says = async () => JSON.stringify(await ui.drawn(region)).includes('read GitLab again')
+  const rest = { columns: 19, rows: 1, ...region }
+  const gone = { columns: 0, rows: 0, ...region }
+  expect(await says()).toBe(false)
+  await ui.resize(rest)
+  await ui.advance(HINT_DELAY_MS - 100)
+  expect(await says()).toBe(false)
+  await ui.advance(200)
+  expect(await says()).toBe(true)
+  await ui.resize(gone)
+  expect(await says()).toBe(false)
+  await ui.resize(rest)
+  await ui.advance(HINT_DELAY_MS - 100)
+  expect(await says()).toBe(false)
+  await ui.advance(200)
+  expect(await says()).toBe(true)
+  // A pointer that only passes: shown and hidden again before the wait is up, so the words never draw.
+  await ui.resize(gone)
+  await ui.resize(rest)
+  await ui.advance(HINT_DELAY_MS / 2)
+  await ui.resize(gone)
+  await ui.advance(5 * HINT_DELAY_MS)
+  expect(await says()).toBe(false)
+  await ui.unmount()
+
+  const phone = await $.ui.mount({ ...PANE, surface: 'mobile' })
+  expect((await phone.findAll({ type: 'Box' })).filter(keyed('hint-'))).toEqual([])
+  expect(await phone.find({ type: 'Text', text: 'no pipeline' })).toBeDefined()
+  await phone.unmount()
 })
 
 test('a card’s title opens its MR as a page of its own, a way back at both ends, the pane titled for where you are', async ($, on) => {
@@ -1942,6 +2025,59 @@ test('an MR too long for its page shows what fits of the description, then links
   expect(text).not.toContain('The end.')
   expect(text).toContain('Still whole.')
   expect((await ui.findAll({ type: 'Link' })).some(link => link.text.includes('The rest of the description is on GitLab'))).toBe(true)
+  await ui.unmount()
+})
+
+test('two notes GitLab gives no address of each say what their 💬 opens on the MR page, which still draws', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  // Without an address of its own a note links to its MR, so two such notes share every address they have.
+  const unaddressed = (body: string) => ({ ...thread(body, 'reviewer'), notes: { nodes: [note(body, 'reviewer', { url: null })] } })
+  engine(on, { mrs: [rawMr(12, { discussions: { nodes: [unaddressed('First thread.'), unaddressed('Second thread.')] } })], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+  const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
+  expect(text).toContain('First thread.')
+  expect(text).toContain('Second thread.')
+  expect(unhinted(await ui.drawn())).toEqual([])
+  expect(hintsIn(await ui.drawn()).filter(hint => hint.lines.includes(opens('comment')))).toHaveLength(2)
+  await ui.unmount()
+})
+
+test('an MR with 180 failed jobs, one allowed to, lists every one on its page under one description, and keeps its thread and description', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const stages = Array.from({ length: 9 }, (_, s) =>
+    stage(
+      `stage${s}`,
+      'FAILED',
+      Array.from({ length: 20 }, (_job, j) => job(`job${s}-${j}-${'x'.repeat(30)}`, 'FAILED', { allowFailure: s === 8 && j === 19 }))
+    )
+  )
+  const mr = rawMr(12, {
+    description: 'Why this change.',
+    headPipeline: pipe('FAILED', { stages: { nodes: stages } }),
+    discussions: { nodes: [thread('Still whole.', 'reviewer')] },
+  })
+  engine(on, { mrs: [mr], isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('open-12-'))?.key ?? '' })
+
+  const links = (await ui.findAll({ type: 'Link' })).map(link => link.text)
+  expect(links.filter(text => /✗ job\d/u.test(text))).toHaveLength(179)
+  expect(links.filter(text => /⚠ job8-19-/u.test(text))).toHaveLength(1)
+  expect(links.some(text => text.includes('is on GitLab'))).toBe(false)
+  const text = (await ui.findAll({ type: 'Markdown' })).map(markdown => String(markdown.props.text)).join('\n')
+  expect(text).toContain('Why this change.')
+  expect(text).toContain('Still whole.')
+  // Each link opens its job's log, so the list says it once, not once a link, with what each mark it holds means.
+  const jobs = (await ui.findAll({ type: 'Box' })).find(keyed('hint-jobs'))
+  expect(saysOf(await ui.drawn(), jobs?.key)).toEqual(['✗ failed', '⚠ allowed to fail', 'each opens its log'])
+  expect(unhinted(await ui.drawn())).toEqual([])
+  expect(hintsIn(await ui.drawn()).filter(hint => hint.lines.includes('each opens its log'))).toHaveLength(1)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   await ui.unmount()
 })
 
@@ -2183,7 +2319,7 @@ test('/gitlab opens the pane and answers in one line, never the MR list', async 
   expect(answer.text).not.toContain('!12')
 })
 
-test('a stage strip draws its passed stages as one run, counted in its title; other stages keep their own', async ($, on) => {
+test('a stage strip draws its passed stages as one run; once the pointer rests it says them counted, and every other stage by name', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const names = ['install', 'precheck', 'gate', 'validate', 'build', 'deploy', 'cleanup', 'e2e', 'external']
   const statuses: CiJobStatus[] = ['SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SUCCESS', 'SKIPPED', 'RUNNING', 'SUCCESS']
@@ -2194,12 +2330,18 @@ test('a stage strip draws its passed stages as one run, counted in its title; ot
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const strip = String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === '9 stages')?.props?.source)
-  expect(strip).toContain('<title>7 stages passed</title>')
-  expect(strip).toContain('<title>cleanup · skipped')
-  expect(strip).toMatch(/<title>e2e · running[^<]*<\/title>/u)
-  expect(strip).not.toContain('install · passed')
-  // A square per stage, each with its own tooltip, came to 840. Each painted square carries its light and dark shade.
-  expect(strip.length).toBeLessThan(720)
+  // Its stages are its description's lines, as the pointer rests on the strip: the passed ones counted, the others by name.
+  // The box is as many rows high as it has lines, running down from the blank line under the card, never over the strip.
+  const tree = await ui.drawn()
+  const member = boxesOf(tree).find(box => String(box.props?.key).startsWith('hint-strip'))
+  const reveal = boxesOf(tree).find(box => box.hover?.scope === member?.hover?.scope && box.hover?.display === 'flex')
+  const lines = saysOf(tree, String(member?.props?.key))
+  expect(lines.join(', ')).toMatch(/^7 stages passed, cleanup · skipped · ran \S+, e2e · running/u)
+  expect(lines.length).toBeGreaterThan(1)
+  expect(reveal?.props).toMatchObject({ top: 0, height: lines.length })
+  expect(strip).not.toContain('<title>')
+  // A square per stage, each with its own tooltip, came to 840; the strip alone is now a plain picture.
+  expect(strip.length).toBeLessThan(600)
   await ui.unmount()
 })
 
@@ -2547,22 +2689,41 @@ test('fifty MRs with full pipelines and long threads stay inside the 100,000 cha
   await ui.press({ key: 'more' })
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
   // The merged section opens last, with the longest titles and addresses it may be given: the list leaves it the room each of
-  // its rows may take, so the whole still draws inside the budget, and a row is no bigger than that room.
-  const folded = JSON.stringify(await ui.drawn()).length
+  // its rows may take, so the whole still draws inside the budget, and each row, measured alone, is no bigger than that room.
   await ui.press({ key: 'merged' })
-  const open = JSON.stringify(await ui.drawn()).length
-  expect(open - folded).toBeLessThanOrEqual(5 * MERGED_ROW_SIZE)
-  expect(open).toBeLessThan(DRAWING_BUDGET)
+  const rows = (await ui.findAll({ type: 'Box' })).filter(keyed('merged-'))
+  expect(rows).toHaveLength(5)
+  for (const row of rows) expect(JSON.stringify(row).length).toBeLessThanOrEqual(MERGED_ROW_SIZE)
+  expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
   // What opens under a card counts in its card's room: the list, packed to the budget, gives up a row for it rather than
-  // overshoot.
+  // overshoot. Opened under one card after another, the blocks soon outgrow whatever room the list had spare, and the
+  // drawing stays inside the budget at every step.
   const leftOut = async () => Number(/^(\d+)/u.exec((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text ?? '')?.[1])
   const before = await leftOut()
-  await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(button => button.key?.includes('person-') === true)?.key ?? '' })
-  await clock.settle()
+  const people = (await ui.findAll({ type: 'Button' })).map(button => button.key ?? '').filter(key => key.startsWith('person-'))
+  const onePerCard = [...new Map(people.map(key => [/-(\d+-[^-]+)$/u.exec(key)?.[1], key])).values()].slice(0, 6)
+  for (const key of onePerCard) {
+    await ui.press({ key })
+    await clock.settle()
+    expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
+  }
   expect(await ui.find({ type: 'Text', text: /^newest, /u })).toBeDefined()
-  expect(await leftOut()).toBe(before + 1)
+  expect(await leftOut()).toBeGreaterThan(before)
+  await ui.unmount()
+})
+
+test('two hundred small cards stay inside the budget: each card counts its own box and the line under it, not only what it holds', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const approvers = [reviewer('ines.mendel', 'APPROVED'), reviewer('tessa.r', 'APPROVED')]
+  const mrs = Array.from({ length: 200 }, (_, i) => rawMr(1000 + i, { reviewers: { nodes: approvers }, approvedBy: { nodes: approvers.map(({ username }) => user(username)) } }))
+  engine(on, { mrs, isDown: false })
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'more' })
+  expect((await ui.find({ type: 'Text', text: /more MRs? left out/u }))?.text).toMatch(/^\d+ more MRs? left out/u)
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   await ui.unmount()
 })
@@ -2609,8 +2770,11 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     const tim = boxesOf(await ui.drawn()).find(box => (box.children ?? []).some(isTim))
     const timFace = elementsOf(tim)[1]
     expect(surface === 'terminal' ? timFace?.type === 'Text' : String(timFace?.props?.source).includes(`href='data:image/png;base64,iVBORw0KGgo`)).toBe(true)
-    // Nothing on the list waits for the pointer: no box shows or hides on a hover, so none pushes the cards below it.
-    expect(boxesOf(await ui.drawn()).filter(box => box.hover?.display !== undefined)).toEqual([])
+    // A hover shows only a symbol's description, placed out of the flow, so none pushes the cards below it; only the desktop
+    // draws them.
+    const shown = boxesOf(await ui.drawn()).filter(box => box.hover?.display !== undefined)
+    expect(shown.filter(box => box.props?.position !== 'absolute')).toEqual([])
+    expect(shown.length > 0).toBe(surface === 'desktop')
     // A person's open thread is the card's one line of words, their first name leading; a bot's is not.
     const labels = (await ui.findAll({ type: 'Button' })).map(button => String(button.props.label))
     expect(labels).toContain('💬 Tim: Please look at line 3')
@@ -2618,15 +2782,27 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     // Unfolded, all thirty stay inside what the app draws.
     await ui.press({ key: 'more' })
     expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(100_000)
-    // Each stage lists its jobs; a running pipeline reads against how long one usually takes.
-    const strips = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg')
+    // On the desktop every symbol says what it means once the pointer rests: none is drawn without its chip.
+    const allHinted = async () => expect(surface === 'desktop' ? unhinted(await ui.drawn()) : []).toEqual([])
+    await allHinted()
+    // A strip is a picture, its stages a glyph each where none is drawn; on the desktop its chip says them, a line each. A
+    // running pipeline reads against how long one usually takes.
+    const pictures = elementsOf(await ui.drawn()).filter(element => element.type === 'Svg')
+    const alts = pictures.map(svg => String(svg.props?.alt))
+    const hints = hintsIn(await ui.drawn())
+    const said = hints.map(hint => hint.lines.join(', '))
     const squares = await ui.find({ type: 'Text', text: '■' })
     expect(
       surface === 'terminal'
-        ? strips.length === 0 && squares !== undefined
-        : strips.some(svg => String(svg.props?.source).includes('<title>2 stages passed</title>')) &&
-            strips.some(svg => String(svg.props?.source).includes('<title>build · running'))
+        ? pictures.length === 0 && squares !== undefined
+        : surface === 'desktop'
+          ? alts.some(alt => /^\d+ stages$/u.test(alt)) && said.some(words => words.startsWith('2 stages passed')) && said.some(words => words.includes('build · running'))
+          : // Where no description shows, and no title tooltip either, the picture's own text names its stages.
+            alts.some(alt => alt.startsWith('2 stages passed')) && alts.some(alt => alt.includes('build · running'))
     ).toBe(true)
+    // Each description is a region of its own, which the app keeps apart by its key, so no two share one.
+    expect(new Set(hints.map(hint => hint.key)).size).toBe(hints.length)
+    expect(hints.length > 0).toBe(surface === 'desktop')
     expect(await ui.find({ text: '🚦 20m · usually 11–14m' })).toBeDefined()
     expect(await ui.find({ type: 'Link', text: '🔀 !103' })).toBeDefined()
     // The ticket is a link the pane answers: a plain click opens it under the card, a modified one opens Jira.
@@ -2644,6 +2820,8 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Please look at line 3' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Ready · /u })).toBeDefined()
+    // What opens under the card says what each of its symbols means too.
+    await allHinted()
     await ui.press({ key: timKey })
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
     // The title opens the whole MR: what it is, its ticket and what stands before a merge head its page.
@@ -2651,9 +2829,18 @@ test("thirty MRs in two repos draw everywhere, the repos one picker or a phone's
     expect(await ui.find({ type: 'Link', text: '🎫 ABC-1 · Task · In Progress: Make the thing work' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'fix/thing-103 → main · +10 −2 · 1 file' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Tim · requested changes · 1 open thread · 1 comment' })).toBeUndefined()
+    // The page says what each of its symbols means too, each in the blank row under its block.
+    await allHinted()
     await ui.press({ key: 'back-top' })
     // The title is a plain button, not a link: it opens the MR's page, while 🔀 !iid leaves for GitLab.
     expect((await ui.findAll({ type: 'Button' })).find(keyed('open-103-'))?.props.label).toBe('thing 103')
+    // So does the page opened on one person, from what opens under the card.
+    await ui.press({ key: timKey })
+    await ui.press({ key: (await ui.findAll({ type: 'Button' })).find(keyed('under-more-'))?.key ?? '' })
+    expect(await ui.find({ type: 'Button', key: 'page-whole' })).toBeDefined()
+    await allHinted()
+    await ui.press({ key: 'back-top' })
+    await ui.press({ key: timKey })
 
     // The repos are one picker, which takes one row however many there are: a repo narrows the list, All shows it whole.
     expect(await ui.find({ type: 'Button', key: 'repo-all' })).toBeUndefined()

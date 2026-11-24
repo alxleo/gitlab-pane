@@ -3,7 +3,10 @@ import type { EngineInterface, RenderInput } from 'claude-code'
 import { discSource } from './avatar'
 import { isFilled } from './decode'
 import { ago, shortTitle } from './format'
-import { measure } from './drawing'
+import { CONTROL, measure, opens } from './drawing'
+import { hinted, hintLine, homed } from './hint'
+import type { HomedKit } from './hint'
+import { kitOf } from './kit'
 import { firstName, initials, shortHash } from './identity'
 import { reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
@@ -16,8 +19,9 @@ import type { InboxActivity, InboxItem, InboxKind, InboxSection } from '../types
 
 /** How each kind of activity reads, in the order a card counts them: what blocks or clears a merge first. */
 /** An event with no one to name (a pipeline failing, a merge that cannot happen) reads without an actor. */
-export const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string; isImpersonal?: boolean }> = {
-  changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes' },
+/** One that `blocks` a merge is counted in words on every surface; the others are their mark and count under a pointer. */
+export const VERB: Record<InboxKind, { glyph: string; tone?: string; word: string; isImpersonal?: boolean; blocks?: true }> = {
+  changes_requested: { glyph: '✗', tone: 'error', word: 'requested changes', blocks: true },
   unapproved: { glyph: '↺', tone: 'warning', word: 'withdrew approval' },
   approved: { glyph: '✓', tone: 'success', word: 'approved' },
   review: { glyph: '●', tone: 'suggestion', word: 'reviewed' },
@@ -26,8 +30,8 @@ export const VERB: Record<InboxKind, { glyph: string; tone?: string; word: strin
   review_requested: { glyph: '?', word: 'asked for a review' },
   pushed: { glyph: '↑', word: 'pushed' },
   merged: { glyph: '◆', tone: 'merged', word: 'merged' },
-  build_failed: { glyph: '✗', tone: 'error', word: 'pipeline failed', isImpersonal: true },
-  unmergeable: { glyph: '⚠', tone: 'warning', word: "can't merge", isImpersonal: true },
+  build_failed: { glyph: '✗', tone: 'error', word: 'pipeline failed', isImpersonal: true, blocks: true },
+  unmergeable: { glyph: '⚠', tone: 'warning', word: "can't merge", isImpersonal: true, blocks: true },
 }
 
 const KINDS = Object.keys(VERB).filter((kind): kind is InboxKind => kind in VERB)
@@ -40,11 +44,9 @@ const INBOX_BUDGET = 70_000
 
 /** The inbox the built-in rules give: a tab per rule, a card per MR saying who did what, ✓ to mark it seen. */
 export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
-  const elements = $.ui.resolve(e)
-  const { Box, Text, Button, Link } = elements
-  // The terminal's table still answers `Svg`, drawn as an empty box, so the surface decides.
-  const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : undefined
   const { inbox, isHere, sections: ruled, problem, open, cards, now } = await inboxView($)
+  const kit = kitOf($, e, now)
+  const { Box, Text, Button, Link, Svg } = kit
   const since = (iso: string) => {
     const age = ago(iso, now)
     return age === 'now' ? 'just now' : `${age} ago`
@@ -63,22 +65,29 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const names = new Map(ruled.flatMap(section => section.items).map(item => [item.author, item.authorName]))
 
   /** An initials disc, coloured by username; where the surface draws no Svg, nothing. */
-  const avatar = (username: string) =>
+  const avatar = (home: HomedKit, username: string, key: string) =>
     Svg !== undefined ? (
       <Box flexShrink={0}>
-        <Svg width={16} height={16} alt={username} source={discSource(username, 16, initials(names.get(username) ?? '', username))} />
+        {hinted(
+          home,
+          `hint-who-${key}`,
+          names.get(username) ?? username,
+          <Svg width={16} height={16} alt={username} source={discSource(username, 16, initials(names.get(username) ?? '', username))} />
+        )}
       </Box>
     ) : null
 
   /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
-  const event = (one: InboxActivity, isWhole: boolean) => {
+  const event = (home: HomedKit, mr: string, one: InboxActivity, at: number, isWhole: boolean) => {
     const verb = VERB[one.kind]
     const when = ago(one.at, now)
     const said = one.excerpt !== '' ? `“${one.excerpt}”` : ''
+    // Its MR and place in its list: two events of one person, kind and second are still two, and each region takes its own key.
+    const tag = shortHash(`${mr}#${at}`)
     return (
-      <Box key={`ev-${shortHash(`${one.actor}${one.at}${one.kind}`)}`} flexDirection="column">
+      <Box key={`ev-${tag}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
-          {verb.isImpersonal !== true && avatar(one.actor)}
+          {verb.isImpersonal !== true && avatar(home, one.actor, tag)}
           <Box flexShrink={0}>
             <Text color={verb.tone}>
               {verb.isImpersonal === true ? `${verb.glyph} ${verb.word}` : `${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}
@@ -91,7 +100,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               </Text>
             )}
           </Box>
-          <Box flexShrink={0}>{isFilled(one.url) ? <Link href={one.url}>{when}</Link> : <Text dimColor>{when}</Text>}</Box>
+          <Box flexShrink={0}>{isFilled(one.url) ? hinted(home, `hint-at-${tag}`, opens('comment'), <Link href={one.url}>{when}</Link>) : <Text dimColor>{when}</Text>}</Box>
         </Box>
         {isWhole && said !== '' && (
           <Box paddingLeft={3}>
@@ -110,11 +119,19 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
    */
   const itemCard = (item: InboxItem) => {
     const bang = item.ref.lastIndexOf('!')
-    const counted = KINDS.filter(kind => (item.counts[kind] ?? 0) > 0).map(kind => `${item.counts[kind]}${item.isCapped ? '+' : ''} ${VERB[kind].word}`)
+    const counts = KINDS.flatMap(kind => {
+      const count = item.counts[kind] ?? 0
+      return count > 0 ? [{ kind, count: `${count}${item.isCapped ? '+' : ''}` }] : []
+    })
+    // Under a pointer each count is its event's mark, which says the event's words once the pointer rests; elsewhere the words
+    // follow the facts. What blocks a merge keeps its words everywhere: words beat icons for that.
+    const marked = kit.showsHints ? counts.filter(({ kind }) => VERB[kind].blocks !== true) : []
+    const counted = counts.filter(each => !marked.includes(each)).map(({ kind, count }) => `${count} ${VERB[kind].word}`)
     const about = [bang > 0 ? item.ref.slice(0, bang) : '', item.isMine ? '' : item.author, item.isDraft ? 'draft' : '', item.state === 'opened' ? '' : item.state, ...counted]
     const canOpen = item.activity.length > 0
     const isOpen = canOpen && cards.includes(item.key)
     const buttons = cardButtons(item.key)
+    const home = homed(kit, `ib-${shortHash(item.key)}`)
     return (
       <Box key={`ib-${shortHash(item.key)}`} flexDirection="column" paddingX={1} marginBottom={1}>
         <Box flexDirection="row" gap={1}>
@@ -134,21 +151,37 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Box>
           )}
           <Box flexShrink={0}>
-            <Button key={buttons.seen} plain label="✓" onPress={() => seenOne($, item.key).catch(reported($, 'inbox'))} />
+            {hinted(
+              home,
+              `hint-seen-${shortHash(item.key)}`,
+              CONTROL.seen.hint,
+              <Button key={buttons.seen} plain label={CONTROL.seen.mark} onPress={() => seenOne($, item.key).catch(reported($, 'inbox'))} />
+            )}
           </Box>
         </Box>
         <Box flexDirection="row" gap={1}>
-          <Box flexShrink={0}>
-            <Link href={item.url}>{item.ref.slice(bang)}</Link>
-          </Box>
+          <Box flexShrink={0}>{hinted(home, `hint-mr-${shortHash(item.key)}`, opens('mr'), <Link href={item.url}>{item.ref.slice(bang)}</Link>)}</Box>
+          {marked.length > 0 && (
+            <Box flexDirection="row" flexWrap="wrap" gap={1} flexShrink={1}>
+              {marked.map(({ kind, count }) =>
+                hinted(
+                  home,
+                  `hint-${kind}-${shortHash(item.key)}`,
+                  VERB[kind].word,
+                  <Text color={VERB[kind].tone} dimColor={VERB[kind].tone === undefined} size="footnote">{`${VERB[kind].glyph}${count}`}</Text>
+                )
+              )}
+            </Box>
+          )}
           <Box flexGrow={1} flexShrink={1}>
             <Text dimColor size="footnote" wrap="truncate-end">
               {about.filter(Boolean).join(' · ')}
             </Text>
           </Box>
         </Box>
-        {isOpen ? item.activity.map(one => event(one, true)) : item.activity[0] !== undefined && event(item.activity[0], false)}
+        {isOpen ? item.activity.map((one, at) => event(home, item.key, one, at, true)) : item.activity[0] !== undefined && event(home, item.key, item.activity[0], 0, false)}
         {isOpen && <Button key={buttons.less} plain label="▴ less" onPress={() => toggleCard($, item.key)} />}
+        {hintLine(home)}
       </Box>
     )
   }

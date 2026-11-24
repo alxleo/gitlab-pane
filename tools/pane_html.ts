@@ -37,8 +37,9 @@ export type Scene = {
   readonly tree: Node
 }
 
-// What the engine keeps for a press, a hover group and the plugin that drew a part is accepted and not drawn.
-const NODE_FIELDS = new Set(['type', 'props', 'children', 'hover', 'press', 'group', 'part'])
+// What the engine keeps for a press, a hover group, the plugin that drew a part and the plugin a region belongs to is
+// accepted and not drawn.
+const NODE_FIELDS = new Set(['type', 'props', 'children', 'hover', 'press', 'group', 'part', 'client'])
 const SCENE_FIELDS = new Set(['name', 'title', 'site', 'hover', 'hoverKeys', 'tree'])
 
 export const strings = (value: unknown, what: string): string[] => {
@@ -175,6 +176,7 @@ const DRAWN = new Map<string, ReadonlySet<string>>([
   ['Image', new Set(['source', 'alt', 'columns', 'rows'])],
   ['Markdown', new Set(['text', 'dimColor'])],
   ['Code', new Set(['source', 'format', 'startLine', 'wrap'])],
+  ['Client', new Set(['width', 'height'])],
 ])
 const KEPT = new Map<string, ReadonlySet<string>>([
   // What picks a highlighter: the pictures draw code plain.
@@ -189,6 +191,8 @@ const KEPT = new Map<string, ReadonlySet<string>>([
   ['Svg', new Set(['isInteractive'])],
   ['Image', new Set(['key'])],
   ['Markdown', new Set(['key', 'pressableLinks'])],
+  // A region's module and its data run in the app; a photograph has no pointer resting on it.
+  ['Client', new Set(['key', 'module', 'props'])],
 ])
 const HOVER_PROPS = new Set([
   'scope',
@@ -535,6 +539,10 @@ function draw(node: Node | string, drawing: Drawing, key: string | null = null):
       return `<div class="md${props['dimColor'] === true ? ' dim' : ''}${marked}">${(drawing.live ? LIVE_MARKDOWN : MARKDOWN).render(text(props['text']))}</div>`
     case 'Code':
       return `<div class="code${props['wrap'] === 'truncate-end' ? ' cut' : ''}${marked}">${codeRows(text(props['source']), props['format'] === 'diff', props['startLine'])}</div>`
+    case 'Client':
+      // A region draws what its module draws, in the app: the pane's are descriptions, which show only under a resting
+      // pointer, so a photograph leaves the room empty.
+      return `<span class="client${marked}"></span>`
     default:
       return undrawn(node, drawing.unknown)
   }

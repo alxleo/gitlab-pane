@@ -1,10 +1,21 @@
 import { expect, test } from 'vitest'
 import fc from 'fast-check'
 
-import { excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
+import { drawnLine, excerpt, lead, pipelineTime, ranFor, ranOf, shortTitle, ticketOf } from '../../hooks/format.ts'
 import { cleanBody, toCard } from '../../hooks/mr-card.ts'
 import { HOST, NOW, pipe, rawMr } from '../fixtures.ts'
 import type { Job, Stage } from '../../types'
+
+test('a line to draw has no control character, one space where there were several, and none at either end', () => {
+  expect(drawnLine(' build\u0001\tfailed \n twice ')).toBe('build failed twice')
+  fc.assert(
+    fc.property(fc.string(), text => {
+      const line = drawnLine(text)
+      expect(line).not.toMatch(/\p{Cc}| {2}|^ | $/u)
+      expect(drawnLine(line)).toBe(line)
+    })
+  )
+})
 
 test('run time counts only while jobs run, not while a manual gate waits', async () => {
   const at = (minute: number) => new Date(NOW - (60 - minute) * 60_000).toISOString()

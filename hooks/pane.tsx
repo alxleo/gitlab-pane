@@ -3,10 +3,12 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 import { drawFound, drawMerged, drawPart, drawUnder } from './card'
 import type { RowPart } from './card'
 import { clearSearch, filterRepo, submitSearch, toggle, toggleWake, typeSearch } from './choices'
-import { CHROME_SIZE, DRAWING_BUDGET, FILTERED, measure } from './drawing'
+import { CHROME_SIZE, CONTROL, DRAWING_BUDGET, FILTERED, measure } from './drawing'
 import { quietly } from './failures'
+import { hinted, hintLine, hintLineFrame, hintRoom, homed, revealsOf } from './hint'
 import { inboxNews } from './inbox'
 import { drawInbox } from './inbox-pane'
+import type { HomedKit } from './hint'
 import { kitOf } from './kit'
 import { buildPane } from './pane-model'
 import type { Piece, RowModel } from './pane-model'
@@ -58,21 +60,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const cards = rows.map(row => withDetail(row, details[row.key]))
   const reading = cards.find(row => row.key === page)
 
-  // A part of a row is drawn once, when the model first asks how big it is or the row is put in the tree, and sized once.
-  const drawnParts = new Map<string, { element: RenderChildren; size: number }>()
-  const partOf = (row: RowModel, part: RowPart) => {
-    const key = `${row.key}|${part}`
-    const known = drawnParts.get(key)
-    if (known !== undefined) {
-      return known
-    }
-    const element = drawPart($, kit, row, part)
-    const made = { element, size: measure(element) }
-    drawnParts.set(key, made)
+  // A part of a row is drawn once, when the model first asks how big it is or the row is put in the tree, and sized once,
+  // with what its symbols say in the line under the card, which costs the card as the symbols do.
+  type Drawn = { element: RenderChildren; reveals: RenderChildren[]; size: number }
+  const drawnParts = new Map<string, Drawn>()
+  const drawn = (row: RowModel, part: RowPart | 'under', paint: (at: HomedKit) => RenderChildren): Drawn => {
+    const at = homed(kit, row.boxKey)
+    const element = paint(at)
+    const reveals = revealsOf(at)
+    const made = { element, reveals, size: measure(element) + measure(reveals) }
+    drawnParts.set(`${row.key}|${part}`, made)
     return made
   }
+  const partOf = (row: RowModel, part: RowPart) => drawnParts.get(`${row.key}|${part}`) ?? drawn(row, part, at => drawPart($, at, row, part))
   // What is open under a card, drawn once and sized once, so the card's room in the list counts it.
-  const underOf = (row: RowModel): { element: RenderChildren; size: number } | null => {
+  const underOf = (row: RowModel): Drawn | null => {
     const under = unders[row.key]
     if (under === undefined) {
       return null
@@ -91,16 +93,27 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     if (block === null) {
       return null
     }
-    const element = drawUnder($, kit, row, block, under, under.kind === 'ticket' ? ticketUrl(browse, under.id) : null)
-    const made = { element, size: measure(element) }
-    drawnParts.set(`${row.key}|under`, made)
-    return made
+    return drawn(row, 'under', at => drawUnder($, at, row, block, under, under.kind === 'ticket' ? ticketUrl(browse, under.id) : null))
   }
+  // No border: where the MR stands is said by its marks and words, never by a colour alone. A blank line below each card
+  // keeps one card's lines together and apart from the next, and is where a symbol on it says what it means.
+  const cardBox = (row: RowModel, children: RenderChildren[]) => (
+    <Box key={row.boxKey} flexDirection="column" paddingX={1} marginBottom={1}>
+      {children}
+    </Box>
+  )
+  // What a card adds around its parts: its own box and the line under it, the same for every card but for its key.
+  const lineFrame = hintLineFrame(kit)
+  const frameOf = (row: RowModel) => measure(cardBox(row, [])) + lineFrame
   const sizeOf = (row: RowModel, piece: Piece): number => {
     // A JSON array of three costs the three and four characters between and around them.
     switch (piece) {
       case 'head':
-        return (row.isQuiet ? partOf(row, 'line1').size : partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4) + (underOf(row)?.size ?? 0)
+        return (
+          frameOf(row) +
+          (row.isQuiet ? partOf(row, 'line1').size : partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4) +
+          (underOf(row)?.size ?? 0)
+        )
       case 'line2':
         return partOf(row, 'line2').size
       case 'faces':
@@ -145,16 +158,19 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       return null
     }
     const { fit } = row
-    // No border: where the MR stands is said by its marks and words, never by a colour alone. A blank line below each card
-    // keeps one card's lines together and apart from the next.
-    return (
-      <Box key={row.boxKey} flexDirection="column" paddingX={1} marginBottom={1}>
-        {partOf(row, 'line1').element}
-        {!row.isQuiet && (fit.hasFaces ? partOf(row, 'faces').element : partOf(row, 'line2').element)}
-        {!row.isQuiet && partOf(row, 'said').element}
-        {underOf(row)?.element}
-      </Box>
-    )
+    const under = underOf(row)
+    const parts = [
+      partOf(row, 'line1'),
+      ...(row.isQuiet ? [] : [fit.hasFaces ? partOf(row, 'faces') : partOf(row, 'line2'), partOf(row, 'said')]),
+      ...(under !== null ? [under] : []),
+    ]
+    return cardBox(row, [
+      ...parts.map(part => part.element),
+      hintLine(
+        kit,
+        parts.flatMap(part => part.reveals)
+      ),
+    ])
   }
 
   const { mine, parked, drafts, others, merged } = model
@@ -206,10 +222,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // Closing the pane draws the box again holding what the list is searched for (`notePaneDrawn`). Text that finds nothing
   // to look for (`!`, spaces) narrows nothing, and says nothing.
   const { found } = model
+  const atSearch = homed(kit, 'search')
   const searchRow =
     Input !== undefined
       ? [
-          <Box flexDirection="row" columnGap={1} alignItems="center">
+          <Box flexDirection="row" columnGap={1} alignItems="center" marginBottom={hintRoom(atSearch)}>
             <Box flexGrow={1} flexShrink={1}>
               <Input
                 key={`search-${searchBox.round}`}
@@ -222,7 +239,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
               />
             </Box>
             {found !== null && filtered}
-            {search !== '' && <Button key="search-clear" plain label="✕" onPress={() => clearSearch($)} />}
+            {search !== '' &&
+              hinted(atSearch, 'hint-search-clear', CONTROL.clear.hint, <Button key="search-clear" plain label={CONTROL.clear.mark} onPress={() => clearSearch($)} />)}
+            {hintLine(atSearch)}
           </Box>,
         ]
       : []
@@ -267,20 +286,30 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // Refreshing and waking sit at the top right, as symbols: in view on a long list, and out of the way of what is read. Each
   // symbol is its Button's label, alone: the desktop app draws a label in place of the children. ↻ reads the MRs and the
   // inbox alike, and is dim while either read is out.
-  const controls = (
+  // Their descriptions show in the blank line under the top row, as every symbol's does under its block.
+  const controls = (at: HomedKit) => (
     <Box flexDirection="row" gap={2} flexShrink={0}>
-      <Button key="refresh" plain dimColor={model.isRefreshing} label="↻" onPress={() => quietly($, refresh($))} />
-      <Button key="wake" plain label={model.wake} onPress={() => toggleWake($)} />
+      {hinted(
+        at,
+        'hint-refresh',
+        CONTROL.refresh.hint,
+        <Button key="refresh" plain dimColor={model.isRefreshing} label={CONTROL.refresh.mark} onPress={() => quietly($, refresh($))} />
+      )}
+      {hinted(at, 'hint-wake', model.wake.hint, <Button key="wake" plain label={model.wake.mark} onPress={() => toggleWake($)} />)}
     </Box>
   )
-  const topRow = (...left: RenderChildren[]) => (
-    <Box flexDirection="row" columnGap={2} alignItems="center">
-      <Box flexDirection="row" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1}>
-        {left}
+  const topRow = (...left: RenderChildren[]) => {
+    const at = homed(kit, 'top')
+    return (
+      <Box flexDirection="row" columnGap={2} alignItems="center" marginBottom={hintRoom(at)}>
+        <Box flexDirection="row" columnGap={1} alignItems="center" flexGrow={1} flexShrink={1}>
+          {left}
+        </Box>
+        {controls(at)}
+        {hintLine(at)}
       </Box>
-      {controls}
-    </Box>
-  )
+    )
+  }
   const body =
     reading !== undefined
       ? [
@@ -306,8 +335,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ...(isInbox ? [await drawInbox($, e)] : mineTab),
         ]
 
+  // The last block has no gap under it, only its own margin: the pane's own padding makes up the rest of the blank row
+  // where what its symbols mean shows, so the pane's end does not cut that row in half.
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={1} paddingBottom={hintRoom(kit)}>
       {body}
       {/* The footer is only what went wrong with the last read, or what it left out. */}
       {model.footer.text !== '' && (
