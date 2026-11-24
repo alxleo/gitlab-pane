@@ -59,6 +59,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # the address check reads every commit
+      - &markdown-scope
+        name: Detect Markdown-only changes
+        id: markdown-scope
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: git diff --name-only --no-renames HEAD^1 HEAD -- . ':(exclude,icase,glob)**/*.md' | awk 'END { print "markdown_only=" (NR == 0) }' >> "$GITHUB_OUTPUT"
       # Every commit names its author by a GitHub noreply address, so no one's own address is published here. The
       # committer is one too, or Claude's noreply@anthropic.com for a commit Claude made and signed. It reads the pull request's own commits, not the merge GitHub makes to test them, and on main the whole
       # history, which also catches a merge GitHub made with a merger's own address.
@@ -77,19 +83,25 @@ jobs:
         with:
           node-version: 26
           cache: npm
-      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: npm ci --ignore-scripts
+      - if: steps.markdown-scope.outputs.markdown_only == '1'
+        run: npm run docs -- check
       # File hygiene, lint, all the type-checks, the GitLab types, the release tree and `claude plugin validate --strict`
       # of the plugin and of the dev-only store probe.
-      - run: npm run check:fast
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        run: npm run check:fast
       # A squash merge makes the pull request's title the commit on main, so it follows the same rule as a commit message.
       - name: The pull request title says what the change is
         if: github.event_name == 'pull_request'
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: printf '%s\n' "$TITLE" | npm run --silent pr-title
-      - run: npm test
-      - name: The release tree builds, validates and loads only what it holds
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        run: npm test
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        name: The release tree builds, validates and loads only what it holds
         run: |
           node tools/release_tree.ts build "$RUNNER_TEMP/tree"
           claude plugin validate --strict "$RUNNER_TEMP/tree"
@@ -97,15 +109,19 @@ jobs:
           claude plugin validate --strict .claude-plugin/marketplace.json
       # The ChatGPT plugin as ChatGPT's desktop app takes it: its server serves the panel by its hash, and Codex installs
       # it from the tree and starts that server. Neither reads GitLab.
-      - run: npm install --prefix "$RUNNER_TEMP/codex" "@openai/codex@${CODEX_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
-      - name: The release tree's ChatGPT plugin installs in Codex and starts its server
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        run: npm install --prefix "$RUNNER_TEMP/codex" "@openai/codex@${CODEX_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        name: The release tree's ChatGPT plugin installs in Codex and starts its server
         run: |
           node chatgpt/probe.ts --server "$RUNNER_TEMP/tree/chatgpt/dist/server.mjs"
           node chatgpt/codex-check.ts --tree "$RUNNER_TEMP/tree" --codex "$RUNNER_TEMP/codex/node_modules/.bin/codex"
       # The stable channel's Claude Code beside the pinned one: the plugin's own validation and tests, not the dev
       # checks, which read the pinned engine's declarations and pictures.
-      - run: npm install --prefix "$RUNNER_TEMP/stable" "@anthropic-ai/claude-code@${CLAUDE_CODE_STABLE}" # zizmor: ignore[adhoc-packages] one pinned CLI
-      - name: The plugin validates and passes its tests on the stable channel's Claude Code
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        run: npm install --prefix "$RUNNER_TEMP/stable" "@anthropic-ai/claude-code@${CLAUDE_CODE_STABLE}" # zizmor: ignore[adhoc-packages] one pinned CLI
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        name: The plugin validates and passes its tests on the stable channel's Claude Code
         run: |
           stable="$RUNNER_TEMP/stable/node_modules/.bin/claude"
           "$stable" --version
@@ -127,6 +143,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - *markdown-scope
       # A pull request's commits, or the commits a push brought; canary.yml reads the whole history every week.
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
@@ -134,10 +151,12 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
       # actionlint has no action of its own; its maintainer publishes the image its documentation runs, pinned here by digest.
-      - uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
         with:
           args: -color
-      - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           advanced-security: false
 
