@@ -2,7 +2,7 @@
 // `host.ts` around the panel, answering its tool calls through the real server in memory. By default GitLab's answer is
 // made up (the repo's test fixtures), so a picture shows no real MR. `panel-test.ts` drives the same page headless.
 //
-//   node harness.ts [--port 4319] [--live]
+//   node --import ./tools/resolve_ts.ts chatgpt/harness.ts [--port 4319] [--live]   (from the repository's root)
 import { parseArgs } from 'node:util'
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'

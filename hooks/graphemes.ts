@@ -83,3 +83,38 @@ export function leading(text: string, count: number, size: number): string[] {
   }
   return found
 }
+
+/** A character drawn two cells wide: Chinese, Japanese and Korean letters, full-width forms, and emoji pictures. */
+const WIDE = /^(?:[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦]|\p{Extended_Pictographic})/u
+
+const cellsOfOne = (character: string): number => (WIDE.test(character) ? 2 : 1)
+
+/** The cells `text` takes on screen: two for each wide character, one for any other a person counts. */
+export function cellsOf(text: string): number {
+  let cells = 0
+  for (const { segment } of SEGMENTER.segment(text)) {
+    cells += cellsOfOne(segment)
+  }
+  return cells
+}
+
+/**
+ * `text` if it takes at most `room` cells and `4 × room` UTF-16 units, else its start of whole characters that fits one
+ * cell and one unit fewer, and an ellipsis: what a line in a box `room` cells wide holds, a name in wide letters included.
+ */
+export function shortenToCells(text: string, room: number): string {
+  let end = 0
+  let cells = 0
+  let cutAt = 0
+  for (const { segment } of SEGMENTER.segment(text)) {
+    cells += cellsOfOne(segment)
+    if (cells > room || end + segment.length > 4 * room) {
+      return `${text.slice(0, cutAt)}…`
+    }
+    end += segment.length
+    if (cells <= room - 1 && end <= 4 * room - 1) {
+      cutAt = end
+    }
+  }
+  return text
+}

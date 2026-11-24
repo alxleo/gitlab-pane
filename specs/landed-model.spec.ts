@@ -48,8 +48,8 @@ test('open, the rows hold each build, so the line says no failure twice', () => 
   const open = mergedModel([failed(1), landed(2)], shown({ isOpen: true }))
   expect(open?.label).toBe('▾ 2 merged')
   expect(open?.rows.map(row => row.build)).toEqual([
-    { kind: 'mark', glyph: '✗', tone: 'error', link: { href: 'https://gitlab.com/g/p/-/pipelines/10', text: '🚦 main' } },
-    { kind: 'mark', glyph: '✓', tone: 'success', link: { href: 'https://gitlab.com/g/p/-/pipelines/20', text: '🚦 main' } },
+    { kind: 'mark', glyph: '✗', tone: 'error', word: 'failed', link: { href: 'https://gitlab.com/g/p/-/pipelines/10', text: '🚦 main' } },
+    { kind: 'mark', glyph: '✓', tone: 'success', word: 'passed', link: { href: 'https://gitlab.com/g/p/-/pipelines/20', text: '🚦 main' } },
   ])
 })
 
@@ -68,7 +68,7 @@ test('a title too long for a link that cannot wrap is cut', () => {
 
 test('a build not yet seen is the mark for no pipeline, and a commit that could not be told has no mark', () => {
   const rows = mergedModel([landed(1, { build: null }), landed(2, { sha: null, build: null })], shown({ isOpen: true }))?.rows ?? []
-  expect(rows[0]?.build).toEqual({ kind: 'mark', glyph: '○', tone: 'subtle', link: null })
+  expect(rows[0]?.build).toEqual({ kind: 'mark', glyph: '○', tone: 'subtle', word: 'no pipeline', link: null })
   expect(rows[1]?.build).toEqual({ kind: 'unknown', words: 'build unknown' })
 })
 

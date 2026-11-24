@@ -1,4 +1,4 @@
-import type { EngineInterface, RenderInput } from 'claude-code'
+import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 /**
  * What one drawing of the pane draws with: the surface's own elements, whether it draws Svg or a Select, and the time. It holds no `$`
@@ -12,7 +12,18 @@ export function kitOf($: EngineInterface, e: RenderInput<'Pane'>, now: number) {
   const Select = e.surface !== 'mobile' ? elements.Select : undefined
   // So may an Input, so a phone has no search box.
   const Input = e.surface !== 'mobile' ? elements.Input : undefined
-  return { ...elements, Svg, Select, Input, e, now }
+  // A description waits in a region of its own, which only the desktop draws under a pointer here; elsewhere a symbol keeps
+  // its words beside it.
+  const Client = e.surface === 'desktop' && 'Client' in elements ? elements.Client : undefined
+  const showsHints = Client !== undefined
+  // The block whose line under it says what its symbols mean (`homed` in `hint.tsx`); none until a block takes the kit.
+  return { ...elements, Svg, Select, Input, Client, showsHints, home: noHome(), e, now }
 }
+
+/** No block yet, typed as a kit's home may be. */
+const noHome = (): HintHome | null => null
+
+/** A block that says what its symbols mean in the line under it: its name in the pane, and the descriptions drawn so far. */
+export type HintHome = { id: string; reveals: RenderChildren[] }
 
 export type Kit = ReturnType<typeof kitOf>

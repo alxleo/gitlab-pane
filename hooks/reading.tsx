@@ -1,8 +1,11 @@
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure } from './drawing'
+import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure, opens } from './drawing'
 import { ago, plural } from './format'
+import { hinted, hintLine, hintRoom, homed } from './hint'
+import type { HomedKit } from './hint'
 import { shortHash } from './identity'
+import { kitOf } from './kit'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
@@ -13,8 +16,11 @@ import type { MarkdownText, Part } from './markdown'
 import type { PageHead } from './page-lines'
 import type { MrCard, Note, ReplyBox, Write } from '../types'
 
-/** Room kept for the link that says the rest is on GitLab. */
-const CUT_NOTE_SIZE = 300
+/**
+ * Room kept for the links that say the rest is on GitLab: the whole page can need two (the description's and the threads'),
+ * each about 950 characters with what its 🌐 means.
+ */
+const CUT_NOTE_SIZE = 2_000
 
 /**
  * How a page is drawn: `folds` are the `<details>` drawn the other way from how GitLab first shows them, `focus` the
@@ -30,6 +36,19 @@ export type PageView = { folds: string[]; focus: string; head: PageHead; now: nu
  */
 export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now, reply, writes }: PageView) {
   const { Box, Text, Button, Link, Markdown, Code, Input } = $.ui.resolve(e)
+  const kit = kitOf($, e, now)
+  /** A link to GitLab with what its mark opens shown once the pointer rests on it, in the line under the block `at` draws. */
+  const out = (at: HomedKit, key: string, words: string, href: string, text: string) => hinted(at, key, words, <Link href={href}>{text}</Link>)
+  /** Such a link on a line of its own, the page's gap under it holding what it opens. */
+  const alone = (key: string, words: string, href: string, text: string) => {
+    const at = homed(kit, key)
+    return (
+      <Box flexDirection="row" marginBottom={hintRoom(at)}>
+        {out(at, key, words, href, text)}
+        {hintLine(at)}
+      </Box>
+    )
+  }
   /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
   const markdown = (text: MarkdownText) => <Markdown text={text} />
 
@@ -54,7 +73,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   }
 
   /** A note's byline: who wrote it, or, on a page opened on its writer, whether it is in an open thread. */
-  const byline = (note: Note, who: string) => (
+  const byline = (at: HomedKit, note: Note, place: string, who: string) => (
     <Box flexDirection="row" gap={1}>
       <Box flexShrink={0}>
         <Text weight="semibold">{who}</Text>
@@ -64,24 +83,34 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           {[note.where, ago(note.at, now)].filter(Boolean).join(' · ')}
         </Text>
       </Box>
-      <Link href={note.url}>{LINK.comment}</Link>
+      {out(at, `hint-note-${place}`, opens('comment'), note.url, LINK.comment)}
     </Box>
   )
-  const said = (note: Note, who = note.author) => (
-    <Box flexDirection="column">
-      {byline(note, who)}
-      {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
-    </Box>
-  )
+  /**
+   * A note is a block of its own, a gap under it: its 💬 says what it opens there, not over the note's first line. It is
+   * named by its place on the page (`t2`, `t2.1`, `b0`, `p3`), not its address: a note GitLab gives none of links to its MR,
+   * so two such notes would share one, and the engine draws nothing of a tree with a key twice.
+   */
+  const said = (note: Note, place: string, who = note.author) => {
+    const at = homed(kit, `note-${place}`)
+    return (
+      <Box flexDirection="column" marginBottom={hintRoom(at)}>
+        {byline(at, note, place, who)}
+        {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
+        {hintLine(at)}
+      </Box>
+    )
+  }
 
   const { verdict } = about
+  const atHead = homed(kit, 'page-head')
   const head = [
     <Text size="heading" weight="semibold">
       {mr.title}
     </Text>,
-    <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-      <Link href={mr.url}>{`${LINK.mr} !${mr.iid}`}</Link>
-      <Link href={mr.repo.url}>{`${LINK.repo} ${mr.repo.name}`}</Link>
+    <Box flexDirection="row" flexWrap="wrap" columnGap={2} marginBottom={hintRoom(atHead)}>
+      {out(atHead, 'hint-page-mr', opens('mr'), mr.url, `${LINK.mr} !${mr.iid}`)}
+      {out(atHead, 'hint-page-repo', opens('repo'), mr.repo.url, `${LINK.repo} ${mr.repo.name}`)}
       {verdict !== null && (
         <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
           {verdict.words}
@@ -90,11 +119,12 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       <Text dimColor>
         {`${mr.branch.source} → ${mr.branch.target}${mr.diff !== null ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
       </Text>
+      {hintLine(atHead)}
     </Box>,
-    ...(about.ticket !== null ? [<Link href={about.ticket.href}>{about.ticket.text}</Link>] : []),
+    ...(about.ticket !== null ? [alone('hint-page-ticket', opens('jira'), about.ticket.href, about.ticket.text)] : []),
     ...about.standing.map(line =>
       line.href !== null ? (
-        <Link href={line.href}>{line.text}</Link>
+        alone(`hint-start-${shortHash(line.href)}`, 'opens the job, to start it', line.href, line.text)
       ) : (
         // What waits on others is said quietly, as the verdict says it; what is yours to act on stands out in its tone.
         <Text weight={line.tone !== undefined ? 'semibold' : undefined} dimColor={line.tone === undefined} color={line.tone}>
@@ -120,18 +150,21 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   // Opened on one person: what they wrote, and the way on to the whole MR.
   const person = focus !== '' ? personPage(mr, focus) : null
   if (person !== null) {
-    const notes = fitting(person.notes.map(({ note, label }) => said(note, label)))
+    const notes = fitting(person.notes.map(({ note, label }, i) => said(note, `p${i}`, label)))
     return [
       ...head,
       <Text weight="semibold">{person.heading}</Text>,
       ...notes,
-      ...(notes.length < person.notes.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of their comments are on GitLab`}</Link>] : []),
+      ...(notes.length < person.notes.length ? [alone('hint-rest-person', opens('mr'), mr.url, `${LINK.mr} The rest of their comments are on GitLab`)] : []),
       <Button key="page-whole" plain label={`the whole of !${mr.iid} ›`} onPress={() => showWhole($)} />,
     ]
   }
 
   const pipeline = mr.pipeline
   const jobs = [...(pipeline?.failed ?? []).map(job => ({ job, glyph: '✗' })), ...(pipeline?.amber ?? []).map(job => ({ job, glyph: '⚠' }))]
+  // One description for the whole list: every link opens its job's log, and a list of a hundred and more jobs leaves room for
+  // the threads and the description only if its links are bare.
+  const jobsSay = [...((pipeline?.failed.length ?? 0) > 0 ? ['✗ failed'] : []), ...((pipeline?.amber.length ?? 0) > 0 ? ['⚠ allowed to fail'] : []), 'each opens its log']
   /**
    * Under a thread, the way to answer it: a quiet `↩ reply`, then one box at a time, then the text to confirm, since it
    * posts as you. A phone may not have been sent a text field, and a thread read without where its replies go has none:
@@ -189,29 +222,36 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       cancel,
     ]
   }
-  const threads = mr.openThreads.map(thread => (
+  const threads = mr.openThreads.map((thread, t) => (
     <Box flexDirection="column" gap={1}>
       {thread.excerpt !== undefined && <Code source={thread.excerpt.hunk} format="diff" path={thread.excerpt.path} wrap="truncate-end" />}
-      {said(thread)}
-      {(thread.replies ?? []).map(answer => (
-        <Box paddingLeft={2}>{said(answer)}</Box>
+      {said(thread, `t${t}`)}
+      {(thread.replies ?? []).map((answer, r) => (
+        <Box paddingLeft={2}>{said(answer, `t${t}.${r}`)}</Box>
       ))}
       {answering(thread)}
     </Box>
   ))
   const botNotes = mr.people.filter(each => each.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
+  const atJobs = homed(kit, 'page-jobs')
   const blocks = [
     ...(jobs.length > 0
       ? [
-          <Box flexDirection="column">
+          <Box flexDirection="column" marginBottom={hintRoom(atJobs)}>
             <Text weight="semibold" color="error">
               {plural(jobs.length, 'failed job')}
             </Text>
-            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-              {jobs.map(({ job, glyph }) => (
-                <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
-              ))}
-            </Box>
+            {hinted(
+              atJobs,
+              'hint-jobs',
+              jobsSay,
+              <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+                {jobs.map(({ job, glyph }) => (
+                  <Link href={job.url}>{`${glyph} ${job.name}`}</Link>
+                ))}
+              </Box>
+            )}
+            {hintLine(atJobs)}
           </Box>,
         ]
       : []),
@@ -223,7 +263,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           ...threads,
         ]
       : []),
-    ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map(note => said(note))] : []),
+    ...(botNotes.length > 0 ? [<Text weight="semibold">{plural(botNotes.length, 'open bot comment')}</Text>, ...botNotes.map((note, i) => said(note, `b${i}`))] : []),
   ]
 
   const kept = fitting(blocks)
@@ -249,8 +289,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   return [
     ...head,
     ...described,
-    ...(isCut ? [<Link href={mr.url}>{`${LINK.mr} The rest of the description is on GitLab`}</Link>] : []),
+    ...(isCut ? [alone('hint-rest-description', opens('mr'), mr.url, `${LINK.mr} The rest of the description is on GitLab`)] : []),
     ...kept,
-    ...(kept.length < blocks.length ? [<Link href={mr.url}>{`${LINK.mr} The rest of the threads are on GitLab`}</Link>] : []),
+    ...(kept.length < blocks.length ? [alone('hint-rest-threads', opens('mr'), mr.url, `${LINK.mr} The rest of the threads are on GitLab`)] : []),
   ]
 }

@@ -13,6 +13,12 @@ test('svg escapes every value, in text and in either kind of quote, and leaves a
   expect(svg`<g>${svg`<i/>`}</g>`).toBe('<g>&lt;i/&gt;</g>')
 })
 
+test('a value keeps nothing XML refuses, so a name with a control character in it still draws', () => {
+  const name = `Ines${String.fromCodePoint(1)} & <Co>${String.fromCodePoint(0, 0xffff)}`
+  expect(svg`<title>${name}</title>`).toBe('<title>Ines &amp; &lt;Co&gt;</title>')
+  expect(svg`<t>${'a\tb\nc'}</t>`).toBe('<t>a\tb\nc</t>')
+})
+
 test("no string put into an svg template makes markup: the only < > quotes left are the template's own", () => {
   fc.assert(
     fc.property(textArb, textArb, fc.double(), (inText, inAttribute, number) => {

@@ -36,6 +36,27 @@ export type Tone = 'success' | 'error' | 'warning' | 'subtle' | 'suggestion'
 
 export type Glyph = '✓' | '✗' | '⏸' | '⊘' | '○' | '?' | '●'
 
+/** A status in words: a stage's tooltip, and what a pipeline's mark says under the pointer. */
+export const STATUS_WORD: Record<CiStatus, string> = {
+  success: 'passed',
+  failed: 'failed',
+  running: 'running',
+  pending: 'queued',
+  created: 'not started',
+  manual: 'waiting on a manual job',
+  scheduled: 'scheduled',
+  skipped: 'skipped',
+  canceled: 'canceled',
+  canceling: 'canceling',
+  preparing: 'preparing',
+  waiting_for_resource: 'waiting for a resource',
+  waiting_for_callback: 'waiting for a callback',
+  unknown: 'in a state this pane does not know',
+}
+
+/** What `statusMark`'s glyph for a status means, said under the pointer; `no pipeline` for none. */
+export const markWord = (status: CiStatus | undefined): string => (status === undefined ? 'no pipeline' : STATUS_WORD[status])
+
 export function statusMark(status: CiStatus | undefined): { glyph: Glyph; tone: Tone } {
   switch (status) {
     case 'success':
