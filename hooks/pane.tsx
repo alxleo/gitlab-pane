@@ -109,11 +109,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     // A JSON array of three costs the three and four characters between and around them.
     switch (piece) {
       case 'head':
-        return (
-          frameOf(row) +
-          (row.isQuiet ? partOf(row, 'line1').size : partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4) +
-          (underOf(row)?.size ?? 0)
-        )
+        return frameOf(row) + partOf(row, 'line1').size + partOf(row, 'line2').size + partOf(row, 'said').size + 4 + (underOf(row)?.size ?? 0)
       case 'line2':
         return partOf(row, 'line2').size
       case 'faces':
@@ -159,11 +155,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     }
     const { fit } = row
     const under = underOf(row)
-    const parts = [
-      partOf(row, 'line1'),
-      ...(row.isQuiet ? [] : [fit.hasFaces ? partOf(row, 'faces') : partOf(row, 'line2'), partOf(row, 'said')]),
-      ...(under !== null ? [under] : []),
-    ]
+    const parts = [partOf(row, 'line1'), fit.hasFaces ? partOf(row, 'faces') : partOf(row, 'line2'), partOf(row, 'said'), ...(under !== null ? [under] : [])]
     return cardBox(row, [
       ...parts.map(part => part.element),
       hintLine(

@@ -85,14 +85,8 @@ function rowOf(row: RowModel): HTMLLIElement {
   const title = el('button', 'title', row.title)
   title.addEventListener('click', () => void app.openLink({ url: row.mr.href }))
   line1.append(title)
-  if (row.isQuiet) {
-    line1.append(...verdictParts(row))
-  }
   line1.append(el('span', 'soft small', row.ago))
   card.append(line1)
-  if (row.isQuiet) {
-    return card
-  }
   const line2 = el('div', 'line2')
   line2.append(link(row.mr))
   if (row.ticket !== null) {
