@@ -6,18 +6,17 @@
 // and says so instead of checking when they are missing or are other versions. It starts them with an argument list, not a
 // shell, so a path with spaces is no trouble.
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { isRecord, parseJson } from '../hooks/decode.ts'
 import { coreFiles } from './core.ts'
+import { installed, pinned } from './pins.ts'
 
 const ROOT = process.env['CLAUDE_PROJECT_DIR'] ?? join(import.meta.dirname, '..')
 // oxlint loads oxlint.config.ts and the local rules, which import the core: Node finds its files with this loaded first.
 const RESOLVE_TS = pathToFileURL(join(import.meta.dirname, 'resolve_ts.ts')).href
-
-const readJson = (file: string): unknown => parseJson(readFileSync(file, 'utf8'))
 
 /** The file the tool edited, from the hook's JSON on stdin, relative to the repository with `/` separators. */
 function editedFile(): string | null {
@@ -32,21 +31,6 @@ function editedFile(): string | null {
   return typeof path === 'string' ? relative(ROOT, path).split(sep).join('/') : null
 }
 
-/** What package.json pins for a tool: an exact version. */
-function pinned(name: string): string | null {
-  const manifest = readJson(join(ROOT, 'package.json'))
-  const dependencies = isRecord(manifest) ? manifest['devDependencies'] : undefined
-  const spec = isRecord(dependencies) ? dependencies[name] : undefined
-  return typeof spec === 'string' ? spec : null
-}
-
-/** The version of a tool installed in node_modules, or null when it is not. */
-function installed(name: string): string | null {
-  const file = join(ROOT, 'node_modules', name, 'package.json')
-  const manifest = existsSync(file) ? readJson(file) : null
-  return isRecord(manifest) && typeof manifest['version'] === 'string' ? manifest['version'] : null
-}
-
 function main(): number {
   const file = editedFile()
   if (file === null || !coreFiles().includes(file)) {
@@ -58,8 +42,8 @@ function main(): number {
     { name: '@biomejs/biome', script: join(ROOT, 'node_modules', '@biomejs', 'biome', 'bin', 'biome'), args: ['format', file] },
   ]
   const wrong = tools
-    .filter(tool => installed(tool.name) !== pinned(tool.name))
-    .map(tool => `${tool.name} is ${installed(tool.name) ?? 'not installed'}, package.json pins ${pinned(tool.name) ?? '(nothing)'}`)
+    .filter(tool => installed(ROOT, tool.name) !== pinned(ROOT, tool.name))
+    .map(tool => `${tool.name} is ${installed(ROOT, tool.name) ?? 'not installed'}, package.json pins ${pinned(ROOT, tool.name) ?? '(nothing)'}`)
   if (wrong.length > 0) {
     console.error(`tools/check_core.ts: nothing was checked after your edit of ${file}, because node_modules does not match package-lock.json (${wrong.join('; ')}). Run: npm ci`)
     return 2

@@ -8,8 +8,9 @@
 # Once the newest Claude Code is installed, each of its checks runs even when one before it failed, so one known failure
 # (a stricter validator, say) does not hide a second one behind it; the job's step list shows each result.
 # A failure opens an issue, or comments on the one already open, so it reaches whoever watches
-# the repository; the next green run closes it. Renovate raises the pinned version in check.yml and screens.yml (see
-# renovate.json); a failure here on the newest Claude Code warns before that pull request arrives.
+# the repository; the next green run closes it. Renovate raises the pinned version in package.json (see
+# renovate.json); a failure here on the newest Claude Code warns before that pull request arrives. This job calls the
+# global `claude` it installs and never `npm ci`, whose pinned Claude Code would stand in for the newest.
 #
 # A pull request that changes the queries gets the schema check alone. GitHub turns schedules off in a public
 # repository after 60 days without a commit; the Actions tab then offers to turn this back on.

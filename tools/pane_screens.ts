@@ -32,13 +32,12 @@ import { parseJson } from '../hooks/decode.ts'
 import { CHATGPT_PANEL as chatgptPanel, photographPanel } from './chatgpt_screens.ts'
 import { decodeScene, pageHtml, strings, type Scene } from './pane_html.ts'
 import { checkLetters, pictureName, ScreensError, THEMES, withThemes, type Theme } from './photograph.ts'
+import { CLAUDE_PACKAGE, pinned, pinnedClaude } from './pins.ts'
 import { deltaMarks } from './screen_delta.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const SCREENS = join(import.meta.dirname, 'screens')
 const SHOTS = join(ROOT, 'docs', 'screens')
-// The Claude Code that CI pins (CLAUDE_CODE_VERSION in check.yml and screens.yml): another version may draw the pane differently.
-const EXPECTED_CLAUDE = '2.1.318'
 const MARKER = 'PANE-SCENE '
 const LISTED = 'PANE-SCENES '
 
@@ -229,10 +228,12 @@ async function produce(options: Options, out: string): Promise<string[]> {
   const isPanelToo = options.deltaAgainst === null && (options.scenes.length === 0 || options.scenes.includes(chatgptPanel))
   const asked = options.scenes.filter(name => name !== chatgptPanel)
   const isPaneToo = options.scenes.length === 0 || asked.length > 0
-  const version = isPaneToo ? claudeVersion(options.claude) : EXPECTED_CLAUDE
-  if (version !== EXPECTED_CLAUDE) {
+  // The pictures are the pinned Claude Code's: another version may draw the pane differently.
+  const expected = pinned(ROOT, CLAUDE_PACKAGE)
+  const version = isPaneToo ? claudeVersion(options.claude) : expected
+  if (version !== expected) {
     throw new ScreensError(
-      `${options.claude} is Claude Code ${version}; the pane is drawn by ${EXPECTED_CLAUDE}, the version CI pins, and another version may draw it differently. Install it (npm install --global @anthropic-ai/claude-code@${EXPECTED_CLAUDE}) or point --claude at it.`
+      `${options.claude} is Claude Code ${version}; the pane is drawn by ${expected ?? '(nothing)'}, the version package.json pins, and another version may draw it differently. Run npm ci, which installs it, or point --claude at it.`
     )
   }
   const work = mkdtempSync(join(tmpdir(), 'pane-screens-'))
@@ -408,7 +409,7 @@ async function main(): Promise<number> {
       scenes: values.scene ?? [],
       width: integer(values.width, 'width', 201, 10_000, null),
       scale: integer(values.scale, 'scale', 1, 4, 2) ?? 2,
-      claude: values.claude ?? 'claude',
+      claude: values.claude ?? pinnedClaude(ROOT),
       keep: values.keep === undefined ? null : resolve(values.keep),
       allowUnknown: values['allow-unknown'],
       deltaAgainst: values['delta-against'] ?? null,
@@ -420,7 +421,7 @@ async function main(): Promise<number> {
     return render({ out: resolve(values.out ?? SHOTS), options, verify: values.verify, check: values.check, fresh: values.fresh === undefined ? null : resolve(values.fresh) })
   }
   if (command === 'scenes') {
-    return scenesOnly(values.claude ?? 'claude')
+    return scenesOnly(values.claude ?? pinnedClaude(ROOT))
   }
   if (command === 'setup') {
     return setup(values['with-deps'])

@@ -8,13 +8,15 @@
 // empty HOME and config folder and a closed API address, so it has no credential to send and never spends a model call on
 // your account (claude may still reach Anthropic unauthenticated, which changes nothing here).
 //
-// So the types are exactly those of the claude on PATH, which CI pins (CLAUDE_CODE_VERSION in check.yml). It does nothing
+// So the types are exactly those of the Claude Code package.json pins, which `npm ci` installs (tools/pins.ts). It does nothing
 // when the folder already holds that version's file, so it is cheap to run before every check.
 import { type SpawnSyncOptions, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { pinnedClaude } from './pins.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dest = join(root, '.claude-plugin', 'types')
@@ -78,7 +80,7 @@ const head = (file: string): string => readFileSync(file, 'utf8').split('\n', 1)
 const stamp = (version: string): string => `// Written by Claude Code ${version}.`
 
 /**
- * Has the claude on PATH unpack its plugin-authoring skill inside `work`, an empty folder, and returns where its
+ * Has the pinned claude unpack its plugin-authoring skill inside `work`, an empty folder, and returns where its
  * declarations landed, or undefined when they are not there. Unpacking happens before any request, so the refused
  * request and the exit status are expected and ignored.
  */
@@ -86,7 +88,7 @@ function unpackDeclarations(version: string, work: string): string | undefined {
   for (const folder of ['home', 'config', 'tmp']) {
     mkdirSync(join(work, folder))
   }
-  spawnSync('claude', ['-p', '/plugin-authoring'], unpackRun(work, process.env['PATH'] ?? ''))
+  spawnSync(pinnedClaude(root), ['-p', '/plugin-authoring'], unpackRun(work, process.env['PATH'] ?? ''))
   const skills = join(work, 'tmp', readdirSync(join(work, 'tmp')).find(name => name.startsWith('claude-')) ?? 'missing', 'bundled-skills', version)
   const hashes = existsSync(skills) ? readdirSync(skills) : []
   return hashes.map(hash => join(skills, hash, 'plugin-authoring', 'types', 'claude-code.d.ts')).find(existsSync)
@@ -115,9 +117,9 @@ function lay(version: string, target: string): string {
 }
 
 if (import.meta.main) {
-  const version = versionFrom(spawnSync('claude', ['--version'], { encoding: 'utf8', timeout: 30_000 }).stdout)
+  const version = versionFrom(spawnSync(pinnedClaude(root), ['--version'], { encoding: 'utf8', timeout: 30_000 }).stdout)
   if (version === '') {
-    fail('`claude --version` printed nothing; is Claude Code on PATH?')
+    fail(`\`${pinnedClaude(root)} --version\` printed nothing; run npm ci, which installs the Claude Code package.json pins.`)
   }
   const target = join(dest, 'claude-code', 'index.d.ts')
   const current = existsSync(target) && existsSync(join(dest, 'tsconfig.json')) && head(target) === stamp(version)
