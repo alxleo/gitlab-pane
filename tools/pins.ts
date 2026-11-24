@@ -27,5 +27,8 @@ export function installed(root: string, name: string): string | null {
 /** The Claude Code package, whose version package.json pins. */
 export const CLAUDE_PACKAGE = '@anthropic-ai/claude-code'
 
-/** The pinned Claude Code that `npm ci` puts in `root`'s node_modules. */
+/**
+ * The pinned Claude Code that `npm ci` puts in `root`'s node_modules. Its install step puts the native binary in place;
+ * an install with `--ignore-scripts` leaves a stub that refuses to run until `npm rebuild @anthropic-ai/claude-code`.
+ */
 export const pinnedClaude = (root: string): string => join(root, 'node_modules', '.bin', 'claude')

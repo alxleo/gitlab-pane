@@ -4,7 +4,7 @@ Node 26 or newer runs everything, TypeScript tools included (types stripped). No
 
 ## Set up
 
-[mise](https://mise.jdx.dev) comes first: it installs what `mise.toml` pins. `npm ci` installs the rest, the Claude Code the checks run among them: package.json pins it, and every script and git hook runs that one, whatever Claude Code your machine has. Your own `claude` is only for running the mod.
+[mise](https://mise.jdx.dev) comes first: it installs what `mise.toml` pins. `npm ci` installs the rest, the Claude Code the checks run among them: package.json pins it, and every script and git hook runs that one, whatever Claude Code your machine has. Your own `claude` is only for running the mod. An install with `--ignore-scripts`, as CI's, leaves that Claude Code a stub until `npm rebuild @anthropic-ai/claude-code`.
 
 ```bash
 mise install                 # Node and the scanners `npm run scan` runs, at the versions mise.toml pins
@@ -18,7 +18,7 @@ npm run check && npm test    # everything a commit and a push must pass
 
 | Script | Checks |
 | --- | --- |
-| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the `claude` on your PATH (`tools/engine_types.ts`: no sign-in, no model call, git-ignored). |
+| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the pinned Claude Code `npm ci` installed (`tools/engine_types.ts`: no sign-in, no model call, git-ignored). |
 | `npm run files` | JSON and YAML parse; no conflict markers, private keys or files over 500 kB; no `oxlint-` or `eslint-` directive comment in any script (checked here because oxlint obeys a blanket disable even over the rule refusing it); one final newline, no trailing whitespace. |
 | `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), oxlint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
 | `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |

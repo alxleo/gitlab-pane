@@ -117,9 +117,14 @@ function lay(version: string, target: string): string {
 }
 
 if (import.meta.main) {
-  const version = versionFrom(spawnSync(pinnedClaude(root), ['--version'], { encoding: 'utf8', timeout: 30_000 }).stdout)
+  const ran = spawnSync(pinnedClaude(root), ['--version'], { encoding: 'utf8', timeout: 30_000 })
+  const version = versionFrom(ran.stdout)
   if (version === '') {
-    fail(`\`${pinnedClaude(root)} --version\` printed nothing; run npm ci, which installs the Claude Code package.json pins.`)
+    // An install with --ignore-scripts leaves a stub that says so on stderr; the rebuild puts the binary in place.
+    const said = ran.stderr.trim().split('\n', 1)[0] ?? ''
+    fail(
+      `\`${pinnedClaude(root)} --version\` printed no version${said !== '' ? ` (${said})` : ''}. Run npm ci, which installs the Claude Code package.json pins, or, after an install with --ignore-scripts, npm rebuild @anthropic-ai/claude-code.`
+    )
   }
   const target = join(dest, 'claude-code', 'index.d.ts')
   const current = existsSync(target) && existsSync(join(dest, 'tsconfig.json')) && head(target) === stamp(version)
