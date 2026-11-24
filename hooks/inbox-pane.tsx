@@ -4,8 +4,9 @@ import { discSource } from './avatar'
 import { isFilled } from './decode'
 import { ago, shortTitle } from './format'
 import { CONTROL, measure, opens } from './drawing'
-import { AT_END, hinted } from './hint'
+import { hinted, hintLine, homed } from './hint'
 import { kitOf } from './kit'
+import type { Kit } from './kit'
 import { firstName, initials, shortHash } from './identity'
 import { reported } from './failures'
 import { discussRule, inboxView, markSeen, toggleCard, toggleHere, toggleRule } from './inbox'
@@ -64,11 +65,11 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
   const names = new Map(ruled.flatMap(section => section.items).map(item => [item.author, item.authorName]))
 
   /** An initials disc, coloured by username; where the surface draws no Svg, nothing. */
-  const avatar = (username: string, key: string) =>
+  const avatar = (home: Kit, username: string, key: string) =>
     Svg !== undefined ? (
       <Box flexShrink={0}>
         {hinted(
-          kit,
+          home,
           `hint-who-${key}`,
           names.get(username) ?? username,
           <Svg width={16} height={16} alt={username} source={discSource(username, 16, initials(names.get(username) ?? '', username))} />
@@ -77,7 +78,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     ) : null
 
   /** Who did what, coloured by what it does to the merge; the words they wrote follow, when there are any. */
-  const event = (mr: string, one: InboxActivity, at: number, isWhole: boolean) => {
+  const event = (home: Kit, mr: string, one: InboxActivity, at: number, isWhole: boolean) => {
     const verb = VERB[one.kind]
     const when = ago(one.at, now)
     const said = one.excerpt !== '' ? `“${one.excerpt}”` : ''
@@ -86,7 +87,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     return (
       <Box key={`ev-${tag}`} flexDirection="column">
         <Box flexDirection="row" gap={1}>
-          {verb.isImpersonal !== true && avatar(one.actor, tag)}
+          {verb.isImpersonal !== true && avatar(home, one.actor, tag)}
           <Box flexShrink={0}>
             <Text color={verb.tone}>
               {verb.isImpersonal === true ? `${verb.glyph} ${verb.word}` : `${verb.glyph} ${firstName(names.get(one.actor) ?? '', one.actor)} ${verb.word}`}
@@ -99,7 +100,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
               </Text>
             )}
           </Box>
-          <Box flexShrink={0}>{isFilled(one.url) ? hinted(kit, `hint-at-${tag}`, opens('comment'), <Link href={one.url}>{when}</Link>, AT_END) : <Text dimColor>{when}</Text>}</Box>
+          <Box flexShrink={0}>{isFilled(one.url) ? hinted(home, `hint-at-${tag}`, opens('comment'), <Link href={one.url}>{when}</Link>) : <Text dimColor>{when}</Text>}</Box>
         </Box>
         {isWhole && said !== '' && (
           <Box paddingLeft={3}>
@@ -130,6 +131,7 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
     const canOpen = item.activity.length > 0
     const isOpen = canOpen && cards.includes(item.key)
     const buttons = cardButtons(item.key)
+    const home = homed(kit, `ib-${shortHash(item.key)}`)
     return (
       <Box key={`ib-${shortHash(item.key)}`} flexDirection="column" paddingX={1} marginBottom={1}>
         <Box flexDirection="row" gap={1}>
@@ -150,21 +152,20 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
           )}
           <Box flexShrink={0}>
             {hinted(
-              kit,
+              home,
               `hint-seen-${shortHash(item.key)}`,
               CONTROL.seen.hint,
-              <Button key={buttons.seen} plain label={CONTROL.seen.mark} onPress={() => seenOne($, item.key).catch(reported($, 'inbox'))} />,
-              AT_END
+              <Button key={buttons.seen} plain label={CONTROL.seen.mark} onPress={() => seenOne($, item.key).catch(reported($, 'inbox'))} />
             )}
           </Box>
         </Box>
         <Box flexDirection="row" gap={1}>
-          <Box flexShrink={0}>{hinted(kit, `hint-mr-${shortHash(item.key)}`, opens('mr'), <Link href={item.url}>{item.ref.slice(bang)}</Link>)}</Box>
+          <Box flexShrink={0}>{hinted(home, `hint-mr-${shortHash(item.key)}`, opens('mr'), <Link href={item.url}>{item.ref.slice(bang)}</Link>)}</Box>
           {marked.length > 0 && (
             <Box flexDirection="row" flexWrap="wrap" gap={1} flexShrink={1}>
               {marked.map(({ kind, count }) =>
                 hinted(
-                  kit,
+                  home,
                   `hint-${kind}-${shortHash(item.key)}`,
                   VERB[kind].word,
                   <Text color={VERB[kind].tone} dimColor={VERB[kind].tone === undefined} size="footnote">{`${VERB[kind].glyph}${count}`}</Text>
@@ -178,8 +179,9 @@ export async function drawInbox($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           </Box>
         </Box>
-        {isOpen ? item.activity.map((one, at) => event(item.key, one, at, true)) : item.activity[0] !== undefined && event(item.key, item.activity[0], 0, false)}
+        {isOpen ? item.activity.map((one, at) => event(home, item.key, one, at, true)) : item.activity[0] !== undefined && event(home, item.key, item.activity[0], 0, false)}
         {isOpen && <Button key={buttons.less} plain label="▴ less" onPress={() => toggleCard($, item.key)} />}
+        {hintLine(home)}
       </Box>
     )
   }

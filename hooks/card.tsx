@@ -3,7 +3,7 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 import { CONTROL, LINK, opens } from './drawing'
 import { face } from './faces'
 import type { InboxRow } from './found-model'
-import { AT_END, hinted } from './hint'
+import { hinted, hintLine, homed } from './hint'
 import type { Kit } from './kit'
 import type { MergedRow } from './landed-model'
 import { pressMove } from './moves'
@@ -85,8 +85,7 @@ export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: Un
     kit,
     `hint-under-close-${row.suffix}`,
     CONTROL.close.hint,
-    <Button key={`under-close-${row.suffix}`} plain dimColor label={CONTROL.close.mark} onPress={() => openUnder($, row.key, open.kind, open.id)} />,
-    AT_END
+    <Button key={`under-close-${row.suffix}`} plain dimColor label={CONTROL.close.mark} onPress={() => openUnder($, row.key, open.kind, open.id)} />
   )
   const heading = (
     <Box flexDirection="row" columnGap={1} alignItems="center">
@@ -121,7 +120,7 @@ export function drawUnder($: EngineInterface, kit: Kit, row: RowModel, block: Un
 /**
  * One part of a row's card from the row model: its title line, its second line with or without pictures on the faces, and
  * the one comment it quotes. Only what the model decided is drawn here. Nothing on a card shows or hides on a hover but a
- * symbol's description, drawn out of the flow (`hinted`): what a press on a name or a ticket opens goes under the card, and
+ * symbol's description, in the blank line under the card (`hinted`): what a press on a name or a ticket opens goes under the card, and
  * the MR's page, a press on the title away, holds the rest.
  */
 export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowPart): RenderChildren {
@@ -159,8 +158,7 @@ export function drawPart($: EngineInterface, kit: Kit, row: RowModel, part: RowP
               kit,
               scope('hint-pin'),
               pin.hint,
-              <Button key={pin.key} plain dimColor={pin.mark === CONTROL.pin.mark} label={pin.mark} onPress={() => togglePin($, pin.press, pin.mr)} />,
-              AT_END
+              <Button key={pin.key} plain dimColor={pin.mark === CONTROL.pin.mark} label={pin.mark} onPress={() => togglePin($, pin.press, pin.mr)} />
             )}
         </Box>
       )
@@ -267,7 +265,8 @@ function noPipeline(kit: Kit, key: string): RenderChildren {
 }
 
 /** An inbox MR a search found: its link, then its repo and who wrote it, dim. */
-export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
+export function drawFound(listKit: Kit, row: InboxRow): RenderChildren {
+  const kit = homed(listKit, row.boxKey)
   const { Box, Text, Link } = kit
   return (
     <Box key={row.boxKey} flexDirection="row" flexWrap="wrap" columnGap={2} paddingLeft={2}>
@@ -276,6 +275,7 @@ export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
       <Text dimColor size="footnote">
         {row.about}
       </Text>
+      {hintLine(kit)}
     </Box>
   )
 }
@@ -285,7 +285,8 @@ export function drawFound(kit: Kit, row: InboxRow): RenderChildren {
  * colour of its status with its pipeline's link, as a card's pipeline is. A merge whose commit could not be told says so and has
  * no mark, never a guessed one.
  */
-export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
+export function drawMerged(listKit: Kit, row: MergedRow): RenderChildren {
+  const kit = homed(listKit, row.boxKey)
   const { Box, Text, Link } = kit
   const { build } = row
   return (
@@ -306,6 +307,7 @@ export function drawMerged(kit: Kit, row: MergedRow): RenderChildren {
             : !kit.showsHints && <Text dimColor>{build.word}</Text>}
         </Box>
       )}
+      {hintLine(kit)}
     </Box>
   )
 }

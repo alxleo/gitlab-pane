@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { CONTROL, HINT_ROOM, LINK, opens } from '../../hooks/drawing.ts'
+import { CONTROL, HINT_ROOM, LINK, measure, opens } from '../../hooks/drawing.ts'
 import { markWord, STATUS_WORD } from '../../hooks/status.ts'
 
 import type { CiStatus } from '../../types'
@@ -24,6 +24,15 @@ test('a link mark says what it opens, and a pipeline mark its status, or that th
   expect(opens('commit')).toBe('opens the commit a merge takes')
   expect(markWord('success')).toBe('passed')
   expect(markWord(undefined)).toBe('no pipeline')
+})
+
+test('a tree is measured as the app receives it: each element in a hover group with the stamp the engine adds to say whose', () => {
+  const plain = { type: 'Box', props: { key: 'a' }, children: [] }
+  const grouped = { type: 'Box', props: { key: 'a', hover: { scope: 'hint-x' } }, children: [] }
+  const stamp = ',"group":{"plugin":"gitlab-pane"}'.length
+  expect(measure(plain)).toBe(JSON.stringify(plain).length)
+  expect(measure(grouped)).toBe(JSON.stringify(grouped).length + stamp)
+  expect(measure([grouped, grouped])).toBe(JSON.stringify([grouped, grouped]).length + 2 * stamp)
 })
 
 test('each control says something of its own, so two symbols never share a description', () => {

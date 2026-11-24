@@ -5,7 +5,7 @@ import { shortHash as hashOf } from '../hooks/identity'
 import { readSnapshot } from '../hooks/inbox-snapshot'
 import { seenKey, seenKeyOf } from '../hooks/inbox-rules'
 import { RECHECK_MS } from '../hooks/landed'
-import { NOW, commented, hintsIn, listed, mergeStatuses, pipe, rawMr, unhinted } from './fixtures'
+import { NOW, commented, hintsIn, listed, mergeStatuses, pipe, rawMr, saysOf, symbolsIn, unhinted } from './fixtures'
 import type { Mr } from './fixtures'
 import { ALICE, ME, brief, busyWorld, comment, emptyWorld, fields, inboxAnswers, merged, open, queued, system, todo } from './inbox_fixtures'
 import type { Fields, Note, Person, World } from './inbox_fixtures'
@@ -78,11 +78,15 @@ const titleOf = async (ui: { find: (query: { type: string; key: string }) => Pro
 /** What the descriptions under a drawn element say, each its lines joined. */
 const chipWords = (node: unknown): string[] => hintsIn(node).map(hint => hint.lines.join(', '))
 
-/** The counts a desktop card draws as marks: each one's mark and number, and what its chip says once the pointer rests. */
-const countsOf = async (ui: { findAll: (query: { type: string }) => Promise<{ key: string | undefined; text: string; children: unknown[] }[]> }) =>
-  (await ui.findAll({ type: 'Box' }))
-    .filter(box => /^hint-[a-z_]+-\w+$/u.test(box.key ?? '') && !['hint-mr-', 'hint-seen-', 'hint-who-', 'hint-at-'].some(prefix => (box.key ?? '').startsWith(prefix)))
-    .map(box => [box.text, ...chipWords(box)])
+/** The counts a desktop card draws as marks: each one's mark and number, and what it says once the pointer rests. */
+const countsOf = async (ui: { drawn: () => Promise<unknown>; findAll: (query: { type: string }) => Promise<{ key: string | undefined; text: string; children: unknown[] }[]> }) => {
+  const tree = await ui.drawn()
+  const symbols = new Set(symbolsIn(tree).map(symbol => symbol.key))
+  return (await ui.findAll({ type: 'Box' }))
+    .filter(box => symbols.has(box.key ?? '') && /^hint-[a-z_]+-\w+$/u.test(box.key ?? ''))
+    .filter(box => !['hint-mr-', 'hint-seen-', 'hint-who-', 'hint-at-'].some(prefix => (box.key ?? '').startsWith(prefix)))
+    .map(box => [box.text, saysOf(tree, box.key).join(', ')])
+}
 
 const typed = (args: string) => ({
   command: 'mrs',

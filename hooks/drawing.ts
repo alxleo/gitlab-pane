@@ -32,8 +32,8 @@ export const CONTROL = {
 export type Control<K extends keyof typeof CONTROL> = (typeof CONTROL)[K]
 
 /**
- * Cells a hover description may take. It draws over the card from its symbol, so a longer one would run past a narrow
- * pane's edge; `tests/core/drawing.spec.ts` holds every description to it.
+ * Cells a hover description may take. It draws from the start of the line under its block, so a longer one would run past
+ * a narrow pane's edge; `tests/core/drawing.spec.ts` holds every description to it.
  */
 export const HINT_ROOM = 36
 
@@ -49,7 +49,7 @@ export const FILTERED = '⧩ filtered'
 
 /**
  * What the tabs, repo filter, headings and footer take, with room to spare for a long list of repos, and the descriptions
- * of ↻, 🔔 and the search's ✕, about 350 characters each.
+ * of ↻, 🔔 and the search's ✕, about 600 characters each.
  */
 export const CHROME_SIZE = 7_000
 
@@ -59,11 +59,18 @@ const lengthOf = (json: string | undefined): number => (json === undefined ? 0 :
 /** A tree's size as the app receives it; one that cannot be serialized counts as `unreadable`, a whole budget by default. */
 export const measure = (tree: unknown, unreadable = DRAWING_BUDGET): number => {
   try {
-    return lengthOf(JSON.stringify(tree))
+    const json = JSON.stringify(tree)
+    return lengthOf(json) + groupsIn(json) * GROUP_STAMP
   } catch {
     return unreadable
   }
 }
+
+/** What the engine adds to every element in a hover group, saying whose group it is: a symbol and its description each. */
+const GROUP_STAMP = ',"group":{"plugin":"gitlab-pane"}'.length
+
+/** How many elements of a serialized tree join a hover group, as `lengthOf` reads a JSON that may be `undefined`. */
+const groupsIn = (json: string | undefined): number => (json === undefined ? 0 : (json.match(/"scope":/gu)?.length ?? 0))
 
 /**
  * The key of an MR's title button, which the pane scrolls back to after the MR's page. The desktop reports where only

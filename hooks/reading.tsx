@@ -2,9 +2,10 @@ import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import { CHROME_SIZE, DRAWING_BUDGET, LINK, measure, opens } from './drawing'
 import { ago, plural } from './format'
-import { hinted } from './hint'
+import { hinted, hintLine, homed } from './hint'
 import { shortHash } from './identity'
 import { kitOf } from './kit'
+import type { Kit } from './kit'
 import { cutToFit, EMPTY_MARKDOWN, partsOf } from './markdown'
 import { showWhole, toggleFold } from './choices'
 import { personPage } from './page-lines'
@@ -33,8 +34,18 @@ export type PageView = { folds: string[]; focus: string; head: PageHead; now: nu
 export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCard, { folds, focus, head: about, now, reply, writes }: PageView) {
   const { Box, Text, Button, Link, Markdown, Code, Input } = $.ui.resolve(e)
   const kit = kitOf($, e, now)
-  /** A link to GitLab with what its mark opens shown once the pointer rests on it. */
-  const out = (key: string, words: string, href: string, text: string) => hinted(kit, key, words, <Link href={href}>{text}</Link>)
+  /** A link to GitLab with what its mark opens shown once the pointer rests on it, in the line under the block `at` draws. */
+  const out = (at: Kit, key: string, words: string, href: string, text: string) => hinted(at, key, words, <Link href={href}>{text}</Link>)
+  /** Such a link on a line of its own, the page's gap under it holding what it opens. */
+  const alone = (key: string, words: string, href: string, text: string) => {
+    const at = homed(kit, key)
+    return (
+      <Box flexDirection="row">
+        {out(at, key, words, href, text)}
+        {hintLine(at)}
+      </Box>
+    )
+  }
   /** The Markdown element takes only text made for it, so a title or name cannot be drawn as Markdown by accident. */
   const markdown = (text: MarkdownText) => <Markdown text={text} />
 
@@ -59,7 +70,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   }
 
   /** A note's byline: who wrote it, or, on a page opened on its writer, whether it is in an open thread. */
-  const byline = (note: Note, who: string) => (
+  const byline = (at: Kit, note: Note, who: string) => (
     <Box flexDirection="row" gap={1}>
       <Box flexShrink={0}>
         <Text weight="semibold">{who}</Text>
@@ -69,24 +80,30 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
           {[note.where, ago(note.at, now)].filter(Boolean).join(' · ')}
         </Text>
       </Box>
-      {out(`hint-note-${shortHash(note.url)}`, opens('comment'), note.url, LINK.comment)}
+      {out(at, `hint-note-${shortHash(note.url)}`, opens('comment'), note.url, LINK.comment)}
     </Box>
   )
-  const said = (note: Note, who = note.author) => (
-    <Box flexDirection="column">
-      {byline(note, who)}
-      {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
-    </Box>
-  )
+  // A note is a block of its own, a gap under it: its 💬 says what it opens there, not over the note's first line.
+  const said = (note: Note, who = note.author) => {
+    const at = homed(kit, `note-${note.url}`)
+    return (
+      <Box flexDirection="column">
+        {byline(at, note, who)}
+        {rich(partsOf(note.body), `${mr.key}#${note.url.split('#').pop() ?? note.at}`)}
+        {hintLine(at)}
+      </Box>
+    )
+  }
 
   const { verdict } = about
+  const atHead = homed(kit, 'page-head')
   const head = [
     <Text size="heading" weight="semibold">
       {mr.title}
     </Text>,
     <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-      {out('hint-page-mr', opens('mr'), mr.url, `${LINK.mr} !${mr.iid}`)}
-      {out('hint-page-repo', opens('repo'), mr.repo.url, `${LINK.repo} ${mr.repo.name}`)}
+      {out(atHead, 'hint-page-mr', opens('mr'), mr.url, `${LINK.mr} !${mr.iid}`)}
+      {out(atHead, 'hint-page-repo', opens('repo'), mr.repo.url, `${LINK.repo} ${mr.repo.name}`)}
       {verdict !== null && (
         <Text weight={verdict.bold ? 'semibold' : undefined} color={verdict.tone}>
           {verdict.words}
@@ -95,11 +112,12 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       <Text dimColor>
         {`${mr.branch.source} → ${mr.branch.target}${mr.diff !== null ? ` · +${mr.diff.additions} −${mr.diff.deletions} · ${plural(mr.diff.files, 'file')}` : ''}`}
       </Text>
+      {hintLine(atHead)}
     </Box>,
-    ...(about.ticket !== null ? [out('hint-page-ticket', opens('jira'), about.ticket.href, about.ticket.text)] : []),
+    ...(about.ticket !== null ? [alone('hint-page-ticket', opens('jira'), about.ticket.href, about.ticket.text)] : []),
     ...about.standing.map(line =>
       line.href !== null ? (
-        out(`hint-start-${shortHash(line.href)}`, 'opens the job, to start it', line.href, line.text)
+        alone(`hint-start-${shortHash(line.href)}`, 'opens the job, to start it', line.href, line.text)
       ) : (
         // What waits on others is said quietly, as the verdict says it; what is yours to act on stands out in its tone.
         <Text weight={line.tone !== undefined ? 'semibold' : undefined} dimColor={line.tone === undefined} color={line.tone}>
@@ -130,7 +148,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
       ...head,
       <Text weight="semibold">{person.heading}</Text>,
       ...notes,
-      ...(notes.length < person.notes.length ? [out('hint-rest-person', opens('mr'), mr.url, `${LINK.mr} The rest of their comments are on GitLab`)] : []),
+      ...(notes.length < person.notes.length ? [alone('hint-rest-person', opens('mr'), mr.url, `${LINK.mr} The rest of their comments are on GitLab`)] : []),
       <Button key="page-whole" plain label={`the whole of !${mr.iid} ›`} onPress={() => showWhole($)} />,
     ]
   }
@@ -208,6 +226,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
     </Box>
   ))
   const botNotes = mr.people.filter(each => each.isBot).flatMap(bot => bot.notes.filter(note => note.isOpen).map(note => ({ ...note, author: bot.name })))
+  const atJobs = homed(kit, 'page-jobs')
   const blocks = [
     ...(jobs.length > 0
       ? [
@@ -216,7 +235,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
               {plural(jobs.length, 'failed job')}
             </Text>
             {hinted(
-              kit,
+              atJobs,
               'hint-jobs',
               jobsSay,
               <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
@@ -225,6 +244,7 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
                 ))}
               </Box>
             )}
+            {hintLine(atJobs)}
           </Box>,
         ]
       : []),
@@ -262,8 +282,8 @@ export function drawReading($: EngineInterface, e: RenderInput<'Pane'>, mr: MrCa
   return [
     ...head,
     ...described,
-    ...(isCut ? [out('hint-rest-description', opens('mr'), mr.url, `${LINK.mr} The rest of the description is on GitLab`)] : []),
+    ...(isCut ? [alone('hint-rest-description', opens('mr'), mr.url, `${LINK.mr} The rest of the description is on GitLab`)] : []),
     ...kept,
-    ...(kept.length < blocks.length ? [out('hint-rest-threads', opens('mr'), mr.url, `${LINK.mr} The rest of the threads are on GitLab`)] : []),
+    ...(kept.length < blocks.length ? [alone('hint-rest-threads', opens('mr'), mr.url, `${LINK.mr} The rest of the threads are on GitLab`)] : []),
   ]
 }

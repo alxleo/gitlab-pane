@@ -22,6 +22,7 @@ import {
   stage,
   thread,
   hintsIn,
+  saysOf,
   unhinted,
   user,
 } from './fixtures'
@@ -62,7 +63,7 @@ const PANE = {
   },
 } as const
 
-type Drawn = { type?: string; props?: Record<string, unknown>; hover?: { scope?: string; display?: string }; children?: unknown[] }
+type Drawn = { type?: string; props?: Record<string, unknown>; hover?: { scope?: string; display?: string; backgroundColor?: string }; children?: unknown[] }
 
 /** Every element in a drawn tree, with the `hover` a found element's props leave out. */
 const isDrawn = (node: unknown): node is Drawn => typeof node === 'object' && node !== null && (!('children' in node) || Array.isArray(node.children))
@@ -1753,35 +1754,43 @@ test('a face says where its reviewer stands by a ✓, ✕, ? or empty dashed bad
   await terminal.unmount()
 })
 
-test('resting the pointer on a symbol shows what it means over the card, moving nothing; a phone keeps the words beside it', async ($, on) => {
+test('resting the pointer on a symbol tints it and shows what it means in the blank line under its block, moving nothing; a phone keeps the words beside it', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const people = [{ ...reviewer('ines.mendel', 'APPROVED'), avatarUrl: null }]
   engine(on, { mrs: [rawMr(12, { reviewers: { nodes: people }, headPipeline: null })], isDown: false })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  // The description is the last child of the keyed box that holds the symbol: drawn hidden and out of the flow, shown while
-  // the pointer is on that box, holding the region that waits before it shows the words.
+  // The symbol's box and its description are one hover group: the box tints under the pointer, which reveals the
+  // description, drawn hidden from the start of a line laid over the blank line under the block the symbol is in. The block
+  // holds both, so the description sits under the card or row its symbol is on, and the region in it waits before it shows.
   const hintOf = async (prefix: string) => {
-    const card = (await ui.findAll({ type: 'Box' })).find(keyed(prefix))?.children.filter(isDrawn).at(-1)
-    const [chip, ...more] = hintsIn(card)
+    const tree = await ui.drawn()
+    const boxes = boxesOf(tree)
+    const symbol = boxes.find(box => typeof box.props?.key === 'string' && box.props.key.startsWith(prefix))
+    const scope = symbol?.hover?.scope
+    const reveal = boxes.find(box => box.hover?.scope === scope && box.hover?.display === 'flex')
+    const line = boxes.find(box => box.children?.includes(reveal) === true)
+    const block = boxes.find(box => box.children?.includes(line) === true)
+    const [chip, ...more] = hintsIn(reveal)
     return {
       words: chip?.lines.join(', '),
       waits: chip !== undefined && more.length === 0,
-      top: card?.props?.top,
-      fromEnd: card?.props?.right === 0,
-      movesNothing: card?.props?.position === 'absolute' && card.props.display === 'none' && card.hover?.display === 'flex',
+      tinted: symbol?.hover?.backgroundColor !== undefined,
+      underBlock: line?.props?.position === 'absolute' && line.props.bottom === -1 && line.props.height === 1 && elementsOf(block).includes(symbol ?? {}),
+      fromStart: reveal?.props?.top === 0 && reveal.props.left === 0,
+      movesNothing: reveal?.props?.position === 'absolute' && reveal.props.display === 'none',
     }
   }
-  const above = { waits: true, top: -1, fromEnd: false, movesNothing: true }
-  expect(await hintOf('hint-mr-12')).toEqual({ ...above, words: 'opens the MR' })
-  expect(await hintOf('hint-person-ines.mendel')).toEqual({ ...above, words: 'approved' })
-  // The star sits at the right edge, so its description draws back from there; the top row's go below, nothing being above.
-  expect(await hintOf('hint-pin')).toEqual({ ...above, words: 'pin to this session', fromEnd: true })
-  expect(await hintOf('hint-refresh')).toEqual({ ...above, words: 'read GitLab again', top: 1, fromEnd: true })
-  expect(await hintOf('hint-wake')).toEqual({ ...above, words: 'raised MRs wake Claude', top: 1, fromEnd: true })
+  const under = { waits: true, tinted: true, underBlock: true, fromStart: true, movesNothing: true }
+  expect(await hintOf('hint-mr-12')).toEqual({ ...under, words: 'opens the MR' })
+  expect(await hintOf('hint-person-ines.mendel')).toEqual({ ...under, words: 'approved' })
+  expect(await hintOf('hint-pin')).toEqual({ ...under, words: 'pin to this session' })
+  // The top row's controls say theirs in the gap under the top row.
+  expect(await hintOf('hint-refresh')).toEqual({ ...under, words: 'read GitLab again' })
+  expect(await hintOf('hint-wake')).toEqual({ ...under, words: 'raised MRs wake Claude' })
   // Without a pipeline the row draws the mark for none, which says so under the pointer, in place of the words.
-  expect(await hintOf('hint-pipeline')).toEqual({ ...above, words: 'no pipeline' })
+  expect(await hintOf('hint-pipeline')).toEqual({ ...under, words: 'no pipeline' })
   expect(await ui.find({ type: 'Text', text: '○' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'no pipeline' })).toBeUndefined()
   // Every box drawn hidden is a description out of the flow, so no part of a card shows or hides in place.
@@ -1938,7 +1947,7 @@ test('an MR with 180 failed jobs, one allowed to, lists every one on its page un
   expect(text).toContain('Still whole.')
   // Each link opens its job's log, so the list says it once, not once a link, with what each mark it holds means.
   const jobs = (await ui.findAll({ type: 'Box' })).find(keyed('hint-jobs'))
-  expect(hintsIn(jobs).map(hint => hint.lines)).toEqual([['✗ failed', '⚠ allowed to fail', 'each opens its log']])
+  expect(saysOf(await ui.drawn(), jobs?.key)).toEqual(['✗ failed', '⚠ allowed to fail', 'each opens its log'])
   expect(hintsIn(await ui.drawn()).filter(hint => hint.lines.includes('each opens its log'))).toHaveLength(1)
   expect(JSON.stringify(await ui.drawn()).length).toBeLessThan(DRAWING_BUDGET)
   await ui.unmount()
@@ -2193,13 +2202,15 @@ test('a stage strip draws its passed stages as one run; once the pointer rests i
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const strip = String(elementsOf(await ui.drawn()).find(element => element.type === 'Svg' && element.props?.alt === '9 stages')?.props?.source)
-  // Its stages are its description's lines, as the pointer rests on the strip: the passed ones counted, the others by name,
-  // and the box sits as many rows above the strip as it has lines, so the last line is not drawn over the strip.
-  const box = (await ui.findAll({ type: 'Box' })).find(keyed('hint-strip'))?.children.filter(isDrawn).at(-1)
-  const lines = hintsIn(box)[0]?.lines ?? []
+  // Its stages are its description's lines, as the pointer rests on the strip: the passed ones counted, the others by name.
+  // The box is as many rows high as it has lines, running down from the blank line under the card, never over the strip.
+  const tree = await ui.drawn()
+  const member = boxesOf(tree).find(box => String(box.props?.key).startsWith('hint-strip'))
+  const reveal = boxesOf(tree).find(box => box.hover?.scope === member?.hover?.scope && box.hover?.display === 'flex')
+  const lines = saysOf(tree, String(member?.props?.key))
   expect(lines.join(', ')).toMatch(/^7 stages passed, cleanup · skipped · ran \S+, e2e · running/u)
   expect(lines.length).toBeGreaterThan(1)
-  expect(box?.props?.top).toBe(-lines.length)
+  expect(reveal?.props).toMatchObject({ top: 0, height: lines.length })
   expect(strip).not.toContain('<title>')
   // A square per stage, each with its own tooltip, came to 840; the strip alone is now a plain picture.
   expect(strip.length).toBeLessThan(600)

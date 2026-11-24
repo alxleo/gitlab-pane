@@ -2,51 +2,63 @@ import type { RenderChildren } from 'claude-code'
 
 import { hintChip } from './hint-chip'
 import type { HintWaitProps } from './hint-wait'
-import type { Kit } from './kit'
+import { shortHash } from './identity'
+import type { HintHome, Kit } from './kit'
 
 /**
- * Where a description draws: above its symbol, where the pointer does not cover it and the pane's last line has room, or
- * below one in the top rows, which have none above; from the symbol's start, or back from its end for one at the right edge.
+ * The tint a symbol takes while the pointer is on it: faint grey, seen through, so it reads on either theme and keeps a
+ * link's blue. It also ties the symbol to its description: the app lights a hover group only through a member whose hover
+ * changes how it looks, so a symbol with no tint of its own would show nothing.
  */
-export type Place = { side: 'above' | 'below'; edge: 'start' | 'end' }
+const UNDER_POINTER = 'rgba(128,128,128,0.18)'
 
-const ABOVE: Place = { side: 'above', edge: 'start' }
-/** A symbol at the right edge of its line. */
-export const AT_END: Place = { side: 'above', edge: 'end' }
-/** A control in the top rows, at the right. */
-export const TOP_RIGHT: Place = { side: 'below', edge: 'end' }
+/** The kit a block draws its symbols with: what they mean shows in the line under that block, `id` naming it in the pane. */
+export const homed = (kit: Kit, id: string): Kit => {
+  const home: HintHome = { id, reveals: [] }
+  return { ...kit, home }
+}
+
+/** What the symbols drawn with `kit` have to say, for the line under their block. */
+export const revealsOf = (kit: Kit): RenderChildren[] => kit.home?.reveals ?? []
 
 /**
- * A symbol and what it means, shown once the pointer has rested on it: the one rule for every symbol the pane draws. The box
- * that holds the description is out of the flow, so it covers the lines beside it and moves nothing. The engine reveals it
- * the moment the pointer touches the symbol; the region inside (`hint-wait.tsx`) shows the words only after `HINT_DELAY_MS`,
- * on every rest, so a pointer passing by sets nothing off. `words` is a line, or several (a strip's stages). Where no
- * pointer hovers, the symbol alone, and whoever drops words for it keeps them there.
+ * A symbol and what it means, shown once the pointer has rested on it: the one rule for every symbol the pane draws. The
+ * symbol and its description are one hover group: the pointer on the symbol tints it and reveals the description in the
+ * line under its block (`hintLine`), which is there whether or not anything shows, so nothing moves and nothing is covered
+ * but that blank line, and the lines past it when a description runs to several. The region inside (`hint-wait.tsx`) shows
+ * the words only after `HINT_DELAY_MS`, on every rest, so a pointer passing by sets nothing off. `words` is a line, or
+ * several (a strip's stages). Where no pointer hovers, the symbol alone, and whoever drops words for it keeps them there.
  */
-export function hinted(kit: Kit, key: string, words: string | readonly string[], symbol: RenderChildren, place: Place = ABOVE): RenderChildren {
-  const { Box, Client } = kit
-  if (Client === undefined) {
+export function hinted(kit: Kit, key: string, words: string | readonly string[], symbol: RenderChildren): RenderChildren {
+  const { Box, Client, home } = kit
+  const chip = Client === undefined || home === null ? null : hintChip(words)
+  if (Client === undefined || home === null || chip === null) {
     return symbol
   }
-  const chip = hintChip(words)
-  if (chip === null) {
-    return symbol
-  }
+  // A group is the plugin's across the whole pane, so the block's name keeps two cards of one MR (Mine and Found) apart.
+  const scope = `hint-${shortHash(`${home.id}|${key}`)}`
   const props: HintWaitProps = { lines: chip.lines }
-  return (
-    <Box key={key} flexShrink={0}>
-      {symbol}
-      <Box
-        position="absolute"
-        top={place.side === 'above' ? -chip.rows : 1}
-        left={place.edge === 'start' ? 0 : undefined}
-        right={place.edge === 'end' ? 0 : undefined}
-        width={chip.cells}
-        display="none"
-        hover={{ display: 'flex' }}
-      >
-        <Client key={`${key}-w`} module="./hint-wait.tsx" props={props} width="100%" height={chip.rows} />
-      </Box>
+  home.reveals.push(
+    <Box key={`${key}-r`} position="absolute" top={0} left={0} width={chip.cells} height={chip.rows} display="none" hover={{ scope, display: 'flex' }}>
+      <Client key={`${key}-w`} module="./hint-wait.tsx" props={props} width="100%" height={chip.rows} />
     </Box>
   )
+  return (
+    <Box key={key} flexShrink={0} hover={{ scope, backgroundColor: UNDER_POINTER }}>
+      {symbol}
+    </Box>
+  )
+}
+
+/**
+ * The blank line under a block, where what its symbols mean shows, from the line's start: laid over the block's bottom
+ * margin or the gap its column leaves, so it moves nothing, however many lines the block wraps to. The block's last child.
+ */
+export function hintLine(kit: Kit, reveals: readonly RenderChildren[] = revealsOf(kit)): RenderChildren {
+  const { Box } = kit
+  return reveals.length > 0 ? (
+    <Box position="absolute" bottom={-1} left={0} right={0} height={1}>
+      {reveals}
+    </Box>
+  ) : null
 }
