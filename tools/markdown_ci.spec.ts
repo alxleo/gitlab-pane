@@ -36,12 +36,8 @@ test('required CI jobs are reported on pull requests even when every changed pat
   }
 })
 
-test.each([
-  [check, 'check'],
-  [check, 'scan'],
-  [workflowCheck, 'workflow-check'],
-] as const)('%# reads the Markdown classifier after checkout and only on pull requests', (workflow, job) => {
-  const steps = stepsFor(workflow, job)
+test.each(['check', 'scan'])('%s reads the Markdown classifier after checkout and only on pull requests', job => {
+  const steps = stepsFor(check, job)
   expect(value(steps[0], 'uses')).toMatch(/^actions\/checkout@/u)
   expect(steps[1]).toMatchObject({
     id: 'markdown-scope',
@@ -53,7 +49,19 @@ test.each([
   expect(command).toContain('--no-renames')
   expect(command).toContain('print "markdown_only=" (NR == 0)')
   expect(command).toContain('>> "$GITHUB_OUTPUT"')
-  expect(field(field(steps[0], 'with'), 'fetch-depth')).toBe(job === 'workflow-check' ? "${{ github.event_name == 'pull_request' && 2 || 1 }}" : 0)
+  expect(field(field(steps[0], 'with'), 'fetch-depth')).toBe(0)
+})
+
+test('the required workflow check runs the shared action on hosted Linux with read-only access', () => {
+  const job = field(field(workflowCheck, 'jobs'), 'workflow-check')
+  const steps = stepsFor(workflowCheck, 'workflow-check')
+  expect(field(workflowCheck, 'permissions')).toEqual({ contents: 'read' })
+  expect(field(job, 'runs-on')).toBe('ubuntu-latest')
+  expect(field(job, 'if')).toBeUndefined()
+  expect(steps).toHaveLength(1)
+  expect(value(steps[0], 'uses')).toMatch(/^alxleo\/\.github\/actions\/workflow-check@(?:[a-f0-9]{40}|v1)$/u)
+  expect(field(steps[0], 'if')).toBeUndefined()
+  expect(field(steps[0], 'continue-on-error')).toBeUndefined()
 })
 
 test('a Markdown PR skips application lint, builds and tests but still checks docs, emails and the PR title', () => {
@@ -82,15 +90,10 @@ test('a Markdown PR skips application lint, builds and tests but still checks do
   })
 })
 
-test('both workflow scans skip their linters on a Markdown PR and the secret scan stays active', () => {
+test('the scan job skips its workflow linters on a Markdown PR and still checks secrets', () => {
   const scan = stepsFor(check, 'scan')
-  for (const [steps, actions] of [
-    [scan, ['docker://rhysd/actionlint', 'zizmorcore/zizmor-action']],
-    [stepsFor(workflowCheck, 'workflow-check'), ['docker://rhysd/actionlint', 'docker://ghcr.io/zizmorcore/zizmor']],
-  ] as const) {
-    for (const action of actions) {
-      expect(steps.find(step => value(step, 'uses').startsWith(action))).toMatchObject({ if: codeOnly })
-    }
+  for (const action of ['docker://rhysd/actionlint', 'zizmorcore/zizmor-action']) {
+    expect(scan.find(step => value(step, 'uses').startsWith(action))).toMatchObject({ if: codeOnly })
   }
   const gitleaks = scan.find(step => value(step, 'uses').startsWith('gitleaks/gitleaks-action@'))
   expect(gitleaks).toBeDefined()
