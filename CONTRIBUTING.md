@@ -149,3 +149,5 @@ npm run shot -- press "read whole" -o "$TMPDIR/after.png"
 `--help` lists the rest (`windows`, `tour`, `capture --to bottom`). It needs Hammerspoon with its `hs` command (`require("hs.ipc")` in its config, then `hs.ipc.cliInstall()`), Accessibility for Hammerspoon, and Screen Recording for the terminal that runs it.
 
 The app takes a click or a scroll only while its window is in front, so the shot refuses to click, scroll or move the pointer otherwise, and never takes focus on its own; a capture of a window behind others says it was read without the pointer parked, so a hover card may show in it. Run it when the person at the Mac says the pane is showing, never on a timer or in CI. `--raise` brings the window forward only when nobody has typed or moved the pointer for a few seconds, and gives focus back after. Every session's pane sits in the same place, so pass `--session` with the name in the window's header when it matters which session's pane you photograph.
+
+<!-- Temporary fixture for the shared Workflow Check pilot. -->
