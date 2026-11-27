@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.5](https://github.com/alxleo/gitlab-pane/compare/v0.4.4...v0.4.5) (2026-11-27)
+
+
+### Features
+
+* **mine:** search as you type, and open a person or ticket under its card instead of a page ([#128](https://github.com/alxleo/gitlab-pane/issues/128)) ([38caa0c](https://github.com/alxleo/gitlab-pane/commit/38caa0cd43da939b5b34b4aaf2931db335ff540b))
+* **pane:** a card short of a reviewer offers whom GitLab suggests, faded, and two presses add them ([#132](https://github.com/alxleo/gitlab-pane/issues/132)) ([be69ec6](https://github.com/alxleo/gitlab-pane/commit/be69ec6093c10c11b639024aafec898b2e80427f))
+* **pane:** every MR card drawn alike, with a line down its left in its verdict's colour ([#142](https://github.com/alxleo/gitlab-pane/issues/142)) ([9eb6cf7](https://github.com/alxleo/gitlab-pane/commit/9eb6cf7c12570fbf7109906eb5d50804ada2ea44))
+* **pane:** every symbol says what it means once the pointer rests on it ([#131](https://github.com/alxleo/gitlab-pane/issues/131)) ([da5718f](https://github.com/alxleo/gitlab-pane/commit/da5718f5977fda9dbeefffe2bd60ba8075808274))
+
+
+### Bug Fixes
+
+* **pane:** suggest the people who own the code, ranked by who approves there, badged ＋ ([#143](https://github.com/alxleo/gitlab-pane/issues/143)) ([5ddefab](https://github.com/alxleo/gitlab-pane/commit/5ddefab7d43cc95e9089818fbe30c6d06eb82bf7))
+* **release:** rename main's release folder so `--ref release` checks out the branch ([#135](https://github.com/alxleo/gitlab-pane/issues/135)) ([3916823](https://github.com/alxleo/gitlab-pane/commit/3916823963dc4dd468b13de1c417dd798f16611c))
+* **validate:** import the core without .ts endings so validate passes on Claude Code 2.1.323+ ([#138](https://github.com/alxleo/gitlab-pane/issues/138)) ([cd1534f](https://github.com/alxleo/gitlab-pane/commit/cd1534fcbcc1a049a78b546a0cdf75ed1e31eaa4))
+
 ## [0.4.4](https://github.com/alxleo/gitlab-pane/compare/v0.4.3...v0.4.4) (2026-11-21)
 
 
