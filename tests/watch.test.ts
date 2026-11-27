@@ -1529,6 +1529,23 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   await ui.unmount()
 })
 
+test('a terminal add button keeps a readable recipient when GitLab gives a display name with control characters', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  engine(on, {
+    mrs: [rawMr(12, { author: { username: 'me' }, approvalsLeft: 2, approvedBy: { nodes: [user('ines.other')] } })],
+    isDown: false,
+    suggested: [
+      { ...user('ines.mendel'), name: 'Ines\u0007 Mendel' },
+      { ...user('tessa.rowe'), name: '\u0007' },
+    ],
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines (@ines.mendel)?', 'add @tessa.rowe?'])
+  await ui.unmount()
+})
+
 test('a GitLab without suggested approvers is asked once and never again, suggests no one, and reports nothing amiss', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const own = ownMr()

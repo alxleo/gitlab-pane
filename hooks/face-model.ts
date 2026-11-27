@@ -2,7 +2,7 @@
 // no Svg uses; who a card suggests adding as a reviewer, faded, and what the press beside them says. Pure; the draw layer
 // only puts the source in an Svg. Built once for a card, until the card or a picture changes.
 import { BOT_MARKS, discMarks } from './avatar'
-import { plural } from './format'
+import { drawnLine, plural } from './format'
 import { initials, shortHash } from './identity'
 import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status'
 import type { Shades, Tone } from './status'
@@ -314,6 +314,10 @@ export function faceRows(
     const name = row.hasSvg ? person.call : person.initials
     return names.filter(each => each === name).length > 1 ? person.initials : name
   }
+  const terminalName = (person: PersonFacts): string => {
+    const visible = drawnLine(person.call)
+    return visible === '' ? `@${person.username}` : visible
+  }
   const drawnAs = (person: PersonFacts, label: string): PersonRow => ({
     username: person.username,
     label,
@@ -329,8 +333,9 @@ export function faceRows(
     suggested: facts.suggested.map(person => {
       let name = callOf(person)
       if (!row.hasSvg) {
-        const shared = people.some(other => other.username !== person.username && other.call === person.call)
-        name = shared ? `${person.call} (@${person.username})` : person.call
+        const visible = terminalName(person)
+        const shared = people.some(other => other.username !== person.username && terminalName(other) === visible)
+        name = shared ? `${visible} (@${person.username})` : visible
       }
       const press = suggestedPress(name, row.writes[reviewerId(row.key, person.username)], row.now)
       return { ...drawnAs(person, press.label), key: `suggest-${shortHash(person.username)}-${row.suffix}`, press }
