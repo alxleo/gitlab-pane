@@ -57,6 +57,7 @@ export const DESIGN = {
     ['?', 'commented'],
     ['◌', 'not reviewed yet'],
     ['💬', 'holds an open thread'],
+    ['+', 'suggested reviewer: press to add'],
   ],
   links: [
     ['🔀', 'the MR'],

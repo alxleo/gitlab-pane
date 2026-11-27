@@ -286,7 +286,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
   // What a search finds is from any repo, so each card names its own, as with no repo picked.
   const rowInput = matches !== null ? { ...input, repoFilter: '' } : input
   const built = wanted.map(card => {
-    const facts = cardFacts(card, input.avatars, input.suggested[card.key]?.people)
+    const facts = cardFacts(card, input.avatars, input.suggested[card.key])
     return { card, facts, row: headOf(card, facts, rowInput, home, surface.hasSvg, now) }
   })
 

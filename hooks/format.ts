@@ -18,6 +18,12 @@ export const drawnLine = (text: string): string =>
     .replace(/ {2,}/gu, ' ')
     .trim()
 
+/** Format marks and blank letters to remove, keeping the joiners and flag tags used to spell visible text. */
+const UNSEEN = /(?!\u{200C}|\u{200D}|[\u{E0020}-\u{E007F}])\p{Cf}|[\u{115F}\u{1160}\u{2800}\u{3164}\u{FFA0}]/gu
+
+/** Keep visible text and the marks that shape it. */
+export const withoutInvisibleMarks = (text: string): string => text.replace(UNSEEN, '')
+
 /** A body's lines of prose: code blocks (a suggestion is one) left out, a link's words kept without its address, pictures dropped. */
 function proseLines(body: GitLabMarkdown): string[] {
   const kept: string[] = []

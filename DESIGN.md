@@ -130,8 +130,8 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 
 - **Badge** in the corner (`REVIEW_MARK` in `hooks/face-model.ts`), below: where they stand, said by its glyph, never by a colour alone, so there is no ring. It is cut out of the avatar by an edge in the pane's background (`PAGE`), and its glyph is drawn in that background too, white on the light shades and near black on the dark ones, which keeps 4.5:1 in either theme.
 - **Without images** (the terminal): the badge's glyph, in its tone.
-- **Under the pointer**, the face or the name says the badge's words, below; a suggested face says `suggested reviewer`.
-- **Faded** means suggested, and nothing else in the pane: someone not on the MR yet, whom a press adds as a reviewer. Their face is washed out by a veil laid over it (`VEIL`): white at 55% in the light theme; in the dark theme the dim grey at 45%, since a fade toward the dark pane turned the face muddy and drowned its initials. It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked, which is a stand. Without images, `+` before the name says it.
+- **Under the pointer**, the face or the name says the badge's words, below; a suggested face says `suggested reviewer: press to add`, then why them (Suggested reviewers, below).
+- **Faded** means suggested, and nothing else in the pane: someone not on the MR yet, whom a press adds as a reviewer. Their face is washed out by a veil laid over it (`VEIL`): white at 55% in the light theme; in the dark theme the dim grey at 45%, since a fade toward the dark pane turned the face muddy and drowned its initials. Its badge is ＋ (`SUGGESTED_MARK`), grey as it is no stand of theirs, drawn over the veil as sharp as any other badge; the press beside it offers them in words, `add Ines?`. Without images, `+` before `add Ines?` says it.
 
 | Badge | Means |
 |---|---|
@@ -141,20 +141,30 @@ A person is their GitLab avatar or, without one, their initials on a disc colour
 | ? | commented |
 | ◌ | not reviewed yet |
 | 💬 | holds an open thread |
+| + | suggested reviewer: press to add |
 
 Someone holding an open thread wears 💬 (`THREAD_MARK`, `markOf`), an amber speech bubble, in place of ✓, ? or ◌: the MR waits on their discussion, which its verdict says of the MR as a whole and the bubble says of the person. ✕ outranks it. The count beside their name says how many threads.
 
 ### Suggested reviewers
 
-An open MR of yours that is not a draft and is short of reviewers (the approvals it still needs, less the reviews asked for that have no verdict yet; a comment asks no one) suggests whom GitLab suggests to approve it: the eligible approvers of its approval rules, its CODEOWNERS rules among them, less those who approved (`suggestedApprovers`, a paid tier's field; a Community Edition host suggests no one). Never the author, a bot or anyone on the MR, in GitLab's order, two at most (`suggestionRoom`, `suggestedOf`). Only the session that reads GitLab asks, once per MR each time it changes, and again at the next read after an ask failed; asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
+An open MR of yours that is not a draft and is short of reviewers (the approvals it still needs, less the reviews asked for that have no verdict yet; a comment asks no one) suggests the people who own its code (`ask-suggested.ts`):
+
+- **The team GitLab names**: the eligible approvers of its approval rules, its CODEOWNERS rules among them, less those who approved (`suggestedApprovers`, a paid tier's field; a Community Edition host suggests no one). GitLab gives them in no order, so the first few are any few of the team.
+- **Ranked by who reviews there**: how many of the project's last 30 merged MRs each approved, most first, GitLab's order breaking ties (`rankSuggestions`).
+- **Where the rules name no one** (only "any member may approve"), whoever approved there most. Only then: where a rule names people none of whom is eligible now (the author is its only owner, or all of them approved), or where GitLab shows no rules at all, no one is suggested, as the project's busiest approvers may own none of the code.
+- **Never** the author, a bot or anyone on the MR; two at most (`suggestionRoom`, `suggestedOf`).
+
+Under the pointer, the face says why them (`suggestionWhy`): the rule that names them, as its team (a CODEOWNERS rule as `code owner of` its path), and `approved 16 of the last 30 here`. A security or licence rule names no team: its people approve a finding, not own the code. GitLab shows the rules only to a token allowed to read them ("Approval Rule: Read" on a fine-grained token); without it, it answers no rules, so no team is named and a project whose rules name no one suggests no one; the ranking of the team it names is the same. Where nothing hovers (the terminal, a phone), the why is not drawn; `add Ines?` still says it is an offer. GitLab adds a reviewer by username only, so a team is named, never added whole.
+
+Only the session that reads GitLab asks, once per MR each time it changes. An incomplete answer keeps the last ranking and is retried at the next read. If GitLab has a further page past the first 50 eligible people or the first 10 approvers of any sampled MR, the card offers no suggestions for that update. Only pictures for suggestions the card can show are fetched. Asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
 
 | Beside the faded face | Means | Press |
 |---|---|---|
-| `+ Ines` | GitLab suggests Ines | arms adding her |
-| `+ add Ines as a reviewer? press again` | armed, as the primary button, for 10 seconds | adds her; GitLab tells her |
-| `+ adding Ines…` | sent | none |
+| `add Ines?` | Ines owns this code | arms adding her |
+| `add Ines as a reviewer? press again` | armed, as the primary button, for 10 seconds | adds her; GitLab tells her |
+| `adding Ines…` | sent | none |
 | `Ines added` | GitLab added her; the next read shows her badged ◌ | none |
-| amber words after `+ Ines` | why GitLab did not add her | arms again |
+| amber words after `add Ines?` | why GitLab did not add her | arms again |
 
 The add keeps the MR's other reviewers (`APPEND`), and a toast says how it ended.
 

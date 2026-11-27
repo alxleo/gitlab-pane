@@ -75,7 +75,9 @@ const NOTHING = {
   InboxAuthored: { data: { currentUser: { username: 'me', opened: { nodes: [] }, merged: { nodes: [] } } } },
   Landed: { data: { project: { pipelines: { nodes: [] } } } },
   // A project with no approval rules suggests no one.
-  Suggested: { data: { project: { mergeRequest: { approvalState: { suggestedApprovers: { nodes: [] } } } } } },
+  Suggested: {
+    data: { project: { mergeRequest: { approvalState: { rules: [], suggestedApprovers: { nodes: [], pageInfo: { hasNextPage: false } } } }, mergeRequests: { nodes: [] } } },
+  },
 } as const
 
 /** What `$.http.fetch` resolves with. */

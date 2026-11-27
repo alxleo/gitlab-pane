@@ -2,7 +2,7 @@
 // no Svg uses; who a card suggests adding as a reviewer, faded, and what the press beside them says. Pure; the draw layer
 // only puts the source in an Svg. Built once for a card, until the card or a picture changes.
 import { BOT_MARKS, discMarks } from './avatar'
-import { plural } from './format'
+import { drawnLine, plural, withoutInvisibleMarks } from './format'
 import { initials, shortHash } from './identity'
 import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status'
 import type { Shades, Tone } from './status'
@@ -10,7 +10,7 @@ import { raw, svg } from './svg'
 import type { RawSvg, SvgSource } from './svg'
 import { ARMED_MS, SENT_HOLDS_MS } from './write-model'
 
-import type { MrCard, Person, PersonState, Suggestion, Write } from '../types'
+import type { MrCard, Person, PersonState, Suggestion, Suggestions, Write } from '../types'
 
 export const REVIEW_STATE: Record<PersonState, string> = {
   approved: 'approved',
@@ -43,6 +43,12 @@ export const REVIEW_MARK: Record<PersonState, Mark> = {
  */
 export const THREAD_MARK: Mark = { glyph: '💬', tone: 'warning', drawing: { kind: 'bubble' } }
 
+/**
+ * The badge of someone suggested as a reviewer, on their faded face: ＋, as a press adds them. Grey, as it is no stand of
+ * theirs: the glyph and the words under the pointer say it.
+ */
+export const SUGGESTED_MARK: Mark = { glyph: '+', tone: 'subtle', drawing: { kind: 'stroke', path: 'M14.5 12.4v4.2m-2.1-2.1h4.2' } }
+
 /** The badge a person wears: a request for changes, else an open thread, else where their review stands. */
 const markOf = (person: Person): Mark => (person.state !== 'requested_changes' && person.openThreads > 0 ? THREAD_MARK : REVIEW_MARK[person.state])
 
@@ -50,8 +56,8 @@ export type FaceFacts = {
   tone: Tone
   /** The badge's glyph, the person's mark where no Svg is drawn. */
   glyph: string
-  /** What the badge says, in the Badge table's words: the face's description under the pointer, and its `alt` after the name. */
-  hint: string
+  /** What the badge says, in the Badge table's words: the face's description under the pointer, a line each. */
+  hint: string | readonly string[]
   alt: string
   /** Their initials on a disc, or a robot. */
   plain: SvgSource
@@ -108,7 +114,7 @@ const framed = (inner: RawSvg): SvgSource => svg`<svg xmlns='http://www.w3.org/2
  * Their avatar, else their initials on a disc (a bot's, a robot), with a badge in its corner for where they stand. A
  * disc costs about 600 characters with its badge's two shades, a picture about 1,500.
  */
-export function faceFacts(person: Person, picture: string | undefined): FaceFacts {
+export function faceFacts(person: Person, picture: string | undefined): FaceFacts & { hint: string } {
   const mark = markOf(person)
   const badge = badgeOf(mark)
   const hint = `${REVIEW_STATE[person.state]}${mark === THREAD_MARK ? `, ${plural(person.openThreads, 'open thread')}` : ''}`
@@ -128,22 +134,39 @@ export function faceFacts(person: Person, picture: string | undefined): FaceFact
  * the dark one. Faded means suggested and nothing else in the pane: someone not on the MR yet, whom a press adds. A fade
  * toward the pane's background read pale on white but muddy on the dark pane, where it drowned the initials and darkened
  * a picture almost to the background (seen in the app's own engine), so the dark theme washes toward a lighter shade.
- * It wears no badge, as they have no stand to show; ◌ is a reviewer who has not looked.
+ * Its badge, ＋, sits over the veil, as sharp as any other badge.
  */
 const VEIL: Shades = { light: `${PAGE.light}8c`, dark: `${TONE_COLOURS.subtle.dark}73` }
 
-/** A person GitLab suggests adding as a reviewer: their face faded, with no badge. About 400 characters, a picture 1,400. */
-export function suggestedFace(person: Person, picture: string | undefined): FaceFacts {
+/** What a suggested face says first under the pointer: that it is a suggestion, and what a press does. */
+export const SUGGESTED_SAYS = 'suggested reviewer: press to add'
+
+/**
+ * A person suggested as a reviewer: their face faded, badged ＋, and under the pointer, why them, a line each (`why`).
+ * About 700 characters, a picture 1,600.
+ */
+export function suggestedFace(person: Person, picture: string | undefined, why: readonly string[]): FaceFacts {
   const veil = svg`<circle cx='8' cy='8' r='8' ${themePaint([['fill', VEIL]])}/>`
+  const badge = badgeOf(SUGGESTED_MARK)
   return {
-    tone: 'subtle',
-    // The press beside the face says `+` and their name, which is all a surface without Svg draws.
-    glyph: '',
-    hint: 'suggested reviewer',
+    tone: SUGGESTED_MARK.tone,
+    glyph: SUGGESTED_MARK.glyph,
+    hint: [SUGGESTED_SAYS, ...why],
     alt: `${person.name}, suggested reviewer`,
-    ...drawn(person, picture, inner => framed(followingTheme(raw([inner, veil])))),
+    ...drawn(person, picture, inner => framed(followingTheme(raw([inner, veil, badge])))),
   }
 }
+
+/** Why someone is suggested, a line each: the approval rule that names them, and how many of the last `outOf` merged MRs they approved. */
+export function suggestionWhy(suggestion: Suggestion, outOf: number): string[] {
+  return [...(suggestion.team !== null ? [suggestion.team] : []), ...(suggestion.approved > 0 ? [`approved ${suggestion.approved} of the last ${outOf} here`] : [])]
+}
+
+/** No one to suggest. */
+export const NO_SUGGESTIONS: Suggestions = { outOf: 0, people: [] }
+
+/** Someone a card suggests as a reviewer, and why them (`suggestionWhy`). */
+export type SuggestedPerson = Person & { why: string[] }
 
 /** The most suggested faces a card draws: a choice of two, not a list of everyone a rule names. */
 export const SUGGESTED_MOST = 2
@@ -182,13 +205,14 @@ export function suggestionsFor(card: MrCard, user: string | null): 'ask' | 'keep
 }
 
 /**
- * The people a card suggests adding as reviewers, in GitLab's order: those it suggested, less the author, bots and anyone
- * already on the MR, as many as there is room for. Their initials are told apart from those of the people on the card.
+ * The people a card suggests adding as reviewers, best first (`rankSuggestions`): those suggested, less the author, bots
+ * and anyone already on the MR, as many as there is room for, each with why them. Their initials are told apart from
+ * those of the people on the card.
  */
-export function suggestedOf(card: MrCard, suggestions: readonly Suggestion[]): Person[] {
+export function suggestedOf(card: MrCard, suggestions: Suggestions): SuggestedPerson[] {
   const on = new Set([card.author, ...card.people.map(person => person.username), ...card.reviewers.map(reviewer => reviewer.username)])
   const taken = new Set(card.people.map(person => person.initials))
-  return suggestions
+  return suggestions.people
     .filter(each => !each.isBot && !on.has(each.username))
     .slice(0, suggestionRoom(card))
     .map(each => {
@@ -203,6 +227,7 @@ export function suggestedOf(card: MrCard, suggestions: readonly Suggestion[]): P
         openThreads: 0,
         notes: [],
         noteCount: 0,
+        why: suggestionWhy(each, suggestions.outOf),
       }
     })
 }
@@ -220,14 +245,14 @@ export const isAddKept = (id: string, listed: readonly string[]): boolean => !id
 export type SuggestedPress = { label: string; does: 'arm' | 'make' | null; isArmed: boolean; failed: string | null }
 
 /**
- * The press beside a suggested face at `now`, `call` being what the card calls them: `+` and their name arms it; armed,
- * it says what a second press does, which adds them; while it is out it says so, with nothing to press. Once GitLab has
- * added them (`handed`) it says so until a read shows them as a reviewer, which takes a read, never as long as a sent
- * write is followed. One that did not take says why beside it, until it is pressed again.
+ * The press beside a suggested face at `now`, `call` being what the card calls them: `add` and their name arms it, the
+ * face's ＋ saying the same; armed, it says what a second press does, which adds them; while it is out it says so, with
+ * nothing to press. Once GitLab has added them (`handed`) it says so until a read shows them as a reviewer, which takes a
+ * read, never as long as a sent write is followed. One that did not take says why beside it, until it is pressed again.
  */
 export function suggestedPress(call: string, held: Write | undefined, now: number): SuggestedPress {
   if (held?.state === 'sent') {
-    return { label: `+ adding ${call}…`, does: null, isArmed: false, failed: null }
+    return { label: `adding ${call}…`, does: null, isArmed: false, failed: null }
   }
   if (held?.state === 'handed' && now - held.at < SENT_HOLDS_MS) {
     return { label: `${call} added`, does: null, isArmed: false, failed: null }
@@ -235,7 +260,7 @@ export function suggestedPress(call: string, held: Write | undefined, now: numbe
   // An arm past its time has run out whether or not its timer ran, as `confirmedPress` judges it.
   const isArmed = held?.state === 'armed' && now - held.at <= ARMED_MS
   return {
-    label: isArmed ? `+ add ${call} as a reviewer? press again` : `+ ${call}`,
+    label: isArmed ? `add ${call} as a reviewer? press again` : `add ${call}?`,
     does: isArmed ? 'make' : 'arm',
     isArmed,
     failed: held?.state === 'failed' ? held.say : null,
@@ -263,8 +288,8 @@ export type PersonRow = {
   tone: Tone
   /** The mark a surface without Svg draws. */
   glyph: string
-  /** What the face's badge says, under the pointer. */
-  hint: string
+  /** What the face's badge says, under the pointer, a line each. */
+  hint: string | readonly string[]
   alt: string
   plain: SvgSource
   picture: SvgSource | null
@@ -276,16 +301,27 @@ export type SuggestedRow = PersonRow & { key: string; press: SuggestedPress }
 /**
  * A card's faces as its row draws them: the people on it, each named with the open threads they hold, then those it
  * suggests, each with their press as this session's add of them holds at `now` in the ledger of `writes`. Beside a face
- * that already shows the initials, a first name reads better; two of the same name, suggested or not, keep their initials.
+ * that already shows the initials, a first name reads better; two of the same name keep their initials. On a surface
+ * without pictures, an add button still says the first name, with the username when the name is shared.
  */
 export function faceRows(
   facts: { people: readonly PersonFacts[]; suggested: readonly PersonFacts[] },
   row: { hasSvg: boolean; writes: Readonly<Record<string, Write>>; key: string; suffix: string; now: number }
 ): { people: PersonRow[]; suggested: SuggestedRow[] } {
-  const names = [...facts.people, ...facts.suggested].map(person => (row.hasSvg ? person.call : person.initials))
+  const people = [...facts.people, ...facts.suggested]
+  const names = people.map(person => (row.hasSvg ? person.call : person.initials))
   const callOf = (person: PersonFacts): string => {
     const name = row.hasSvg ? person.call : person.initials
     return names.filter(each => each === name).length > 1 ? person.initials : name
+  }
+  const terminalName = (person: PersonFacts): string => {
+    const visible = drawnLine(withoutInvisibleMarks(person.call))
+    // A name made entirely of joiners or variation selectors has no recipient to read.
+    if (/[^\p{Default_Ignorable_Code_Point}\s]/u.test(visible)) {
+      return visible
+    }
+    const username = drawnLine(withoutInvisibleMarks(person.username))
+    return username === '' ? person.initials : `@${username}`
   }
   const drawnAs = (person: PersonFacts, label: string): PersonRow => ({
     username: person.username,
@@ -300,7 +336,13 @@ export function faceRows(
   return {
     people: facts.people.map(person => drawnAs(person, `${callOf(person)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`)),
     suggested: facts.suggested.map(person => {
-      const press = suggestedPress(callOf(person), row.writes[reviewerId(row.key, person.username)], row.now)
+      let name = callOf(person)
+      if (!row.hasSvg) {
+        const visible = terminalName(person)
+        const shared = people.some(other => other.username !== person.username && terminalName(other) === visible)
+        name = shared ? `${visible} (@${person.username})` : visible
+      }
+      const press = suggestedPress(name, row.writes[reviewerId(row.key, person.username)], row.now)
       return { ...drawnAs(person, press.label), key: `suggest-${shortHash(person.username)}-${row.suffix}`, press }
     }),
   }

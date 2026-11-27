@@ -3,7 +3,7 @@
 import { Failure } from './failure'
 import type { RawResponse } from './gitlab-request'
 
-import type { Suggested, Usual } from '../types'
+import type { Suggested, Suggestion, Usual } from '../types'
 
 export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -58,29 +58,27 @@ export const usualRecord = (value: unknown): Record<string, Usual> =>
       )
     : {}
 
-/** Who GitLab suggested for each MR, as the store keeps it; an entry or a person in another shape is left out. */
+/**
+ * Whom to suggest for each MR, as the store and the state keep it. An entry in another shape, or with anyone in another
+ * shape, is left out whole, so it is asked again: one kept before suggestions were ranked has no `outOf`, even with no one in it.
+ */
 export const suggestedRecord = (value: unknown): Suggested =>
   isRecord(value)
     ? Object.fromEntries(
-        Object.entries(value).flatMap(([key, entry]) =>
-          isRecord(entry) && typeof entry.on === 'string'
-            ? [
-                [
-                  key,
-                  {
-                    on: entry.on,
-                    people: records(entry.people).flatMap(person =>
-                      typeof person.username === 'string' && typeof person.name === 'string' && typeof person.isBot === 'boolean'
-                        ? [{ username: person.username, name: person.name, avatarUrl: textOrNull(person.avatarUrl), isBot: person.isBot }]
-                        : []
-                    ),
-                  },
-                ],
-              ]
-            : []
-        )
+        Object.entries(value).flatMap(([key, entry]) => {
+          if (!isRecord(entry) || typeof entry.on !== 'string' || typeof entry.outOf !== 'number' || !Array.isArray(entry.people)) {
+            return []
+          }
+          const people = records(entry.people).flatMap(suggestionOf)
+          return people.length === entry.people.length ? [[key, { on: entry.on, outOf: entry.outOf, people }]] : []
+        })
       )
     : {}
+
+const suggestionOf = (person: Record<string, unknown>): Suggestion[] =>
+  typeof person.username === 'string' && typeof person.name === 'string' && typeof person.isBot === 'boolean' && typeof person.approved === 'number'
+    ? [{ username: person.username, name: person.name, avatarUrl: textOrNull(person.avatarUrl), isBot: person.isBot, team: textOrNull(person.team), approved: person.approved }]
+    : []
 
 /** The objects in a list; anything else in it, or a non-list, gives none. */
 export const records = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value.filter(isRecord) : [])

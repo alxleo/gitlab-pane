@@ -51,13 +51,31 @@ test('what the outside tools print is checked, not cast', async () => {
     landed: [],
   })
   expect(readSnapshot({ at: 'soon', hosts: {}, mrs: [] })).toBeNull()
-  // Who GitLab suggested, as the store keeps it: an entry or a person in another shape is left out.
+  // Who was suggested, as the store and the atom keep it: an entry in another shape, or with anyone in another shape, is
+  // left out whole, so it is asked again. One kept before suggestions were ranked has no `outOf`, even with no one in it.
+  const ines = { username: 'ines', name: 'Ines', avatarUrl: 7, isBot: false, team: 'Core team', approved: 2 }
+  const at = '2026-10-23T15:00:00Z'
   expect(
     suggestedRecord({
-      'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: 7, isBot: false }, { username: 'x' }, null] },
-      'gitlab.com/g/p!2': { people: [] },
+      'gitlab.com/g/p!1': { on: at, outOf: 30, people: [ines, { username: 'x' }, null] },
+      'gitlab.com/g/p!2': { outOf: 30, people: [] },
+      'gitlab.com/g/p!3': { on: at, outOf: 30, people: [ines, { ...ines, username: 'mel', team: 4 }] },
+      'gitlab.com/g/p!4': { on: at, outOf: 30, people: [{ username: 'ines', name: 'Ines', avatarUrl: null, isBot: false }] },
+      'gitlab.com/g/p!5': { on: at, outOf: 30, people: [] },
+      'gitlab.com/g/p!6': { on: at, people: [] },
+      'gitlab.com/g/p!7': { on: at, outOf: 30 },
     })
-  ).toEqual({ 'gitlab.com/g/p!1': { on: '2026-10-23T15:00:00Z', people: [{ username: 'ines', name: 'Ines', avatarUrl: null, isBot: false }] } })
+  ).toEqual({
+    'gitlab.com/g/p!3': {
+      on: at,
+      outOf: 30,
+      people: [
+        { ...ines, avatarUrl: null },
+        { ...ines, username: 'mel', avatarUrl: null, team: null },
+      ],
+    },
+    'gitlab.com/g/p!5': { on: at, outOf: 30, people: [] },
+  })
   expect(suggestedRecord([])).toEqual({})
   expect(decodeGraphql({ data: { a: 1 }, errors: [{ message: 'late' }, 3] })).toEqual({ data: { a: 1 }, errors: [{ message: 'late' }] })
   expect(() => decodeGraphql([])).toThrow('GitLab answered something other than an object')

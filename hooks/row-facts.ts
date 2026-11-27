@@ -4,13 +4,13 @@
 import { isMergeable, rank, rowBadges, trailingOf, verdictOf } from './attention'
 import type { Badge, Verdict } from './attention'
 import { LINK } from './drawing'
-import { faceFacts, suggestedFace, suggestedOf } from './face-model'
+import { faceFacts, NO_SUGGESTIONS, suggestedFace, suggestedOf } from './face-model'
 import type { FaceFacts, PersonFacts } from './face-model'
 import { excerpt, shortTitle, ticketOf } from './format'
 import { shorten } from './graphemes'
 import { firstName } from './identity'
 
-import type { MrCard, Person, Suggestion } from '../types'
+import type { MrCard, Person, Suggestions } from '../types'
 
 /** Letters of a bot's name beside its face. */
 const BOT_NAME_ROOM = 14
@@ -85,14 +85,14 @@ function saidOf(people: readonly Person[]): Said | null {
 
 /**
  * The card's facts; `avatars` are the pictures kept by URL, which a face is drawn with where there is room, and
- * `suggestions` who GitLab suggests as its reviewers.
+ * `suggestions` who owns its code, best first, to suggest as its reviewers.
  */
-export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>>, suggestions: readonly Suggestion[] = []): CardFacts {
+export function cardFacts(card: MrCard, avatars: Readonly<Record<string, string>>, suggestions: Suggestions = NO_SUGGESTIONS): CardFacts {
   const list = rowBadges(card)
   const verdict = verdictOf(card)
   const pictureOf = (person: Person): string | undefined => (person.avatarUrl !== null ? avatars[person.avatarUrl] : undefined)
   const people = card.people.map(person => personFacts(person, faceFacts(person, pictureOf(person))))
-  const suggested = suggestedOf(card, suggestions).map(person => personFacts(person, suggestedFace(person, pictureOf(person))))
+  const suggested = suggestedOf(card, suggestions).map(person => personFacts(person, suggestedFace(person, pictureOf(person), person.why)))
   return {
     key: card.key,
     rank: rank(card),

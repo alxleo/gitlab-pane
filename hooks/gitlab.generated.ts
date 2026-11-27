@@ -2,6 +2,8 @@
 type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] }
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never }
+export type ApprovalRuleType = 'ANY_APPROVER' | 'CODE_OWNER' | 'REGULAR' | 'REPORT_APPROVER'
+
 export type CiJobStatus =
   | 'CANCELED'
   | 'CANCELING'
@@ -751,7 +753,15 @@ export type SuggestedQueryVariables = Exact<{
 export type SuggestedQuery = {
   project: {
     mergeRequest: {
-      approvalState: { suggestedApprovers: { nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null }
+      approvalState: {
+        rules: Array<{ type: ApprovalRuleType | null; name: string | null; eligibleApprovers: Array<{ username: string }> | null }> | null
+        suggestedApprovers: { pageInfo: { hasNextPage: boolean }; nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null
+      }
+    } | null
+    mergeRequests: {
+      nodes: Array<{
+        approvedBy: { pageInfo: { hasNextPage: boolean }; nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null
+      } | null> | null
     } | null
   } | null
 }
