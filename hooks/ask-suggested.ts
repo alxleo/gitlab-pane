@@ -6,9 +6,10 @@
 // (GitLab answers an empty list), so such a token is suggested no one there rather than people who may own nothing. The
 // rule that names someone is their team, when GitLab shows the rules. A field of GitLab's paid tiers, so a Community
 // Edition host lacks it. Asked only for MRs that still need approvals, one at a time, never in the list's own document:
-// GitLab scores it 41 and it calls Gitaly for each MR.
+// GitLab scores it 46 and it calls Gitaly for each MR.
 import type { SuggestedQuery, SuggestedQueryVariables } from './gitlab.generated'
-import { present } from './decode'
+import { isSome, present } from './decode'
+import { Failure } from './failure'
 import type { RawResponse, Request } from './gitlab-request'
 import { absoluteUrl } from './hosts'
 
@@ -21,10 +22,12 @@ const SUGGESTED = /* GraphQL */ `
       mergeRequest(iid: $iid) {
         approvalState {
           rules { type name eligibleApprovers { username } }
-          suggestedApprovers(first: 50) { nodes { username name avatarUrl bot } }
+          suggestedApprovers(first: 50) { pageInfo { hasNextPage } nodes { username name avatarUrl bot } }
         }
       }
-      mergeRequests(state: merged, sort: MERGED_AT_DESC, first: 30) { nodes { approvedBy(first: 10) { nodes { username name avatarUrl bot } } } }
+      mergeRequests(state: merged, sort: MERGED_AT_DESC, first: 30) {
+        nodes { approvedBy(first: 10) { pageInfo { hasNextPage } nodes { username name avatarUrl bot } } }
+      }
     }
   }
 `
@@ -34,7 +37,7 @@ export type SuggestedOperations = {
 }
 
 /** The document, and what GitLab scores it (`COMPLEXITY`). */
-export const SUGGESTED_ASK = { documents: { Suggested: SUGGESTED }, complexity: { Suggested: 41 } } as const
+export const SUGGESTED_ASK = { documents: { Suggested: SUGGESTED }, complexity: { Suggested: 46 } } as const
 
 /** Who owns the MR's code (`COMPLEXITY.Suggested`); none for a host that lacks the field. */
 export const suggestedQuery = (path: string, iid: number, features: HostFeatures): Request<SuggestedQuery> | null =>
@@ -91,16 +94,30 @@ export function rankSuggestions(eligible: readonly User[], approvals: readonly (
     .map(user => ({ username: user.username, name: user.name, isBot: user.bot, team: named(user.username), approved: approvedOf(user) }))
 }
 
-/** The people to suggest, best first, with their avatars made absolute on `host`; null when GitLab answered no MR. */
+/** Rank a complete sample; a partial answer fails so the caller keeps its last ranking and retries. */
 export function readSuggested(host: string, response: RawResponse<SuggestedQuery>): Suggestions | null {
+  if ((response.errors?.length ?? 0) > 0) {
+    throw new Failure('bad-answer', 'GitLab sent a partial reviewer suggestion answer')
+  }
   const project = response.data?.project
   const state = project?.mergeRequest?.approvalState
   if (state === undefined) {
     return null
   }
-  const approvals = present(project?.mergeRequests?.nodes).map(mr => present(mr.approvedBy?.nodes))
-  const avatars = new Map([...present(state.suggestedApprovers?.nodes), ...approvals.flat()].map(user => [user.username, user.avatarUrl]))
-  const people = rankSuggestions(present(state.suggestedApprovers?.nodes), approvals, present(state.rules)).map(each => ({
+  const history = project?.mergeRequests?.nodes
+  const eligible = state.suggestedApprovers
+  const approvers = history?.map(mr => mr?.approvedBy)
+  if (!isSome(eligible?.nodes) || !isSome(approvers) || approvers.some(page => !isSome(page?.nodes))) {
+    throw new Failure('bad-answer', 'GitLab omitted reviewer eligibility or approval history')
+  }
+  // A page can be complete as sent and still cover only part of the pool. Do not offer a ranking from that sample.
+  if (eligible.pageInfo.hasNextPage || approvers.some(page => page?.pageInfo.hasNextPage === true)) {
+    return { outOf: 0, people: [] }
+  }
+  const candidates = present(eligible.nodes)
+  const approvals = approvers.map(page => present(page?.nodes))
+  const avatars = new Map([...candidates, ...approvals.flat()].map(user => [user.username, user.avatarUrl]))
+  const people = rankSuggestions(candidates, approvals, present(state.rules)).map(each => ({
     ...each,
     avatarUrl: absoluteUrl(host, avatars.get(each.username)),
   }))

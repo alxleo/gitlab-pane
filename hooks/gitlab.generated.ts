@@ -755,11 +755,13 @@ export type SuggestedQuery = {
     mergeRequest: {
       approvalState: {
         rules: Array<{ type: ApprovalRuleType | null; name: string | null; eligibleApprovers: Array<{ username: string }> | null }> | null
-        suggestedApprovers: { nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null
+        suggestedApprovers: { pageInfo: { hasNextPage: boolean }; nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null
       }
     } | null
     mergeRequests: {
-      nodes: Array<{ approvedBy: { nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null } | null> | null
+      nodes: Array<{
+        approvedBy: { pageInfo: { hasNextPage: boolean }; nodes: Array<{ username: string; name: string; avatarUrl: string | null; bot: boolean } | null> | null } | null
+      } | null> | null
     } | null
   } | null
 }

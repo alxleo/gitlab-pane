@@ -122,6 +122,8 @@ type Fake = {
   suggested?: { username: string; name: string; bot: boolean; avatarUrl: string | null }[]
   /** Who approved each of the project's last merged MRs, newest first; none unless set. */
   approvedLately?: { username: string; name: string; bot: boolean; avatarUrl: string | null }[][]
+  /** GitLab sends eligibility but cannot return approval history. */
+  suggestionHistoryDown?: boolean
   /** A GitLab without suggested approvers, as the Community Edition or an older paid one is. */
   lacksSuggestions?: boolean
   /** What GitLab answers an add of a reviewer; it adds them unless a test sets this. */
@@ -300,10 +302,16 @@ function engine(
             fake.lacksSuggestions === true
               ? undefinedField('MergeRequestApprovalState', 'suggestedApprovers')
               : {
+                  ...(fake.suggestionHistoryDown === true ? { errors: [{ message: 'approval history missing' }] } : {}),
                   data: {
                     project: {
-                      mergeRequest: { approvalState: { rules: [], suggestedApprovers: { nodes: fake.suggested ?? [] } } },
-                      mergeRequests: { nodes: (fake.approvedLately ?? []).map(nodes => ({ approvedBy: { nodes } })) },
+                      mergeRequest: { approvalState: { rules: [], suggestedApprovers: { nodes: fake.suggested ?? [], pageInfo: { hasNextPage: false } } } },
+                      mergeRequests:
+                        fake.suggestionHistoryDown === true
+                          ? null
+                          : {
+                              nodes: (fake.approvedLately ?? []).map(nodes => ({ approvedBy: { nodes, pageInfo: { hasNextPage: false } } })),
+                            },
                     },
                   },
                 },
@@ -1460,6 +1468,7 @@ test('a card short of a reviewer offers the code owner who approves most, faded 
   expect(await suggestButtons(ui)).toHaveLength(1)
   // Their picture is fetched like anyone's on the pane, and the store carries the suggestion to the sessions that draw.
   expect(avatars.some(url => url.includes('ines.mendel'))).toBe(true)
+  expect(avatars.some(url => url.includes('tessa.rowe'))).toBe(false)
   expect(JSON.stringify(store.get('suggested'))).toContain('ines.mendel')
   await ui.press({ key: (await suggestion())?.key ?? '' })
   await clock.settle()
@@ -1512,9 +1521,9 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   expect((await ui.findAll({ type: 'Svg' })).map(svg => svg.props['alt'])).toContain('Ines Mendel, suggested reviewer')
   expect(suggestAsks(gitlab)).toBe(0)
   expect(JSON.stringify(store.get('suggested'))).toContain('ines.mendel')
-  // A surface with no pictures says the suggestion by the badge's `+`, then `add` and the initials it calls everyone by.
+  // A surface with no pictures shows the badge's `+` beside the suggested person's name.
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await terminal.findAll({ type: 'Button' })).map(button => button.props['label'])).toContain('add IM?')
+  expect((await terminal.findAll({ type: 'Button' })).map(button => button.props['label'])).toContain('add Ines?')
   expect(await terminal.find({ type: 'Text', text: '+' })).toBeDefined()
   await terminal.unmount()
   await ui.unmount()
@@ -1571,6 +1580,37 @@ test('an ask for suggestions that fails keeps the faces suggested before, says w
   await clock.advance(3 * 60_000)
   expect(asked()).toBe(answered)
   expect((await suggestButtons(ui)).map(button => button.props['label'])).toEqual(['add Ines?'])
+  await ui.unmount()
+})
+
+test('a partial approval-history answer keeps the last ranking and retries without another MR update', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const own = ownMr()
+  const ines = user('ines.mendel')
+  const tessa = user('tessa.rowe')
+  const fake: Fake = { mrs: [own], isDown: false, suggested: [tessa, ines], approvedLately: [[ines]] }
+  const { gitlab, store } = engine(on, fake)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const offers = async () => (await suggestButtons(ui)).map(button => button.props['label'])
+  expect(await offers()).toEqual(['add Ines?'])
+  const previous = store.get('suggested')
+
+  fake.mrs = [{ ...own, updatedAt: new Date(NOW + 30_000).toISOString() }]
+  fake.suggestionHistoryDown = true
+  await clock.advance(60_000)
+  expect(await offers()).toEqual(['add Ines?'])
+  expect(store.get('suggested')).toEqual(previous)
+  expect((await gitlabCommand($)).text).toContain('partial reviewer suggestion answer')
+
+  const failed = suggestAsks(gitlab)
+  fake.suggestionHistoryDown = false
+  fake.approvedLately = [[tessa]]
+  await clock.advance(60_000)
+  expect(suggestAsks(gitlab)).toBeGreaterThan(failed)
+  expect(await offers()).toEqual(['add Tessa?'])
+  expect((await gitlabCommand($)).text).not.toContain('suggested:')
   await ui.unmount()
 })
 

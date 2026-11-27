@@ -20,7 +20,7 @@ import {
 } from './data'
 import { stringRecord, suggestedRecord, usualRecord } from './decode'
 import { isEqual } from './equal'
-import { suggestionsFor } from './face-model'
+import { NO_SUGGESTIONS, suggestedOf, suggestionsFor } from './face-model'
 import { asFailure, Failure, together } from './failure'
 import { clear, quietly, record, reported } from './failures'
 import { joined } from './in-flight'
@@ -196,7 +196,7 @@ const AVATAR_STORE = 'avatars'
 async function readAvatars($: EngineInterface, rows: readonly MrCard[]): Promise<void> {
   const suggested = await readSuggestedKnown($)
   // The people a card suggests are on the pane too, faded.
-  const people = rows.flatMap(row => [...row.people, ...(suggested[row.key]?.people ?? [])])
+  const people = rows.flatMap(row => [...row.people, ...suggestedOf(row, suggested[row.key] ?? NO_SUGGESTIONS)])
   const urls = [...new Set(people.map(person => person.avatarUrl))].filter(url => url !== null)
   const shown = await readAvatarsShown($)
   const known: Record<string, string> = Object.keys(shown).length > 0 ? shown : stringRecord(await $.store.get(AVATAR_STORE))

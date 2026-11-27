@@ -156,7 +156,7 @@ An open MR of yours that is not a draft and is short of reviewers (the approvals
 
 Under the pointer, the face says why them (`suggestionWhy`): the rule that names them, as its team (a CODEOWNERS rule as `code owner of` its path), and `approved 16 of the last 30 here`. A security or licence rule names no team: its people approve a finding, not own the code. GitLab shows the rules only to a token allowed to read them ("Approval Rule: Read" on a fine-grained token); without it, it answers no rules, so no team is named and a project whose rules name no one suggests no one; the ranking of the team it names is the same. Where nothing hovers (the terminal, a phone), the why is not drawn; `add Ines?` still says it is an offer. GitLab adds a reviewer by username only, so a team is named, never added whole.
 
-Only the session that reads GitLab asks, once per MR each time it changes, and again at the next read after an ask failed; asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
+Only the session that reads GitLab asks, once per MR each time it changes. An incomplete answer keeps the last ranking and is retried at the next read. If GitLab has a further page past the first 50 eligible people or the first 10 approvers of any sampled MR, the card offers no suggestions for that update. Only pictures for suggestions the card can show are fetched. Asking for reviews is the author's, so an MR of someone else's pinned here suggests no one (`suggestionsFor`).
 
 | Beside the faded face | Means | Press |
 |---|---|---|

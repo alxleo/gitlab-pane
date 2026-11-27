@@ -301,13 +301,15 @@ export type SuggestedRow = PersonRow & { key: string; press: SuggestedPress }
 /**
  * A card's faces as its row draws them: the people on it, each named with the open threads they hold, then those it
  * suggests, each with their press as this session's add of them holds at `now` in the ledger of `writes`. Beside a face
- * that already shows the initials, a first name reads better; two of the same name, suggested or not, keep their initials.
+ * that already shows the initials, a first name reads better; two of the same name keep their initials. On a surface
+ * without pictures, an add button still says the first name, with the username when the name is shared.
  */
 export function faceRows(
   facts: { people: readonly PersonFacts[]; suggested: readonly PersonFacts[] },
   row: { hasSvg: boolean; writes: Readonly<Record<string, Write>>; key: string; suffix: string; now: number }
 ): { people: PersonRow[]; suggested: SuggestedRow[] } {
-  const names = [...facts.people, ...facts.suggested].map(person => (row.hasSvg ? person.call : person.initials))
+  const people = [...facts.people, ...facts.suggested]
+  const names = people.map(person => (row.hasSvg ? person.call : person.initials))
   const callOf = (person: PersonFacts): string => {
     const name = row.hasSvg ? person.call : person.initials
     return names.filter(each => each === name).length > 1 ? person.initials : name
@@ -325,7 +327,12 @@ export function faceRows(
   return {
     people: facts.people.map(person => drawnAs(person, `${callOf(person)}${person.openThreads > 0 ? ` ${person.openThreads}` : ''}`)),
     suggested: facts.suggested.map(person => {
-      const press = suggestedPress(callOf(person), row.writes[reviewerId(row.key, person.username)], row.now)
+      let name = callOf(person)
+      if (!row.hasSvg) {
+        const shared = people.some(other => other.username !== person.username && other.call === person.call)
+        name = shared ? `${person.call} (@${person.username})` : person.call
+      }
+      const press = suggestedPress(name, row.writes[reviewerId(row.key, person.username)], row.now)
       return { ...drawnAs(person, press.label), key: `suggest-${shortHash(person.username)}-${row.suffix}`, press }
     }),
   }

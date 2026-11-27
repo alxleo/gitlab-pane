@@ -208,6 +208,7 @@ test('a row names its faces by first name, its suggested ones after add, each wi
   expect(plain.suggested.map(person => person.label)).toEqual([`add ${facts.suggested[0]?.initials}?`, 'add Mel?'])
   expect(plain.suggested.map(person => person.key)).toEqual([expect.stringMatching(/^suggest-.+-1-x$/u), expect.stringMatching(/^suggest-.+-1-x$/u)])
   expect(row({ [reviewerId(card.key, 'mel')]: { kind: 'reviewer', state: 'armed', on: 'mel', at: 0 } }).suggested[1]?.press.isArmed).toBe(true)
-  // Without Svg, the initials are what a row calls everyone.
-  expect(row({}, false).suggested[1]?.label).toBe('add MN?')
+  const terminal = row({}, false)
+  expect(terminal.people.map(person => person.label)).toEqual([facts.people[0]?.initials])
+  expect(terminal.suggested.map(person => person.label)).toEqual(['add Ines (@ines.o2)?', 'add Mel?'])
 })

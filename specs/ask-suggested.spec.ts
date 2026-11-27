@@ -7,11 +7,12 @@ import { featuresOf } from '../hooks/in-flight'
 type Node = { username: string; name: string; avatarUrl: string | null; bot: boolean }
 const person = (username: string, over: Partial<Node> = {}): Node => ({ username, name: username, avatarUrl: null, bot: false, ...over })
 type Rule = { type: 'REGULAR' | 'CODE_OWNER' | 'ANY_APPROVER' | 'REPORT_APPROVER' | null; name: string | null; eligibleApprovers: { username: string }[] | null }
-const answer = (eligible: (Node | null)[] | null, approvals: Node[][], rules: Rule[] | null = []) => ({
+const page = (nodes: (Node | null)[] | null, hasNextPage = false) => ({ nodes, pageInfo: { hasNextPage } })
+const answer = (eligible: (Node | null)[], approvals: Node[][], rules: Rule[] | null = []) => ({
   data: {
     project: {
-      mergeRequest: { approvalState: { rules, suggestedApprovers: eligible === null ? null : { nodes: eligible } } },
-      mergeRequests: { nodes: approvals.map(nodes => ({ approvedBy: { nodes } })) },
+      mergeRequest: { approvalState: { rules, suggestedApprovers: page(eligible) } },
+      mergeRequests: { nodes: approvals.map(nodes => ({ approvedBy: page(nodes) })) },
     },
   },
 })
@@ -71,9 +72,41 @@ test('a project whose rules name no one suggests who approved there most, the mo
     ['tess', 1, false],
   ])
   // Nothing eligible and nothing merged suggests no one; an MR GitLab did not answer reads as none known.
-  expect(readSuggested('gitlab.com', answer(null, [], [ANY_MEMBER]))).toEqual({ outOf: 0, people: [] })
+  expect(readSuggested('gitlab.com', answer([], [], [ANY_MEMBER]))).toEqual({ outOf: 0, people: [] })
   expect(readSuggested('gitlab.com', { data: { project: { mergeRequest: null, mergeRequests: null } } })).toBeNull()
   expect(readSuggested('gitlab.com', { data: null })).toBeNull()
+})
+
+test('partial suggestions fail even when GitLab returned eligibility beside the errors', () => {
+  const partial = { ...answer([person('ines')], [[person('ines')]]), errors: [{ message: 'timed out' }] }
+  expect(() => readSuggested('gitlab.com', partial)).toThrow('partial reviewer suggestion answer')
+})
+
+test('missing approval history or eligibility fails even when GitLab includes no errors', () => {
+  const reply = answer([person('ines')], [])
+  const { project } = reply.data
+  const missing = (received: NonNullable<Parameters<typeof readSuggested>[1]['data']>['project']) =>
+    expect(() => readSuggested('gitlab.com', { data: { project: received } })).toThrow('omitted reviewer eligibility or approval history')
+  missing({ ...project, mergeRequests: null })
+  missing({ ...project, mergeRequests: { nodes: null } })
+  missing({ ...project, mergeRequests: { nodes: [null] } })
+  missing({ ...project, mergeRequests: { nodes: [{ approvedBy: null }] } })
+  missing({ ...project, mergeRequests: { nodes: [{ approvedBy: page(null) }] } })
+  missing({ ...project, mergeRequest: { approvalState: { rules: [], suggestedApprovers: null } } })
+  missing({ ...project, mergeRequest: { approvalState: { rules: [], suggestedApprovers: page(null) } } })
+})
+
+test('a truncated eligible page or approval page gives no ranking even when some candidates are known', () => {
+  const ines = person('ines')
+  const mel = person('mel')
+  const reply = answer([ines, mel], [[ines], [mel], [mel]])
+  const { project } = reply.data
+  expect(readSuggested('gitlab.com', reply)?.people.map(each => each.username)).toEqual(['mel', 'ines'])
+  project.mergeRequest.approvalState.suggestedApprovers.pageInfo.hasNextPage = true
+  expect(readSuggested('gitlab.com', reply)).toEqual({ outOf: 0, people: [] })
+  project.mergeRequest.approvalState.suggestedApprovers.pageInfo.hasNextPage = false
+  project.mergeRequests.nodes.push({ approvedBy: page([ines], true) })
+  expect(readSuggested('gitlab.com', reply)).toEqual({ outOf: 0, people: [] })
 })
 
 test('no one eligible where a rule names someone, or where the rules are not shown, suggests no one, never the frequent approvers', () => {
