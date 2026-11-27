@@ -212,3 +212,12 @@ test('a row names its faces by first name, its suggested ones after add, each wi
   expect(terminal.people.map(person => person.label)).toEqual([facts.people[0]?.initials])
   expect(terminal.suggested.map(person => person.label)).toEqual(['add Ines (@ines.o2)?', 'add Mel?'])
 })
+
+test('terminal suggestions use initials when both names are blank and keep joiners in visible names', () => {
+  const card = toCard(HOST, rawMr(1, { approvalsLeft: 2, reviewers: { nodes: [] } }))
+  const joined = '👩\u200D💻'
+  const facts = cardFacts(card, {}, ranked(ines, { ...mel, name: joined }))
+  const suggested = facts.suggested.map(person => (person.username === ines.username ? { ...person, call: '\u200D\uFE0F', username: '' } : person))
+  const terminal = faceRows({ ...facts, suggested }, { hasSvg: false, writes: {}, key: card.key, suffix: '1-x', now: 0 })
+  expect(terminal.suggested.map(person => person.label)).toEqual(['add IM?', `add ${joined}?`])
+})

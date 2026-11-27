@@ -2,7 +2,7 @@
 // no Svg uses; who a card suggests adding as a reviewer, faded, and what the press beside them says. Pure; the draw layer
 // only puts the source in an Svg. Built once for a card, until the card or a picture changes.
 import { BOT_MARKS, discMarks } from './avatar'
-import { drawnLine, plural } from './format'
+import { drawnLine, plural, withoutInvisibleMarks } from './format'
 import { initials, shortHash } from './identity'
 import { followingTheme, PAGE, themePaint, TONE_COLOURS } from './status'
 import type { Shades, Tone } from './status'
@@ -315,8 +315,13 @@ export function faceRows(
     return names.filter(each => each === name).length > 1 ? person.initials : name
   }
   const terminalName = (person: PersonFacts): string => {
-    const visible = drawnLine(person.call)
-    return visible === '' ? `@${person.username}` : visible
+    const visible = drawnLine(withoutInvisibleMarks(person.call))
+    // A name made entirely of joiners or variation selectors has no recipient to read.
+    if (/[^\p{Default_Ignorable_Code_Point}\s]/u.test(visible)) {
+      return visible
+    }
+    const username = drawnLine(withoutInvisibleMarks(person.username))
+    return username === '' ? person.initials : `@${username}`
   }
   const drawnAs = (person: PersonFacts, label: string): PersonRow => ({
     username: person.username,

@@ -1529,14 +1529,14 @@ test('after a reload the faces suggested before stay, and GitLab is not asked ag
   await ui.unmount()
 })
 
-test('a terminal add button keeps a readable recipient when GitLab gives a display name with control characters', async ($, on) => {
+test('a terminal add button keeps a readable recipient when GitLab gives a name with control or invisible characters', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   engine(on, {
     mrs: [rawMr(12, { author: { username: 'me' }, approvalsLeft: 2, approvedBy: { nodes: [user('ines.other')] } })],
     isDown: false,
     suggested: [
-      { ...user('ines.mendel'), name: 'Ines\u0007 Mendel' },
-      { ...user('tessa.rowe'), name: '\u0007' },
+      { ...user('ines.mendel'), name: 'Ines\u0007\u200B Mendel' },
+      { ...user('tessa.rowe'), name: '\u200B\u200D\uFE0F' },
     ],
   })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
