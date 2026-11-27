@@ -49,6 +49,7 @@
     }
   },
   "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.318",
     "@biomejs/biome": "2.6.5",
     "@commitlint/cli": "21.2.4",
     "@commitlint/config-conventional": "21.2.4",
@@ -78,5 +79,8 @@
     "graphql-config": {
       "minimatch": "11.0.5"
     }
+  },
+  "allowScripts": {
+    "@anthropic-ai/claude-code": true
   }
 }

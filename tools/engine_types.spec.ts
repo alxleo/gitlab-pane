@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { unpackRun, versionFrom } from './engine_types.ts'
+import { noVersion, unpackRun, versionFrom } from './engine_types.ts'
 
 // Plain data only: npm run setup, lint and types run the tool against the real claude, so these tests need not.
 
@@ -32,4 +32,13 @@ test('the version is the first word claude --version prints', () => {
 
 test('with no claude to run the version is empty, so the tool says claude is missing instead of crashing', () => {
   expect(versionFrom(undefined)).toBe('')
+  // npm ci never ran: there is nothing to start, and no output at all.
+  const missing = Object.assign(new Error('spawnSync /repo/node_modules/.bin/claude ENOENT'), { code: 'ENOENT' })
+  expect(noVersion('/repo/node_modules/.bin/claude', { error: missing, stderr: undefined })).toBe(
+    '`/repo/node_modules/.bin/claude --version` printed no version (spawnSync /repo/node_modules/.bin/claude ENOENT). Run npm ci, which installs the Claude Code package.json pins, or, after an install with --ignore-scripts, npm rebuild @anthropic-ai/claude-code.'
+  )
+  // An install with --ignore-scripts: the stub runs, says why on stderr, and prints no version.
+  expect(noVersion('claude', { error: undefined, stderr: 'Error: claude native binary not installed.\n\nEither postinstall did not run' })).toContain(
+    '(Error: claude native binary not installed.)'
+  )
 })

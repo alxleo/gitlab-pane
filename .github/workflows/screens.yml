@@ -17,6 +17,7 @@ on:
       - tests/fixtures.ts
       - tests/gitlab_fake.ts
       - tools/pane_screens.ts
+      - tools/pins.ts
       - tools/photograph.ts
       - tools/chatgpt_screens.ts
       - tools/screens/**
@@ -32,6 +33,7 @@ on:
       - tests/fixtures.ts
       - tests/gitlab_fake.ts
       - tools/pane_screens.ts
+      - tools/pins.ts
       - tools/photograph.ts
       - tools/chatgpt_screens.ts
       - tools/screens/**
@@ -54,8 +56,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    env:
-      CLAUDE_CODE_VERSION: "2.1.318"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,8 +63,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
-      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: npm ci --ignore-scripts
+      # The pinned Claude Code (package.json) is the one dependency whose install step runs: it puts the native binary in place.
+      - run: npm rebuild @anthropic-ai/claude-code
       # The browser alone, from Playwright's own download: GitHub's runner image already holds the libraries it needs, so the
       # run asks Ubuntu's package mirrors for nothing and does not fail when they do not answer. The fonts `--with-deps`
       # added are not needed either: a character no bundled font has fails the render as an empty box.

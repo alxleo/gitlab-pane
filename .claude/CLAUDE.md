@@ -1,6 +1,6 @@
 # Working in gitlab-pane
 
-A Claude Code mod in TypeScript: a GitLab pane beside the session. [README.md](../README.md) says what it does, [DESIGN.md](../DESIGN.md) what each colour means, [CONTRIBUTING.md](../CONTRIBUTING.md) how to set up, which script checks what, and how releases work. `claude-code` comes from the engine at runtime, not npm.
+A Claude Code mod in TypeScript: a GitLab pane beside the session. [README.md](../README.md) says what it does, [DESIGN.md](../DESIGN.md) what each colour means, [CONTRIBUTING.md](../CONTRIBUTING.md) how to set up, which script checks what, and how releases work. The `claude-code` module the mod imports comes from the engine at runtime, not npm; npm only brings the pinned Claude Code the checks run (below).
 
 Before changing what the pane shows, how it behaves, or what Claude is handed, read [AGENTS.md](../AGENTS.md) and the [product brief](../PRODUCT_BRIEF.md): the brief, not the current code, says what the pane is meant to become.
 
@@ -32,7 +32,7 @@ Before changing what the pane shows, how it behaves, or what Claude is handed, r
 - Each question to GitLab is one `ask-*.ts` module: its documents (static strings), request, cost (`COMPLEXITY`) and the reading of its answer. Shared fragments live in `mr-fragments.ts` and `inbox-fragments.ts`; `documentOf` appends the ones a document spreads. `gitlab-operations.ts` adds the modules up; `gitlab-features.ts` learns what an old host lacks. `hooks/gitlab.generated.ts` is made from the documents and `tools/gitlab_schema.snapshot.json` by `npm run schema -- types`. Never edit it; a stale one fails `npm run check`. `schema -- snapshot` refreshes the snapshot from gitlab.com.
 - `types/index.d.ts` stays one self-contained file (`claude plugin validate --strict`): domain types cannot move out, and every atom key is declared there.
 - The engine's declarations are not committed: `npm run setup` unpacks them into git-ignored `.claude-plugin/types/`. `tsconfig.core.json` has none, which keeps the core off the engine.
-- The Claude Code version is pinned in `check.yml`, `screens.yml` and `tools/pane_screens.ts`: change all together. `CLAUDE_CODE_STABLE` in `check.yml` is apart: the stable channel's version, which follows npm's `stable` tag.
+- The Claude Code the checks run is pinned once, as a devDependency in `package.json`; `npm ci` installs it and every script, git hook and tool runs that one (`tools/pins.ts`), never the `claude` on PATH. `CLAUDE_CODE_STABLE` in `check.yml` is apart: the stable channel's version, which follows npm's `stable` tag.
 
 ## What the engine enforces
 

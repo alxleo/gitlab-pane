@@ -59,7 +59,7 @@ test.each([
 test('a Markdown PR skips application lint, builds and tests but still checks docs, emails and the PR title', () => {
   const steps = stepsFor(check, 'check')
   for (const run of [
-    'npm install --global',
+    'npm rebuild @anthropic-ai/claude-code',
     'npm run check:fast',
     'npm test',
     'node --import ./tools/resolve_ts.ts tools/release_tree.ts build',

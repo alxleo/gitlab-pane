@@ -4,7 +4,7 @@ Node 26 or newer runs everything, TypeScript tools included (types stripped). No
 
 ## Set up
 
-Two things come first: [mise](https://mise.jdx.dev), which installs what `mise.toml` pins, and `claude` (Claude Code) on the PATH, at the `CLAUDE_CODE_VERSION` that `check.yml` pins, since `npm run setup` and `npm run check` use it.
+[mise](https://mise.jdx.dev) comes first: it installs what `mise.toml` pins. `npm ci` installs the rest, the Claude Code the checks run among them: package.json pins it, and every script and git hook runs that one, whatever Claude Code your machine has. Your own `claude` is only for running the mod. An install with `--ignore-scripts`, as CI's, leaves that Claude Code a stub until `npm rebuild @anthropic-ai/claude-code`.
 
 ```bash
 mise install                 # Node and the scanners `npm run scan` runs, at the versions mise.toml pins
@@ -18,7 +18,7 @@ npm run check && npm test    # everything a commit and a push must pass
 
 | Script | Checks |
 | --- | --- |
-| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the `claude` on your PATH (`tools/engine_types.ts`: no sign-in, no model call, git-ignored). |
+| `npm run setup` | Writes the git hooks (`simple-git-hooks`) and unpacks the engine's declarations from the pinned Claude Code `npm ci` installed (`tools/engine_types.ts`: no sign-in, no model call, git-ignored). |
 | `npm run files` | JSON and YAML parse; no conflict markers, private keys or files over 500 kB; no `oxlint-` or `eslint-` directive comment in any script (checked here because oxlint obeys a blanket disable even over the rule refusing it); one final newline, no trailing whitespace. |
 | `npm run format` | Writes the formatting: [Biome](https://biomejs.dev) as formatter only (`biome.jsonc`), oxlint stays the linter. The tools that generate `hooks/gitlab.generated.ts`, the schema snapshot and `tests/docs.generated.ts` format their output through it. |
 | `npm run format:check` | Every TS, TSX, JS, CJS and JSON file is formatted as `npm run format` writes it (`package-lock.json` apart: npm writes it). |
@@ -61,7 +61,7 @@ npm run check && npm test    # everything a commit and a push must pass
 | Plugin installs from GitHub; release branch holds the latest tag | | | | | x |
 | gitleaks over the whole history | | | | | x |
 
-Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned in `check.yml` (twice), `screens.yml` and `tools/pane_screens.ts`; Renovate raises all four in one pull request (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. `check.yml` also validates and tests the plugin on `CLAUDE_CODE_STABLE`, the version npm's `stable` tag names, which is what the stable release channel installs and usually older than the pin; Renovate keeps it on that tag. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
+Workflows: `check.yml` (checks, scanners, release), `screens.yml`, `canary.yml`. One Claude Code version is pinned, in `package.json`, for the checks here and in CI alike (`tools/pins.ts` finds it); Renovate raises it in a pull request of its own (`renovate.json`), which fails `screens.yml` until `npm run screens -- render` is committed if the new version draws the pane differently. `check.yml` also validates and tests the plugin on `CLAUDE_CODE_STABLE`, the version npm's `stable` tag names, which is what the stable release channel installs and usually older than the pin; Renovate keeps it on that tag. Renovate also keeps the actions and the tooling current, once a month and only with releases out for 14 days. The canary failing on the newest Claude Code or on a changed schema opens an issue; the next green run closes it.
 
 ## Duplicate-code sweep
 
@@ -106,10 +106,10 @@ flowchart LR
 The same commit draws the same letters on a Mac and on Linux, but not the same bytes, and `screens.yml` compares bytes on Linux. On a Mac, render the pictures you commit in Playwright's Ubuntu image, which draws what CI draws (CI's steps pass there):
 
 ```bash
-docker run --rm --platform linux/amd64 -v "$PWD":/src:ro -v "$PWD/docs/screens":/out mcr.microsoft.com/playwright:v1.64.1-noble bash -c 'mkdir /work && cd /src && tar --exclude=./node_modules --exclude=./.git -cf - . | tar -xf - -C /work && cd /work && npm install --global @anthropic-ai/claude-code@2.1.318 && npm ci --ignore-scripts && npm run screens -- render --out /out'
+docker run --rm --platform linux/amd64 -v "$PWD":/src:ro -v "$PWD/docs/screens":/out mcr.microsoft.com/playwright:v1.64.1-noble bash -c 'mkdir /work && cd /src && tar --exclude=./node_modules --exclude=./.git -cf - . | tar -xf - -C /work && cd /work && npm ci --ignore-scripts && npm rebuild @anthropic-ai/claude-code && npm run screens -- render --out /out'
 ```
 
-The image's version is Playwright's in `package-lock.json`, and the Claude Code is the one CI pins.
+The image's version is Playwright's in `package-lock.json`, and the Claude Code is the one `package.json` pins.
 
 Every scene is photographed in the desktop app's light theme, `<scene>.png`, and its dark theme, `<scene>-dark.png`; the README shows the one that matches the reader's.
 

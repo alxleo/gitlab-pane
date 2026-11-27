@@ -17,6 +17,7 @@ import { createInterface } from 'node:readline'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import { isRecord, parseJson, text } from '../hooks/decode.ts'
+import { pinnedClaude } from './pins.ts'
 
 export const PANE_ID = 'gitlab-pane'
 /** The plugin a measured element belongs to: the mod's id. */
@@ -63,10 +64,10 @@ export type Wire = {
   readonly close: () => void
 }
 
-/** A headless `claude -p` in `cwd`, on this checkout's mod, writing its debug log to `debugFile`. */
+/** A headless `claude -p` of the pinned Claude Code in `cwd`, on this checkout's mod, writing its debug log to `debugFile`. */
 export function spawnWire(cwd: string, debugFile: string): Wire {
   const proc: ChildProcessByStdio<Writable, Readable, null> = spawn(
-    'claude',
+    pinnedClaude(ROOT),
     [
       '-p',
       '--input-format',

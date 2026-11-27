@@ -7,7 +7,8 @@
 # tests. The security scanners (gitleaks, actionlint, zizmor) are not Node tools, so the `scan` job runs each by its
 # official action; locally `npm run scan` runs whichever of them is installed. See CONTRIBUTING.md.
 #
-# Two Claude Code versions are tested. CLAUDE_CODE_VERSION, the pin, runs everything. CLAUDE_CODE_STABLE, the version
+# Two Claude Code versions are tested. The pin, package.json's devDependency that `npm ci` installs, runs everything, as
+# it does locally, whatever Claude Code a machine has. CLAUDE_CODE_STABLE, the version
 # npm's `stable` tag offers, is the stable release channel's and the oldest an updating install runs; it validates the
 # plugin and runs its tests. Both are steps of this one job, so `check`, the check main requires, covers both. Renovate
 # raises each (renovate.json). The newest release is canary.yml's: it moves almost daily, and a break there is the
@@ -51,7 +52,6 @@ jobs:
     permissions:
       contents: read
     env:
-      CLAUDE_CODE_VERSION: "2.1.318"
       CLAUDE_CODE_STABLE: "2.1.311"
       CODEX_VERSION: "0.169.1"
     steps:
@@ -83,9 +83,10 @@ jobs:
         with:
           node-version: 26
           cache: npm
-      - if: steps.markdown-scope.outputs.markdown_only != '1'
-        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       - run: npm ci --ignore-scripts
+      # The pinned Claude Code (package.json) is the one dependency whose install step runs: it puts the native binary in place.
+      - if: steps.markdown-scope.outputs.markdown_only != '1'
+        run: npm rebuild @anthropic-ai/claude-code
       - if: steps.markdown-scope.outputs.markdown_only == '1'
         run: npm run docs -- check
       # File hygiene, lint, all the type-checks, the GitLab types, the release tree and `claude plugin validate --strict`
@@ -104,9 +105,10 @@ jobs:
         name: The release tree builds, validates and loads only what it holds
         run: |
           node --import ./tools/resolve_ts.ts tools/release_tree.ts build "$RUNNER_TEMP/tree"
-          claude plugin validate --strict "$RUNNER_TEMP/tree"
-          claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
-          claude plugin validate --strict .claude-plugin/marketplace.json
+          claude=node_modules/.bin/claude
+          "$claude" plugin validate --strict "$RUNNER_TEMP/tree"
+          "$claude" plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
+          "$claude" plugin validate --strict .claude-plugin/marketplace.json
       # The ChatGPT plugin as ChatGPT's desktop app takes it: its server serves the panel by its hash, and Codex installs
       # it from the tree and starts that server. Neither reads GitLab.
       - if: steps.markdown-scope.outputs.markdown_only != '1'
@@ -194,8 +196,6 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
-    env:
-      CLAUDE_CODE_VERSION: "2.1.318"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -204,9 +204,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
-      - run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # zizmor: ignore[adhoc-packages] one pinned CLI
       # release_tree.ts builds the ChatGPT plugin into the tree with esbuild (chatgpt/build.ts), from package-lock.json.
       - run: npm ci --ignore-scripts
+      - run: npm rebuild @anthropic-ai/claude-code
       - name: Commit the tree to the release branch
         env:
           TAG: ${{ needs.release.outputs.tag_name }}
@@ -215,8 +215,8 @@ jobs:
           set -euo pipefail
           node --import ./tools/resolve_ts.ts tools/release_tree.ts build "$RUNNER_TEMP/tree"
           # What is published passes the same validation as a pull request's tree.
-          claude plugin validate --strict "$RUNNER_TEMP/tree"
-          claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
+          node_modules/.bin/claude plugin validate --strict "$RUNNER_TEMP/tree"
+          node_modules/.bin/claude plugin validate --strict "$RUNNER_TEMP/tree/.claude-plugin/marketplace.json"
           version=$(jq -r .version "$RUNNER_TEMP/tree/.claude-plugin/plugin.json")
           test "v${version}" = "$TAG"
           url="https://github.com/${GITHUB_REPOSITORY}.git"
