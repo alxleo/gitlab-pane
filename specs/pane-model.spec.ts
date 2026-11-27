@@ -13,7 +13,7 @@ import type { PaneInput, Piece, RowModel } from '../hooks/pane-model'
 import { pickedRepo, REPO_ALL } from '../hooks/repo-filter'
 import { slimCard } from '../hooks/slim'
 import { readCardArb } from './arbitrary'
-import { HOST, NOW, gitlabSays, pipe, project, rawMr, thread } from '../tests/fixtures'
+import { HOST, NOW, gitlabSays, pipe, project, rawMr, reviewer, thread } from '../tests/fixtures'
 import type { Mr } from '../tests/fixtures'
 import type { CheckStatus, InboxMr, Landed, Merging, MrCard, Pressed } from '../types'
 
@@ -113,10 +113,10 @@ test('each MR is a card in the order of what needs you, its worst blocker in wor
   expect(byLink['🔀 !13']?.blocker).toEqual({ text: '👤 needs 1 approval', tone: 'subtle' })
 })
 
-test('a row that passed and waits on others folds to one line; one that can merge, runs, failed, is blocked or quotes a person does not', () => {
+test('a row that passed and waits on others draws its faces with their pictures, as one that can merge, runs, failed, is blocked or quotes a person does', () => {
   const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
   const rows = {
-    waiting: toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS') })),
+    waiting: toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS'), reviewers: { nodes: [reviewer('tim', 'UNREVIEWED')] } })),
     mergeable: { ...toCard(HOST, rawMr(2, { ...approved, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() },
     running: toCard(HOST, rawMr(3, { headPipeline: pipe('RUNNING') })),
     failed: toCard(HOST, rawMr(4, { headPipeline: pipe('FAILED') })),
@@ -124,10 +124,18 @@ test('a row that passed and waits on others folds to one line; one that can merg
     // Human feedback always surfaces, approved or not.
     asked: toCard(HOST, rawMr(6, { ...approved, headPipeline: pipe('SUCCESS'), discussions: { nodes: [thread('Rename this.', 'mel')] } })),
   }
-  const model = modelOf(Object.values(rows))
-  const quiet = Object.fromEntries(Object.entries(rows).map(([name, card]) => [name, model.mine.rows.find(row => row.key === card.key)?.isQuiet]))
-  // One that can merge is a decision to make, not waiting: it keeps its links and faces to check before merging.
-  expect(quiet).toEqual({ waiting: true, mergeable: false, running: false, failed: false, conflict: false, asked: false })
+  // The waiting one's reviewer has a picture kept, which its faces are drawn with.
+  const avatars = Object.fromEntries(rows.waiting.people.flatMap(person => (person.avatarUrl !== null ? [[person.avatarUrl, 'data:image/png;base64,AA']] : [])))
+  const model = modelOf(Object.values(rows), { avatars })
+  // Every card is drawn alike: with room to spare, each row with a picture kept draws its faces with it, the waiting one too.
+  const faces = Object.fromEntries(
+    Object.entries(rows).map(([name, card]) => {
+      const row = model.mine.rows.find(each => each.key === card.key)
+      return [name, row?.fit.hasFaces === row?.hasPictures]
+    })
+  )
+  expect(faces).toEqual(Object.fromEntries(Object.keys(rows).map(name => [name, true])))
+  expect(model.mine.rows.find(row => row.key === rows.waiting.key)?.fit.hasFaces).toBe(true)
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.verdict?.words).toBe('✓ mergeable')
   // GitLab named no head its checks were made on, so there is none to show.
   expect(model.mine.rows.find(row => row.key === rows.mergeable.key)?.head).toBeNull()
@@ -135,7 +143,6 @@ test('a row that passed and waits on others folds to one line; one that can merg
   const sha = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
   const mayMerge = { ...rows.mergeable, merging: { ...CAN, head: sha } }
   const offered = modelOf([mayMerge]).mine.rows[0]
-  expect(offered?.isQuiet).toBe(false)
   // Its id shortened as GitLab shortens one; the link opens the whole commit.
   expect(offered?.head).toEqual({ href: `${mayMerge.repo.url}/-/commit/${sha}`, text: '📍 a1b2c3d4' })
   // On an MR that cannot merge yet, the head is not said: there is nothing to check it against.
@@ -148,6 +155,28 @@ test('a row that passed and waits on others folds to one line; one that can merg
     failed: null,
     isVerdict: true,
   })
+})
+
+test('a card’s left line is the colour of its verdict, or of what holds it without one: green for one that can merge, grey for one waiting', () => {
+  const approved = { approvalsLeft: 0, approvedBy: { nodes: [{ username: 'mel', name: 'Mel', bot: false, avatarUrl: null }] } }
+  const cards = {
+    waiting: { ...toCard(HOST, rawMr(1, { headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays({ NOT_APPROVED: 'failed' }) },
+    mergeable: { ...toCard(HOST, rawMr(2, { ...approved, headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays() },
+    failed: { ...toCard(HOST, rawMr(4, { headPipeline: pipe('FAILED') })), mergeStatus: gitlabSays({ CI_MUST_PASS: 'failed' }) },
+    conflict: { ...toCard(HOST, rawMr(5, { headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays({ CONFLICT: 'failed' }) },
+    threads: { ...toCard(HOST, rawMr(7, { headPipeline: pipe('SUCCESS') })), mergeStatus: gitlabSays({ DISCUSSIONS_NOT_RESOLVED: 'failed' }) },
+    // With no merge checks read, the pane's own marker holds it, and the line takes that marker's colour.
+    unread: toCard(HOST, rawMr(6, { headPipeline: pipe('SUCCESS') })),
+  }
+  const { mine } = modelOf(Object.values(cards))
+  const rowOf = (card: MrCard) => mine.rows.find(row => row.key === card.key)
+  const edges = Object.fromEntries(Object.entries(cards).map(([name, card]) => [name, rowOf(card)?.edge]))
+  expect(edges).toEqual({ waiting: 'subtle', mergeable: 'success', failed: 'error', conflict: 'error', threads: 'warning', unread: 'subtle' })
+  // Never colour alone: the line repeats the colour of words already on the card.
+  for (const card of Object.values(cards)) {
+    const row = rowOf(card)
+    expect(row?.edge).toBe(row?.verdict?.tone ?? row?.blocker?.tone)
+  }
 })
 
 test('an MR’s one move stands where GitLab’s verdict says what it fixes, and the line does not say that check again', () => {

@@ -2,7 +2,7 @@
 // colours and links, and how much of each fits the drawing's room. The draw files only map this to elements. Pure: the
 // one thing it asks of the draw layer is `sizeOf`, how many characters a piece of a row draws to, which it asks once for
 // each piece it needs and never for a piece it will not use.
-import { badges, byAttention, hasLeft, isMergeable } from './attention'
+import { byAttention, hasLeft, isMergeable } from './attention'
 import { CONTROL, LINK, titleKey } from './drawing'
 import type { Control } from './drawing'
 import { faceRows } from './face-model'
@@ -73,8 +73,11 @@ export type RowModel = {
   suggested: SuggestedRow[]
   /** The latest open thread a person wrote, as the card's one line of words; pressed, it opens the page on them. */
   said: { label: string; username: string } | null
-  /** Nothing to show past the title and verdict, so the row is one line: its title, its verdict and its age. */
-  isQuiet: boolean
+  /**
+   * The colour of the line down the card's left edge: its verdict's, else what holds it without one, else grey. It
+   * repeats the colour of words already on the card, so it is never the only thing that says where the MR stands.
+   */
+  edge: Tone
   /**
    * The press that puts the MR in this session or takes it out. None on an MR this session raised: taking that pin off
    * would stop its wakes. The mark is all that is drawn, a star filled on an MR pinned here; `press` is what it does.
@@ -160,25 +163,6 @@ export type PaneModel = {
   wake: Control<'wakeOn' | 'wakeOff'>
 }
 
-/** Markers that wait on others or say the MR can merge: neither is a thing to fix. */
-const WAITING: readonly string[] = ['approvals', 'ready']
-
-/**
- * Whether a row has nothing to show past its title and verdict: its pipeline passed, nothing stands before a merge but
- * approvals (no thread, request for changes or bot holds it, whatever face speaks for it), GitLab's verdict waits on others
- * (grey), and no person's open thread is quoted on it. One GitLab says can merge (the green verdict) is a decision, not
- * waiting, so it keeps its links, faces and head; so does one short of reviewers, with someone to suggest.
- */
-function isQuiet(card: MrCard, facts: CardFacts): boolean {
-  return (
-    card.pipeline?.status === 'success' &&
-    facts.said === null &&
-    facts.suggested.length === 0 &&
-    badges(card).every(badge => WAITING.includes(badge.kind)) &&
-    (facts.verdict === null || facts.verdict.tone === 'subtle')
-  )
-}
-
 /** What a row's pin press does: pin an MR not in this session, unpin one only watched there, nothing to one it raised. */
 function pinOf(card: MrCard, pinned: Pinned | undefined, suffix: string): RowModel['pin'] {
   // The pin is made from the card's own host, project and number, so its key is the card's.
@@ -228,7 +212,7 @@ function headOf(card: MrCard, facts: CardFacts, input: PaneInput, home: string |
     blocker: blocker !== undefined ? { text: `${blocker.glyph} ${blocker.words}${facts.row.length > 1 ? ` +${facts.row.length - 1}` : ''}`, tone: blocker.tone } : null,
     ...faceRows(facts, { hasSvg, writes: input.writes, key: card.key, suffix, now }),
     said: facts.said !== null ? { label: `${LINK.comment} ${facts.said.who}: ${facts.said.words}`, username: facts.said.username } : null,
-    isQuiet: isQuiet(card, facts),
+    edge: facts.verdict?.tone ?? blocker?.tone ?? 'subtle',
     pin: pinOf(
       card,
       input.pinned.find(one => pinKey(one) === card.key),
@@ -331,8 +315,7 @@ export function buildPane(given: PaneInput, now: number, surface: { hasSvg: bool
     }
   }
   for (const [key, row] of finished) {
-    // A quiet row draws no faces, so it takes no pictures.
-    if (row.hasPictures && !row.isQuiet) {
+    if (row.hasPictures) {
       finished.set(key, { ...row, fit: { ...row.fit, hasFaces: fits(budget.sizeOf(row, 'faces'), budget.sizeOf(row, 'line2')) } })
     }
   }

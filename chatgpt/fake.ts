@@ -12,7 +12,7 @@ import type { GitLab, Send } from './read.ts'
 /** The token the made-up GitLab accepts. */
 const TOKEN = 'made-up'
 
-/** Made-up MRs that show each kind of row: failed, conflicts, ready to merge, behind its target, running, draft. */
+/** Made-up MRs that show each kind of row: failed, conflicts, ready to merge, behind its target, waiting on an approval, running, draft. */
 const mrs = (): Mr[] => [
   rawMr(412, {
     title: 'feat: [SHOP-88] basket keeps its items across devices',
@@ -41,6 +41,11 @@ const mrs = (): Mr[] => [
     approvedBy: { nodes: [user('ana')] },
     shouldBeRebased: true,
     mergeabilityChecks: checks({ NEED_REBASE: 'FAILED' }),
+  }),
+  rawMr(414, {
+    title: 'fix: the receipt names the store it came from',
+    reviewers: { nodes: [reviewer('tom', 'UNREVIEWED')] },
+    mergeabilityChecks: checks({ NOT_APPROVED: 'FAILED' }),
   }),
   rawMr(417, { title: 'feat: [SHOP-91] gift cards at checkout', headPipeline: pipe('RUNNING'), reviewers: { nodes: [reviewer('tom', 'UNREVIEWED')] } }),
   rawMr(420, { title: 'Draft: spike the new search ranking', draft: true, headPipeline: pipe('MANUAL') }),

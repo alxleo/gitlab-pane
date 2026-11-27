@@ -48,7 +48,7 @@ const picture = (source: string, alt: string): HTMLSpanElement => {
   return node
 }
 
-/** The verdict and the MR's one move, as `card.tsx`'s `verdictParts`: the move stands in place of the verdict it answers. */
+/** The verdict and the MR's one move, as `card.tsx` draws them: the move stands in place of the verdict it answers. */
 function verdictParts(row: RowModel): HTMLElement[] {
   const { verdict } = row
   if (verdict === null) {
@@ -78,21 +78,14 @@ function verdictParts(row: RowModel): HTMLElement[] {
 
 function rowOf(row: RowModel): HTMLLIElement {
   const card = el('li', 'card')
-  // The left edge repeats in colour what the row's verdict, else its blocker, says in words: the core's row model no
-  // longer carries a colour for the card, since the mod's cards draw no border.
-  card.classList.add(`edge-${row.verdict?.tone ?? row.blocker?.tone ?? 'subtle'}`)
+  // The left edge repeats in colour what the row's verdict, else its blocker, says in words, as the mod's line does.
+  card.classList.add(`edge-${row.edge}`)
   const line1 = el('div', 'line1')
   const title = el('button', 'title', row.title)
   title.addEventListener('click', () => void app.openLink({ url: row.mr.href }))
   line1.append(title)
-  if (row.isQuiet) {
-    line1.append(...verdictParts(row))
-  }
   line1.append(el('span', 'soft small', row.ago))
   card.append(line1)
-  if (row.isQuiet) {
-    return card
-  }
   const line2 = el('div', 'line2')
   line2.append(link(row.mr))
   if (row.ticket !== null) {

@@ -138,18 +138,6 @@ export function drawPart($: EngineInterface, kit: HomedKit, row: RowModel, part:
           <Box flexGrow={1} flexShrink={1}>
             <Button key={row.titleKey} plain label={row.title} onPress={() => openReading($, row.key)} />
           </Box>
-          {/* A quiet row is this line alone: what it waits on goes beside its title, with GitLab's own merge once checks pass. */}
-          {row.isQuiet && row.verdict !== null && (
-            <Box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-              {verdictWords(kit, row.verdict)}
-              {moveParts($, kit, row, row.verdict.move, null)}
-            </Box>
-          )}
-          {row.isQuiet && row.verdict === null && row.blocker !== null && (
-            <Box flexShrink={0}>
-              <Text dimColor>{row.blocker.text}</Text>
-            </Box>
-          )}
           <Text dimColor size="footnote">
             {row.ago}
           </Text>
